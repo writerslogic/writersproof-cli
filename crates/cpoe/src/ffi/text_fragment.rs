@@ -855,12 +855,13 @@ pub fn ffi_resolve_sync_conflict(
             None
         };
 
+    let mut store = match open_store() {
+        Ok(s) => s,
+        Err(e) => return FfiSyncResult::err(e),
+    };
+
     // Verify remote fragment signature before accepting it
     if let Some(ref frag) = remote_fragment {
-        let store_tmp = match open_store() {
-            Ok(s) => s,
-            Err(e) => return FfiSyncResult::err(e),
-        };
         let hash_arr: &[u8; 32] = frag.fragment_hash.as_slice()
             .try_into()
             .expect("length validated at 32 bytes");
@@ -874,7 +875,7 @@ pub fn ffi_resolve_sync_conflict(
             ),
         };
         let pub_bytes = signing_key.verifying_key().to_bytes();
-        match store_tmp.verify_fragment_signature(
+        match store.verify_fragment_signature(
             hash_arr,
             &frag.nonce,
             frag.timestamp,
@@ -891,11 +892,6 @@ pub fn ffi_resolve_sync_conflict(
             ),
         }
     }
-
-    let mut store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiSyncResult::err(e),
-    };
 
     match store.resolve_sync_conflict(
         fragment_id,

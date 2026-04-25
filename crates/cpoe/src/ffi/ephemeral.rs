@@ -260,8 +260,9 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
                 byte_count as i64,
                 snapshot_msg,
             );
-            event.device_id = device_identity().0;
-            event.machine_id = device_identity().1.clone();
+            let (dev_id, mach_id) = device_identity();
+            event.device_id = dev_id;
+            event.machine_id = mach_id;
             event.size_delta = size_delta;
             event.context_type = Some("ephemeral".to_string());
             if let Err(e) = store.add_secure_event(&mut event) {
@@ -524,8 +525,9 @@ pub fn ffi_ephemeral_checkpoint_hash(
                 byte_count as i64,
                 last_message,
             );
-            event.device_id = device_identity().0;
-            event.machine_id = device_identity().1.clone();
+            let (dev_id, mach_id) = device_identity();
+            event.device_id = dev_id;
+            event.machine_id = mach_id;
             event.size_delta = size_delta;
             event.context_type = Some("ephemeral".to_string());
             if let Err(e) = store.add_secure_event(&mut event) {
