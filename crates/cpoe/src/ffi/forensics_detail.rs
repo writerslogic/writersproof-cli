@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::helpers::{open_store, validate_path_str};
+use crate::ffi::helpers::load_events_for_path;
 use crate::ffi::types::try_ffi;
 use crate::utils::finite_or;
 
@@ -112,14 +112,7 @@ impl super::types::FfiErrResult for FfiForensicBreakdown {
 /// rich structured data suitable for native UI display.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
-    let path = try_ffi!(validate_path_str(&path), FfiForensicBreakdown);
-    let store = try_ffi!(open_store(), FfiForensicBreakdown);
-    let events = try_ffi!(
-        store
-            .get_events_for_file(&path)
-            .map_err(|e| format!("Failed to load events: {e}")),
-        FfiForensicBreakdown
-    );
+    let (path, _store, events) = try_ffi!(load_events_for_path(&path), FfiForensicBreakdown);
 
     if events.is_empty() {
         return FfiForensicBreakdown::error("No events found for this file".to_string());

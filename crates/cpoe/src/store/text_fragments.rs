@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::store::SecureStore;
-use crate::wal::{EntryType, Wal};
 use anyhow::anyhow;
 use rusqlite::params;
 use rusqlite::OptionalExtension;
@@ -184,33 +183,6 @@ impl SecureStore {
         )?;
 
         tx.commit()?;
-        Ok(id)
-    }
-
-    /// Insert a text fragment and append a WAL entry for durability.
-    ///
-    /// Calls `insert_text_fragment` for the database insert, then appends a
-    /// `TextFragmentInsert` entry to the WAL with the fragment hash as payload.
-    /// WAL append failure is logged but does not roll back the DB insert.
-    #[allow(dead_code)]
-    pub fn insert_text_fragment_with_wal(
-        &mut self,
-        fragment: &TextFragment,
-        wal: &Wal,
-    ) -> anyhow::Result<i64> {
-        let id = self.insert_text_fragment(fragment)?;
-
-        if let Err(e) = wal.append(
-            EntryType::TextFragmentInsert,
-            fragment.fragment_hash.clone(),
-        ) {
-            log::warn!(
-                "WAL append for TextFragmentInsert failed (db row {}): {}",
-                id,
-                e,
-            );
-        }
-
         Ok(id)
     }
 

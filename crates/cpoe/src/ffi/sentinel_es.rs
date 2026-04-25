@@ -5,7 +5,7 @@
 //! These are called by the Swift EndpointSecurityEventClient when ES events
 //! match tracked documents or known AI tools.
 
-use super::sentinel::get_sentinel;
+use super::sentinel::get_running_sentinel;
 use crate::sentinel::types::{AiToolCategory, DetectedAiTool};
 use crate::RwLockRecover;
 use std::time::SystemTime;
@@ -19,10 +19,9 @@ use std::time::SystemTime;
 /// Returns `true` if a checkpoint was committed.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_write(path: String, pid: i32, signing_id: String) -> bool {
-    let sentinel_opt = get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return false,
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
     };
 
     // Only act on paths that are actually being tracked.
@@ -54,10 +53,9 @@ pub fn ffi_sentinel_es_ai_tool_detected(
     ppid: i32,
     exec_path: String,
 ) -> bool {
-    let sentinel_opt = get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return false,
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
     };
 
     let (category, basis) = match AiToolCategory::from_signing_id(&signing_id) {
@@ -124,10 +122,9 @@ pub fn ffi_sentinel_es_ai_tool_detected(
 /// Returns `true` if a tracked session was updated.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
-    let sentinel_opt = get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return false,
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
     };
 
     let validated = match crate::sentinel::helpers::validate_path(&new_path) {
@@ -169,10 +166,9 @@ pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
 /// Marks all active sessions as degraded.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_capture_gap(missed_count: u32) -> bool {
-    let sentinel_opt = get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return false,
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
     };
 
     log::warn!("ES capture gap: {missed_count} event(s) dropped by kernel");
@@ -199,10 +195,9 @@ pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
         );
         return false;
     }
-    let sentinel_opt = get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return false,
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
     };
 
     log::info!("Challenge nonce set for next checkpoint");
@@ -213,10 +208,9 @@ pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
 /// Return the list of AI tools detected across all active sessions (deduplicated).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_ai_tools_active() -> Vec<String> {
-    let sentinel_opt = get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return Vec::new(),
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return Vec::new(),
     };
 
     let sessions = sentinel.sessions.read_recover();

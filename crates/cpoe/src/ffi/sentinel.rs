@@ -26,6 +26,11 @@ pub(crate) fn get_sentinel() -> Option<Arc<Sentinel>> {
         .map(Arc::clone)
 }
 
+/// Return the sentinel only if it exists and is currently running.
+pub(crate) fn get_running_sentinel() -> Option<Arc<Sentinel>> {
+    get_sentinel().filter(|s| s.is_running())
+}
+
 fn ffi_runtime() -> Result<Arc<tokio::runtime::Runtime>, String> {
     let mut guard = FFI_RUNTIME.lock().unwrap_or_else(|p| {
         log::warn!("FFI_RUNTIME mutex was poisoned, recovering");

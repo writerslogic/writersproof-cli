@@ -31,9 +31,6 @@ pub(super) fn wrap_text_lines(text: &str, max_chars: usize) -> Vec<String> {
 }
 
 pub(super) const MARGIN_LEFT: f32 = 20.0;
-// Page right margin (used for future right-aligned elements).
-#[allow(dead_code)]
-pub(super) const MARGIN_RIGHT: f32 = 190.0;
 pub(super) const PAGE_TOP: f32 = 280.0;
 pub(super) const CONTENT_WIDTH: f32 = 170.0;
 

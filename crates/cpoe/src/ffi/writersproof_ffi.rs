@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::helpers::{load_api_key, load_did, load_signing_key, open_store};
+use crate::ffi::helpers::{load_api_key, load_did, load_events_for_path, load_signing_key, open_store};
 use crate::ffi::types::{try_ffi, FfiResult};
 
 /// Anchor a document's latest checkpoint to the WritersProof transparency log.
@@ -16,27 +16,9 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     if document_path.len() > 4096 {
         return FfiResult::err("Document path too long".to_string());
     }
-    let doc_path = try_ffi!(
-        crate::sentinel::helpers::validate_path(&document_path)
-            .map_err(|e| format!("Invalid document path: {e}")),
-        FfiResult
-    );
-    let doc_path = try_ffi!(
-        doc_path
-            .canonicalize()
-            .map_err(|e| format!("Cannot resolve document path: {e}")),
-        FfiResult
-    );
-
     // Load events from store to get the latest event_hash (matches CLI behavior)
-    let store = try_ffi!(open_store(), FfiResult);
-    let doc_path_str = doc_path.to_string_lossy().into_owned();
-    let events = try_ffi!(
-        store
-            .get_events_for_file(&doc_path_str)
-            .map_err(|e| format!("Failed to load events: {e}")),
-        FfiResult
-    );
+    let (doc_path_str, _store, events) =
+        try_ffi!(load_events_for_path(&document_path), FfiResult);
     let latest = match events.last() {
         Some(ev) => ev,
         None => {
@@ -77,7 +59,7 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
         }
     };
 
-    let doc_name = doc_path
+    let doc_name = std::path::Path::new(&doc_path_str)
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string());

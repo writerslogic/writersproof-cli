@@ -10,8 +10,6 @@ use std::time::SystemTime;
 
 pub(super) const SE_KEY_TAG: &str = "com.writerslogic.secureenclave.signing";
 pub(super) const SE_ATTESTATION_KEY_TAG: &str = "com.writerslogic.secureenclave.attestation";
-#[allow(dead_code)]
-pub(super) const SE_ENCRYPTION_KEY_TAG: &str = "com.writerslogic.secureenclave.encryption";
 
 /// Self-attestation proof binding a public key to this device.
 #[allow(dead_code)]

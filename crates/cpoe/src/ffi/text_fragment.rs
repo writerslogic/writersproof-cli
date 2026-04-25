@@ -356,10 +356,9 @@ pub fn ffi_sentinel_record_paste(
     }
 
     // Update sentinel paste counter (same as old ffi_sentinel_notify_paste).
-    let sentinel_opt = super::sentinel::get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return FfiPasteRecordResult::err("Sentinel not running"),
+    let sentinel = match super::sentinel::get_running_sentinel() {
+        Some(s) => s,
+        None => return FfiPasteRecordResult::err("Sentinel not running"),
     };
     sentinel.set_last_paste_chars(char_count);
 

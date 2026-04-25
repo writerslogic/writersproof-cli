@@ -25,10 +25,6 @@ use crate::war::ear::{
 /// CWT standard claim keys (RFC 8392 Section 4).
 const CWT_ISS: i64 = 1;
 const CWT_SUB: i64 = 2;
-#[allow(dead_code)]
-const CWT_EXP: i64 = 4;
-#[allow(dead_code)]
-const CWT_NBF: i64 = 5;
 
 /// Encode an `EarToken` as a signed CWT (COSE_Sign1) using the given TPM provider.
 ///

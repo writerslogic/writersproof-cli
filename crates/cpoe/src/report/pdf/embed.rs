@@ -11,32 +11,6 @@ use super::PdfFonts;
 use crate::report::types::WarReport;
 use printpdf::PdfLayerReference;
 
-/// Build a QR code image for embedding in the PDF.
-///
-/// The QR encodes a data URI (not a URL) containing the compact reference
-/// and public key fingerprint, preventing URL spoofing attacks.
-#[allow(dead_code)]
-pub fn generate_qr_png(data: &str) -> Option<Vec<u8>> {
-    use qrcode::render::svg;
-    use qrcode::QrCode;
-
-    let code = QrCode::new(data.as_bytes()).ok()?;
-    let svg_str = code.render::<svg::Color>().min_dimensions(100, 100).build();
-
-    // printpdf doesn't natively handle SVG, so we return the SVG string
-    // as bytes for now. The layout module handles placement.
-    Some(svg_str.into_bytes())
-}
-
-/// Format the compact reference for QR embedding.
-///
-/// Format: `cpoe:verify:1:<compact-ref>:<pubkey-fingerprint>`
-/// Example: `cpoe:verify:1:cpoe-ref:writerslogic:7f83b165:14:ed25519:9b2f7a3c`
-#[allow(dead_code)]
-pub fn format_qr_data(compact_ref: &str, pubkey_fingerprint: &str) -> String {
-    format!("cpoe:verify:1:{}:{}", compact_ref, pubkey_fingerprint)
-}
-
 /// Draw a page containing the base64-encoded CBOR evidence payload.
 ///
 /// This makes the PDF a self-contained forensic artifact; the payload is

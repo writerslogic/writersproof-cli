@@ -115,12 +115,8 @@ pub const K_CG_EVENT_SOURCE_STATE_ID: u32 = 45;
 pub const K_CG_KEYBOARD_EVENT_KEYBOARD_TYPE: u32 = 10;
 pub const K_CG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 pub const K_CG_EVENT_SOURCE_UNIX_PROCESS_ID: u32 = 41;
-#[allow(dead_code)]
-pub const K_CG_KEYBOARD_EVENT_AUTOREPEAT: u32 = 8;
 
 pub const K_CG_EVENT_SOURCE_STATE_PRIVATE: i64 = -1;
-#[allow(dead_code)]
-pub const K_CG_EVENT_SOURCE_STATE_COMBINED_SESSION: i64 = 0;
 pub const K_CG_EVENT_SOURCE_STATE_HID_SYSTEM: i64 = 1;
 
 // CGEventTap constants (values from Apple's CGEventTypes.h / Quartz Event Services)
@@ -132,9 +128,6 @@ pub const K_CG_EVENT_KEY_UP: u32 = 11;
 pub const K_CG_EVENT_MOUSE_MOVED: u32 = 5;
 /// macOS sends this event_type when it disables the tap due to callback latency.
 pub const K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFFFFFE;
-/// macOS sends this when the tap is disabled by user input (rare).
-#[allow(dead_code)]
-pub const K_CG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFFFFFF;
 
 pub const fn cg_event_mask_bit(event_type: u32) -> u64 {
     1u64 << event_type

@@ -2,7 +2,7 @@
 
 //! FFI functions for keystroke/paste injection from host apps.
 
-use super::sentinel::get_sentinel;
+use super::sentinel::get_running_sentinel;
 use crate::RwLockRecover;
 
 /// Inject a keystroke event from the host app with hardware verification.
@@ -79,10 +79,9 @@ pub fn ffi_sentinel_inject_keystroke(
     }
     let is_key_up = char_value == "UP";
 
-    let sentinel_opt = get_sentinel();
-    let sentinel = match sentinel_opt.as_ref() {
-        Some(s) if s.is_running() => s,
-        _ => return false,
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
     };
 
     // KeyUp events carry no actionable data in the current pipeline: dwell time

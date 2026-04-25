@@ -166,7 +166,10 @@ fn test_checkpoint_creates_store_event() {
         files.iter().map(|f| &f.path).collect::<Vec<_>>()
     );
 
-    let tracked = files.iter().find(|f| f.path == canonical_str).expect("tracked file found");
+    let tracked = files
+        .iter()
+        .find(|f| f.path == canonical_str)
+        .expect("tracked file found");
     assert_eq!(tracked.checkpoint_count, 1);
 }
 
@@ -288,7 +291,9 @@ fn test_export_verify_roundtrip() {
     assert!(export.success, "export failed: {:?}", export.error_message);
     assert!(output_path.exists(), "evidence file not created");
 
-    let file_size = std::fs::metadata(&output_path).expect("read evidence metadata").len();
+    let file_size = std::fs::metadata(&output_path)
+        .expect("read evidence metadata")
+        .len();
     assert!(file_size > 0, "evidence file is empty");
 
     // Verify the exported evidence.
@@ -593,7 +598,9 @@ fn test_export_at_multiple_tiers() {
             result.error_message
         );
         assert!(output.exists(), "evidence file for tier {tier} not created");
-        let size = std::fs::metadata(&output).expect("read tier evidence metadata").len();
+        let size = std::fs::metadata(&output)
+            .expect("read tier evidence metadata")
+            .len();
         assert!(size > 0, "evidence file for tier {tier} is empty");
     }
 }
@@ -1141,7 +1148,10 @@ fn test_concurrent_checkpoints_same_file() {
         })
         .collect();
 
-    let results: Vec<_> = handles.into_iter().map(|h| h.join().expect("thread join")).collect();
+    let results: Vec<_> = handles
+        .into_iter()
+        .map(|h| h.join().expect("thread join"))
+        .collect();
     let success_count = results.iter().filter(|r| r.success).count();
     assert!(
         success_count >= 1,

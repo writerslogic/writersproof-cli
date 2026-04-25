@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{
-    load_api_key, load_did, load_signing_key, open_store, validate_path_str,
+    load_api_key, load_did, load_events_for_path, load_signing_key, open_store,
 };
 use crate::ffi::types::try_ffi;
 use std::sync::OnceLock;
@@ -129,14 +129,8 @@ pub(crate) fn load_beacon_attestation(
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconResult {
-    let canonical = try_ffi!(validate_path_str(&document_path), FfiBeaconResult);
-    let store = try_ffi!(open_store(), FfiBeaconResult);
-    let events = try_ffi!(
-        store
-            .get_events_for_file(&canonical)
-            .map_err(|e| format!("Failed to load events: {e}")),
-        FfiBeaconResult
-    );
+    let (canonical, _store, events) =
+        try_ffi!(load_events_for_path(&document_path), FfiBeaconResult);
 
     let latest = match events.last() {
         Some(ev) => ev,

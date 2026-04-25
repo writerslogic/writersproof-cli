@@ -419,28 +419,4 @@ impl Chain {
         report
     }
 
-    /// Validate VDF proofs after deserialization to reject tampered chain files.
-    #[allow(dead_code)]
-    pub(crate) fn validate_vdf_proofs(&self) -> Result<()> {
-        for (i, checkpoint) in self.checkpoints.iter().enumerate() {
-            if checkpoint.vdf.is_none() {
-                continue;
-            }
-
-            let prev_vdf_output =
-                if self.metadata.entanglement_mode == EntanglementMode::Entangled && i > 0 {
-                    Some(require_prev_vdf_output(&self.checkpoints, i)?)
-                } else {
-                    None
-                };
-
-            verify_single_checkpoint_vdf(
-                i,
-                checkpoint,
-                prev_vdf_output,
-                self.metadata.entanglement_mode,
-            )?;
-        }
-        Ok(())
-    }
 }
