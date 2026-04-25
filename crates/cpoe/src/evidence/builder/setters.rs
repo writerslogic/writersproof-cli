@@ -650,4 +650,10 @@ impl Builder {
         self.packet.dictation_events = scored;
         self
     }
+
+    /// Attach a WritersProof temporal beacon attestation.
+    pub fn with_beacon_attestation(mut self, beacon: WpBeaconAttestation) -> Self {
+        self.packet.beacon_attestation = Some(beacon);
+        self
+    }
 }

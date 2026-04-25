@@ -55,41 +55,44 @@ Success criteria:
 
 ---
 
-### Prompt 2: Native Messaging Handler for Browser Extension Text Attestation
+### Prompt 2: Native Messaging Handler — Verify Text Attestation Is Complete
 
 ```
-The browser extension sends a `text_attestation` message via native messaging
-when the user right-clicks and selects "Attest Authorship with WritersProof".
-The desktop app's native messaging host needs to handle this message type.
+The native messaging text_attestation handler was implemented at
+handlers.rs:785-849. Verify it is complete, correct, and properly tested.
 
 Relevant files:
-- Native messaging host: `apps/cpoe_cli/src/native_messaging_host/` (mod.rs, handlers.rs,
-  protocol.rs, types.rs, jitter.rs, tests.rs)
-- Browser extension: `apps/cpoe_browser_extension/background.js` (sends messages),
-  `apps/cpoe_browser_extension/content.js` (context menu), `apps/cpoe_browser_extension/popup.js`
-- FFI functions: `crates/cpoe/src/ffi/text_fragment.rs` (ffi_attest_text at line 451,
-  ffi_text_fragment_store at line 214)
-- WritersProof sync: `crates/cpoe/src/ffi/writersproof_ffi.rs` (ffi_sync_text_attestation
-  at line 306)
+- Handler implementation: `apps/cpoe_cli/src/native_messaging_host/handlers.rs` (lines 785-849,
+  handle_text_attestation function)
+- Message types: `apps/cpoe_cli/src/native_messaging_host/types.rs` (11 message types including
+  TextAttestation)
+- Message routing: `apps/cpoe_cli/src/native_messaging_host/mod.rs` (~250 lines, routes messages)
+- Tests: `apps/cpoe_cli/src/native_messaging_host/tests.rs` (~150 lines)
+- Browser extension sender: `apps/cpoe_browser_extension/background.js`,
+  `apps/cpoe_browser_extension/content.js` (context menu)
+- FFI functions called: `crates/cpoe/src/ffi/text_fragment.rs` (ffi_attest_text at line 451),
+  `crates/cpoe/src/ffi/writersproof_ffi.rs` (ffi_sync_text_attestation at line 306)
 - Offline queue: `crates/cpoe/src/writersproof/queue.rs`
-- Native manifest: `apps/cpoe_browser_extension/native-manifests/`
+- Native manifests: `apps/cpoe_browser_extension/native-manifests/`
 
 Tasks:
-1. Read the native messaging host code completely (all files in the directory)
-2. Read the browser extension's background.js to understand what messages it sends
-3. Add a handler for the `text_attestation` message type matching existing patterns
-4. The handler should: validate fields, call the engine's text attestation functions,
-   then call sync (with offline queue fallback)
-5. Return a response message: `{ type: "text_attestation_result", success: true/false, error: "..." }`
-6. Verify it compiles with `cargo check -p cpoe_cli`
+1. Read handle_text_attestation() and verify it validates all 5 input fields
+   (content_hash, tier, writersproof_id, attested_at, app_bundle_id)
+2. Verify it calls ffi_attest_text() for local storage
+3. Verify it calls ffi_sync_text_attestation() for API sync with queue fallback
+4. Verify the response format matches what background.js expects
+5. Check tests.rs for a text_attestation test case; add one if missing
+6. Verify native manifests point to the correct binary for all 3 browsers
+7. Run `cargo check -p cpoe_cli` and `cargo clippy -p cpoe_cli -- -D warnings`
 
 Success criteria:
-- [ ] Handler exists for `text_attestation` message type
-- [ ] Follows exact same pattern as existing handlers (start_session, checkpoint, stop_session)
-- [ ] Browser extension can round-trip: right-click attest -> native message -> store + sync
-- [ ] Error responses include actionable context
-- [ ] `cargo check -p cpoe_cli` passes
-- [ ] `cargo clippy -p cpoe_cli -- -D warnings` passes
+- [ ] All 5 input fields validated (length, format, allowed values)
+- [ ] Local storage via ffi_attest_text() confirmed working
+- [ ] API sync via ffi_sync_text_attestation() confirmed with queue fallback
+- [ ] Response format matches browser extension expectations
+- [ ] Test coverage exists for text_attestation message type
+- [ ] Native manifests correct for Chrome, Firefox, Edge
+- [ ] `cargo check -p cpoe_cli` and clippy pass
 ```
 
 ---
@@ -156,11 +159,16 @@ Relevant files:
 - Store events: `crates/cpoe/src/store/events.rs`
 - FFI checkpoint: `crates/cpoe/src/ffi/evidence_checkpoint.rs`
 
+Known blocking audit findings:
+- AUD-026: Checkpoint signature never verified cryptographically (garbage sigs may pass)
+- AUD-030, AUD-032: Evidence packet chain linkage and VDF params potentially incorrect
+
 Tasks:
 1. Read the checkpoint chain creation and verification code
-2. Verify each checkpoint's prev_hash correctly references the previous checkpoint
-3. Verify VDF proofs are bound to checkpoint content (not just timestamps)
-4. Verify Lamport signatures are applied at checkpoint time and stored in DB
+2. FIX AUD-026: Verify checkpoint signatures are cryptographically verified (not just present)
+3. Verify each checkpoint's prev_hash correctly references the previous checkpoint
+4. Verify VDF proofs are bound to checkpoint content (not just timestamps)
+5. Verify Lamport signatures are applied at checkpoint time and stored in DB
 5. Verify MMR anchoring correctly includes checkpoint hashes
 6. Test: create 10 checkpoints, verify chain, tamper with one, verify detection
 7. Run `cargo test -p cpoe --lib -- checkpoint` (1542 lines of existing tests)
@@ -362,7 +370,9 @@ Tasks:
 4. Verify RBAC permissions are checked before operations
 5. Verify the Unix socket has correct file permissions (owner-only)
 6. Verify graceful shutdown: stop signal -> drain pending -> close connections
-7. Run `cargo test -p cpoe --lib -- ipc`
+7. Verify no circular dependency between sentinel <-> IPC (sentinel spawns IPC server,
+   IPC handler calls back into sentinel via ipc_handler.rs — should use traits/channels)
+8. Run `cargo test -p cpoe --lib -- ipc`
 
 Success criteria:
 - [ ] Every message type has a handler (no unhandled variants)
@@ -371,6 +381,7 @@ Success criteria:
 - [ ] RBAC denies unauthorized operations
 - [ ] Socket permissions are 0o600 (owner read/write only)
 - [ ] Shutdown is graceful (no orphaned connections)
+- [ ] Sentinel <-> IPC coupling uses trait abstraction (no direct module imports creating cycles)
 - [ ] All IPC tests pass
 - [ ] No plaintext secrets transit the socket
 ```
@@ -747,6 +758,21 @@ Relevant files (writersproof repo — ~/workspace_local/Writerslogic/writersproo
 - Supabase migrations: `supabase/migrations/`
 - Verify portal: `apps/verify/`
 
+Known API endpoints (from Rust client at client.rs):
+- POST /v1/nonce — request challenge nonce (32-byte hex, with TTL)
+- POST /v1/enroll — device enrollment (public_key, attestation_certificate)
+- POST /v1/attest — submit CBOR evidence with nonce + hardware key + signature
+- POST /v1/anchor — submit to transparency log (evidence_hash, author_did, signature)
+- POST /v1/beacon — temporal beacon (drand/NIST)
+- POST /v1/pulse — presence challenge/response
+- GET /v1/verify — verify evidence on server
+- POST /v1/credential/issue — issue W3C authorship credential
+- GET /v1/credential/{id}/status — credential status check
+- POST /v1/challenge — attestation challenge request
+- POST /v1/confirm-nonce — nonce confirmation
+- POST /v1/text-attestation — text attestation submission
+- GET /v1/text-attestation/:hash — text attestation lookup
+
 Tasks:
 1. Read the Rust client code that calls the API
 2. Read the API route handlers
@@ -927,6 +953,12 @@ Success criteria:
 
 ## Section E: Security Hardening & User-as-Adversary
 
+**Note:** The repo has two audit trackers with open findings:
+- `todo.md` (root) — 1206 findings, 31 systemic tasks, ~574 per-site remaining
+- `audit-todo.md` (root) — 190 findings (14 High, 52 Medium, 124 Low), 52 fixed, 138 remaining
+- Key blocking issues: AUD-026 (checkpoint sig never verified), AUD-089 (signing key world-readable),
+  AUD-124 (TSA cert chain missing), AUD-183 (baseline auto-trusts first session)
+
 ### Prompt 23: User-as-Adversary — Keystroke Injection Attack Vectors
 
 ```
@@ -999,6 +1031,10 @@ Relevant files:
 - Anti-analysis: `crates/cpoe/src/crypto/anti_analysis.rs`
 - Obfuscated: `crates/cpoe/src/crypto/obfuscated.rs`
 
+Known blocking audit findings (from audit-todo.md):
+- AUD-005, AUD-015: Key material not properly zeroized in some paths
+- AUD-089: Signing key file world-readable on crash path
+
 Attack vectors:
 1. Memory dump: Can keys be extracted from process memory?
    Verify zeroize on all key material (Zeroizing<T> wrappers)
@@ -1012,6 +1048,8 @@ Attack vectors:
    Verify process disables core dumps where possible
 6. Secure Enclave bypass: Can the software fallback be forced on hardware-capable devices?
    Verify hardware detection is not spoofable
+7. Signing key file permissions: AUD-089 reports world-readable on crash path
+   Verify file permissions are 0o600 on all key file creation paths
 
 Tasks:
 1. Grep for all signing key usage and verify zeroize on every path

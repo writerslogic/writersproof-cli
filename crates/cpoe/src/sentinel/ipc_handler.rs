@@ -489,6 +489,11 @@ impl SentinelIpcHandler {
             builder = builder.with_keystroke_evidence(ks);
         }
 
+        #[cfg(feature = "ffi")]
+        if let Some(beacon) = crate::ffi::beacon::load_beacon_attestation(&path_str) {
+            builder = builder.with_beacon_attestation(beacon);
+        }
+
         let packet = builder
             .build()
             .map_err(|e| format!("Failed to build packet: {e}"))?;

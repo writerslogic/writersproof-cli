@@ -6,6 +6,8 @@ use crate::vdf::Parameters;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use super::sentinel::get_sentinel;
+
 /// Provenance metrics result returned to Swift.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -92,6 +94,48 @@ pub fn ffi_get_provenance_metrics(session_id: String) -> FfiProvenanceMetrics {
             .collect(),
         error_message: None,
     }
+}
+
+/// Get provenance metrics for the active sentinel session on a document path.
+/// Resolves the document path to a session_id via the sentinel, then delegates
+/// to `ffi_get_provenance_metrics`.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_provenance_metrics_for_document(path: String) -> FfiProvenanceMetrics {
+    let empty = FfiProvenanceMetrics {
+        success: false,
+        total_fragments: 0,
+        original_composition_pct: 0.0,
+        sourced_unknown_pct: 0.0,
+        sourced_verified_pct: 0.0,
+        chain_depth: 0,
+        source_trustworthiness: 0.0,
+        authenticity_score: 0.0,
+        source_sessions: vec![],
+        error_message: None,
+    };
+
+    let sentinel_opt = get_sentinel();
+    let sentinel = match sentinel_opt.as_ref() {
+        Some(s) => s,
+        None => {
+            return FfiProvenanceMetrics {
+                error_message: Some("Sentinel not initialized".to_string()),
+                ..empty
+            };
+        }
+    };
+
+    let session_id = match sentinel.session(&path) {
+        Ok(s) => s.session_id,
+        Err(_) => {
+            return FfiProvenanceMetrics {
+                error_message: Some(format!("No active session for: {path}")),
+                ..empty
+            };
+        }
+    };
+
+    ffi_get_provenance_metrics(session_id)
 }
 
 static CALIBRATED_PARAMS: Mutex<Option<Parameters>> = Mutex::new(None);

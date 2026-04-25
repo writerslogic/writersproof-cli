@@ -7,6 +7,7 @@
 //! directly — the platform stubs in `sentinel/clipboard.rs` are intentional.
 
 use super::helpers::{load_signing_key, open_store};
+use super::types::try_ffi;
 use crate::store::text_fragments::{KeystrokeContext, TextFragment};
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
@@ -46,6 +47,10 @@ impl FfiTextFragmentStoreResult {
     }
 }
 
+impl super::types::FfiErrResult for FfiTextFragmentStoreResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiPasteRecordResult {
@@ -75,6 +80,10 @@ impl FfiPasteRecordResult {
             error_message: Some(msg.into()),
         }
     }
+}
+
+impl super::types::FfiErrResult for FfiPasteRecordResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +120,10 @@ impl FfiAttestTextResult {
     }
 }
 
+impl super::types::FfiErrResult for FfiAttestTextResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -128,7 +141,7 @@ fn to_ffi(f: &TextFragment) -> FfiTextFragment {
     }
 }
 
-fn hash_text(text: &str) -> [u8; 32] {
+pub(crate) fn hash_text(text: &str) -> [u8; 32] {
     Sha256::digest(text.as_bytes()).into()
 }
 
@@ -155,44 +168,9 @@ fn hash_normalized_text(text: &str) -> (String, [u8; 32]) {
     (normalized, hash)
 }
 
-/// Sign the fragment payload with domain separation:
-/// DST || len(session_id) || session_id || fragment_hash || timestamp || nonce.
-fn sign_fragment(
-    signing_key: &ed25519_dalek::SigningKey,
-    session_id: &str,
-    fragment_hash: &[u8; 32],
-    timestamp: i64,
-    nonce: &[u8; 16],
-) -> [u8; 64] {
-    use ed25519_dalek::Signer;
-    const DST: &[u8] = b"witnessd-text-fragment-v1";
-    let sid_len = (session_id.len() as u32).to_le_bytes();
-    let mut payload = Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + 16);
-    payload.extend_from_slice(DST);
-    payload.extend_from_slice(&sid_len);
-    payload.extend_from_slice(session_id.as_bytes());
-    payload.extend_from_slice(fragment_hash);
-    payload.extend_from_slice(&timestamp.to_le_bytes());
-    payload.extend_from_slice(nonce);
-    signing_key.sign(&payload).to_bytes()
-}
-
-fn current_timestamp_ms() -> i64 {
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or(0);
-    if ts <= 0 {
-        log::error!("System clock returned non-positive timestamp; evidence timing will be unreliable");
-    }
-    ts
-}
-
-fn generate_nonce() -> [u8; 16] {
-    let mut nonce = [0u8; 16];
-    rand::RngCore::fill_bytes(&mut rand::rng(), &mut nonce);
-    nonce
-}
+pub(crate) use crate::store::text_fragments::{
+    current_timestamp_ms, generate_nonce, sign_fragment,
+};
 
 /// Generate a 64-hex-char ephemeral session ID for attestations without a
 /// live sentinel session (matches the format of real session IDs).
@@ -247,10 +225,10 @@ pub fn ffi_text_fragment_store(
     }
     let nonce = generate_nonce();
 
-    let signing_key = match load_signing_key() {
-        Ok(k) => k,
-        Err(e) => return FfiTextFragmentStoreResult::err(format!("Signing key unavailable: {e}")),
-    };
+    let signing_key = try_ffi!(
+        load_signing_key().map_err(|e| format!("Signing key unavailable: {e}")),
+        FfiTextFragmentStoreResult
+    );
 
     let signature = sign_fragment(&signing_key, &session_id, &fragment_hash, timestamp, &nonce);
     drop(signing_key);
@@ -274,10 +252,7 @@ pub fn ffi_text_fragment_store(
         sync_state: None,
     };
 
-    let mut store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiTextFragmentStoreResult::err(e),
-    };
+    let mut store = try_ffi!(open_store(), FfiTextFragmentStoreResult);
 
     match store.insert_text_fragment(&fragment) {
         Ok(id) => FfiTextFragmentStoreResult::ok(hex::encode(fragment_hash), id),
@@ -497,12 +472,10 @@ pub fn ffi_attest_text(
         .unwrap_or_default();
     let nonce = generate_nonce();
 
-    let signing_key = match load_signing_key() {
-        Ok(k) => k,
-        Err(e) => {
-            return FfiAttestTextResult::err(format!("Signing key unavailable: {e}"));
-        }
-    };
+    let signing_key = try_ffi!(
+        load_signing_key().map_err(|e| format!("Signing key unavailable: {e}")),
+        FfiAttestTextResult
+    );
 
     let signature = sign_fragment(&signing_key, &session_id, &fragment_hash, timestamp, &nonce);
     drop(signing_key);
@@ -526,12 +499,7 @@ pub fn ffi_attest_text(
         sync_state: None,
     };
 
-    let mut store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiAttestTextResult::err(e);
-        }
-    };
+    let mut store = try_ffi!(open_store(), FfiAttestTextResult);
 
     if let Err(e) = store.insert_text_fragment(&fragment) {
         return FfiAttestTextResult::err(format!("Failed to store attestation: {e}"));
@@ -563,6 +531,60 @@ pub fn ffi_attest_text(
     )
 }
 
+/// Store a text attestation locally from a pre-computed content hash.
+///
+/// Used by the native messaging host where the browser has already hashed the
+/// text. Signs the hash with the device key and inserts a TextFragment record.
+pub fn store_attestation_from_hash(
+    content_hash: &str,
+    app_bundle_id: &str,
+) -> Result<(), String> {
+    let hash_bytes =
+        hex::decode(content_hash).map_err(|e| format!("Invalid content_hash hex: {e}"))?;
+    if hash_bytes.len() != 32 {
+        return Err("content_hash must decode to 32 bytes".into());
+    }
+
+    let session_id = generate_ephemeral_session_id();
+    let timestamp = current_timestamp_ms();
+    if timestamp <= 0 {
+        return Err("System clock error".into());
+    }
+    let nonce = generate_nonce();
+
+    let signing_key = load_signing_key().map_err(|e| format!("Signing key unavailable: {e}"))?;
+
+    let mut fragment_hash = [0u8; 32];
+    fragment_hash.copy_from_slice(&hash_bytes);
+    let signature = sign_fragment(&signing_key, &session_id, &fragment_hash, timestamp, &nonce);
+    drop(signing_key);
+
+    let fragment = TextFragment {
+        id: None,
+        fragment_hash: hash_bytes,
+        session_id,
+        source_app_bundle_id: Some(app_bundle_id.to_string()).filter(|s| !s.is_empty()),
+        source_window_title: None,
+        source_signature: signature.to_vec(),
+        nonce: nonce.to_vec(),
+        timestamp,
+        keystroke_context: None,
+        keystroke_confidence: None,
+        keystroke_sequence_hash: None,
+        source_session_id: None,
+        source_evidence_packet: None,
+        wal_entry_hash: None,
+        cloudkit_record_id: None,
+        sync_state: None,
+    };
+
+    let mut store = open_store().map_err(|e| e.to_string())?;
+    store
+        .insert_text_fragment(&fragment)
+        .map_err(|e| format!("Failed to store attestation: {e}"))?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // CloudKit sync FFI functions
 // ---------------------------------------------------------------------------
@@ -584,13 +606,14 @@ impl FfiSyncResult {
     }
 }
 
+impl super::types::FfiErrResult for FfiSyncResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
 /// Mark a fragment as pending sync to CloudKit.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_mark_fragment_for_sync(fragment_id: i64) -> FfiSyncResult {
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiSyncResult::err(e),
-    };
+    let store = try_ffi!(open_store(), FfiSyncResult);
 
     match store.mark_fragment_for_sync(fragment_id) {
         Ok(()) => FfiSyncResult::ok(),
@@ -607,10 +630,7 @@ pub fn ffi_update_fragment_sync_state(
     state: String,
     cloudkit_record_id: Option<String>,
 ) -> FfiSyncResult {
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiSyncResult::err(e),
-    };
+    let store = try_ffi!(open_store(), FfiSyncResult);
 
     const VALID_STATES: &[&str] = &["pending", "syncing", "synced", "failed", "conflict"];
     if !VALID_STATES.contains(&state.as_str()) {
@@ -758,10 +778,7 @@ pub fn ffi_apply_remote_fragment(
         sync_state: Some("synced".to_string()),
     };
 
-    let mut store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiTextFragmentStoreResult::err(e),
-    };
+    let mut store = try_ffi!(open_store(), FfiTextFragmentStoreResult);
 
     match store.apply_remote_fragment(&fragment) {
         Ok(id) => FfiTextFragmentStoreResult::ok(
@@ -860,10 +877,7 @@ pub fn ffi_resolve_sync_conflict(
             None
         };
 
-    let mut store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiSyncResult::err(e),
-    };
+    let mut store = try_ffi!(open_store(), FfiSyncResult);
 
     // Verify remote fragment signature before accepting it
     if let Some(ref frag) = remote_fragment {
@@ -873,12 +887,11 @@ pub fn ffi_resolve_sync_conflict(
         let sig_arr: &[u8; 64] = frag.source_signature.as_slice()
             .try_into()
             .expect("length validated at 64 bytes");
-        let signing_key = match crate::ffi::helpers::load_signing_key() {
-            Ok(k) => k,
-            Err(e) => return FfiSyncResult::err(
-                format!("Cannot verify remote signature: {e}"),
-            ),
-        };
+        let signing_key = try_ffi!(
+            crate::ffi::helpers::load_signing_key()
+                .map_err(|e| format!("Cannot verify remote signature: {e}")),
+            FfiSyncResult
+        );
         let pub_bytes = signing_key.verifying_key().to_bytes();
         match store.verify_fragment_signature(
             hash_arr,

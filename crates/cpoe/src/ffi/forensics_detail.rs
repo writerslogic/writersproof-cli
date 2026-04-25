@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::helpers::open_store;
+use crate::ffi::helpers::{open_store, validate_path_str};
+use crate::ffi::types::try_ffi;
 use crate::utils::finite_or;
 
 #[derive(Debug, Clone)]
@@ -98,6 +99,10 @@ impl FfiForensicBreakdown {
     }
 }
 
+impl super::types::FfiErrResult for FfiForensicBreakdown {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::error(msg.into()) }
+}
+
 /// Return a detailed forensic breakdown for a tracked file.
 ///
 /// Runs both the authorship profile (anomaly detection) and the full forensic
@@ -105,20 +110,12 @@ impl FfiForensicBreakdown {
 /// rich structured data suitable for native UI display.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
-    let path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => return FfiForensicBreakdown::error(e),
-    };
-
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiForensicBreakdown::error(e),
-    };
-
-    let events = match store.get_events_for_file(&path) {
-        Ok(e) => e,
-        Err(e) => return FfiForensicBreakdown::error(format!("Failed to load events: {}", e)),
-    };
+    let path = try_ffi!(validate_path_str(&path), FfiForensicBreakdown);
+    let store = try_ffi!(open_store(), FfiForensicBreakdown);
+    let events = try_ffi!(
+        store.get_events_for_file(&path).map_err(|e| format!("Failed to load events: {e}")),
+        FfiForensicBreakdown
+    );
 
     if events.is_empty() {
         return FfiForensicBreakdown::error("No events found for this file".to_string());

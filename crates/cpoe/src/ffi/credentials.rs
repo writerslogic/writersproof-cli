@@ -3,6 +3,7 @@
 //! FFI bindings for ISO mDoc-style authorship credentials.
 
 use super::helpers::{load_signing_key, open_store};
+use super::types::try_ffi;
 use crate::credentials::AuthorshipCredential;
 
 // ---------------------------------------------------------------------------
@@ -127,6 +128,22 @@ impl FfiCredentialStatusResult {
     }
 }
 
+impl super::types::FfiErrResult for FfiCredentialResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
+impl super::types::FfiErrResult for FfiSignedCredentialResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
+impl super::types::FfiErrResult for FfiVerificationResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
+impl super::types::FfiErrResult for FfiCredentialStatusResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
 // ---------------------------------------------------------------------------
 // Exported FFI functions
 // ---------------------------------------------------------------------------
@@ -147,17 +164,12 @@ pub fn ffi_create_authorship_credential(
     }
     let confidence = confidence.clamp(0.0, 1.0);
 
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return FfiCredentialResult::err(e),
-    };
-
-    let fragments = match store.get_fragments_for_session(&session_id) {
-        Ok(f) => f,
-        Err(e) => return FfiCredentialResult::err(
-            format!("Failed to load fragments: {e}"),
-        ),
-    };
+    let store = try_ffi!(open_store(), FfiCredentialResult);
+    let fragments = try_ffi!(
+        store.get_fragments_for_session(&session_id)
+            .map_err(|e| format!("Failed to load fragments: {e}")),
+        FfiCredentialResult
+    );
 
     if fragments.is_empty() {
         return FfiCredentialResult::err(
@@ -205,12 +217,10 @@ pub fn ffi_sign_credential(
         ),
     };
 
-    let signing_key = match load_signing_key() {
-        Ok(k) => k,
-        Err(e) => return FfiSignedCredentialResult::err(
-            format!("Signing key unavailable: {e}"),
-        ),
-    };
+    let signing_key = try_ffi!(
+        load_signing_key().map_err(|e| format!("Signing key unavailable: {e}")),
+        FfiSignedCredentialResult
+    );
 
     match credential.sign_cose(&signing_key) {
         Ok(signed) => FfiSignedCredentialResult::ok(hex::encode(signed)),

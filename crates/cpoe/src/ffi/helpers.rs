@@ -154,16 +154,21 @@ pub(crate) fn load_api_key() -> Result<Zeroizing<String>, String> {
     Ok(Zeroizing::new(key))
 }
 
+/// Validate a document path and return its canonical string form.
+pub(crate) fn validate_path_str(path: &str) -> Result<String, String> {
+    let validated = crate::sentinel::helpers::validate_path(path).map_err(|e| e.to_string())?;
+    validated
+        .to_str()
+        .ok_or_else(|| "Path contains non-UTF-8 characters".to_string())
+        .map(|s| s.to_string())
+}
+
 /// Validate a document path, open the store, and load events in one call.
 /// Eliminates the repeated validate+open+get_events boilerplate across FFI functions.
 pub(crate) fn load_events_for_path(
     path: &str,
 ) -> Result<(String, SecureStore, Vec<crate::store::SecureEvent>), String> {
-    let validated = crate::sentinel::helpers::validate_path(path).map_err(|e| e.to_string())?;
-    let canonical = validated
-        .to_str()
-        .ok_or_else(|| "Path contains non-UTF-8 characters".to_string())?
-        .to_string();
+    let canonical = validate_path_str(path)?;
     let store = open_store()?;
     let events = store
         .get_events_for_file(&canonical)

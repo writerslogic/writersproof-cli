@@ -12,7 +12,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::{
-        handlers::compute_commitment,
+        handlers::{compute_commitment, handle_text_attestation},
         jitter::{compute_jitter_stats, MAX_BATCH_SIZE, MAX_JITTER_BATCHES_PER_WINDOW},
         protocol::{
             is_domain_allowed, read_message_from, validate_content_hash, write_message_to,
@@ -1039,5 +1039,112 @@ mod tests {
             c1, c3,
             "different ordinal must produce different commitment"
         );
+    }
+
+    // === Text attestation handler tests ===
+
+    fn valid_attestation_args() -> (String, String, String, String, String) {
+        (
+            "a".repeat(64),
+            "verified".into(),
+            "abcdef0123456789".into(),
+            "2026-04-25T12:00:00Z".into(),
+            "docs.google.com".into(),
+        )
+    }
+
+    #[test]
+    fn test_nmh_text_attestation_rejects_invalid_content_hash() {
+        let resp = handle_text_attestation(
+            "short".into(),
+            "verified".into(),
+            "abcdef01".into(),
+            "2026-04-25T12:00:00Z".into(),
+            "docs.google.com".into(),
+        );
+        match resp {
+            Response::TextAttestationResult {
+                success, error, ..
+            } => {
+                assert!(!success, "invalid content_hash should fail");
+                assert!(error.is_some());
+            }
+            other => panic!("expected TextAttestationResult, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_nmh_text_attestation_rejects_invalid_tier() {
+        let (hash, _, wpid, ts, app) = valid_attestation_args();
+        let resp = handle_text_attestation(hash, "gold".into(), wpid, ts, app);
+        match resp {
+            Response::TextAttestationResult { success, error } => {
+                assert!(!success);
+                assert!(error.unwrap().contains("Invalid tier"));
+            }
+            other => panic!("expected TextAttestationResult, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_nmh_text_attestation_rejects_invalid_writersproof_id() {
+        let (hash, tier, _, ts, app) = valid_attestation_args();
+        let resp = handle_text_attestation(hash, tier, "xyz".into(), ts, app);
+        match resp {
+            Response::TextAttestationResult { success, error } => {
+                assert!(!success);
+                assert!(error.unwrap().contains("writersproof_id"));
+            }
+            other => panic!("expected TextAttestationResult, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_nmh_text_attestation_rejects_invalid_timestamp() {
+        let (hash, tier, wpid, _, app) = valid_attestation_args();
+        let resp = handle_text_attestation(hash, tier, wpid, "not-a-date".into(), app);
+        match resp {
+            Response::TextAttestationResult { success, error } => {
+                assert!(!success);
+                assert!(error.unwrap().contains("ISO 8601"));
+            }
+            other => panic!("expected TextAttestationResult, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_nmh_text_attestation_rejects_oversized_app_bundle_id() {
+        let (hash, tier, wpid, ts, _) = valid_attestation_args();
+        let resp = handle_text_attestation(hash, tier, wpid, ts, "x".repeat(254));
+        match resp {
+            Response::TextAttestationResult { success, error } => {
+                assert!(!success);
+                assert!(error.unwrap().contains("hostname length"));
+            }
+            other => panic!("expected TextAttestationResult, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_nmh_text_attestation_accepts_all_tiers() {
+        for tier in &["verified", "corroborated", "declared"] {
+            let (hash, _, wpid, ts, app) = valid_attestation_args();
+            let resp =
+                handle_text_attestation(hash, tier.to_string(), wpid, ts, app);
+            match resp {
+                Response::TextAttestationResult { .. } => {}
+                other => panic!("expected TextAttestationResult for tier {tier}, got: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_nmh_text_attestation_accepts_8_char_writersproof_id() {
+        let (hash, tier, _, ts, app) = valid_attestation_args();
+        let resp = handle_text_attestation(hash, tier, "abcdef01".into(), ts, app);
+        match resp {
+            Response::TextAttestationResult { .. } => {}
+            other => panic!("expected TextAttestationResult, got: {other:?}"),
+        }
     }
 }

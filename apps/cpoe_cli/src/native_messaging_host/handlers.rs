@@ -812,20 +812,31 @@ pub(crate) fn handle_text_attestation(
         };
     }
 
-    if attested_at.is_empty() {
+    // Validate ISO 8601 timestamp format (e.g. "2026-04-25T12:00:00Z").
+    if attested_at.len() < 20
+        || attested_at.len() > 30
+        || !attested_at.ends_with('Z')
+        || attested_at.as_bytes().get(4) != Some(&b'-')
+        || attested_at.as_bytes().get(10) != Some(&b'T')
+    {
         return Response::TextAttestationResult {
             success: false,
-            error: Some("attested_at is required".into()),
+            error: Some("attested_at must be an ISO 8601 UTC timestamp".into()),
         };
     }
 
-    // Best-effort local store — will fail with empty content since the hash
-    // is precomputed by the browser; that is expected.
-    let _ = cpoe::ffi::text_fragment::ffi_attest_text(
-        String::new(),
-        app_bundle_id.clone(),
-        String::new(),
-    );
+    // app_bundle_id is a hostname from the browser; sanity-check length.
+    if app_bundle_id.len() > 253 {
+        return Response::TextAttestationResult {
+            success: false,
+            error: Some("app_bundle_id exceeds maximum hostname length".into()),
+        };
+    }
+
+    // Best-effort local store (sign + SQLite insert) so the attestation
+    // persists even if the API sync below fails and the offline queue is lost.
+    let _ =
+        cpoe::ffi::text_fragment::store_attestation_from_hash(&content_hash, &app_bundle_id);
 
     let sync_result = cpoe::ffi::writersproof_ffi::ffi_sync_text_attestation(
         content_hash,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::open_store;
-use crate::ffi::types::FfiResult;
+use crate::ffi::types::{try_ffi, FfiResult};
 
 use super::evidence::device_identity;
 
@@ -12,18 +12,16 @@ use super::evidence::device_identity;
 /// to prove temporal ordering.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_link_derivative(source_path: String, export_path: String, message: String) -> FfiResult {
-    let source = match crate::sentinel::helpers::validate_path(&source_path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid source path: {e}"));
-        }
-    };
-    let export = match crate::sentinel::helpers::validate_path(&export_path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid export path: {e}"));
-        }
-    };
+    let source = try_ffi!(
+        crate::sentinel::helpers::validate_path(&source_path)
+            .map_err(|e| format!("Invalid source path: {e}")),
+        FfiResult
+    );
+    let export = try_ffi!(
+        crate::sentinel::helpers::validate_path(&export_path)
+            .map_err(|e| format!("Invalid export path: {e}")),
+        FfiResult
+    );
 
     if !source.exists() {
         return FfiResult::err(format!("Source file not found: {}", source.display()));
@@ -32,20 +30,14 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
         return FfiResult::err(format!("Export file not found: {}", export.display()));
     }
 
-    let mut store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiResult::err(e);
-        }
-    };
+    let mut store = try_ffi!(open_store(), FfiResult);
 
     let source_str = source.to_string_lossy().to_string();
-    let events = match store.get_events_for_file(&source_str) {
-        Ok(e) => e,
-        Err(e) => {
-            return FfiResult::err(format!("Failed to load events: {e}"));
-        }
-    };
+    let events = try_ffi!(
+        store.get_events_for_file(&source_str)
+            .map_err(|e| format!("Failed to load events: {e}")),
+        FfiResult
+    );
 
     if events.is_empty() {
         return FfiResult::err("No evidence chain for source. Track the file first.".to_string());

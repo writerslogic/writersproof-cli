@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{load_api_key, load_did, load_signing_key, open_store};
-use crate::ffi::types::FfiResult;
+use crate::ffi::types::{try_ffi, FfiResult};
 
 /// Anchor a document's latest checkpoint to the WritersProof transparency log.
 ///
@@ -16,34 +16,24 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     if document_path.len() > 4096 {
         return FfiResult::err("Document path too long".to_string());
     }
-    let doc_path = match crate::sentinel::helpers::validate_path(&document_path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid document path: {e}"));
-        }
-    };
-
-    let doc_path = match doc_path.canonicalize() {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Cannot resolve document path: {e}"));
-        }
-    };
+    let doc_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&document_path)
+            .map_err(|e| format!("Invalid document path: {e}")),
+        FfiResult
+    );
+    let doc_path = try_ffi!(
+        doc_path.canonicalize().map_err(|e| format!("Cannot resolve document path: {e}")),
+        FfiResult
+    );
 
     // Load events from store to get the latest event_hash (matches CLI behavior)
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiResult::err(e);
-        }
-    };
+    let store = try_ffi!(open_store(), FfiResult);
     let doc_path_str = doc_path.to_string_lossy().into_owned();
-    let events = match store.get_events_for_file(&doc_path_str) {
-        Ok(e) => e,
-        Err(e) => {
-            return FfiResult::err(format!("Failed to load events: {e}"));
-        }
-    };
+    let events = try_ffi!(
+        store.get_events_for_file(&doc_path_str)
+            .map_err(|e| format!("Failed to load events: {e}")),
+        FfiResult
+    );
     let latest = match events.last() {
         Some(ev) => ev,
         None => {
@@ -59,12 +49,7 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     let evidence_hash = hex::encode(latest.content_hash);
 
     // Load signing key and sign the raw hash bytes (matches CLI: signing_key.sign(latest.event_hash.as_slice()))
-    let signing_key = match load_signing_key() {
-        Ok(k) => k,
-        Err(e) => {
-            return FfiResult::err(e);
-        }
-    };
+    let signing_key = try_ffi!(load_signing_key(), FfiResult);
     let signature = {
         use ed25519_dalek::Signer;
         const DST: &[u8] = b"witnessd-anchor-v1";
@@ -75,12 +60,10 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     };
     drop(signing_key);
 
-    let did = match load_did() {
-        Ok(d) => d,
-        Err(e) => {
-            return FfiResult::err(format!("DID identity required for anchor: {e}"));
-        }
-    };
+    let did = try_ffi!(
+        load_did().map_err(|e| format!("DID identity required for anchor: {e}")),
+        FfiResult
+    );
     let api_key = match load_api_key() {
         Ok(k) if k.is_empty() => {
             return FfiResult::err("WritersProof API key is empty".to_string());
@@ -146,41 +129,33 @@ pub fn ffi_publish_evidence(
     attestation: String,
     ai_declaration: Option<String>,
 ) -> crate::ffi::types::FfiPublishResult {
-    use crate::ffi::types::FfiPublishResult;
-
-    let fail = |msg: String| FfiPublishResult {
-        success: false,
-        canonical_url: None,
-        record_id: None,
-        verification_passed: false,
-        checkpoint_count: 0,
-        error_message: Some(msg),
-    };
+    use crate::ffi::types::{FfiErrResult, FfiPublishResult};
 
     const MAX_ATTESTATION_LEN: usize = 1_000_000;
     if attestation.is_empty() {
-        return fail("Author attestation is required to publish".to_string());
+        return FfiPublishResult::ffi_err("Author attestation is required to publish");
     }
     if attestation.len() > MAX_ATTESTATION_LEN {
-        return fail(format!("Attestation too large: {} bytes (max {MAX_ATTESTATION_LEN})", attestation.len()));
+        return FfiPublishResult::ffi_err(format!("Attestation too large: {} bytes (max {MAX_ATTESTATION_LEN})", attestation.len()));
     }
     if let Some(ref decl) = ai_declaration {
         if decl.len() > MAX_ATTESTATION_LEN {
-            return fail(format!("AI declaration too large: {} bytes (max {MAX_ATTESTATION_LEN})", decl.len()));
+            return FfiPublishResult::ffi_err(format!("AI declaration too large: {} bytes (max {MAX_ATTESTATION_LEN})", decl.len()));
         }
     }
 
     if document_path.len() > 4096 {
-        return fail("Document path too long".to_string());
+        return FfiPublishResult::ffi_err("Document path too long");
     }
-    let doc_path = match crate::sentinel::helpers::validate_path(&document_path) {
-        Ok(p) => p,
-        Err(e) => return fail(format!("Invalid document path: {e}")),
-    };
-    let doc_path = match doc_path.canonicalize() {
-        Ok(p) => p,
-        Err(e) => return fail(format!("Cannot resolve document path: {e}")),
-    };
+    let doc_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&document_path)
+            .map_err(|e| format!("Invalid document path: {e}")),
+        FfiPublishResult
+    );
+    let doc_path = try_ffi!(
+        doc_path.canonicalize().map_err(|e| format!("Cannot resolve document path: {e}")),
+        FfiPublishResult
+    );
     let doc_path_str = doc_path.to_string_lossy().into_owned();
 
     // Flush a final checkpoint to capture the latest document state.
@@ -190,26 +165,24 @@ pub fn ffi_publish_evidence(
         }
     }
 
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return fail(e),
-    };
-    let events = match store.get_events_for_file(&doc_path_str) {
-        Ok(e) => e,
-        Err(e) => return fail(format!("Failed to load events: {e}")),
-    };
+    let store = try_ffi!(open_store(), FfiPublishResult);
+    let events = try_ffi!(
+        store.get_events_for_file(&doc_path_str)
+            .map_err(|e| format!("Failed to load events: {e}")),
+        FfiPublishResult
+    );
     let latest = match events.last() {
         Some(ev) => ev,
-        None => return fail("No checkpoints found for this document".to_string()),
+        None => return FfiPublishResult::ffi_err("No checkpoints found for this document"),
     };
     let checkpoint_count = events.len() as u64;
 
     if checkpoint_count < 2 {
-        return fail("At least 2 checkpoints are required before publishing".to_string());
+        return FfiPublishResult::ffi_err("At least 2 checkpoints are required before publishing");
     }
 
     if latest.content_hash.len() != 32 || latest.event_hash.len() != 32 {
-        return fail("Corrupt checkpoint: invalid hash length".to_string());
+        return FfiPublishResult::ffi_err("Corrupt checkpoint: invalid hash length");
     }
 
     // Verify chain integrity: each event's previous_hash must match prior event_hash.
@@ -227,10 +200,7 @@ pub fn ffi_publish_evidence(
 
     let evidence_hash = hex::encode(latest.content_hash);
 
-    let signing_key = match load_signing_key() {
-        Ok(k) => k,
-        Err(e) => return fail(e),
-    };
+    let signing_key = try_ffi!(load_signing_key(), FfiPublishResult);
     let signature = {
         use ed25519_dalek::Signer;
         const DST: &[u8] = b"witnessd-publish-v1";
@@ -241,31 +211,31 @@ pub fn ffi_publish_evidence(
     };
     drop(signing_key);
 
-    let did = match load_did() {
-        Ok(d) => d,
-        Err(e) => return fail(format!("Author identity required to publish. {e}")),
-    };
-    let api_key = match load_api_key() {
-        Ok(k) => k,
-        Err(e) => return fail(format!("WritersProof account required to publish. {e}")),
-    };
+    let did = try_ffi!(
+        load_did().map_err(|e| format!("Author identity required to publish. {e}")),
+        FfiPublishResult
+    );
+    let api_key = try_ffi!(
+        load_api_key().map_err(|e| format!("WritersProof account required to publish. {e}")),
+        FfiPublishResult
+    );
 
     let doc_name = doc_path
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string());
 
-    let rt = match crate::ffi::beacon::beacon_runtime() {
-        Ok(rt) => rt,
-        Err(e) => return fail(format!("Failed to get async runtime: {e}")),
-    };
+    let rt = try_ffi!(
+        crate::ffi::beacon::beacon_runtime().map_err(|e| format!("Failed to get async runtime: {e}")),
+        FfiPublishResult
+    );
 
-    let client = match crate::writersproof::WritersProofClient::new(
-        crate::writersproof::client::DEFAULT_API_URL,
-    ) {
-        Ok(c) => c.with_jwt(api_key),
-        Err(e) => return fail(format!("Failed to create API client: {e}")),
-    };
+    let client = try_ffi!(
+        crate::writersproof::WritersProofClient::new(crate::writersproof::client::DEFAULT_API_URL)
+            .map_err(|e| format!("Failed to create API client: {e}")),
+        FfiPublishResult
+    )
+    .with_jwt(api_key);
 
     let result = rt.block_on(async {
         tokio::time::timeout(
@@ -284,8 +254,8 @@ pub fn ffi_publish_evidence(
     });
 
     match result {
-        Err(_) => fail("Publish request timed out after 30s".to_string()),
-        Ok(Err(e)) => fail(format!("Publish failed: {e}")),
+        Err(_) => FfiPublishResult::ffi_err("Publish request timed out after 30s"),
+        Ok(Err(e)) => FfiPublishResult::ffi_err(format!("Publish failed: {e}")),
         Ok(Ok(resp)) => FfiPublishResult {
             success: true,
             canonical_url: Some(resp.canonical_url),

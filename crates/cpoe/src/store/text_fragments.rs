@@ -63,9 +63,38 @@ pub struct TextFragment {
 }
 
 impl SecureStore {
-    /// Insert a text fragment with COSE_Sign1 signature verification.
-    /// The fragment must contain a valid `source_signature` matching session key.
-    pub fn insert_text_fragment(&mut self, fragment: &TextFragment) -> anyhow::Result<i64> {
+    /// Deserialize a row into a `TextFragment`.
+    /// The SELECT must return columns in the canonical order:
+    /// id, fragment_hash, session_id, source_app_bundle_id, source_window_title,
+    /// source_signature, nonce, timestamp, keystroke_context, keystroke_confidence,
+    /// keystroke_sequence_hash, source_session_id, source_evidence_packet,
+    /// wal_entry_hash, cloudkit_record_id, sync_state
+    fn row_to_fragment(row: &rusqlite::Row<'_>) -> rusqlite::Result<TextFragment> {
+        Ok(TextFragment {
+            id: Some(row.get(0)?),
+            fragment_hash: row.get(1)?,
+            session_id: row.get(2)?,
+            source_app_bundle_id: row.get(3)?,
+            source_window_title: row.get(4)?,
+            source_signature: row.get(5)?,
+            nonce: row.get(6)?,
+            timestamp: row.get(7)?,
+            keystroke_context: row
+                .get::<_, Option<String>>(8)?
+                .and_then(|s| s.parse().ok()),
+            keystroke_confidence: row.get(9)?,
+            keystroke_sequence_hash: row.get(10)?,
+            source_session_id: row.get(11)?,
+            source_evidence_packet: row.get(12)?,
+            wal_entry_hash: row.get(13)?,
+            cloudkit_record_id: row.get(14)?,
+            sync_state: row.get(15)?,
+        })
+    }
+
+    /// Validate fragment field lengths and nonce uniqueness.
+    /// Returns the current time in milliseconds for callers that need it.
+    fn validate_fragment_fields(&self, fragment: &TextFragment) -> anyhow::Result<i64> {
         if fragment.fragment_hash.len() != 32 {
             anyhow::bail!(
                 "fragment_hash must be 32 bytes, got {}",
@@ -82,18 +111,9 @@ impl SecureStore {
             );
         }
 
-        // Validate timestamp: reject future timestamps > 5 minutes
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
             .as_millis() as i64;
-        let fragment_ms = fragment.timestamp;
-        if fragment_ms > now_ms + 5 * 60 * 1000 {
-            anyhow::bail!(
-                "Rejected fragment with future timestamp (ms): {} > {}",
-                fragment_ms,
-                now_ms
-            );
-        }
 
         // Check nonce hasn't been used before
         let nonce_used: bool = self
@@ -108,6 +128,23 @@ impl SecureStore {
 
         if nonce_used {
             anyhow::bail!("Nonce replay detected");
+        }
+
+        Ok(now_ms)
+    }
+
+    /// Insert a text fragment with COSE_Sign1 signature verification.
+    /// The fragment must contain a valid `source_signature` matching session key.
+    pub fn insert_text_fragment(&mut self, fragment: &TextFragment) -> anyhow::Result<i64> {
+        let now_ms = self.validate_fragment_fields(fragment)?;
+
+        // Validate timestamp: reject future timestamps > 5 minutes
+        if fragment.timestamp > now_ms + 5 * 60 * 1000 {
+            anyhow::bail!(
+                "Rejected fragment with future timestamp (ms): {} > {}",
+                fragment.timestamp,
+                now_ms
+            );
         }
 
         let tx = self.conn.transaction()?;
@@ -189,28 +226,7 @@ impl SecureStore {
                  WHERE fragment_hash = ?
                  LIMIT 1",
                 [hash],
-                |row| {
-                    Ok(TextFragment {
-                        id: Some(row.get(0)?),
-                        fragment_hash: row.get(1)?,
-                        session_id: row.get(2)?,
-                        source_app_bundle_id: row.get(3)?,
-                        source_window_title: row.get(4)?,
-                        source_signature: row.get(5)?,
-                        nonce: row.get(6)?,
-                        timestamp: row.get(7)?,
-                        keystroke_context: row
-                            .get::<_, Option<String>>(8)?
-                            .and_then(|s| s.parse().ok()),
-                        keystroke_confidence: row.get(9)?,
-                        keystroke_sequence_hash: row.get(10)?,
-                        source_session_id: row.get(11)?,
-                        source_evidence_packet: row.get(12)?,
-                        wal_entry_hash: row.get(13)?,
-                        cloudkit_record_id: row.get(14)?,
-                        sync_state: row.get(15)?,
-                    })
-                },
+                Self::row_to_fragment,
             )
             .optional()?;
 
@@ -232,34 +248,8 @@ impl SecureStore {
              ORDER BY timestamp ASC",
         )?;
 
-        let fragments = stmt.query_map([session_id], |row| {
-            Ok(TextFragment {
-                id: Some(row.get(0)?),
-                fragment_hash: row.get(1)?,
-                session_id: row.get(2)?,
-                source_app_bundle_id: row.get(3)?,
-                source_window_title: row.get(4)?,
-                source_signature: row.get(5)?,
-                nonce: row.get(6)?,
-                timestamp: row.get(7)?,
-                keystroke_context: row
-                    .get::<_, Option<String>>(8)?
-                    .and_then(|s| s.parse().ok()),
-                keystroke_confidence: row.get(9)?,
-                keystroke_sequence_hash: row.get(10)?,
-                source_session_id: row.get(11)?,
-                source_evidence_packet: row.get(12)?,
-                wal_entry_hash: row.get(13)?,
-                cloudkit_record_id: row.get(14)?,
-                sync_state: row.get(15)?,
-            })
-        })?;
-
-        let mut result = Vec::new();
-        for frag in fragments {
-            result.push(frag?);
-        }
-        Ok(result)
+        let rows = stmt.query_map([session_id], Self::row_to_fragment)?;
+        rows.map(|r| r.map_err(anyhow::Error::from)).collect()
     }
 
     /// Get all unsynced fragments (sync_state != "synced").
@@ -274,34 +264,8 @@ impl SecureStore {
              ORDER BY timestamp ASC",
         )?;
 
-        let fragments = stmt.query_map([], |row| {
-            Ok(TextFragment {
-                id: Some(row.get(0)?),
-                fragment_hash: row.get(1)?,
-                session_id: row.get(2)?,
-                source_app_bundle_id: row.get(3)?,
-                source_window_title: row.get(4)?,
-                source_signature: row.get(5)?,
-                nonce: row.get(6)?,
-                timestamp: row.get(7)?,
-                keystroke_context: row
-                    .get::<_, Option<String>>(8)?
-                    .and_then(|s| s.parse().ok()),
-                keystroke_confidence: row.get(9)?,
-                keystroke_sequence_hash: row.get(10)?,
-                source_session_id: row.get(11)?,
-                source_evidence_packet: row.get(12)?,
-                wal_entry_hash: row.get(13)?,
-                cloudkit_record_id: row.get(14)?,
-                sync_state: row.get(15)?,
-            })
-        })?;
-
-        let mut result = Vec::new();
-        for frag in fragments {
-            result.push(frag?);
-        }
-        Ok(result)
+        let rows = stmt.query_map([], Self::row_to_fragment)?;
+        rows.map(|r| r.map_err(anyhow::Error::from)).collect()
     }
 
     /// Mark a fragment as synced to CloudKit.
@@ -380,34 +344,8 @@ impl SecureStore {
              FROM text_fragments ORDER BY timestamp ASC",
         )?;
 
-        let fragments = stmt.query_map([], |row| {
-            Ok(TextFragment {
-                id: Some(row.get(0)?),
-                fragment_hash: row.get(1)?,
-                session_id: row.get(2)?,
-                source_app_bundle_id: row.get(3)?,
-                source_window_title: row.get(4)?,
-                source_signature: row.get(5)?,
-                nonce: row.get(6)?,
-                timestamp: row.get(7)?,
-                keystroke_context: row
-                    .get::<_, Option<String>>(8)?
-                    .and_then(|s| s.parse().ok()),
-                keystroke_confidence: row.get(9)?,
-                keystroke_sequence_hash: row.get(10)?,
-                source_session_id: row.get(11)?,
-                source_evidence_packet: row.get(12)?,
-                wal_entry_hash: row.get(13)?,
-                cloudkit_record_id: row.get(14)?,
-                sync_state: row.get(15)?,
-            })
-        })?;
-
-        let mut result = Vec::new();
-        for frag in fragments {
-            result.push(frag?);
-        }
-        Ok(result)
+        let rows = stmt.query_map([], Self::row_to_fragment)?;
+        rows.map(|r| r.map_err(anyhow::Error::from)).collect()
     }
 
     /// Count text fragments for a session.
@@ -483,43 +421,7 @@ impl SecureStore {
         &mut self,
         fragment: &TextFragment,
     ) -> anyhow::Result<i64> {
-        if fragment.fragment_hash.len() != 32 {
-            anyhow::bail!(
-                "fragment_hash must be 32 bytes, got {}",
-                fragment.fragment_hash.len()
-            );
-        }
-        if fragment.nonce.len() != 16 {
-            anyhow::bail!(
-                "nonce must be 16 bytes, got {}",
-                fragment.nonce.len()
-            );
-        }
-        if fragment.source_signature.len() != 64 {
-            anyhow::bail!(
-                "source_signature must be 64 bytes (Ed25519), got {}",
-                fragment.source_signature.len()
-            );
-        }
-
-        // Check nonce uniqueness
-        let nonce_used: bool = self
-            .conn
-            .query_row(
-                "SELECT 1 FROM used_nonces WHERE nonce = ? LIMIT 1",
-                [&fragment.nonce],
-                |_| Ok(true),
-            )
-            .optional()?
-            .unwrap_or(false);
-
-        if nonce_used {
-            anyhow::bail!("Nonce replay detected on remote fragment");
-        }
-
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_millis() as i64;
+        let now_ms = self.validate_fragment_fields(fragment)?;
 
         let tx = self.conn.transaction()?;
 
@@ -677,6 +579,53 @@ pub enum SyncResolutionStrategy {
     KeepRemote,
     /// Keep whichever version has the newest timestamp.
     KeepNewest,
+}
+
+// ---------------------------------------------------------------------------
+// Fragment signing helpers (shared by FFI and sentinel)
+// ---------------------------------------------------------------------------
+
+/// Current wall-clock time as milliseconds since the Unix epoch.
+pub fn current_timestamp_ms() -> i64 {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0);
+    if ts <= 0 {
+        log::error!(
+            "System clock returned non-positive timestamp; evidence timing will be unreliable"
+        );
+    }
+    ts
+}
+
+/// Generate a 16-byte cryptographic random nonce.
+pub fn generate_nonce() -> [u8; 16] {
+    let mut nonce = [0u8; 16];
+    rand::RngCore::fill_bytes(&mut rand::rng(), &mut nonce);
+    nonce
+}
+
+/// Sign the fragment payload with domain separation:
+/// DST || len(session_id) || session_id || fragment_hash || timestamp || nonce.
+pub fn sign_fragment(
+    signing_key: &ed25519_dalek::SigningKey,
+    session_id: &str,
+    fragment_hash: &[u8; 32],
+    timestamp: i64,
+    nonce: &[u8; 16],
+) -> [u8; 64] {
+    use ed25519_dalek::Signer;
+    const DST: &[u8] = b"witnessd-text-fragment-v1";
+    let sid_len = (session_id.len() as u32).to_le_bytes();
+    let mut payload = Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + 16);
+    payload.extend_from_slice(DST);
+    payload.extend_from_slice(&sid_len);
+    payload.extend_from_slice(session_id.as_bytes());
+    payload.extend_from_slice(fragment_hash);
+    payload.extend_from_slice(&timestamp.to_le_bytes());
+    payload.extend_from_slice(nonce);
+    signing_key.sign(&payload).to_bytes()
 }
 
 #[cfg(test)]

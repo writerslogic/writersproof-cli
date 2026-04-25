@@ -1,5 +1,27 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
+/// Trait for FFI result types that can represent an error.
+///
+/// All FFI record types that carry `success: bool` + `error_message: Option<String>`
+/// implement this so generic helpers can return the correct type on failure.
+pub trait FfiErrResult {
+    fn ffi_err(msg: impl Into<String>) -> Self;
+}
+
+/// Unwrap a `Result<T, E>` inside an FFI function, returning the error as an
+/// `FfiErrResult` implementor if the result is `Err`.
+///
+/// Usage: `let val = try_ffi!(some_result, ReturnType);`
+macro_rules! try_ffi {
+    ($expr:expr, $ret:ty) => {
+        match $expr {
+            Ok(v) => v,
+            Err(e) => return <$ret as $crate::ffi::types::FfiErrResult>::ffi_err(e.to_string()),
+        }
+    };
+}
+pub(crate) use try_ffi;
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiResult {
@@ -22,6 +44,12 @@ impl FfiResult {
             message: None,
             error_message: Some(message.into()),
         }
+    }
+}
+
+impl FfiErrResult for FfiResult {
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
     }
 }
 
@@ -216,6 +244,19 @@ pub struct FfiPublishResult {
     pub verification_passed: bool,
     pub checkpoint_count: u64,
     pub error_message: Option<String>,
+}
+
+impl FfiErrResult for FfiPublishResult {
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            canonical_url: None,
+            record_id: None,
+            verification_passed: false,
+            checkpoint_count: 0,
+            error_message: Some(msg.into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

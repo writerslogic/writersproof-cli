@@ -987,16 +987,20 @@ impl Sentinel {
                                             session.last_checkpoint_keystrokes,
                                             session.hw_cosign_scheduler.is_some(),
                                             session.session_id.clone(),
+                                            session.paste_context.is_some(),
+                                            session.app_bundle_id.clone(),
+                                            session.window_title.reveal().to_string(),
                                         )
                                     })
                                 };
                                 if let Some((total_ks, focus_ms, session_num, duration_secs,
-                                             first_at, _ordinal, has_hw_sched, _session_id)) = session_snapshot
+                                             first_at, _ordinal, has_hw_sched, session_id,
+                                             has_paste_ctx, app_bundle_id, window_title)) = session_snapshot
                                 {
                                     // Persist cumulative keystroke count (no lock held)
                                     if let Some(ref sk) = sk_opt {
                                         let db = writersproof_dir.join("events.db");
-                                        if let Ok(store) =
+                                        if let Ok(mut store) =
                                             crate::store::open_store_with_signing_key(sk, &db)
                                         {
                                             let stats = crate::store::DocumentStats {
@@ -1014,6 +1018,52 @@ impl Sentinel {
                                             };
                                             if let Err(e) = store.save_document_stats(&stats) {
                                                 log::warn!("Failed to save document stats for {path}: {e}");
+                                            }
+
+                                            // Create a text fragment for this checkpoint window.
+                                            let content_hash = match crate::crypto::hash_file_with_size(
+                                                std::path::Path::new(path),
+                                            ) {
+                                                Ok((h, _)) => Some(h),
+                                                Err(e) => {
+                                                    log::debug!("Text fragment hash failed for {path}: {e}");
+                                                    None
+                                                }
+                                            };
+                                            if let Some(frag_hash) = content_hash {
+                                                let ts = crate::store::text_fragments::current_timestamp_ms();
+                                                let nonce = crate::store::text_fragments::generate_nonce();
+                                                let ctx = if has_paste_ctx {
+                                                    crate::store::text_fragments::KeystrokeContext::PastedContent
+                                                } else {
+                                                    crate::store::text_fragments::KeystrokeContext::OriginalComposition
+                                                };
+                                                let sig = crate::store::text_fragments::sign_fragment(
+                                                    sk, &session_id, &frag_hash, ts, &nonce,
+                                                );
+                                                let fragment = crate::store::text_fragments::TextFragment {
+                                                    id: None,
+                                                    fragment_hash: frag_hash.to_vec(),
+                                                    session_id: session_id.clone(),
+                                                    source_app_bundle_id: Some(app_bundle_id.clone())
+                                                        .filter(|s| !s.is_empty()),
+                                                    source_window_title: Some(window_title.clone())
+                                                        .filter(|s| !s.is_empty()),
+                                                    source_signature: sig.to_vec(),
+                                                    nonce: nonce.to_vec(),
+                                                    timestamp: ts,
+                                                    keystroke_context: Some(ctx),
+                                                    keystroke_confidence: Some(1.0),
+                                                    keystroke_sequence_hash: None,
+                                                    source_session_id: None,
+                                                    source_evidence_packet: None,
+                                                    wal_entry_hash: None,
+                                                    cloudkit_record_id: None,
+                                                    sync_state: None,
+                                                };
+                                                if let Err(e) = store.insert_text_fragment(&fragment) {
+                                                    log::warn!("Failed to insert text fragment for {path}: {e}");
+                                                }
                                             }
                                         }
                                     }

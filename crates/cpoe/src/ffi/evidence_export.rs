@@ -2,7 +2,7 @@
 
 use crate::ffi::helpers::{detect_attestation_tier, open_store};
 use crate::ffi::sentinel::get_sentinel;
-use crate::ffi::types::FfiResult;
+use crate::ffi::types::{try_ffi, FfiResult};
 use crate::RwLockRecover;
 use authorproof_protocol::rfc::wire_types::{
     CheckpointWire, DocumentRef, EditDelta, EvidencePacketWire, HashValue, ProcessProof,
@@ -56,37 +56,29 @@ pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> F
 /// Export stored events for a file as a CBOR evidence packet at the given tier.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiResult {
-    let file_path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid source path: {}", e));
-        }
-    };
-    let output_path = match crate::sentinel::helpers::validate_path(&output) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid output path: {}", e));
-        }
-    };
+    let file_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&path)
+            .map_err(|e| format!("Invalid source path: {e}")),
+        FfiResult
+    );
+    let output_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&output)
+            .map_err(|e| format!("Invalid output path: {e}")),
+        FfiResult
+    );
 
     if !file_path.exists() {
         return FfiResult::err(format!("File not found: {}", file_path.display()));
     }
 
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiResult::err(e);
-        }
-    };
+    let store = try_ffi!(open_store(), FfiResult);
 
     let file_path_str = file_path.to_string_lossy().into_owned();
-    let events = match store.get_events_for_file(&file_path_str) {
-        Ok(e) => e,
-        Err(e) => {
-            return FfiResult::err(format!("Failed to load events: {}", e));
-        }
-    };
+    let events = try_ffi!(
+        store.get_events_for_file(&file_path_str)
+            .map_err(|e| format!("Failed to load events: {e}")),
+        FfiResult
+    );
 
     if events.is_empty() {
         return FfiResult::err("No events found for this file".to_string());
@@ -212,7 +204,25 @@ pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiRes
         })
         .collect::<Result<Vec<_>, String>>()
     {
-        Ok(c) => c,
+        Ok(mut c) => {
+            // Attach beacon attestation to the last checkpoint if available.
+            if let Some(beacon) = crate::ffi::beacon::load_beacon_attestation(&file_path_str) {
+                if let Some(last_cp) = c.last_mut() {
+                    let drand_bytes = hex::decode(&beacon.drand_randomness)
+                        .ok()
+                        .and_then(|b| <[u8; 32]>::try_from(b).ok())
+                        .unwrap_or([0u8; 32]);
+                    last_cp.beacon_anchor = Some(
+                        authorproof_protocol::rfc::wire_types::components::BeaconAnchor {
+                            source_url: "https://drand.cloudflare.com".to_string(),
+                            beacon_round: beacon.drand_round,
+                            beacon_value: drand_bytes,
+                        },
+                    );
+                }
+            }
+            c
+        }
         Err(e) => {
             return FfiResult::err(format!("Invalid hash in event data: {e}"));
         }

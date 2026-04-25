@@ -33,6 +33,10 @@ impl FfiSnapshotContent {
     }
 }
 
+impl super::types::FfiErrResult for FfiSnapshotContent {
+    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+}
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiSnapshotSaveResult {

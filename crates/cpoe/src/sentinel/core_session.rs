@@ -291,6 +291,15 @@ impl Sentinel {
         match store.add_secure_event_with_signer(&mut event, sk_cached.as_ref()) {
             Ok(_) => {
                 log::info!("Auto-checkpoint committed for {path}");
+                let session_info = {
+                    let sessions = self.sessions.read_recover();
+                    sessions.get(path).map(|s| (
+                        s.session_id.clone(),
+                        s.paste_context.is_some(),
+                        s.app_bundle_id.clone(),
+                        s.window_title.reveal().to_string(),
+                    ))
+                };
                 if let Some(ref tpm) = self.tpm_provider {
                     let mut sessions = self.sessions.write_recover();
                     if let Some(session) = sessions.get_mut(path) {
@@ -301,6 +310,41 @@ impl Sentinel {
                             Some(&event.event_hash),
                             Some((&store, path)),
                         );
+                    }
+                }
+                if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title))) =
+                    (&sk_cached, &session_info)
+                {
+                    let ts = crate::store::text_fragments::current_timestamp_ms();
+                    let nonce = crate::store::text_fragments::generate_nonce();
+                    let ctx = if *has_paste {
+                        crate::store::text_fragments::KeystrokeContext::PastedContent
+                    } else {
+                        crate::store::text_fragments::KeystrokeContext::OriginalComposition
+                    };
+                    let sig = crate::store::text_fragments::sign_fragment(
+                        sk, sid, &content_hash, ts, &nonce,
+                    );
+                    let fragment = crate::store::text_fragments::TextFragment {
+                        id: None,
+                        fragment_hash: content_hash.to_vec(),
+                        session_id: sid.clone(),
+                        source_app_bundle_id: Some(bundle.clone()).filter(|s| !s.is_empty()),
+                        source_window_title: Some(title.clone()).filter(|s| !s.is_empty()),
+                        source_signature: sig.to_vec(),
+                        nonce: nonce.to_vec(),
+                        timestamp: ts,
+                        keystroke_context: Some(ctx),
+                        keystroke_confidence: Some(1.0),
+                        keystroke_sequence_hash: None,
+                        source_session_id: None,
+                        source_evidence_packet: None,
+                        wal_entry_hash: None,
+                        cloudkit_record_id: None,
+                        sync_state: None,
+                    };
+                    if let Err(e) = store.insert_text_fragment(&fragment) {
+                        log::warn!("Failed to insert text fragment for {path}: {e}");
                     }
                 }
                 true

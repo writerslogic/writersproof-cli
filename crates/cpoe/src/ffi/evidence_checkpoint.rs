@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::open_store;
-use crate::ffi::types::FfiResult;
+use crate::ffi::types::{try_ffi, FfiResult};
 
 use super::evidence::device_identity;
 
@@ -13,26 +13,15 @@ pub fn ffi_create_checkpoint(path: String, message: String) -> FfiResult {
     } else {
         message
     };
-    let file_path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(e);
-        }
-    };
-
-    let mut store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiResult::err(e);
-        }
-    };
-
-    let content_hash = match crate::crypto::hash_file(&file_path) {
-        Ok(h) => h,
-        Err(e) => {
-            return FfiResult::err(format!("Failed to hash file: {}", e));
-        }
-    };
+    let file_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&path).map_err(|e| e.to_string()),
+        FfiResult
+    );
+    let mut store = try_ffi!(open_store(), FfiResult);
+    let content_hash = try_ffi!(
+        crate::crypto::hash_file(&file_path).map_err(|e| format!("Failed to hash file: {e}")),
+        FfiResult
+    );
 
     let file_size = std::fs::metadata(&file_path)
         .map(|m| m.len() as i64)

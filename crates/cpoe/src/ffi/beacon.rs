@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::helpers::{load_api_key, load_did, load_signing_key, open_store};
+use crate::ffi::helpers::{load_api_key, load_did, load_signing_key, open_store, validate_path_str};
+use crate::ffi::types::try_ffi;
 use std::sync::OnceLock;
 
 /// Maximum evidence file size for FFI reads (64 MB).
@@ -91,22 +92,48 @@ fn err_beacon(msg: String) -> FfiBeaconResult {
     }
 }
 
+impl super::types::FfiErrResult for FfiBeaconResult {
+    fn ffi_err(msg: impl Into<String>) -> Self { err_beacon(msg.into()) }
+}
+
+fn beacon_sidecar_path(document_path: &str) -> Option<std::path::PathBuf> {
+    let data_dir = crate::ffi::helpers::get_data_dir()?;
+    let path_hash = crate::utils::sha256_of_path(std::path::Path::new(document_path));
+    let doc_id = hex::encode(&path_hash[0..8]);
+    Some(data_dir.join(format!("{doc_id}.beacon.json")))
+}
+
+fn save_beacon_attestation(
+    document_path: &str,
+    attestation: &crate::evidence::WpBeaconAttestation,
+) -> Result<(), String> {
+    let sidecar = beacon_sidecar_path(document_path)
+        .ok_or_else(|| "data dir not configured".to_string())?;
+    let json = serde_json::to_vec(attestation)
+        .map_err(|e| format!("beacon JSON serialization failed: {e}"))?;
+    std::fs::write(&sidecar, json)
+        .map_err(|e| format!("beacon sidecar write failed: {e}"))
+}
+
+pub(crate) fn load_beacon_attestation(
+    document_path: &str,
+) -> Option<crate::evidence::WpBeaconAttestation> {
+    let sidecar = beacon_sidecar_path(document_path)?;
+    let data = std::fs::read(&sidecar).ok()?;
+    serde_json::from_slice(&data)
+        .map_err(|e| log::warn!("beacon sidecar parse failed: {e}"))
+        .ok()
+}
+
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconResult {
-    let canonical = match crate::sentinel::helpers::validate_path(&document_path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => return err_beacon(e),
-    };
-
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return err_beacon(e),
-    };
-
-    let events = match store.get_events_for_file(&canonical) {
-        Ok(e) => e,
-        Err(e) => return err_beacon(format!("Failed to load events: {e}")),
-    };
+    let canonical = try_ffi!(validate_path_str(&document_path), FfiBeaconResult);
+    let store = try_ffi!(open_store(), FfiBeaconResult);
+    let events = try_ffi!(
+        store.get_events_for_file(&canonical)
+            .map_err(|e| format!("Failed to load events: {e}")),
+        FfiBeaconResult
+    );
 
     let latest = match events.last() {
         Some(ev) => ev,
@@ -118,10 +145,7 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
     let evidence_hash = hex::encode(latest.content_hash);
 
     let (signature, verifying_key_bytes) = {
-        let signing_key = match load_signing_key() {
-            Ok(k) => k,
-            Err(e) => return err_beacon(e),
-        };
+        let signing_key = try_ffi!(load_signing_key(), FfiBeaconResult);
         use ed25519_dalek::Signer;
         let sig = hex::encode(signing_key.sign(latest.event_hash.as_slice()).to_bytes());
         let vk = *signing_key.verifying_key().as_bytes();
@@ -212,6 +236,21 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
                         .map_err(|e| log::warn!("beacon timestamp parse failed: {e}"))
                         .ok();
 
+                    // Persist beacon attestation so evidence export can attach it.
+                    let attestation = crate::evidence::WpBeaconAttestation {
+                        drand_round: beacon.drand_round,
+                        drand_randomness: beacon.drand_randomness.clone(),
+                        nist_pulse_index: beacon.nist_pulse_index,
+                        nist_output_value: beacon.nist_output_value.clone(),
+                        nist_timestamp: beacon.nist_timestamp.clone(),
+                        fetched_at: beacon.fetched_at.clone(),
+                        wp_signature: beacon.wp_signature.clone(),
+                        wp_key_id: None,
+                    };
+                    if let Err(e) = save_beacon_attestation(&canonical, &attestation) {
+                        log::warn!("Failed to persist beacon attestation for {canonical}: {e}");
+                    }
+
                     let anchor_error = if anchor_id.is_none() {
                         Some("Beacon fetched but anchor submission failed; evidence not yet in transparency log".to_string())
                     } else {
@@ -288,15 +327,12 @@ pub fn ffi_check_beacon_status(document_path: String) -> FfiBeaconResult {
 }
 
 fn check_beacon_from_store(canonical: &str) -> FfiBeaconResult {
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => return err_beacon(e),
-    };
-
-    let events = match store.get_events_for_file(canonical) {
-        Ok(e) => e,
-        Err(e) => return err_beacon(format!("Failed to load events: {e}")),
-    };
+    let store = try_ffi!(open_store(), FfiBeaconResult);
+    let events = try_ffi!(
+        store.get_events_for_file(canonical)
+            .map_err(|e| format!("Failed to load events: {e}")),
+        FfiBeaconResult
+    );
 
     if events.is_empty() {
         return err_beacon("No checkpoints found for this document".to_string());

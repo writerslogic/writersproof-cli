@@ -607,7 +607,7 @@ pub fn needs_title_inference(bundle_id: &str) -> bool {
 const USER_APPS_SCHEMA_VERSION: u32 = 1;
 const USER_APPS_FILENAME: &str = "user_apps.json";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct UserAppsFile {
     schema_version: u32,
     apps: Vec<UserWritingApp>,
@@ -757,8 +757,8 @@ impl AppRegistry {
         self.lookup_builtin(bundle_id).is_some() || self.lookup_user(bundle_id).is_some()
     }
 
-    /// Add (or replace) a user app. Persists immediately.
-    /// Rolls back in-memory state if persistence fails.
+    /// Add (or replace) a user app. Writes to disk before updating memory,
+    /// so on IO failure the in-memory state is never inconsistent.
     pub fn add_user_app(&mut self, app: UserWritingApp) -> crate::error::Result<()> {
         if app.bundle_id.is_empty() {
             return Err(crate::error::Error::validation("bundle_id must not be empty"));
@@ -768,35 +768,27 @@ impl AppRegistry {
                 "display_name must not be empty",
             ));
         }
-        let snapshot = self.user.clone();
-        self.user
-            .retain(|a| !a.bundle_id.eq_ignore_ascii_case(&app.bundle_id));
-        self.user.push(app);
+        let mut next = self.user.clone();
+        next.retain(|a| !a.bundle_id.eq_ignore_ascii_case(&app.bundle_id));
+        next.push(app);
+        self.persist(&next)?;
+        self.user = next;
         self.rebuild_title_inferred();
-        if let Err(e) = self.save() {
-            self.user = snapshot;
-            self.rebuild_title_inferred();
-            return Err(e);
-        }
         Ok(())
     }
 
     /// Remove a user app by bundle ID. Returns whether an entry was removed.
-    /// Rolls back in-memory state if persistence fails.
+    /// Writes to disk before updating memory.
     pub fn remove_user_app(&mut self, bundle_id: &str) -> crate::error::Result<bool> {
-        let snapshot = self.user.clone();
-        self.user
-            .retain(|a| !a.bundle_id.eq_ignore_ascii_case(bundle_id));
-        let removed = self.user.len() < snapshot.len();
-        if removed {
-            self.rebuild_title_inferred();
-            if let Err(e) = self.save() {
-                self.user = snapshot;
-                self.rebuild_title_inferred();
-                return Err(e);
-            }
+        let mut next = self.user.clone();
+        next.retain(|a| !a.bundle_id.eq_ignore_ascii_case(bundle_id));
+        if next.len() == self.user.len() {
+            return Ok(false);
         }
-        Ok(removed)
+        self.persist(&next)?;
+        self.user = next;
+        self.rebuild_title_inferred();
+        Ok(true)
     }
 
     pub fn user_apps(&self) -> &[UserWritingApp] {
@@ -811,24 +803,29 @@ impl AppRegistry {
                     .insert(app.bundle_id.to_ascii_lowercase());
             }
         }
-        // User entries override: respect user's needs_title_inference setting.
         for app in &self.user {
             let key = app.bundle_id.to_ascii_lowercase();
             if app.needs_title_inference {
                 self.title_inferred.insert(key);
             } else {
+                // User override removes builtin entry.
                 self.title_inferred.remove(&key);
             }
         }
     }
 
-    fn save(&self) -> crate::error::Result<()> {
-        let file = UserAppsFile {
+    /// Serialize `apps` to disk. Borrows the slice to avoid cloning.
+    fn persist(&self, apps: &[UserWritingApp]) -> crate::error::Result<()> {
+        #[derive(Serialize)]
+        struct Wire<'a> {
+            schema_version: u32,
+            apps: &'a [UserWritingApp],
+        }
+        let json = serde_json::to_string_pretty(&Wire {
             schema_version: USER_APPS_SCHEMA_VERSION,
-            apps: self.user.clone(),
-        };
-        let json = serde_json::to_string_pretty(&file)
-            .map_err(|e| crate::error::Error::config(format!("serialize user apps: {e}")))?;
+            apps,
+        })
+        .map_err(|e| crate::error::Error::config(format!("serialize user apps: {e}")))?;
         let path = self.user_apps_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
