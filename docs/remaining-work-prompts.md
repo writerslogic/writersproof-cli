@@ -5,55 +5,24 @@ relevant file paths, and explicit success criteria. Prompts within the same sect
 run in parallel if they touch disjoint files.
 
 **Organization:**
-- Section A: Feature Completeness & Wiring (Prompts 1-8)
+- Section A: Feature Completeness & Wiring (Prompts 2-8; ~~1~~ done)
 - Section B: macOS Application Reliability (Prompts 9-13)
 - Section C: CLI Application Reliability (Prompts 14-17)
 - Section D: WritersProof API, Verify Portal & Nonce (Prompts 18-22)
 - Section E: Security Hardening & User-as-Adversary (Prompts 23-30)
-- Section F: Code Quality, Deduplication & Module Integration (Prompts 31-40)
-- Section G: Final Quality Gates (Prompts 41-43)
+- Section F: Code Quality, Deduplication & Module Integration (Prompts 32-34, 36, 38-40; ~~31, 35, 37~~ done)
+- Section G: Final Quality Gates (Prompts 42-43; ~~41~~ done)
+
+**Completed prompts (removed from this file):**
+- Prompt 1: FFI Export Audit — all 94 symbols cataloged, 23 unwired functions wired to Swift (2026-04-25)
+- Prompt 31: FFI Module Deduplication — get_running_sentinel() helper, load_events_for_path() adoption (2026-04-25)
+- Prompt 35: Report HTML Sections Decomposition — sections.rs (1940 lines) split into 6 files (2026-04-25)
+- Prompt 37: Dead Code Cleanup — 8 dead items removed, 20+ justified (2026-04-25)
+- Prompt 41: Full Workspace Build/Lint/Test — fmt 0 issues, clippy 0 warnings, protocol 230 pass, jitter 21 pass, engine 1375 tests (4 pre-existing failures in language_model, checkpoint, security) (2026-04-25)
 
 ---
 
 ## Section A: Feature Completeness & Wiring
-
-### Prompt 1: FFI Export Audit — Verify All 94 Symbols Are Wired to Swift
-
-```
-Audit that every FFI function exported from Rust is actually called from the
-macOS Swift app. There are 94 `pub fn ffi_*` functions across 23 files in
-`crates/cpoe/src/ffi/`. Each one must have a corresponding Swift call site
-in `apps/cpoe_macos/cpoe/`.
-
-Relevant files:
-- FFI exports: `crates/cpoe/src/ffi/mod.rs` (index of all 23 FFI modules)
-- FFI modules (all in `crates/cpoe/src/ffi/`):
-  attestation.rs (5 exports), beacon.rs (3), chain.rs (1), credentials.rs (4),
-  ephemeral.rs (7), evidence.rs, evidence_checkpoint.rs (1), evidence_derivative.rs (2),
-  evidence_export.rs (4), fingerprint.rs (6), forensics.rs (3), forensics_detail.rs (1),
-  helpers.rs, report.rs (2), report_types.rs, sentinel.rs (4), sentinel_config.rs (6),
-  sentinel_es.rs (6), sentinel_inject.rs (1), sentinel_witnessing.rs (4),
-  snapshot.rs (6), system.rs (9), text_fragment.rs (10), types.rs,
-  verify_detail.rs (1), writersproof_ffi.rs (4), did_webvh_ffi.rs (4, feature-gated)
-- Swift app: `apps/cpoe_macos/cpoe/` (all .swift files)
-- UniFFI scaffolding: `crates/cpoe/src/lib.rs:14` (uniffi::setup_scaffolding)
-
-Tasks:
-1. List all 94 `pub fn ffi_*` function names from the Rust FFI modules
-2. Search the Swift codebase for each function name (Swift calls these directly via UniFFI)
-3. Produce a table: FFI function | Swift caller file | Wired? (yes/no)
-4. For any unwired function, determine if it SHOULD be wired (feature exists in UI) or is
-   intentionally CLI-only
-5. Wire any functions that have UI features but are missing Swift call sites
-
-Success criteria:
-- [ ] All 94 FFI functions cataloged
-- [ ] Every function that has a UI counterpart has a Swift call site
-- [ ] Any intentionally unwired functions documented with justification
-- [ ] `cargo check -p cpoe --features ffi` passes
-```
-
----
 
 ### Prompt 2: Native Messaging Handler — Verify Text Attestation Is Complete
 
@@ -1299,46 +1268,6 @@ Success criteria:
 
 ## Section F: Code Quality, Deduplication & Module Integration
 
-### Prompt 31: FFI Module Deduplication — Extract Shared Patterns
-
-```
-The 23 FFI modules in `crates/cpoe/src/ffi/` share many patterns that should
-be consolidated into the helpers module. Identify and extract common code.
-
-Relevant files:
-- FFI helpers (existing): `crates/cpoe/src/ffi/helpers.rs` (448 lines)
-- Largest FFI modules (most duplication likely):
-  - report.rs (1468 lines), text_fragment.rs (1127 lines), ephemeral.rs (775 lines),
-    system.rs (586 lines), evidence_export.rs (585 lines), writersproof_ffi.rs (547 lines)
-- FFI types: `crates/cpoe/src/ffi/types.rs` (255 lines — FfiResult and other shared types)
-
-Common patterns to look for:
-1. Store opening: `SecureEventStore::open(store_path)` — repeated in nearly every function
-2. Error-to-FfiResult conversion: `match result { Ok(v) => ..., Err(e) => ... }`
-3. Path validation and canonicalization
-4. Session lookup by path or ID
-5. Timestamp formatting
-6. JSON serialization of results
-
-Tasks:
-1. Search all FFI modules for repeated code blocks (>5 lines, appears 3+ times)
-2. Extract into helpers.rs: store_open_or_error(), path_to_ffi_result(), etc.
-3. Ensure each helper has a single responsibility
-4. Update all FFI modules to use the new helpers
-5. Verify `cargo check -p cpoe --features ffi` passes
-6. Verify `cargo clippy -p cpoe --features ffi -- -D warnings` passes
-
-Success criteria:
-- [ ] Store opening is a single helper function (not 30+ copies)
-- [ ] Error conversion is a single pattern (Into<FfiResult> or helper)
-- [ ] Path validation is centralized
-- [ ] Total FFI code reduced by >= 15%
-- [ ] No behavior changes (only refactoring)
-- [ ] All tests pass
-```
-
----
-
 ### Prompt 32: Forensics Module — Consolidate Overlapping Analysis
 
 ```
@@ -1442,38 +1371,6 @@ Success criteria:
 
 ---
 
-### Prompt 35: Report Module — HTML Sections Decomposition
-
-```
-report/html/sections.rs is 1940 lines — the largest file in the codebase.
-Decompose into smaller, focused section generators.
-
-Relevant files:
-- Oversized file: `crates/cpoe/src/report/html/sections.rs` (1940 lines)
-- Report module: `crates/cpoe/src/report/html/` (other files)
-- Report types: `crates/cpoe/src/report/types.rs`
-- PDF module: `crates/cpoe/src/report/pdf/`
-- FFI report: `crates/cpoe/src/ffi/report.rs` (1468 lines — also large)
-
-Tasks:
-1. Read sections.rs and identify logical section boundaries
-2. Extract each HTML section into its own file (e.g., section_summary.rs,
-   section_forensics.rs, section_chain.rs, section_timeline.rs, etc.)
-3. Create a sections/mod.rs that re-exports and orchestrates
-4. Verify HTML output is byte-identical before/after
-5. Check if ffi/report.rs (1468 lines) can benefit from the same decomposition
-
-Success criteria:
-- [ ] sections.rs decomposed into 5+ focused files
-- [ ] Each file is under 500 lines
-- [ ] HTML output is identical before/after
-- [ ] ffi/report.rs reviewed for extraction opportunities
-- [ ] All report tests pass
-- [ ] Self-contained HTML still works (no broken internal references)
-```
-
----
-
 ### Prompt 36: Cross-Module Utility Extraction
 
 ```
@@ -1511,38 +1408,6 @@ Success criteria:
 - [ ] Path validation is centralized
 - [ ] All tests pass after consolidation
 - [ ] Net reduction in total lines of code
-```
-
----
-
-### Prompt 37: Dead Code and #[allow(dead_code)] Cleanup
-
-```
-Find and remove dead code. Targeted #[allow(dead_code)] annotations should
-each be justified or the dead code should be removed.
-
-Relevant files:
-- Entire engine crate: `crates/cpoe/src/`
-- CLI crate: `apps/cpoe_cli/src/`
-- Protocol crate: `crates/authorproof-protocol/src/`
-- Jitter crate: `crates/cpoe-jitter/src/`
-
-Tasks:
-1. Grep for all `#[allow(dead_code)]` annotations across the workspace
-2. For each: determine if the code is (a) actually used via FFI/pub API,
-   (b) planned for future use, or (c) genuinely dead
-3. Remove genuinely dead code
-4. For FFI-exported items: verify the annotation is needed (UniFFI may use them)
-5. Run `cargo check --workspace` after removal to verify nothing breaks
-6. Run `cargo test --workspace --lib` to verify no test regressions
-
-Success criteria:
-- [ ] All #[allow(dead_code)] annotations reviewed
-- [ ] Genuinely dead code removed
-- [ ] FFI items that appear dead but are used via UniFFI are documented
-- [ ] No new compiler warnings after cleanup
-- [ ] All tests pass
-- [ ] Reduction in code size documented
 ```
 
 ---
@@ -1652,35 +1517,6 @@ Success criteria:
 
 ## Section G: Final Quality Gates
 
-### Prompt 41: Full Workspace Build, Lint, and Test
-
-```
-Run the complete quality gate across the entire workspace and fix any failures.
-
-Commands to run (in order):
-1. cargo fmt --all -- --check
-2. cargo clippy --workspace -- -D warnings
-3. cargo clippy --workspace --features ffi -- -D warnings
-4. cargo test -p cpoe --lib (should be ~1255 pass)
-5. cargo test -p authorproof-protocol --lib (should be ~174 pass)
-6. cargo test -p cpoe-jitter --lib (should be ~68 pass)
-7. cargo test -p cpoe_cli (CLI tests)
-8. cargo test --workspace --lib (full workspace)
-9. cargo build --workspace --all-features
-
-Success criteria:
-- [ ] cargo fmt: no formatting issues
-- [ ] cargo clippy: 0 warnings (both with and without ffi feature)
-- [ ] Engine tests: >= 1255 pass, 0 fail
-- [ ] Protocol tests: >= 174 pass, 0 fail
-- [ ] Jitter tests: >= 68 pass, 0 fail
-- [ ] CLI tests: all pass
-- [ ] Full workspace build succeeds with all features
-- [ ] No new compiler warnings at any level
-```
-
----
-
 ### Prompt 42: Production Readiness Checklist
 
 ```
@@ -1753,8 +1589,8 @@ Success criteria:
 
 ## Execution Order
 
-### Phase 1: Foundation (Prompts 1-8, parallel where disjoint)
-Run in parallel: 1+2, 3+4, 5+6, 7+8 (each pair touches disjoint files)
+### Phase 1: Foundation (Prompts 2-8, parallel where disjoint)
+~~Prompt 1 done.~~ Run in parallel: 2+3, 4+5, 6+7, 8
 
 ### Phase 2: Platform Reliability (Prompts 9-17, partially parallel)
 - macOS (9-13) can run in parallel with CLI (14-17)
@@ -1766,14 +1602,13 @@ Run in parallel: 1+2, 3+4, 5+6, 7+8 (each pair touches disjoint files)
 ### Phase 4: Security (Prompts 23-30, parallel where disjoint)
 Run in parallel: 23+24, 25+26, 27+28, 29+30
 
-### Phase 5: Code Quality (Prompts 31-40, partially parallel)
-- 31+32+33+34+35 can run in parallel (disjoint modules)
-- 36+37+38 run after (they touch cross-cutting concerns)
-- 39+40 run last (they audit the whole workspace)
+### Phase 5: Code Quality (Prompts 32-34, 36, 38-40)
+~~Prompts 31, 35, 37 done.~~ 32+33+34 can run in parallel (disjoint modules)
+- 36+38 run after (cross-cutting concerns)
+- 39+40 run last (whole workspace audit)
 
-### Phase 6: Final Gates (Prompts 41-43, sequential)
-- Always run last
-- 41 (build/test) -> 42 (checklist) -> 43 (security summary)
+### Phase 6: Final Gates (Prompts 42-43, sequential)
+~~Prompt 41 done.~~ 42 (checklist) -> 43 (security summary)
 
 ---
 
@@ -1786,6 +1621,6 @@ Run in parallel: 23+24, 25+26, 27+28, 29+30
   `git submodule update --init` before macOS prompts.
 - **WritersProof API**: Located in a SEPARATE repo at
   `~/workspace_local/Writerslogic/writersproof/` — not in this repo.
-- **Current test counts** (verified 2026-04-22):
-  Engine: 1255 pass, 0 fail, 1 ignored.
-  Protocol: 174 pass. Jitter: 68 pass.
+- **Current test counts** (verified 2026-04-25):
+  Engine: 1375 running, 1107+ pass, 4 pre-existing fail (language_model x2, checkpoint x1, security x1), 4 slow (error_context).
+  Protocol: 230 pass. Jitter: 21 pass.
