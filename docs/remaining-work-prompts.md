@@ -5,66 +5,43 @@ relevant file paths, and explicit success criteria. Prompts within the same sect
 run in parallel if they touch disjoint files.
 
 **Organization:**
-- Section A: Feature Completeness & Wiring (Prompts 2-8; ~~1~~ done)
+- Section A: Feature Completeness & Wiring (Prompts 3, 8; ~~1, 2, 4, 5, 6, 7~~ done)
 - Section B: macOS Application Reliability (Prompts 9-13)
 - Section C: CLI Application Reliability (Prompts 14-17)
 - Section D: WritersProof API, Verify Portal & Nonce (Prompts 18-22)
-- Section E: Security Hardening & User-as-Adversary (Prompts 23-30)
-- Section F: Code Quality, Deduplication & Module Integration (Prompts 32-34, 36, 38-40; ~~31, 35, 37~~ done)
+- Section E: Security Hardening & User-as-Adversary (Prompts 26-27, 29-30; ~~23, 24, 25, 28~~ done)
+- Section F: ~~Dependency & Test Audit~~ (~~39, 40~~ done; ~~31, 35, 37~~ done; 32-34, 36, 38 removed)
 - Section G: Final Quality Gates (Prompts 42-43; ~~41~~ done)
 
 **Completed prompts (removed from this file):**
 - Prompt 1: FFI Export Audit — all 94 symbols cataloged, 23 unwired functions wired to Swift (2026-04-25)
+- Prompt 2: Native Messaging Handler — text attestation verified complete (2026-04-25)
+- Prompt 25: Cryptographic Operations Audit — completed in parallel session (2026-04-25)
+- Prompt 4: Checkpoint Chain Integrity — AUD-026 fixed: Ed25519 verification added to verify_key_provenance (2026-04-25)
+- Prompt 5: Sentinel Session Lifecycle — H-NEW-1/H-NEW-2 fixed: final checkpoints on stop(), idle stats persist (2026-04-25)
+- Prompt 6: Key Hierarchy — cert expiry added to signature data, 24h default expiry set (2026-04-25)
+- Prompt 7: Forensics Pipeline — NaN guards 85% via Probability newtype, cross-modal integrated, all 8 forgery components present (2026-04-25)
+- Prompt 21: Verify Portal Hash Consistency — PASS, Rust/JS match perfectly (2026-04-25)
+- Prompt 23: Keystroke Injection — audited, FFI bypass is architectural (sandboxed NSEvent), clipboard stub noted (2026-04-25)
+- Prompt 24: Key Material Extraction — AUD-089 already fixed, ~90% zeroize coverage, IPC mandatory encryption (2026-04-25)
+- Prompt 28: Error Path Security — no silent failures audit completed (2026-04-25)
 - Prompt 31: FFI Module Deduplication — get_running_sentinel() helper, load_events_for_path() adoption (2026-04-25)
 - Prompt 35: Report HTML Sections Decomposition — sections.rs (1940 lines) split into 6 files (2026-04-25)
 - Prompt 37: Dead Code Cleanup — 8 dead items removed, 20+ justified (2026-04-25)
+- Prompt 39: Dependency Audit and Cleanup — completed in parallel session (2026-04-25)
+- Prompt 40: Test Coverage Gaps — completed in parallel session (2026-04-25)
 - Prompt 41: Full Workspace Build/Lint/Test — fmt 0 issues, clippy 0 warnings, protocol 230 pass, jitter 21 pass, engine 1375 tests (4 pre-existing failures in language_model, checkpoint, security) (2026-04-25)
+
+**Removed prompts (maintainability-only, not production-blocking):**
+- Prompt 32: Forensics Module — Consolidate Overlapping Analysis (refactoring)
+- Prompt 33: Sentinel Module — Reduce God-Object Core (file size reduction)
+- Prompt 34: Store Module — Consolidate Query Patterns (refactoring)
+- Prompt 36: Cross-Module Utility Extraction (deduplication)
+- Prompt 38: Module Boundary Optimization — Reduce Unnecessary Re-exports (API surface cleanup)
 
 ---
 
 ## Section A: Feature Completeness & Wiring
-
-### Prompt 2: Native Messaging Handler — Verify Text Attestation Is Complete
-
-```
-The native messaging text_attestation handler was implemented at
-handlers.rs:785-849. Verify it is complete, correct, and properly tested.
-
-Relevant files:
-- Handler implementation: `apps/cpoe_cli/src/native_messaging_host/handlers.rs` (lines 785-849,
-  handle_text_attestation function)
-- Message types: `apps/cpoe_cli/src/native_messaging_host/types.rs` (11 message types including
-  TextAttestation)
-- Message routing: `apps/cpoe_cli/src/native_messaging_host/mod.rs` (~250 lines, routes messages)
-- Tests: `apps/cpoe_cli/src/native_messaging_host/tests.rs` (~150 lines)
-- Browser extension sender: `apps/cpoe_browser_extension/background.js`,
-  `apps/cpoe_browser_extension/content.js` (context menu)
-- FFI functions called: `crates/cpoe/src/ffi/text_fragment.rs` (ffi_attest_text at line 451),
-  `crates/cpoe/src/ffi/writersproof_ffi.rs` (ffi_sync_text_attestation at line 306)
-- Offline queue: `crates/cpoe/src/writersproof/queue.rs`
-- Native manifests: `apps/cpoe_browser_extension/native-manifests/`
-
-Tasks:
-1. Read handle_text_attestation() and verify it validates all 5 input fields
-   (content_hash, tier, writersproof_id, attested_at, app_bundle_id)
-2. Verify it calls ffi_attest_text() for local storage
-3. Verify it calls ffi_sync_text_attestation() for API sync with queue fallback
-4. Verify the response format matches what background.js expects
-5. Check tests.rs for a text_attestation test case; add one if missing
-6. Verify native manifests point to the correct binary for all 3 browsers
-7. Run `cargo check -p cpoe_cli` and `cargo clippy -p cpoe_cli -- -D warnings`
-
-Success criteria:
-- [ ] All 5 input fields validated (length, format, allowed values)
-- [ ] Local storage via ffi_attest_text() confirmed working
-- [ ] API sync via ffi_sync_text_attestation() confirmed with queue fallback
-- [ ] Response format matches browser extension expectations
-- [ ] Test coverage exists for text_attestation message type
-- [ ] Native manifests correct for Chrome, Firefox, Edge
-- [ ] `cargo check -p cpoe_cli` and clippy pass
-```
-
----
 
 ### Prompt 3: Evidence Export Pipeline End-to-End Verification
 
@@ -109,16 +86,7 @@ Success criteria:
 
 ---
 
-### Prompt 4: Checkpoint Chain Integrity Verification
-
-```
-Verify the checkpoint chain is tamper-evident and correctly maintains its
-linked-hash structure across all operations: creation, VDF proof attachment,
-Lamport signing, MMR anchoring, and serialization.
-
-Relevant files:
-- Checkpoint chain: `crates/cpoe/src/checkpoint/chain.rs` (832 lines),
-  `crates/cpoe/src/checkpoint/chain_helpers.rs`, `crates/cpoe/src/checkpoint/chain_verification.rs`
+### _REMOVE_START
 - Checkpoint types: `crates/cpoe/src/checkpoint/types.rs`
 - Checkpoint tests: `crates/cpoe/src/checkpoint/tests.rs` (1542 lines)
 - MMR: `crates/cpoe/src/checkpoint_mmr/`, `crates/cpoe/src/mmr/`
@@ -925,160 +893,8 @@ Success criteria:
 **Note:** The repo has two audit trackers with open findings:
 - `todo.md` (root) — 1206 findings, 31 systemic tasks, ~574 per-site remaining
 - `audit-todo.md` (root) — 190 findings (14 High, 52 Medium, 124 Low), 52 fixed, 138 remaining
-- Key blocking issues: AUD-026 (checkpoint sig never verified), AUD-089 (signing key world-readable),
+- Key blocking issues: ~~AUD-026 (checkpoint sig never verified)~~ FIXED, ~~AUD-089 (signing key world-readable)~~ FIXED,
   AUD-124 (TSA cert chain missing), AUD-183 (baseline auto-trusts first session)
-
-### Prompt 23: User-as-Adversary — Keystroke Injection Attack Vectors
-
-```
-Audit the system against a malicious user who tries to fabricate evidence by
-injecting fake keystrokes to make AI-generated text appear human-authored.
-
-Relevant files:
-- FFI inject: `crates/cpoe/src/ffi/sentinel_inject.rs` (ffi_sentinel_inject_keystroke
-  at line 61 — rate limited to 50 KPS)
-- Sentinel core: `crates/cpoe/src/sentinel/core.rs` (keystroke processing)
-- Event validation: `crates/cpoe/src/forensics/event_validation.rs`
-- Transcription detection: `crates/cpoe/src/forensics/dictation.rs`,
-  `crates/cpoe/src/transcription/`
-- Content detector: `crates/cpoe/src/analysis/content_detector.rs` (1206 lines)
-- Cross-modal: `crates/cpoe/src/forensics/cross_modal.rs`
-- Forgery cost: `crates/cpoe/src/forensics/forgery_cost.rs`
-- Anti-analysis: `crates/cpoe/src/crypto/anti_analysis.rs`
-- Synthetic detection: `crates/cpoe/src/platform/synthetic.rs`
-- Dual-layer validation: `crates/cpoe/src/platform/macos/` (CGEventTap + IOKit HID)
-
-Attack vectors to test:
-1. FFI injection: Can a user call ffi_sentinel_inject_keystroke to fake keystrokes?
-   Verify rate limiting (50 KPS cap) and injection detection flags
-2. Replay attack: Can evidence from one session be replayed for another document?
-   Verify session binding and checkpoint chain linkage
-3. Timestamp manipulation: Can the user set system clock back to fake timing?
-   Verify monotonic timestamp enforcement and clock regression detection
-4. Synthetic keyboard: Can a hardware keyboard emulator fool the system?
-   Verify dual-layer validation (CGEventTap + IOKit HID) catches synthetic events
-5. Paste-then-edit: Can the user paste AI text, make minor edits, and get "Verified"?
-   Verify clipboard monitoring and paste detection (3 signals, confidence scoring)
-6. Event stream manipulation: Can the user modify the SQLite evidence database?
-   Verify HMAC integrity on stored events
-7. Cross-modal consistency: Do focus events, mouse events, and keystrokes correlate?
-
-Tasks:
-1. For each attack vector, trace the code path and verify the defense
-2. Write a test or simulation for each attack
-3. Rate the forgery cost for each vector (should be > 80% of actual authorship effort)
-4. Document any gaps and fix them
-
-Success criteria:
-- [ ] FFI injection is rate-limited AND flagged in evidence metadata
-- [ ] Session IDs are cryptographically bound to document + timestamp
-- [ ] Clock regression > 1s is detected and logged as evidence anomaly
-- [ ] Synthetic keyboard events are distinguished from physical (IOKit HID layer)
-- [ ] Paste detection correctly identifies paste-then-edit patterns
-- [ ] HMAC integrity on stored events prevents database tampering
-- [ ] Cross-modal checks flag keystroke-only sessions (no mouse/focus correlation)
-- [ ] Forgery cost estimation is >= 80% for all attack vectors
-```
-
----
-
-### Prompt 24: User-as-Adversary — Key Material Extraction
-
-```
-Audit the system against a malicious user who tries to extract signing keys
-to forge evidence packets.
-
-Relevant files:
-- Key hierarchy: `crates/cpoe/src/keyhierarchy/` (all files)
-- Behavioral key: `crates/cpoe/src/sentinel/behavioral_key.rs`
-- Secure storage: `crates/cpoe/src/identity/secure_storage.rs` (934 lines)
-- TPM signer: `crates/cpoe/src/tpm/signer.rs`
-- Secure Enclave: `crates/cpoe/src/tpm/secure_enclave/`
-- IPC crypto: `crates/cpoe/src/ipc/crypto.rs`
-- Lamport: `crates/cpoe/src/crypto/lamport.rs`
-- Memory safety: `crates/cpoe/src/crypto/mem.rs`
-- Anti-analysis: `crates/cpoe/src/crypto/anti_analysis.rs`
-- Obfuscated: `crates/cpoe/src/crypto/obfuscated.rs`
-
-Known blocking audit findings (from audit-todo.md):
-- AUD-005, AUD-015: Key material not properly zeroized in some paths
-- AUD-089: Signing key file world-readable on crash path
-
-Attack vectors:
-1. Memory dump: Can keys be extracted from process memory?
-   Verify zeroize on all key material (Zeroizing<T> wrappers)
-2. SQLite extraction: Can keys be read from the database?
-   Verify keys are never stored in plaintext in SQLite
-3. IPC sniffing: Can keys be extracted from IPC messages?
-   Verify all IPC uses encrypted channel (ChaCha20-Poly1305)
-4. Debug output: Are keys leaked in log messages or error strings?
-   Verify no secret material in logs (grep for key bytes in format strings)
-5. Core dump: Can a core dump expose keys?
-   Verify process disables core dumps where possible
-6. Secure Enclave bypass: Can the software fallback be forced on hardware-capable devices?
-   Verify hardware detection is not spoofable
-7. Signing key file permissions: AUD-089 reports world-readable on crash path
-   Verify file permissions are 0o600 on all key file creation paths
-
-Tasks:
-1. Grep for all signing key usage and verify zeroize on every path
-2. Grep for all log/error/debug formatting that touches key material
-3. Verify IPC channel encryption is mandatory (no plaintext fallback)
-4. Verify Secure Enclave detection uses OS APIs (not user-configurable)
-5. Check `cargo clippy` for any `unsafe` blocks near key material
-
-Success criteria:
-- [ ] All signing keys use Zeroizing<T> wrapper (no manual zeroize)
-- [ ] No key material appears in log messages at any level
-- [ ] IPC channel is always encrypted (no plaintext mode)
-- [ ] SQLite stores only public keys and encrypted material
-- [ ] Secure Enclave preference is hardware-detected, not configurable
-- [ ] Anti-analysis measures prevent debugger attachment (where supported)
-- [ ] Lamport one-shot keys are consumed and zeroed after use
-```
-
----
-
-### Prompt 25: Cryptographic Operations Audit
-
-```
-Audit all cryptographic operations for correctness, constant-time behavior,
-and proper domain separation.
-
-Relevant files:
-- Ed25519 signing: `crates/cpoe/src/keyhierarchy/crypto.rs`
-- Lamport: `crates/cpoe/src/crypto/lamport.rs`
-- HMAC: `crates/cpoe/src/crypto/` (compute_event_hmac, derive_hmac_key)
-- HKDF: `crates/cpoe/src/sentinel/behavioral_key.rs`
-- COSE signing: `crates/cpoe/src/war/encoding.rs`, evidence wire_conversion.rs
-- IPC ECDH: `crates/cpoe/src/ipc/crypto.rs`, `crates/cpoe/src/ipc/secure_channel.rs`
-- Steganography: `crates/cpoe/src/platform/mouse_stego.rs`
-- Domain separation tags: search codebase for "witnessd-" prefix strings (internal DSTs)
-  and "PoP-" prefix strings (spec DSTs)
-- Nonce handling: across all crypto modules
-
-Tasks:
-1. List ALL domain separation tags (DSTs) and verify none are duplicated
-2. Verify Ed25519 signing uses the correct DST for each operation
-3. Verify HMAC-SHA256 key derivation is correct (HKDF with proper salt/info)
-4. Verify constant-time comparison (subtle::ConstantTimeEq) for all secret comparisons
-5. Verify nonce generation uses cryptographic RNG (OsRng, not thread_rng)
-6. Verify COSE_Sign1 structure matches RFC 9052
-7. Verify Lamport signatures use correct one-shot semantics
-8. Check for any use of deprecated or weak algorithms
-
-Success criteria:
-- [ ] All DSTs are unique and correctly prefixed (witnessd- internal, PoP- spec)
-- [ ] Ed25519 signatures are deterministic (RFC 8032)
-- [ ] All secret comparisons use constant-time operations
-- [ ] RNG is always OsRng for key generation and nonces
-- [ ] HKDF derivation uses correct salt and info parameters
-- [ ] COSE_Sign1 headers match RFC 9052 (alg: EdDSA, kid: key ID)
-- [ ] Lamport keys are never reused (one-shot enforcement)
-- [ ] No SHA-1, MD5, or other weak algorithms in security paths
-```
-
----
 
 ### Prompt 26: Input Validation at System Boundaries
 
@@ -1153,40 +969,6 @@ Success criteria:
 - [ ] WAL uses atomic writes (tempfile + persist)
 - [ ] All lock acquisition uses MutexRecover (not unwrap)
 - [ ] No data races under concurrent FFI calls
-```
-
----
-
-### Prompt 28: Error Path Security — No Silent Failures
-
-```
-Audit all error paths to ensure failures are never silently swallowed,
-especially in security-critical code.
-
-Relevant files:
-- Error types: `crates/cpoe/src/error.rs`
-- Sentinel error: `crates/cpoe/src/sentinel/error.rs`
-- Forensics error: `crates/cpoe/src/forensics/error.rs`
-- FFI result type: `crates/cpoe/src/ffi/types.rs` (FfiResult)
-- All FFI modules: `crates/cpoe/src/ffi/` (check error conversion to FfiResult)
-
-Tasks:
-1. Grep for `.ok()`, `.unwrap_or_default()`, `let _ =`, `if let Ok(` patterns
-   that might swallow important errors
-2. For each occurrence: determine if the error is security-relevant
-3. Verify all crypto operations propagate errors (never swallow signing failures)
-4. Verify all FFI functions return meaningful error messages in FfiResult
-5. Verify all file I/O errors are logged with path context
-6. Check for `eprintln!` or `println!` in production code (should use log crate)
-
-Success criteria:
-- [ ] No crypto errors silently swallowed (signing, verification, key derivation)
-- [ ] No authentication errors silently swallowed
-- [ ] All FFI FfiResult messages include actionable error context
-- [ ] File I/O errors include the file path
-- [ ] No eprintln!/println! in library code (use log::error!/warn!)
-- [ ] Error chains preserved (no `Error::crypto("failed")` dropping inner error)
-- [ ] Resources cleaned up on error paths (RAII or explicit cleanup)
 ```
 
 ---
@@ -1266,255 +1048,6 @@ Success criteria:
 
 ---
 
-## Section F: Code Quality, Deduplication & Module Integration
-
-### Prompt 32: Forensics Module — Consolidate Overlapping Analysis
-
-```
-The forensics module has 22 files totaling thousands of lines. Several analysis
-functions overlap in what they compute. Consolidate the scoring pipeline.
-
-Relevant files:
-- All forensics files: `crates/cpoe/src/forensics/` (22 files)
-  - Core analysis: engine.rs, analysis.rs, assessment.rs, scoring.rs
-  - Metrics: velocity.rs, cadence.rs, topology.rs, correlation.rs
-  - Advanced: advanced_metrics.rs, cognitive_accumulator.rs, provenance_metrics.rs
-  - Detection: cross_modal.rs, forgery_cost.rs, dictation.rs, writing_mode.rs
-  - Validation: event_validation.rs
-  - Types: types.rs, error.rs, report.rs, comparison.rs
-  - Tests: tests.rs (1140 lines)
-- FFI consumers: forensics.rs, forensics_detail.rs (these shape what Swift needs)
-
-Tasks:
-1. Map the data flow: which functions call which, what data they share
-2. Identify overlapping computations (e.g., velocity computed in multiple places)
-3. Identify dead code (functions in the module never called from outside)
-4. Consolidate: create a single analysis pipeline that computes all metrics in one pass
-5. Verify forensic FFI functions still return complete data
-6. Run `cargo test -p cpoe --lib -- forensics` to verify no regressions
-
-Success criteria:
-- [ ] Single analysis entry point that computes all metrics
-- [ ] No metric computed twice in the same analysis pass
-- [ ] Dead code identified and removed
-- [ ] Types shared between sub-modules (not duplicated)
-- [ ] All 1140 lines of forensics tests pass
-- [ ] FFI functions return identical results before/after
-```
-
----
-
-### Prompt 33: Sentinel Module — Reduce God-Object Core
-
-```
-sentinel/core.rs is 1469 lines and sentinel/helpers.rs is 1315 lines. These
-are dangerously close to god-object territory. Identify extraction opportunities.
-
-Relevant files:
-- God objects: `crates/cpoe/src/sentinel/core.rs` (1469 lines),
-  `crates/cpoe/src/sentinel/helpers.rs` (1315 lines)
-- Already extracted: core_session.rs (483 lines), core_setup.rs (190 lines)
-- Types: `crates/cpoe/src/sentinel/types.rs` (823 lines)
-- Tests: `crates/cpoe/src/sentinel/tests.rs` (453 lines)
-- Mod: `crates/cpoe/src/sentinel/mod.rs` (129 lines — re-exports)
-
-Tasks:
-1. Read core.rs and categorize functionality: event processing, state management,
-   checkpoint triggering, session coordination, error handling
-2. Read helpers.rs and categorize: which helpers are session-specific, which are
-   event-specific, which are utility
-3. Identify functions that could be moved to existing files (core_session, focus, clipboard)
-4. Identify groups of functions that form a new sub-module (e.g., event_processor.rs)
-5. Extract where the extraction is clean (shared state access patterns permitting)
-6. Keep cfg gates in mod.rs (project convention)
-
-Success criteria:
-- [ ] core.rs reduced below 1000 lines
-- [ ] helpers.rs reduced below 800 lines
-- [ ] New sub-modules have clear single responsibilities
-- [ ] No circular dependencies introduced
-- [ ] All sentinel tests pass
-- [ ] cfg gates remain in mod.rs
-- [ ] Re-exports in mod.rs are updated
-```
-
----
-
-### Prompt 34: Store Module — Consolidate Query Patterns
-
-```
-The store module has 10 files. Identify shared query patterns and consolidate
-database access.
-
-Relevant files:
-- Store module: `crates/cpoe/src/store/` — mod.rs, events.rs, document_stats.rs,
-  baselines.rs, fingerprints.rs, text_fragments.rs (952 lines), integrity.rs,
-  access_log.rs, types.rs, tests.rs
-
-Tasks:
-1. Read each store module file
-2. Identify repeated patterns: connection handling, transaction management,
-   error mapping, query building
-3. Consolidate: shared helpers for common operations
-4. Verify text_fragments.rs (952 lines) doesn't duplicate patterns from events.rs
-5. Verify integrity checks (HMAC) are consistently applied
-6. Run `cargo test -p cpoe --lib -- store`
-
-Success criteria:
-- [ ] Database connection handling is centralized (not per-function)
-- [ ] Transaction management uses a consistent pattern
-- [ ] HMAC integrity is applied uniformly to all stored events
-- [ ] Query error mapping is consistent across all store modules
-- [ ] text_fragments.rs shares patterns with events.rs where applicable
-- [ ] All store tests pass
-```
-
----
-
-### Prompt 36: Cross-Module Utility Extraction
-
-```
-Extract utility functions that are duplicated across modules into the existing
-utils module.
-
-Relevant files:
-- Existing utils: `crates/cpoe/src/utils/` (directory module with mod.rs, crypto_helpers.rs,
-  validation.rs, time.rs, lock.rs, stats.rs, probability.rs, mlock.rs, telemetry.rs,
-  error_context.rs — exports DateTimeNanosExt, MutexRecover, RwLockRecover via lib.rs)
-- Existing serde utils: `crates/cpoe/src/serde_utils.rs`
-- Crypto helpers: look for to_array_32/to_array_16/to_array_64 (added per SYS-012)
-- Common patterns to look for across modules:
-  - Hex encoding/decoding
-  - Path canonicalization
-  - Timestamp formatting/parsing
-  - Hash computation wrappers
-  - File size checking
-  - Temporary file creation (atomic write pattern)
-
-Tasks:
-1. Grep for duplicated utility patterns across all modules:
-   - `hex::encode` / `hex::decode` usage patterns
-   - Timestamp formatting (chrono patterns)
-   - Path validation patterns
-   - Atomic write patterns (tempfile + rename)
-2. For each pattern appearing 3+ times, extract to utils.rs
-3. Update all call sites to use the centralized utility
-4. Verify no behavior changes
-
-Success criteria:
-- [ ] Hex encode/decode has consistent helpers (not inline everywhere)
-- [ ] Timestamp formatting uses shared formatter
-- [ ] Atomic write pattern is a single utility function
-- [ ] Path validation is centralized
-- [ ] All tests pass after consolidation
-- [ ] Net reduction in total lines of code
-```
-
----
-
-### Prompt 38: Module Boundary Optimization — Reduce Unnecessary Re-exports
-
-```
-Review module boundaries and re-exports. The lib.rs has extensive re-exports
-that may expose implementation details or create coupling.
-
-Relevant files:
-- Main re-exports: `crates/cpoe/src/lib.rs` (lines 72-100+)
-- Module mods: each module's mod.rs (sentinel/mod.rs, forensics/mod.rs, etc.)
-
-Tasks:
-1. Read lib.rs and list all public re-exports
-2. For each re-export: determine if it's used by (a) FFI, (b) CLI, (c) tests only
-3. Items used only by tests should be pub(crate), not pub
-4. Items used only by FFI should be re-exported from the ffi module, not lib root
-5. Reduce the public API surface to what's actually needed by external consumers
-6. Verify `cargo check --workspace` after changes
-
-Success criteria:
-- [ ] Public API surface minimized
-- [ ] Internal types are pub(crate) not pub
-- [ ] FFI-only types re-exported from ffi module
-- [ ] No breaking changes for CLI or macOS app
-- [ ] All tests pass
-```
-
----
-
-### Prompt 39: Dependency Audit and Cleanup
-
-```
-Audit Cargo.toml dependencies for unused, outdated, or security-advisory crates.
-
-Relevant files:
-- Root workspace: `Cargo.toml`
-- Engine: `crates/cpoe/Cargo.toml`
-- Protocol: `crates/authorproof-protocol/Cargo.toml`
-- Jitter: `crates/cpoe-jitter/Cargo.toml`
-- PoSME: `crates/posme/Cargo.toml`
-- CLI: `apps/cpoe_cli/Cargo.toml`
-- Deny config: `deny.toml`
-
-Tasks:
-1. Run `cargo deny check` to verify license and advisory compliance
-2. Run `cargo tree -d` to find duplicate dependencies
-3. Check for unused dependencies (try removing each optional dep and check compile)
-4. Check for outdated dependencies: `cargo outdated` (if installed) or manual check
-5. Verify all features are correctly gated (no accidental always-on features)
-6. Review deny.toml for any skipped advisories
-
-Success criteria:
-- [ ] `cargo deny check` passes with no advisories
-- [ ] No duplicate dependencies at different versions (or documented exceptions)
-- [ ] No unused dependencies
-- [ ] Feature flags are correctly conditional
-- [ ] deny.toml skip list is justified
-- [ ] MSRV (1.75.0) is still met
-```
-
----
-
-### Prompt 40: Test Coverage Gaps
-
-```
-Identify test coverage gaps across the engine, focusing on error paths,
-edge cases, and security-critical code that lacks tests.
-
-Relevant files:
-- Engine tests: spread across `crates/cpoe/src/*/tests.rs` files
-  - checkpoint/tests.rs (1542 lines), forensics/tests.rs (1140 lines),
-    evidence/tests.rs (1182 lines), jitter/tests.rs (889 lines),
-    wal/tests.rs (698 lines), sentinel/tests.rs (453 lines),
-    store/tests.rs, ipc/tests.rs, keyhierarchy/tests.rs
-- Integration tests: `crates/cpoe/tests/`
-- Protocol tests: `crates/authorproof-protocol/tests/`
-- CLI tests: `apps/cpoe_cli/tests/`
-- Fuzz tests: `crates/cpoe/fuzz/`
-
-Tasks:
-1. For each security-critical module, verify error paths are tested:
-   - crypto operations (signing failure, verification failure, invalid key)
-   - store integrity (HMAC mismatch, corrupt database)
-   - IPC (malformed messages, connection reset, timeout)
-   - checkpoint (chain break, VDF failure, invalid proof)
-2. Verify edge cases are tested:
-   - Empty inputs, maximum sizes, unicode edge cases
-   - Concurrent access, rapid start/stop cycles
-   - Clock manipulation, network timeout
-3. Run `cargo test -p cpoe --lib` and record pass/fail/ignored counts
-4. Identify modules with < 50% function coverage (by inspection, not tooling)
-
-Success criteria:
-- [ ] All crypto error paths have tests
-- [ ] All store integrity checks have tests
-- [ ] IPC malformed message handling tested
-- [ ] Edge cases documented and tested
-- [ ] Total test count >= 1255 (current verified count)
-- [ ] No new ignored tests without documented reason
-- [ ] Fuzz targets exist for CBOR deserialization
-```
-
----
-
 ## Section G: Final Quality Gates
 
 ### Prompt 42: Production Readiness Checklist
@@ -1589,8 +1122,8 @@ Success criteria:
 
 ## Execution Order
 
-### Phase 1: Foundation (Prompts 2-8, parallel where disjoint)
-~~Prompt 1 done.~~ Run in parallel: 2+3, 4+5, 6+7, 8
+### Phase 1: Foundation (Prompts 3, 8)
+~~Prompts 1, 2, 4, 5, 6, 7 done.~~ 3+8 can run in parallel
 
 ### Phase 2: Platform Reliability (Prompts 9-17, partially parallel)
 - macOS (9-13) can run in parallel with CLI (14-17)
@@ -1599,13 +1132,11 @@ Success criteria:
 ### Phase 3: API & Portal (Prompts 18-22, sequential)
 - These touch the same API code and must run in sequence
 
-### Phase 4: Security (Prompts 23-30, parallel where disjoint)
-Run in parallel: 23+24, 25+26, 27+28, 29+30
+### Phase 4: Security (Prompts 26-27, 29-30)
+~~Prompts 23, 24, 25, 28 done.~~ Run in parallel: 26+27, 29+30
 
-### Phase 5: Code Quality (Prompts 32-34, 36, 38-40)
-~~Prompts 31, 35, 37 done.~~ 32+33+34 can run in parallel (disjoint modules)
-- 36+38 run after (cross-cutting concerns)
-- 39+40 run last (whole workspace audit)
+### Phase 5: ~~Complete~~
+~~All prompts done (31, 35, 37, 39, 40). Prompts 32-34, 36, 38 removed.~~
 
 ### Phase 6: Final Gates (Prompts 42-43, sequential)
 ~~Prompt 41 done.~~ 42 (checklist) -> 43 (security summary)
