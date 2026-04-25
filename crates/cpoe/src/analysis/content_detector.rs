@@ -543,9 +543,6 @@ impl PatternMatcher {
             "Bcc:",
             "Reply-To:",
             "Dear ",
-            "Hi ",
-            "Hello ",
-            "Thanks",
             "Best regards",
             "Sincerely",
             "Kind regards",
@@ -749,9 +746,12 @@ impl ContentDetector {
             score += 0.15;
         }
 
-        // Reduce score if email/messaging patterns present
-        if patterns.iter().any(|p| p.starts_with("messaging:")) {
+        // Reduce score if multiple email/messaging patterns present
+        let msg_count = patterns.iter().filter(|p| p.starts_with("messaging:")).count();
+        if msg_count >= 3 {
             score *= 0.5;
+        } else if msg_count >= 1 {
+            score *= 0.8;
         }
 
         // If we have keystroke metrics, check for rapid, consistent typing
