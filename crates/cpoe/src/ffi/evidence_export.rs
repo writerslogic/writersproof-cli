@@ -438,6 +438,10 @@ pub fn ffi_get_compact_ref(path: String) -> String {
 /// Returns an FfiResult with the output path on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult {
+    let cpoe_path = match crate::sentinel::helpers::validate_path(&cpoe_path) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(e) => return FfiResult::err(format!("Invalid cpoe path: {e}")),
+    };
     let data = match std::fs::read(&cpoe_path) {
         Ok(d) => d,
         Err(e) => return FfiResult::err(format!("Failed to read .cpoe file: {e}")),

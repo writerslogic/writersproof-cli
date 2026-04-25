@@ -142,6 +142,10 @@ pub fn ffi_create_authorship_credential(
     if session_id.is_empty() {
         return FfiCredentialResult::err("Session ID is required");
     }
+    if !confidence.is_finite() {
+        return FfiCredentialResult::err("Confidence must be a finite number");
+    }
+    let confidence = confidence.clamp(0.0, 1.0);
 
     let store = match open_store() {
         Ok(s) => s,

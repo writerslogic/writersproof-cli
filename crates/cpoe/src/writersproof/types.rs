@@ -325,6 +325,7 @@ pub struct ConfirmNonceRequest {
 
 /// Request body for `POST /v1/text-attestation`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TextAttestationRequest {
     pub content_hash: String,
     pub tier: String,
@@ -340,6 +341,7 @@ pub struct TextAttestationRequest {
 
 /// Response from `POST /v1/text-attestation`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TextAttestationResponse {
     pub success: bool,
     pub writersproof_id: String,
