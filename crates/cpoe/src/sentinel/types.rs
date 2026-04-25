@@ -608,19 +608,19 @@ const DOC_EXTENSIONS: &[&str] = &[
     ".adoc", ".afdesign", ".afphoto", ".afpub", ".asciidoc",
     ".bat", ".c", ".cpp", ".css", ".csv",
     ".doc", ".docx", ".draft",
-    ".epub",
+    ".eml", ".emlx", ".epub",
     ".fdx", ".fountain",
     ".go",
     ".h", ".html",
     ".idml", ".indd",
     ".java", ".jl", ".js", ".json", ".jsx",
-    ".kt",
+    ".key", ".kt",
     ".latex", ".lua",
     ".md", ".mmd",
     ".odt", ".opml", ".org",
     ".pages", ".pdf", ".php", ".pl", ".ppt", ".pptx", ".ps1",
     ".r", ".rb", ".rs", ".rst", ".rtf",
-    ".scala", ".scriv", ".scrivx", ".sh", ".swift",
+    ".scala", ".scriv", ".scrivx", ".sh", ".story", ".swift",
     ".tex", ".toml", ".ts", ".tsx", ".txt",
     ".ulysses",
     ".wpd", ".wri",
@@ -652,13 +652,18 @@ const TITLE_INFERRED_APPS: &[&str] = &[
     "com.figma.Desktop",
     "com.hemingwayapp.hemingway",
     "com.celtx.mac",
-    // Container-based / cloud-library apps (no AXDocument file path)
+    // Container-based / cloud-library / database-backed apps (no AXDocument)
     "com.ulyssesapp.mac",
     "net.shinyfrog.bear",
     "com.agiletortoise.Drafts-OSX",
     "com.bloombuilt.dayone-mac",
     "com.luki.paper.mac",        // Craft
     "com.microsoft.onenote.mac",
+    "com.apple.Notes",
+    "com.ommwriter.ommwriter",
+    "dev.warp.Warp-Stable",
+    "com.apple.mail",
+    "com.microsoft.Outlook",
 ];
 
 /// Window title fragments that indicate no real document is open.
@@ -673,6 +678,9 @@ const SKIP_TITLE_FRAGMENTS: &[&str] = &[
     "get started",
     "graph view",
     "daily note",
+    "inbox",
+    "mailboxes",
+    "no subject",
 ];
 
 /// Infer a document file path from a window title like `"file.rs - VSCode"`.

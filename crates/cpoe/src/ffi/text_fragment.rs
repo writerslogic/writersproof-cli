@@ -136,9 +136,14 @@ fn hash_text(text: &str) -> [u8; 32] {
 /// letters + ASCII digits, lowercase everything. Resilient to formatting
 /// changes across platforms, apps, and sharing contexts.
 pub fn normalize_for_attestation(text: &str) -> String {
-    text.nfc()
+    // Lowercase first, then NFC again (to recombine chars that decompose
+    // during lowercasing, e.g. İ → i+U+0307), then filter. This order
+    // ensures idempotence — running the function twice yields the same
+    // result. Both Rust and TS implementations must use this exact order.
+    let lowered: String = text.nfc().flat_map(|c| c.to_lowercase()).collect();
+    lowered
+        .nfc()
         .filter(|c| c.is_alphabetic() || c.is_ascii_digit())
-        .flat_map(|c| c.to_lowercase())
         .collect()
 }
 
@@ -950,6 +955,107 @@ mod tests {
     #[test]
     fn test_normalize_empty_after_strip() {
         assert_eq!(normalize_for_attestation("!@#$%"), "");
+    }
+
+    // -- Cross-platform parity tests (must match TS normalizeForAttestation) --
+
+    #[test]
+    fn test_normalize_roman_numerals_kept() {
+        // U+2160 (Nl category) — is_alphabetic() = true, lowercases to U+2170
+        assert_eq!(normalize_for_attestation("Chapter\u{2160}"), "chapter\u{2170}");
+    }
+
+    #[test]
+    fn test_normalize_arabic_superscript_alef() {
+        // U+0670 — Other_Alphabetic, is_alphabetic() = true
+        assert_eq!(normalize_for_attestation("\u{0627}\u{0670}"), "\u{0627}\u{0670}");
+    }
+
+    #[test]
+    fn test_normalize_combining_grave_stripped() {
+        // U+0300 — combining mark, NOT alphabetic, stripped
+        assert_eq!(normalize_for_attestation("a\u{0300}b"), "àb");
+        // NFC merges a+U+0300 → à, then à is alphabetic → kept
+    }
+
+    #[test]
+    fn test_normalize_orphan_combining_mark_stripped() {
+        // Standalone U+0301 without preceding base — not alphabetic
+        assert_eq!(normalize_for_attestation("\u{0301}"), "");
+    }
+
+    #[test]
+    fn test_normalize_turkish_i_dot() {
+        // İ (U+0130) → lowercase → 'i' + U+0307, second NFC keeps them
+        // separate (no precomposed form), filter strips U+0307 → 'i'.
+        assert_eq!(normalize_for_attestation("\u{0130}"), "i");
+    }
+
+    #[test]
+    fn test_normalize_turkish_istanbul_idempotent() {
+        let once = normalize_for_attestation("\u{0130}stanbul");
+        let twice = normalize_for_attestation(&once);
+        assert_eq!(once, "istanbul");
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn test_normalize_sharp_s() {
+        // ẞ (U+1E9E) lowercases to ß (U+00DF)
+        assert_eq!(normalize_for_attestation("\u{1E9E}"), "\u{00DF}");
+    }
+
+    #[test]
+    fn test_normalize_ligature_fi() {
+        // ﬁ (U+FB01) — stays as ligature in NFC, is alphabetic
+        assert_eq!(normalize_for_attestation("\u{FB01}"), "\u{FB01}");
+    }
+
+    #[test]
+    fn test_normalize_fullwidth_digit_stripped() {
+        // ５ (U+FF15) — NOT is_ascii_digit(), stripped
+        assert_eq!(normalize_for_attestation("test\u{FF15}"), "test");
+    }
+
+    #[test]
+    fn test_normalize_emoji_stripped() {
+        assert_eq!(normalize_for_attestation("I \u{2764}\u{FE0F} writing"), "iwriting");
+    }
+
+    #[test]
+    fn test_normalize_idempotent() {
+        let input = "Hello, World! café 写作 5";
+        let once = normalize_for_attestation(input);
+        let twice = normalize_for_attestation(&once);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn test_normalize_cross_platform_hash_helloworld() {
+        // Reference hash shared with TS tests
+        let (_, hash) = hash_normalized_text("Hello, World!");
+        assert_eq!(
+            hex::encode(hash),
+            "936a185caaa266bb9cbe981e9e05cb78cd732b0b3280eb944412bb6f8f8f07af"
+        );
+    }
+
+    #[test]
+    fn test_normalize_cross_platform_hash_cafe() {
+        let (_, h1) = hash_normalized_text("café résumé");
+        assert_eq!(
+            hex::encode(h1),
+            "c4bc0b6f3d833fa42940859cc9721c284bc847442d35eb425eb8168196fa5c76"
+        );
+    }
+
+    #[test]
+    fn test_normalize_cross_platform_hash_cjk() {
+        let (_, hash) = hash_normalized_text("写作 证明");
+        assert_eq!(
+            hex::encode(hash),
+            "aa701320ed4fb3e8c8d478c6a92f5aee53a50bc3d4c1adf8dac226f554923f55"
+        );
     }
 
     #[test]

@@ -315,6 +315,12 @@ impl Default for SentinelConfig {
                 "scriv", "scrivx", "fdx", "fountain", "mmd",
                 // Document formats
                 "doc", "docx", "odt", "pages", "wpd", "wri", "epub",
+                // Presentation formats
+                "key", "pptx", "ppt",
+                // Publishing / layout
+                "indd", "idml",
+                // Novel / story writing
+                "story",
                 // Affinity suite
                 "afpub", "afdesign", "afphoto",
                 // Outlining / structured writing
@@ -325,6 +331,8 @@ impl Default for SentinelConfig {
                 "tex", "latex", "org", "rst", "adoc", "asciidoc",
                 // Web writing
                 "html", "htm",
+                // Email
+                "eml", "emlx",
                 // Code (writers who code)
                 "rs", "py", "js", "ts", "go", "java", "swift", "c", "cpp",
                 "h", "rb", "php", "sh", "css", "json", "yaml", "yml",

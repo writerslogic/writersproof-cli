@@ -24,10 +24,15 @@
 //! - `needs_title_inference`: `true` when the app does not expose a real
 //!   file path via `AXDocument` (must also appear in `TITLE_INFERRED_APPS`).
 
-use std::path::PathBuf;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
 
 /// How a writing application stores its content on disk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StoragePattern {
     /// Documents are saved as ordinary files; the sentinel discovers them
     /// through the Accessibility `AXDocument` attribute or FSEvents.
@@ -42,6 +47,18 @@ pub enum StoragePattern {
     /// inside the app's sandbox. The sentinel watches the container for any
     /// change activity; document identity comes from the window title.
     DatabaseBacked,
+}
+
+/// Confidence level from auto-discovery probing.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeConfidence {
+    /// App was running and AX probe succeeded.
+    High,
+    /// Filesystem heuristics matched but app was not running.
+    Medium,
+    /// Defaulted to FileBased with no other signals.
+    Low,
 }
 
 /// Metadata about a writing application known to WritersProof.
@@ -60,6 +77,20 @@ pub struct WritingApp {
     /// window title even without a recognised file extension. The bundle ID
     /// must also appear in `TITLE_INFERRED_APPS` in `sentinel/types.rs`.
     pub needs_title_inference: bool,
+}
+
+/// A user-added writing application, persisted to `user_apps.json`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct UserWritingApp {
+    pub bundle_id: String,
+    pub display_name: String,
+    pub storage: StoragePattern,
+    pub container_paths: Vec<String>,
+    pub needs_title_inference: bool,
+    /// When this entry was added (Unix timestamp in JSON).
+    #[serde(with = "system_time_serde")]
+    pub added_at: SystemTime,
+    pub probe_confidence: ProbeConfidence,
 }
 
 /// All writing applications known to WritersProof.
@@ -419,6 +450,114 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
     },
+    // ── Apple Notes ────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.apple.Notes",
+        display_name: "Apple Notes",
+        storage: StoragePattern::DatabaseBacked,
+        container_paths: &[
+            "Library/Group Containers/group.com.apple.notes",
+            "Library/Containers/com.apple.Notes/Data/Library/Notes",
+        ],
+        needs_title_inference: true,
+    },
+    // ── Sublime Text ───────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.sublimetext.4",
+        display_name: "Sublime Text",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    WritingApp {
+        bundle_id: "com.sublimetext.3",
+        display_name: "Sublime Text 3",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Nova ───────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.panic.Nova",
+        display_name: "Nova",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Storyist ───────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.storyist.mac",
+        display_name: "Storyist",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── WriteRoom ──────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.hogbaysoftware.WriteRoom",
+        display_name: "WriteRoom",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── OmmWriter ──────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.ommwriter.ommwriter",
+        display_name: "OmmWriter",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true, // limited AX support
+    },
+    // ── Warp (modern terminal — vim/emacs authors) ─────────────────────────
+    WritingApp {
+        bundle_id: "dev.warp.Warp-Stable",
+        display_name: "Warp",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true, // title shows cwd / running command
+    },
+    // ── Adobe InDesign ─────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.adobe.InDesign",
+        display_name: "Adobe InDesign",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Keynote ────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.apple.iWork.Keynote",
+        display_name: "Keynote",
+        storage: StoragePattern::CloudLibrary,
+        container_paths: &["Library/Mobile Documents/com~apple~Keynote/Documents"],
+        needs_title_inference: false,
+    },
+    // ── PowerPoint ─────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.microsoft.Powerpoint",
+        display_name: "Microsoft PowerPoint",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Apple Mail ─────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.apple.mail",
+        display_name: "Apple Mail",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true, // compose windows only expose subject
+    },
+    // ── Microsoft Outlook ──────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.microsoft.Outlook",
+        display_name: "Microsoft Outlook",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[
+            "Library/Group Containers/UBF8T346G9.Office/Outlook",
+        ],
+        needs_title_inference: true, // compose windows only expose subject
+    },
 ];
 
 /// Look up a `WritingApp` by bundle ID (case-insensitive).
@@ -461,6 +600,248 @@ pub fn needs_title_inference(bundle_id: &str) -> bool {
     lookup(bundle_id).is_some_and(|a| a.needs_title_inference)
 }
 
+// ---------------------------------------------------------------------------
+// Persistence schema
+// ---------------------------------------------------------------------------
+
+const USER_APPS_SCHEMA_VERSION: u32 = 1;
+const USER_APPS_FILENAME: &str = "user_apps.json";
+
+#[derive(Serialize, Deserialize)]
+struct UserAppsFile {
+    schema_version: u32,
+    apps: Vec<UserWritingApp>,
+}
+
+mod system_time_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    pub fn serialize<S: Serializer>(time: &SystemTime, s: S) -> Result<S::Ok, S::Error> {
+        time.duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<SystemTime, D::Error> {
+        let secs = u64::deserialize(d)?;
+        Ok(UNIX_EPOCH + Duration::from_secs(secs))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unified registry
+// ---------------------------------------------------------------------------
+
+/// Merges built-in and user-added writing apps into a single queryable
+/// registry with JSON persistence and a precomputed title-inference set.
+#[derive(Debug)]
+pub struct AppRegistry {
+    builtin: &'static [WritingApp],
+    user: Vec<UserWritingApp>,
+    /// Lowercase bundle IDs that need title-based document inference.
+    title_inferred: HashSet<String>,
+    data_dir: PathBuf,
+}
+
+impl AppRegistry {
+    /// Load the registry from `data_dir/user_apps.json`.
+    ///
+    /// Missing file → empty user list. Malformed file → backup + empty list.
+    pub fn load(data_dir: &Path) -> Self {
+        let path = data_dir.join(USER_APPS_FILENAME);
+        let user = match std::fs::read_to_string(&path) {
+            Ok(contents) => match serde_json::from_str::<UserAppsFile>(&contents) {
+                Ok(file) if file.schema_version >= USER_APPS_SCHEMA_VERSION => {
+                    if file.schema_version > USER_APPS_SCHEMA_VERSION {
+                        log::warn!(
+                            "user_apps.json schema_version {} (this build knows {}); \
+                             loading anyway — unknown fields ignored",
+                            file.schema_version,
+                            USER_APPS_SCHEMA_VERSION
+                        );
+                    }
+                    file.apps
+                }
+                Ok(file) => {
+                    log::warn!(
+                        "user_apps.json schema_version {} unsupported (expected >= {}); \
+                         treating as empty",
+                        file.schema_version,
+                        USER_APPS_SCHEMA_VERSION
+                    );
+                    Vec::new()
+                }
+                Err(e) => {
+                    log::error!("malformed user_apps.json: {e}; backing up");
+                    let ts = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let backup = path.with_extension(format!("json.corrupt.{ts}"));
+                    if let Err(e2) = std::fs::rename(&path, &backup) {
+                        log::error!("backup rename failed: {e2}");
+                    }
+                    Vec::new()
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => {
+                log::error!("read user_apps.json: {e}; treating as empty");
+                Vec::new()
+            }
+        };
+
+        let mut reg = Self {
+            builtin: KNOWN_WRITING_APPS,
+            user,
+            title_inferred: HashSet::new(),
+            data_dir: data_dir.to_path_buf(),
+        };
+        reg.rebuild_title_inferred();
+        reg
+    }
+
+    /// Whether `bundle_id` requires title-based document inference.
+    ///
+    /// Replaces the static `TITLE_INFERRED_APPS` constant with a runtime
+    /// query over the merged built-in + user app set.
+    pub fn needs_title_inference(&self, bundle_id: &str) -> bool {
+        self.title_inferred.contains(&bundle_id.to_ascii_lowercase())
+    }
+
+    /// Look up a built-in app by bundle ID (case-insensitive).
+    pub fn lookup_builtin(&self, bundle_id: &str) -> Option<&'static WritingApp> {
+        self.builtin
+            .iter()
+            .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
+    }
+
+    /// Look up a user-added app by bundle ID (case-insensitive).
+    pub fn lookup_user(&self, bundle_id: &str) -> Option<&UserWritingApp> {
+        self.user
+            .iter()
+            .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
+    }
+
+    /// Container watch paths from both built-in and user apps.
+    pub fn auto_watch_paths(&self) -> Vec<PathBuf> {
+        let Some(home) = dirs::home_dir() else {
+            return Vec::new();
+        };
+        let mut paths = Vec::new();
+        for app in self.builtin {
+            for rel in app.container_paths {
+                let abs = home.join(rel);
+                if abs.exists() {
+                    paths.push(abs);
+                }
+            }
+        }
+        for app in &self.user {
+            for rel in &app.container_paths {
+                let abs = home.join(rel);
+                if abs.exists() {
+                    paths.push(abs);
+                }
+            }
+        }
+        paths.sort();
+        paths.dedup();
+        paths
+    }
+
+    /// Whether `bundle_id` is recognized (either built-in or user-added).
+    pub fn is_known(&self, bundle_id: &str) -> bool {
+        self.lookup_builtin(bundle_id).is_some() || self.lookup_user(bundle_id).is_some()
+    }
+
+    /// Add (or replace) a user app. Persists immediately.
+    /// Rolls back in-memory state if persistence fails.
+    pub fn add_user_app(&mut self, app: UserWritingApp) -> crate::error::Result<()> {
+        if app.bundle_id.is_empty() {
+            return Err(crate::error::Error::validation("bundle_id must not be empty"));
+        }
+        if app.display_name.is_empty() {
+            return Err(crate::error::Error::validation(
+                "display_name must not be empty",
+            ));
+        }
+        let snapshot = self.user.clone();
+        self.user
+            .retain(|a| !a.bundle_id.eq_ignore_ascii_case(&app.bundle_id));
+        self.user.push(app);
+        self.rebuild_title_inferred();
+        if let Err(e) = self.save() {
+            self.user = snapshot;
+            self.rebuild_title_inferred();
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// Remove a user app by bundle ID. Returns whether an entry was removed.
+    /// Rolls back in-memory state if persistence fails.
+    pub fn remove_user_app(&mut self, bundle_id: &str) -> crate::error::Result<bool> {
+        let snapshot = self.user.clone();
+        self.user
+            .retain(|a| !a.bundle_id.eq_ignore_ascii_case(bundle_id));
+        let removed = self.user.len() < snapshot.len();
+        if removed {
+            self.rebuild_title_inferred();
+            if let Err(e) = self.save() {
+                self.user = snapshot;
+                self.rebuild_title_inferred();
+                return Err(e);
+            }
+        }
+        Ok(removed)
+    }
+
+    pub fn user_apps(&self) -> &[UserWritingApp] {
+        &self.user
+    }
+
+    fn rebuild_title_inferred(&mut self) {
+        self.title_inferred.clear();
+        for app in self.builtin {
+            if app.needs_title_inference {
+                self.title_inferred
+                    .insert(app.bundle_id.to_ascii_lowercase());
+            }
+        }
+        // User entries override: respect user's needs_title_inference setting.
+        for app in &self.user {
+            let key = app.bundle_id.to_ascii_lowercase();
+            if app.needs_title_inference {
+                self.title_inferred.insert(key);
+            } else {
+                self.title_inferred.remove(&key);
+            }
+        }
+    }
+
+    fn save(&self) -> crate::error::Result<()> {
+        let file = UserAppsFile {
+            schema_version: USER_APPS_SCHEMA_VERSION,
+            apps: self.user.clone(),
+        };
+        let json = serde_json::to_string_pretty(&file)
+            .map_err(|e| crate::error::Error::config(format!("serialize user apps: {e}")))?;
+        let path = self.user_apps_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        crate::crypto::atomic_write(&path, json.as_bytes())?;
+        Ok(())
+    }
+
+    fn user_apps_path(&self) -> PathBuf {
+        self.data_dir.join(USER_APPS_FILENAME)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,6 +854,19 @@ mod tests {
         assert!(lookup("com.seriflabs.affinitypublisher").is_some());
         // Case-insensitive
         assert!(lookup("COM.ULYSSESAPP.MAC").is_some());
+        // Newly added apps
+        assert!(lookup("com.apple.Notes").is_some());
+        assert!(lookup("com.sublimetext.4").is_some());
+        assert!(lookup("com.panic.Nova").is_some());
+        assert!(lookup("com.storyist.mac").is_some());
+        assert!(lookup("com.hogbaysoftware.WriteRoom").is_some());
+        assert!(lookup("com.ommwriter.ommwriter").is_some());
+        assert!(lookup("dev.warp.Warp-Stable").is_some());
+        assert!(lookup("com.adobe.InDesign").is_some());
+        assert!(lookup("com.apple.iWork.Keynote").is_some());
+        assert!(lookup("com.microsoft.Powerpoint").is_some());
+        assert!(lookup("com.apple.mail").is_some());
+        assert!(lookup("com.microsoft.Outlook").is_some());
     }
 
     #[test]
@@ -486,12 +880,219 @@ mod tests {
         assert!(needs_title_inference("com.ulyssesapp.mac"));
         assert!(!needs_title_inference("com.microsoft.Word"));
         assert!(!needs_title_inference("com.apple.iWork.Pages"));
+        // New title-inferred apps
+        assert!(needs_title_inference("com.apple.Notes"));
+        assert!(needs_title_inference("com.ommwriter.ommwriter"));
+        assert!(needs_title_inference("dev.warp.Warp-Stable"));
+        assert!(needs_title_inference("com.apple.mail"));
+        assert!(needs_title_inference("com.microsoft.Outlook"));
+        // New file-based apps (should NOT need inference)
+        assert!(!needs_title_inference("com.sublimetext.4"));
+        assert!(!needs_title_inference("com.panic.Nova"));
+        assert!(!needs_title_inference("com.adobe.InDesign"));
+        assert!(!needs_title_inference("com.apple.iWork.Keynote"));
     }
 
     #[test]
     fn test_auto_watch_paths_no_panic() {
         // Should not panic even when none of the paths exist.
         let _ = auto_watch_paths();
+    }
+
+    #[test]
+    fn test_user_app_serialization_roundtrip() {
+        let app = UserWritingApp {
+            bundle_id: "com.example.Test".into(),
+            display_name: "Test".into(),
+            storage: StoragePattern::ContainerBased,
+            container_paths: vec!["Library/Containers/com.example.Test".into()],
+            needs_title_inference: true,
+            added_at: SystemTime::now(),
+            probe_confidence: ProbeConfidence::High,
+        };
+        let json = serde_json::to_string(&app).unwrap();
+        let rt: UserWritingApp = serde_json::from_str(&json).unwrap();
+        assert_eq!(rt.bundle_id, "com.example.Test");
+        assert_eq!(rt.storage, StoragePattern::ContainerBased);
+        assert_eq!(rt.probe_confidence, ProbeConfidence::High);
+        assert!(rt.needs_title_inference);
+        assert_eq!(rt.container_paths.len(), 1);
+    }
+
+    #[test]
+    fn test_storage_pattern_serde_names() {
+        let json = serde_json::to_string(&StoragePattern::DatabaseBacked).unwrap();
+        assert_eq!(json, "\"database_backed\"");
+        let rt: StoragePattern = serde_json::from_str("\"cloud_library\"").unwrap();
+        assert_eq!(rt, StoragePattern::CloudLibrary);
+    }
+
+    #[test]
+    fn test_registry_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let reg = AppRegistry::load(tmp.path());
+        assert!(reg.user_apps().is_empty());
+        // Builtins still present
+        assert!(reg.lookup_builtin("com.microsoft.Word").is_some());
+    }
+
+    #[test]
+    fn test_registry_malformed_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("user_apps.json"), "not json{{{").unwrap();
+        let reg = AppRegistry::load(tmp.path());
+        assert!(reg.user_apps().is_empty());
+        // Corrupt backup exists
+        let backups: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains("corrupt"))
+            .collect();
+        assert_eq!(backups.len(), 1);
+    }
+
+    #[test]
+    fn test_registry_future_schema_version_loads() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Future versions with additive changes should still load
+        let json = r#"{"schema_version": 99, "apps": [
+            {"bundle_id":"com.future.App","display_name":"Future",
+             "storage":"file_based","container_paths":[],
+             "needs_title_inference":false,"added_at":1700000000,
+             "probe_confidence":"high"}
+        ]}"#;
+        std::fs::write(tmp.path().join("user_apps.json"), json).unwrap();
+        let reg = AppRegistry::load(tmp.path());
+        assert_eq!(reg.user_apps().len(), 1);
+        assert_eq!(reg.user_apps()[0].bundle_id, "com.future.App");
+    }
+
+    #[test]
+    fn test_registry_ancient_schema_version_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("user_apps.json"),
+            r#"{"schema_version": 0, "apps": []}"#,
+        )
+        .unwrap();
+        let reg = AppRegistry::load(tmp.path());
+        assert!(reg.user_apps().is_empty());
+    }
+
+    #[test]
+    fn test_add_rejects_empty_bundle_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut reg = AppRegistry::load(tmp.path());
+        let result = reg.add_user_app(UserWritingApp {
+            bundle_id: "".into(),
+            display_name: "Bad".into(),
+            storage: StoragePattern::FileBased,
+            container_paths: vec![],
+            needs_title_inference: false,
+            added_at: SystemTime::now(),
+            probe_confidence: ProbeConfidence::Low,
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_add_rejects_empty_display_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut reg = AppRegistry::load(tmp.path());
+        let result = reg.add_user_app(UserWritingApp {
+            bundle_id: "com.example.NoName".into(),
+            display_name: "".into(),
+            storage: StoragePattern::FileBased,
+            container_paths: vec![],
+            needs_title_inference: false,
+            added_at: SystemTime::now(),
+            probe_confidence: ProbeConfidence::Low,
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_registry_user_overrides_builtin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut reg = AppRegistry::load(tmp.path());
+        // Word is builtin with needs_title_inference: false
+        assert!(!reg.needs_title_inference("com.microsoft.Word"));
+
+        reg.add_user_app(UserWritingApp {
+            bundle_id: "com.microsoft.Word".into(),
+            display_name: "Word (custom)".into(),
+            storage: StoragePattern::FileBased,
+            container_paths: vec![],
+            needs_title_inference: true,
+            added_at: SystemTime::now(),
+            probe_confidence: ProbeConfidence::Medium,
+        })
+        .unwrap();
+
+        assert!(reg.needs_title_inference("com.microsoft.Word"));
+        assert!(reg.lookup_user("com.microsoft.Word").is_some());
+    }
+
+    #[test]
+    fn test_registry_add_remove_persist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut reg = AppRegistry::load(tmp.path());
+
+        reg.add_user_app(UserWritingApp {
+            bundle_id: "com.example.New".into(),
+            display_name: "New App".into(),
+            storage: StoragePattern::ContainerBased,
+            container_paths: vec!["Library/Containers/com.example.New".into()],
+            needs_title_inference: true,
+            added_at: SystemTime::now(),
+            probe_confidence: ProbeConfidence::Low,
+        })
+        .unwrap();
+        assert_eq!(reg.user_apps().len(), 1);
+        assert!(reg.needs_title_inference("com.example.New"));
+
+        // Reload from disk
+        let reg2 = AppRegistry::load(tmp.path());
+        assert_eq!(reg2.user_apps().len(), 1);
+        assert_eq!(reg2.user_apps()[0].bundle_id, "com.example.New");
+        assert!(reg2.needs_title_inference("com.example.New"));
+
+        // Remove
+        let mut reg2 = reg2;
+        assert!(reg2.remove_user_app("com.example.New").unwrap());
+        assert!(reg2.user_apps().is_empty());
+        assert!(!reg2.needs_title_inference("com.example.New"));
+
+        // Reload confirms deletion persisted
+        let reg3 = AppRegistry::load(tmp.path());
+        assert!(reg3.user_apps().is_empty());
+    }
+
+    #[test]
+    fn test_registry_add_replaces_duplicate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut reg = AppRegistry::load(tmp.path());
+
+        let app = || UserWritingApp {
+            bundle_id: "com.example.Dup".into(),
+            display_name: "Dup".into(),
+            storage: StoragePattern::FileBased,
+            container_paths: vec![],
+            needs_title_inference: false,
+            added_at: SystemTime::now(),
+            probe_confidence: ProbeConfidence::Low,
+        };
+        reg.add_user_app(app()).unwrap();
+        reg.add_user_app(app()).unwrap();
+        assert_eq!(reg.user_apps().len(), 1);
+    }
+
+    #[test]
+    fn test_registry_remove_nonexistent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut reg = AppRegistry::load(tmp.path());
+        let removed = reg.remove_user_app("com.nonexistent.App").unwrap();
+        assert!(!removed);
     }
 
     #[test]
