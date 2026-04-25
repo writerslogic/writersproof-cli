@@ -16,7 +16,9 @@ impl Sentinel {
     /// Create the platform focus monitor, verify availability, start it,
     /// and return the monitor along with its event receivers.
     #[allow(clippy::type_complexity)]
-    pub(super) fn setup_focus_tracker(&self) -> Result<(
+    pub(super) fn setup_focus_tracker(
+        &self,
+    ) -> Result<(
         Box<dyn SentinelFocusTracker>,
         mpsc::Receiver<FocusEvent>,
         mpsc::Receiver<ChangeEvent>,

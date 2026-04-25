@@ -451,9 +451,7 @@ fn validate_did_host(did: &str) -> Result<(), Error> {
         ".invalid",
     ];
     for blocked in BLOCKED {
-        if host_lower == *blocked
-            || (blocked.starts_with('.') && host_lower.ends_with(blocked))
-        {
+        if host_lower == *blocked || (blocked.starts_with('.') && host_lower.ends_with(blocked)) {
             return Err(Error::identity(format!(
                 "did:webvh host points to private/reserved name (SSRF risk): {host_lower}"
             )));
@@ -565,8 +563,7 @@ fn load_signing_key() -> Result<SigningKey, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let meta = std::fs::metadata(&key_path)
-            .map_err(|e| format!("stat signing key: {e}"))?;
+        let meta = std::fs::metadata(&key_path).map_err(|e| format!("stat signing key: {e}"))?;
         let mode = meta.mode() & 0o777;
         if mode & 0o077 != 0 {
             return Err(format!(
@@ -804,7 +801,10 @@ mod tests {
         let master = test_signing_key();
         let long_addr = "a".repeat(254);
         let result = derive_webvh_signing_key(&master, &long_addr);
-        assert!(result.is_err(), "address exceeding 253 chars must be rejected");
+        assert!(
+            result.is_err(),
+            "address exceeding 253 chars must be rejected"
+        );
     }
 
     /// build_did_document() output must contain {SCID} in the id field.

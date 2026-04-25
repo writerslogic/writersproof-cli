@@ -208,7 +208,7 @@ fn wire_to_packet(wire: &EvidencePacketWire) -> Packet {
                 timestamp: chrono::DateTime::from_timestamp_millis(
                     i64::try_from(cp.timestamp).unwrap_or(i64::MAX),
                 )
-                    .unwrap_or_default(),
+                .unwrap_or_default(),
                 message: None,
                 vdf_input,
                 vdf_output,
@@ -239,7 +239,7 @@ fn wire_to_packet(wire: &EvidencePacketWire) -> Packet {
         exported_at: chrono::DateTime::from_timestamp_millis(
             i64::try_from(wire.created).unwrap_or(i64::MAX),
         )
-            .unwrap_or_default(),
+        .unwrap_or_default(),
         document: DocumentInfo {
             title: filename.clone(),
             path: filename,

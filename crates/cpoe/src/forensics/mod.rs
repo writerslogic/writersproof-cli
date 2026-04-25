@@ -16,16 +16,16 @@ mod advanced_metrics;
 pub(crate) mod analysis;
 mod assessment;
 mod cadence;
-mod comparison;
 pub mod cognitive_accumulator;
+mod comparison;
 mod correlation;
 pub mod cross_modal;
 pub mod dictation;
 mod engine;
 pub mod error;
-pub mod provenance_metrics;
 pub mod event_validation;
 pub mod forgery_cost;
+pub mod provenance_metrics;
 mod report;
 pub(crate) mod scoring;
 mod topology;
@@ -46,7 +46,6 @@ pub use cross_modal::{
 };
 pub use engine::*;
 pub use error::*;
-pub use provenance_metrics::{ProvenanceMetrics, SourceSessionInfo};
 pub use event_validation::{
     validate_keystroke_event, EventValidationFlags, EventValidationResult, EventValidationState,
 };
@@ -54,6 +53,7 @@ pub use forgery_cost::{
     estimate_forgery_cost, ComponentCost, ForgeryCostEstimate, ForgeryCostInput,
     ForgeryResistanceTier,
 };
+pub use provenance_metrics::{ProvenanceMetrics, SourceSessionInfo};
 pub use report::*;
 pub use scoring::{cadence_score_from_samples, compute_focus_penalty, session_forensic_score};
 pub use topology::*;

@@ -68,7 +68,11 @@ impl Mmr {
             let peak_indices = find_peaks(state.size);
             if peak_indices.len() < 2 {
                 let peaks_changed = state.peaks.len() != peak_indices.len()
-                    || state.peaks.iter().zip(&peak_indices).any(|(p, &i)| p.index != i);
+                    || state
+                        .peaks
+                        .iter()
+                        .zip(&peak_indices)
+                        .any(|(p, &i)| p.index != i);
                 if peaks_changed || state.size == 1 {
                     let mut new_peaks = Vec::with_capacity(peak_indices.len());
                     for idx in peak_indices {

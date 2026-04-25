@@ -222,14 +222,16 @@ impl Builder {
                 .packet
                 .dictation_events
                 .iter()
-                .map(|d| if d.plausibility_score.is_finite() { d.plausibility_score } else { 0.0 })
+                .map(|d| {
+                    if d.plausibility_score.is_finite() {
+                        d.plausibility_score
+                    } else {
+                        0.0
+                    }
+                })
                 .sum();
             let count = self.packet.dictation_events.len() as f64;
-            let avg_plausibility = if count == 0.0 {
-                0.0
-            } else {
-                sum / count
-            };
+            let avg_plausibility = if count == 0.0 { 0.0 } else { sum / count };
             self.add_claim(
                 ClaimType::DictationVerified,
                 format!(

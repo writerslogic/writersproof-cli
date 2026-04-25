@@ -20,7 +20,9 @@ static TELEMETRY: Telemetry = Telemetry {
 
 /// Record VDF verification time in milliseconds.
 pub fn record_vdf_time(ms: u64) {
-    TELEMETRY.vdf_verify_time_ms.fetch_add(ms, Ordering::Relaxed);
+    TELEMETRY
+        .vdf_verify_time_ms
+        .fetch_add(ms, Ordering::Relaxed);
 }
 
 /// Record a new checkpoint created.
@@ -30,7 +32,9 @@ pub fn record_checkpoint() {
 
 /// Record bytes hashed for content integrity.
 pub fn record_bytes_hashed(bytes: u64) {
-    TELEMETRY.total_bytes_hashed.fetch_add(bytes, Ordering::Relaxed);
+    TELEMETRY
+        .total_bytes_hashed
+        .fetch_add(bytes, Ordering::Relaxed);
 }
 
 /// Return a snapshot of current telemetry metrics.

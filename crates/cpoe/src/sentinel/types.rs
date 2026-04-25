@@ -605,27 +605,74 @@ pub fn parse_url_parts(url: &str) -> (String, String) {
 /// extension here is a code change that should be reviewed for correctness.
 /// Sorted lexicographically to enable binary search.
 const DOC_EXTENSIONS: &[&str] = &[
-    ".adoc", ".afdesign", ".afphoto", ".afpub", ".asciidoc",
-    ".bat", ".c", ".cpp", ".css", ".csv",
-    ".doc", ".docx", ".draft",
-    ".eml", ".emlx", ".epub",
-    ".fdx", ".fountain",
+    ".adoc",
+    ".afdesign",
+    ".afphoto",
+    ".afpub",
+    ".asciidoc",
+    ".bat",
+    ".c",
+    ".cpp",
+    ".css",
+    ".csv",
+    ".doc",
+    ".docx",
+    ".draft",
+    ".eml",
+    ".emlx",
+    ".epub",
+    ".fdx",
+    ".fountain",
     ".go",
-    ".h", ".html",
-    ".idml", ".indd",
-    ".java", ".jl", ".js", ".json", ".jsx",
-    ".key", ".kt",
-    ".latex", ".lua",
-    ".md", ".mmd",
-    ".odt", ".opml", ".org",
-    ".pages", ".pdf", ".php", ".pl", ".ppt", ".pptx", ".ps1",
-    ".r", ".rb", ".rs", ".rst", ".rtf",
-    ".scala", ".scriv", ".scrivx", ".sh", ".story", ".swift",
-    ".tex", ".toml", ".ts", ".tsx", ".txt",
+    ".h",
+    ".html",
+    ".idml",
+    ".indd",
+    ".java",
+    ".jl",
+    ".js",
+    ".json",
+    ".jsx",
+    ".key",
+    ".kt",
+    ".latex",
+    ".lua",
+    ".md",
+    ".mmd",
+    ".odt",
+    ".opml",
+    ".org",
+    ".pages",
+    ".pdf",
+    ".php",
+    ".pl",
+    ".ppt",
+    ".pptx",
+    ".ps1",
+    ".r",
+    ".rb",
+    ".rs",
+    ".rst",
+    ".rtf",
+    ".scala",
+    ".scriv",
+    ".scrivx",
+    ".sh",
+    ".story",
+    ".swift",
+    ".tex",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
     ".ulysses",
-    ".wpd", ".wri",
-    ".xls", ".xlsx", ".xml",
-    ".yaml", ".yml",
+    ".wpd",
+    ".wri",
+    ".xls",
+    ".xlsx",
+    ".xml",
+    ".yaml",
+    ".yml",
 ];
 
 /// Apps that do not expose `AXDocument` and require title-based document inference.
@@ -657,7 +704,7 @@ const TITLE_INFERRED_APPS: &[&str] = &[
     "net.shinyfrog.bear",
     "com.agiletortoise.Drafts-OSX",
     "com.bloombuilt.dayone-mac",
-    "com.luki.paper.mac",        // Craft
+    "com.luki.paper.mac", // Craft
     "com.microsoft.onenote.mac",
     "com.apple.Notes",
     "com.ommwriter.ommwriter",
@@ -706,7 +753,11 @@ pub fn infer_document_path_from_title_with_bundle(
     }
 
     let is_title_inferred = bundle_id
-        .map(|id| TITLE_INFERRED_APPS.iter().any(|e| e.eq_ignore_ascii_case(id)))
+        .map(|id| {
+            TITLE_INFERRED_APPS
+                .iter()
+                .any(|e| e.eq_ignore_ascii_case(id))
+        })
         .unwrap_or(false);
 
     // Try standard separator-based extraction first.

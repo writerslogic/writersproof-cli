@@ -193,7 +193,10 @@ pub fn ffi_sentinel_es_capture_gap(missed_count: u32) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
     if nonce.len() > 1024 {
-        log::warn!("Challenge nonce too long ({} bytes), rejecting", nonce.len());
+        log::warn!(
+            "Challenge nonce too long ({} bytes), rejecting",
+            nonce.len()
+        );
         return false;
     }
     let sentinel_opt = get_sentinel();

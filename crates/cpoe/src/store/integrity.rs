@@ -8,16 +8,17 @@ use rusqlite::params;
 use subtle::ConstantTimeEq;
 
 const KNOWN_TABLES: &[&str] = &[
-    "integrity", "secure_events", "clipboard_events",
-    "text_fragments", "keystroke_sequences", "used_nonces",
-    "baselines", "fingerprints",
+    "integrity",
+    "secure_events",
+    "clipboard_events",
+    "text_fragments",
+    "keystroke_sequences",
+    "used_nonces",
+    "baselines",
+    "fingerprints",
 ];
 
-fn has_column(
-    conn: &rusqlite::Connection,
-    table: &str,
-    col: &str,
-) -> anyhow::Result<bool> {
+fn has_column(conn: &rusqlite::Connection, table: &str, col: &str) -> anyhow::Result<bool> {
     anyhow::ensure!(
         KNOWN_TABLES.contains(&table),
         "has_column called with unknown table: {table}"

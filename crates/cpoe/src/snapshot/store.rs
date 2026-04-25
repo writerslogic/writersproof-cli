@@ -32,8 +32,8 @@ impl SnapshotStore {
         signing_key: &ed25519_dalek::SigningKey,
     ) -> Result<Self, String> {
         let path = path.as_ref();
-        let conn = Connection::open(path)
-            .map_err(|e| format!("failed to open snapshot db: {e}"))?;
+        let conn =
+            Connection::open(path).map_err(|e| format!("failed to open snapshot db: {e}"))?;
 
         #[cfg(unix)]
         crate::crypto::restrict_permissions(path, 0o600)
@@ -100,14 +100,13 @@ impl SnapshotStore {
         // Encrypt outside the transaction (CPU-bound, don't hold the DB lock).
         // Deterministic encryption means same content always produces the same
         // ciphertext, so INSERT OR IGNORE safely handles concurrent inserts.
-        let encrypted = crypto::encrypt_blob(
-            &self.signing_key_bytes,
-            &content_hash,
-            plaintext_bytes,
-        )?;
+        let encrypted =
+            crypto::encrypt_blob(&self.signing_key_bytes, &content_hash, plaintext_bytes)?;
 
         // Atomic: monotonicity check + blob insert + meta insert
-        let tx = self.conn.transaction()
+        let tx = self
+            .conn
+            .transaction()
             .map_err(|e| format!("transaction begin failed: {e}"))?;
 
         // Monotonicity inside transaction to prevent concurrent timestamp collisions
@@ -177,7 +176,9 @@ impl SnapshotStore {
                 let hash_vec: Vec<u8> = row.get(2)?;
                 if hash_vec.len() != 32 {
                     return Err(rusqlite::Error::InvalidColumnType(
-                        2, "content_hash".into(), rusqlite::types::Type::Blob,
+                        2,
+                        "content_hash".into(),
+                        rusqlite::types::Type::Blob,
                     ));
                 }
                 let mut content_hash = [0u8; 32];
@@ -280,17 +281,12 @@ impl SnapshotStore {
         let plaintext_bytes =
             crypto::decrypt_blob(&self.signing_key_bytes, content_hash, &encrypted)?;
 
-        String::from_utf8(plaintext_bytes)
-            .map_err(|e| format!("snapshot is not valid UTF-8: {e}"))
+        String::from_utf8(plaintext_bytes).map_err(|e| format!("snapshot is not valid UTF-8: {e}"))
     }
 
     /// Mark a snapshot as a named draft. Passing empty string clears the label.
     pub fn mark_draft(&self, snapshot_id: i64, label: &str) -> Result<(), String> {
-        let label_val = if label.is_empty() {
-            None
-        } else {
-            Some(label)
-        };
+        let label_val = if label.is_empty() { None } else { Some(label) };
         let updated = self
             .conn
             .execute(
@@ -329,26 +325,42 @@ impl SnapshotStore {
 
         // Encrypt outside transaction (CPU-bound). Deterministic encryption
         // means INSERT OR IGNORE safely handles concurrent inserts.
-        let current_enc = crypto::encrypt_blob(&self.signing_key_bytes, &current_hash, current_bytes)?;
-        let restored_enc = crypto::encrypt_blob(&self.signing_key_bytes, &restored_hash, restored_bytes)?;
+        let current_enc =
+            crypto::encrypt_blob(&self.signing_key_bytes, &current_hash, current_bytes)?;
+        let restored_enc =
+            crypto::encrypt_blob(&self.signing_key_bytes, &restored_hash, restored_bytes)?;
 
         // Atomic: both blobs + both meta rows
-        let tx = self.conn.transaction()
+        let tx = self
+            .conn
+            .transaction()
             .map_err(|e| format!("restore transaction begin failed: {e}"))?;
 
         tx.execute(
             "INSERT OR IGNORE INTO snapshot_blobs \
              (content_hash, encrypted_data, original_size, compressed_size) \
              VALUES (?, ?, ?, ?)",
-            params![&current_hash[..], current_enc.as_slice(), current_bytes.len() as i64, current_enc.len() as i64],
-        ).map_err(|e| format!("restore: current blob insert failed: {e}"))?;
+            params![
+                &current_hash[..],
+                current_enc.as_slice(),
+                current_bytes.len() as i64,
+                current_enc.len() as i64
+            ],
+        )
+        .map_err(|e| format!("restore: current blob insert failed: {e}"))?;
 
         tx.execute(
             "INSERT OR IGNORE INTO snapshot_blobs \
              (content_hash, encrypted_data, original_size, compressed_size) \
              VALUES (?, ?, ?, ?)",
-            params![&restored_hash[..], restored_enc.as_slice(), restored_bytes.len() as i64, restored_enc.len() as i64],
-        ).map_err(|e| format!("restore: target blob insert failed: {e}"))?;
+            params![
+                &restored_hash[..],
+                restored_enc.as_slice(),
+                restored_bytes.len() as i64,
+                restored_enc.len() as i64
+            ],
+        )
+        .map_err(|e| format!("restore: target blob insert failed: {e}"))?;
 
         // Pre-restore save (is_restore=false)
         tx.execute(
@@ -356,7 +368,8 @@ impl SnapshotStore {
              (document_path, content_hash, timestamp_ns, word_count, is_restore) \
              VALUES (?, ?, ?, ?, 0)",
             params![document_path, &current_hash[..], now_ns, current_wc],
-        ).map_err(|e| format!("restore: pre-save insert failed: {e}"))?;
+        )
+        .map_err(|e| format!("restore: pre-save insert failed: {e}"))?;
 
         // Restore marker (is_restore=true, timestamp 1ns later to preserve ordering)
         tx.execute(
@@ -364,7 +377,8 @@ impl SnapshotStore {
              (document_path, content_hash, timestamp_ns, word_count, is_restore) \
              VALUES (?, ?, ?, ?, 1)",
             params![document_path, &restored_hash[..], now_ns + 1, restored_wc],
-        ).map_err(|e| format!("restore: marker insert failed: {e}"))?;
+        )
+        .map_err(|e| format!("restore: marker insert failed: {e}"))?;
 
         tx.commit()
             .map_err(|e| format!("restore transaction commit failed: {e}"))?;
@@ -382,7 +396,6 @@ impl SnapshotStore {
             )
             .map_err(|e| format!("snapshot not found: {e}"))
     }
-
 
     /// Total encrypted blob storage size and whether it exceeds the warning threshold.
     pub fn storage_size(&self) -> Result<StoreSizeInfo, String> {

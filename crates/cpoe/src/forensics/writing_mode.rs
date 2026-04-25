@@ -274,11 +274,7 @@ pub fn classify_writing_mode(
             THINKING_PAUSE_RATIO_WEIGHT,
         ),
         (
-            lerp_score(
-                burst_length_cv,
-                BURST_LENGTH_CV_LOW,
-                BURST_LENGTH_CV_HIGH,
-            ),
+            lerp_score(burst_length_cv, BURST_LENGTH_CV_LOW, BURST_LENGTH_CV_HIGH),
             BURST_LENGTH_CV_WEIGHT,
         ),
     ];
@@ -455,7 +451,11 @@ fn compute_burst_length_cv(sorted: SortedEvents<'_>) -> f64 {
     if mean < f64::EPSILON {
         return 0.0;
     }
-    let variance = burst_lengths.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n;
+    let variance = burst_lengths
+        .iter()
+        .map(|x| (x - mean).powi(2))
+        .sum::<f64>()
+        / n;
     variance.sqrt() / mean
 }
 

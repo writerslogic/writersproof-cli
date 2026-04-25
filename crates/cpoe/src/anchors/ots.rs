@@ -336,9 +336,9 @@ impl OpenTimestampsProvider {
     /// advancing `pos` past both the length and the payload.
     fn read_data(data: &[u8], pos: &mut usize) -> Result<Vec<u8>, AnchorError> {
         let len = Self::read_varint(data, pos)?;
-        let end = pos.checked_add(len).ok_or_else(|| {
-            AnchorError::InvalidFormat("Proof data length overflow".into())
-        })?;
+        let end = pos
+            .checked_add(len)
+            .ok_or_else(|| AnchorError::InvalidFormat("Proof data length overflow".into()))?;
         if end > data.len() {
             return Err(AnchorError::InvalidFormat(format!(
                 "Truncated proof: need {} bytes at offset {}, have {}",

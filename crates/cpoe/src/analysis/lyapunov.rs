@@ -108,10 +108,7 @@ pub fn analyze_lyapunov(iki_intervals_ns: &[f64]) -> Result<LyapunovAnalysis, Ly
         });
     }
 
-    let normalized: Vec<f64> = data
-        .iter()
-        .map(|&x| (x - mean) / std_dev)
-        .collect();
+    let normalized: Vec<f64> = data.iter().map(|&x| (x - mean) / std_dev).collect();
 
     // Construct delay embedding (Flattened for cache locality)
     let embed_len = normalized

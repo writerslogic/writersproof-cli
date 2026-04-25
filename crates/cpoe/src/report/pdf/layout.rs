@@ -63,13 +63,17 @@ fn dimension_color(name: &str) -> (f32, f32, f32) {
     let lower = name.to_lowercase();
     if lower.contains("temporal") || lower.contains("time") || lower.contains("vdf") {
         (0.13, 0.59, 0.95) // blue
-    } else if lower.contains("behavioral") || lower.contains("signature") || lower.contains("cadence") {
+    } else if lower.contains("behavioral")
+        || lower.contains("signature")
+        || lower.contains("cadence")
+    {
         (0.30, 0.69, 0.31) // green
     } else if lower.contains("edit") || lower.contains("pattern") || lower.contains("revision") {
         (0.61, 0.15, 0.69) // purple
     } else if lower.contains("velocity") || lower.contains("writing") {
         (1.00, 0.60, 0.00) // orange
-    } else if lower.contains("continuity") || lower.contains("session") || lower.contains("process") {
+    } else if lower.contains("continuity") || lower.contains("session") || lower.contains("process")
+    {
         (0.00, 0.74, 0.83) // teal
     } else if lower.contains("coherence") || lower.contains("content") {
         (0.96, 0.50, 0.09) // amber

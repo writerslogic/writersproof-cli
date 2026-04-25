@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use super::defaults;
-use crate::vdf::params::Parameters as VdfParameters;
 use crate::error::{Error, Result};
+use crate::vdf::params::Parameters as VdfParameters;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -310,33 +310,21 @@ impl Default for SentinelConfig {
             ],
             allowed_extensions: vec![
                 // Plain text
-                "txt", "md", "markdown", "text", "rtf",
-                // Writing apps
-                "scriv", "scrivx", "fdx", "fountain", "mmd",
-                // Document formats
+                "txt", "md", "markdown", "text", "rtf", // Writing apps
+                "scriv", "scrivx", "fdx", "fountain", "mmd", // Document formats
                 "doc", "docx", "odt", "pages", "wpd", "wri", "epub",
                 // Presentation formats
-                "key", "pptx", "ppt",
-                // Publishing / layout
-                "indd", "idml",
-                // Novel / story writing
-                "story",
-                // Affinity suite
-                "afpub", "afdesign", "afphoto",
-                // Outlining / structured writing
-                "opml", "itmz", "mm",
-                // Screenplay / script formats
-                "draft",
-                // Markup
-                "tex", "latex", "org", "rst", "adoc", "asciidoc",
-                // Web writing
-                "html", "htm",
-                // Email
-                "eml", "emlx",
-                // Code (writers who code)
-                "rs", "py", "js", "ts", "go", "java", "swift", "c", "cpp",
-                "h", "rb", "php", "sh", "css", "json", "yaml", "yml",
-                "toml", "xml",
+                "key", "pptx", "ppt", // Publishing / layout
+                "indd", "idml", // Novel / story writing
+                "story", // Affinity suite
+                "afpub", "afdesign", "afphoto", // Outlining / structured writing
+                "opml", "itmz", "mm", // Screenplay / script formats
+                "draft", // Markup
+                "tex", "latex", "org", "rst", "adoc", "asciidoc", // Web writing
+                "html", "htm", // Email
+                "eml", "emlx", // Code (writers who code)
+                "rs", "py", "js", "ts", "go", "java", "swift", "c", "cpp", "h", "rb", "php", "sh",
+                "css", "json", "yaml", "yml", "toml", "xml",
             ]
             .iter()
             .map(|s| s.to_string())

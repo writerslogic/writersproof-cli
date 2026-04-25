@@ -288,7 +288,11 @@ fn test_verify_key_hierarchy_invalid_cert() {
     session.sign_checkpoint([1u8; 32]).expect("sign");
 
     let mut evidence = session.export(&identity);
-    evidence.session_certificate.as_mut().expect("session certificate").signature[0] ^= 0xFF;
+    evidence
+        .session_certificate
+        .as_mut()
+        .expect("session certificate")
+        .signature[0] ^= 0xFF;
 
     let err = verify_key_hierarchy(&evidence).unwrap_err();
     assert!(matches!(err, KeyHierarchyError::InvalidCert));

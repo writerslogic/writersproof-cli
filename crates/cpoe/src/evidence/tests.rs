@@ -400,7 +400,10 @@ fn test_builder_with_provenance() {
         .expect("build");
 
     assert!(packet.provenance.is_some());
-    assert_eq!(packet.provenance.as_ref().expect("provenance").device_id, "test-device");
+    assert_eq!(
+        packet.provenance.as_ref().expect("provenance").device_id,
+        "test-device"
+    );
 }
 
 #[test]

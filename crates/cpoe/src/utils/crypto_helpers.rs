@@ -156,11 +156,12 @@ impl NonceManager {
     /// Mark nonce as used with timestamp.
     /// Inserts into used_nonces table. If nonce already exists, silently ignores (INSERT OR IGNORE).
     pub fn mark_used(&self, nonce: &[u8; 16], timestamp: i64) -> Result<()> {
-        self.db.execute(
-            "INSERT OR IGNORE INTO used_nonces (nonce, used_at) VALUES (?, ?)",
-            rusqlite::params![nonce.to_vec(), timestamp],
-        )
-        .map_err(|e| Error::validation(format!("nonce insert failed: {}", e)))?;
+        self.db
+            .execute(
+                "INSERT OR IGNORE INTO used_nonces (nonce, used_at) VALUES (?, ?)",
+                rusqlite::params![nonce.to_vec(), timestamp],
+            )
+            .map_err(|e| Error::validation(format!("nonce insert failed: {}", e)))?;
         Ok(())
     }
 
@@ -170,11 +171,13 @@ impl NonceManager {
         let now = chrono::Utc::now().timestamp_nanos_safe();
         let cutoff = now - (ttl_secs as i64 * 1_000_000_000);
 
-        let affected = self.db.execute(
-            "DELETE FROM used_nonces WHERE used_at < ?",
-            rusqlite::params![cutoff],
-        )
-        .map_err(|e| Error::validation(format!("nonce cleanup failed: {}", e)))?;
+        let affected = self
+            .db
+            .execute(
+                "DELETE FROM used_nonces WHERE used_at < ?",
+                rusqlite::params![cutoff],
+            )
+            .map_err(|e| Error::validation(format!("nonce cleanup failed: {}", e)))?;
 
         Ok(affected)
     }
@@ -316,9 +319,8 @@ mod tests {
 
     #[test]
     fn test_signature_length_validation() {
-        let key = SignatureKey::Ed25519(ed25519_dalek::VerifyingKey::from_bytes(
-            &[0u8; 32]
-        ).unwrap());
+        let key =
+            SignatureKey::Ed25519(ed25519_dalek::VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
 
         // Signature too short
         assert!(key.verify(b"payload", &[0u8; 32]).is_err());
@@ -332,8 +334,8 @@ mod tests {
     fn test_constant_time_eq_prevents_branch() {
         // These comparisons should both fail with same error message (no timing variation)
         let secret = b"secret123";
-        let wrong1 = b"wrong0000";  // Differs at position 1
-        let wrong2 = b"secretWRG";  // Differs at position 6
+        let wrong1 = b"wrong0000"; // Differs at position 1
+        let wrong2 = b"secretWRG"; // Differs at position 6
 
         let err1 = constant_time_eq(secret, wrong1);
         let err2 = constant_time_eq(secret, wrong2);
@@ -342,24 +344,22 @@ mod tests {
         assert!(err1.is_err());
         assert!(err2.is_err());
         // Same error message indicates same code path taken
-        assert_eq!(
-            format!("{:?}", err1),
-            format!("{:?}", err2)
-        );
+        assert_eq!(format!("{:?}", err1), format!("{:?}", err2));
     }
 
     #[test]
     fn test_nonce_manager_replay_prevention() {
         // Create in-memory database for testing
         let db = std::sync::Arc::new(
-            rusqlite::Connection::open_in_memory().expect("failed to create test db")
+            rusqlite::Connection::open_in_memory().expect("failed to create test db"),
         );
 
         // Initialize nonce table
         db.execute(
             "CREATE TABLE used_nonces (nonce BLOB PRIMARY KEY, used_at INTEGER)",
             [],
-        ).expect("failed to create table");
+        )
+        .expect("failed to create table");
 
         let mgr = NonceManager::new(db.clone());
         let nonce = [1u8; 16];
@@ -378,13 +378,14 @@ mod tests {
     #[test]
     fn test_nonce_manager_cleanup_expiration() {
         let db = std::sync::Arc::new(
-            rusqlite::Connection::open_in_memory().expect("failed to create test db")
+            rusqlite::Connection::open_in_memory().expect("failed to create test db"),
         );
 
         db.execute(
             "CREATE TABLE used_nonces (nonce BLOB PRIMARY KEY, used_at INTEGER)",
             [],
-        ).expect("failed to create table");
+        )
+        .expect("failed to create table");
 
         let mgr = NonceManager::new(db.clone());
         let old_nonce = [1u8; 16];
@@ -394,7 +395,8 @@ mod tests {
         let old_time = now - (100 * 1_000_000_000); // 100 seconds ago
 
         // Add old nonce
-        mgr.mark_used(&old_nonce, old_time).expect("mark old failed");
+        mgr.mark_used(&old_nonce, old_time)
+            .expect("mark old failed");
         // Add recent nonce
         mgr.mark_used(&new_nonce, now).expect("mark new failed");
 

@@ -924,10 +924,7 @@ mod backend_tests {
         let loaded_mid = SecureStorage::load(MACHINE_ID_ACCOUNT)
             .unwrap()
             .expect("machine_id present");
-        assert_eq!(
-            String::from_utf8(loaded_mid.to_vec()).unwrap(),
-            machine_id
-        );
+        assert_eq!(String::from_utf8(loaded_mid.to_vec()).unwrap(), machine_id);
         SecureStorage::delete_device_identity().unwrap();
         assert!(SecureStorage::load(DEVICE_ID_ACCOUNT).unwrap().is_none());
     }

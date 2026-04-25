@@ -137,10 +137,11 @@ pub fn build_ephemeral_packet(
         let started_at = chrono::DateTime::from_timestamp_nanos(started);
         let ended_at = chrono::DateTime::from_timestamp_nanos(ended);
         let elapsed_ns = crate::utils::ns_elapsed(ended, started);
-        let duration_secs = crate::utils::ns_to_secs(i64::try_from(elapsed_ns).unwrap_or_else(|_| {
-            log::warn!("Elapsed nanoseconds {elapsed_ns} exceeds i64::MAX; clamping");
-            i64::MAX
-        }));
+        let duration_secs =
+            crate::utils::ns_to_secs(i64::try_from(elapsed_ns).unwrap_or_else(|_| {
+                log::warn!("Elapsed nanoseconds {elapsed_ns} exceeds i64::MAX; clamping");
+                i64::MAX
+            }));
         let duration = std::time::Duration::from_nanos(elapsed_ns);
 
         let total_keystrokes = keystroke_count;

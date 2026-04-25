@@ -9,10 +9,7 @@ use zeroize::{Zeroize, Zeroizing};
 const SNAPSHOT_KEY_DOMAIN: &[u8] = b"writerslogic-snapshot-v1";
 const SNAPSHOT_NONCE_DOMAIN: &[u8] = b"writerslogic-snapshot-nonce-v1";
 
-fn derive_blob_key(
-    signing_key_bytes: &[u8; 32],
-    content_hash: &[u8; 32],
-) -> Zeroizing<[u8; 32]> {
+fn derive_blob_key(signing_key_bytes: &[u8; 32], content_hash: &[u8; 32]) -> Zeroizing<[u8; 32]> {
     let hk = Hkdf::<Sha256>::new(Some(SNAPSHOT_KEY_DOMAIN), signing_key_bytes);
     let mut key = Zeroizing::new([0u8; 32]);
     hk.expand(content_hash, key.as_mut())
@@ -20,10 +17,7 @@ fn derive_blob_key(
     key
 }
 
-fn derive_blob_nonce(
-    signing_key_bytes: &[u8; 32],
-    content_hash: &[u8; 32],
-) -> [u8; 12] {
+fn derive_blob_nonce(signing_key_bytes: &[u8; 32], content_hash: &[u8; 32]) -> [u8; 12] {
     let hk = Hkdf::<Sha256>::new(Some(SNAPSHOT_NONCE_DOMAIN), signing_key_bytes);
     let mut okm = [0u8; 12];
     hk.expand(content_hash, &mut okm)
@@ -48,8 +42,8 @@ pub fn encrypt_blob(
         return Err("content hash does not match plaintext".to_string());
     }
 
-    let compressed = zstd::encode_all(plaintext, 3)
-        .map_err(|e| format!("zstd compress failed: {e}"))?;
+    let compressed =
+        zstd::encode_all(plaintext, 3).map_err(|e| format!("zstd compress failed: {e}"))?;
 
     let mut key = derive_blob_key(signing_key_bytes, content_hash);
     let nonce_bytes = derive_blob_nonce(signing_key_bytes, content_hash);

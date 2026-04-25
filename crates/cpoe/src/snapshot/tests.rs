@@ -223,9 +223,19 @@ fn session_boundary_on_time_gap() {
     let gap_ns: i64 = 31 * 60 * 1_000_000_000; // 31 minutes
 
     insert_with_timestamp(&mut store, "/test/doc.txt", "session1-a", now_ns);
-    insert_with_timestamp(&mut store, "/test/doc.txt", "session1-b", now_ns + 1_000_000_000);
+    insert_with_timestamp(
+        &mut store,
+        "/test/doc.txt",
+        "session1-b",
+        now_ns + 1_000_000_000,
+    );
     insert_with_timestamp(&mut store, "/test/doc.txt", "session2-a", now_ns + gap_ns);
-    insert_with_timestamp(&mut store, "/test/doc.txt", "session2-b", now_ns + gap_ns + 1_000_000_000);
+    insert_with_timestamp(
+        &mut store,
+        "/test/doc.txt",
+        "session2-b",
+        now_ns + gap_ns + 1_000_000_000,
+    );
 
     let entries = store.list("/test/doc.txt").unwrap();
     assert_eq!(entries.len(), 4);
@@ -322,7 +332,10 @@ fn restore_saves_current_then_returns_old() {
     // Should now have 4 meta entries: v1, v2, pre-restore save of "modified", restore of "original"
     let entries = store.list("/test/doc.txt").unwrap();
     assert_eq!(entries.len(), 4);
-    assert!(entries[0].is_restore, "newest entry should be marked as restore");
+    assert!(
+        entries[0].is_restore,
+        "newest entry should be marked as restore"
+    );
 }
 
 #[test]
@@ -333,16 +346,17 @@ fn restore_is_never_lossy() {
     store.save("/test/doc.txt", "v1", false).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(5));
     let id_v1 = store.list("/test/doc.txt").unwrap()[0].id;
-    store.save("/test/doc.txt", "v2-will-be-saved", false).unwrap();
+    store
+        .save("/test/doc.txt", "v2-will-be-saved", false)
+        .unwrap();
 
-    store.restore("/test/doc.txt", id_v1, "current-before-restore").unwrap();
+    store
+        .restore("/test/doc.txt", id_v1, "current-before-restore")
+        .unwrap();
 
     // "current-before-restore" must be retrievable
     let entries = store.list("/test/doc.txt").unwrap();
-    let all_texts: Vec<String> = entries
-        .iter()
-        .map(|e| store.get(e.id).unwrap())
-        .collect();
+    let all_texts: Vec<String> = entries.iter().map(|e| store.get(e.id).unwrap()).collect();
     assert!(
         all_texts.contains(&"current-before-restore".to_string()),
         "pre-restore state must be preserved"
@@ -395,10 +409,7 @@ fn diff_both_empty() {
 
 #[test]
 fn diff_word_level_changes() {
-    let ops = word_diff(
-        "The quick brown fox",
-        "The slow brown fox",
-    );
+    let ops = word_diff("The quick brown fox", "The slow brown fox");
     let inserts: Vec<&str> = ops
         .iter()
         .filter(|op| op.tag == DiffTag::Insert)

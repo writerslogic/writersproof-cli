@@ -21,10 +21,11 @@
 //! 4. Emit EvidenceEvent to broadcast channel
 
 use crate::error::Error;
-use crate::store::SecureStore;
 use crate::sentinel::types::DocumentSession;
+use crate::store::SecureStore;
 use crate::utils::crypto_helpers;
 use crate::RwLockRecover;
+use chrono::Utc;
 use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder};
 use ed25519_dalek::{Signer, SigningKey};
 use std::collections::HashMap;
@@ -32,7 +33,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use chrono::Utc;
 use zeroize::Zeroize;
 
 /// Maximum clipboard text size (1MB).
@@ -282,7 +282,9 @@ impl ClipboardMonitor {
     /// Returns Some(CopyEvent) if change detected and text valid, None if unchanged.
     /// Deduplication via change count and timestamp throttling (100ms).
     #[allow(clippy::await_holding_lock)] // CB-002: locks held across .await intentionally for TOCTOU prevention
-    async fn check_clipboard_change(&self) -> std::result::Result<Option<CopyEvent>, ClipboardError> {
+    async fn check_clipboard_change(
+        &self,
+    ) -> std::result::Result<Option<CopyEvent>, ClipboardError> {
         let now = Utc::now().timestamp_millis();
 
         // CB-002: Acquire write locks upfront to eliminate TOCTOU race between
@@ -383,9 +385,8 @@ impl ClipboardMonitor {
                         let mut nonce = [0u8; 16];
                         use rand::RngCore;
                         rand::rng().fill_bytes(&mut nonce);
-                        let mut payload = Vec::with_capacity(
-                            32 + copy_event.app_bundle_id.len() + 8,
-                        );
+                        let mut payload =
+                            Vec::with_capacity(32 + copy_event.app_bundle_id.len() + 8);
                         payload.extend_from_slice(&copy_event.text_hash);
                         payload.extend_from_slice(copy_event.app_bundle_id.as_bytes());
                         payload.extend_from_slice(&copy_event.timestamp.to_le_bytes());
@@ -400,8 +401,12 @@ impl ClipboardMonitor {
                 };
 
                 self.persist_clipboard_event(
-                    store, copy_event, &copy_event.text_hash, signed_evidence.as_deref(),
-                ).await?;
+                    store,
+                    copy_event,
+                    &copy_event.text_hash,
+                    signed_evidence.as_deref(),
+                )
+                .await?;
                 return Ok(signed_evidence);
             }
         }
@@ -421,9 +426,10 @@ impl ClipboardMonitor {
             Ok(Some(f)) if f.session_id == session_id => Ok(true),
             Ok(Some(_)) => Ok(false), // exists in different session
             Ok(None) => Ok(false),
-            Err(e) => Err(ClipboardError::Other(
-                format!("Fragment lookup failed: {}", e),
-            )),
+            Err(e) => Err(ClipboardError::Other(format!(
+                "Fragment lookup failed: {}",
+                e
+            ))),
         }
     }
 
@@ -437,16 +443,18 @@ impl ClipboardMonitor {
     ) -> std::result::Result<(), ClipboardError> {
         let now = Utc::now().timestamp_nanos_opt().unwrap_or(0);
 
-        store.insert_clipboard_event(
-            fragment_hash,
-            &copy_event.app_bundle_id,
-            &copy_event.window_title,
-            &copy_event.text_hash,
-            copy_event.pasteboard_change_count,
-            copy_event.timestamp,
-            now,
-            signed_evidence,
-        ).map_err(|e| ClipboardError::Other(format!("Database persist failed: {}", e)))?;
+        store
+            .insert_clipboard_event(
+                fragment_hash,
+                &copy_event.app_bundle_id,
+                &copy_event.window_title,
+                &copy_event.text_hash,
+                copy_event.pasteboard_change_count,
+                copy_event.timestamp,
+                now,
+                signed_evidence,
+            )
+            .map_err(|e| ClipboardError::Other(format!("Database persist failed: {}", e)))?;
 
         Ok(())
     }
@@ -501,16 +509,16 @@ pub fn wrap_clipboard_cose_sign1(
     nonce: &[u8],
 ) -> crate::error::Result<Vec<u8>> {
     if nonce.len() < 16 {
-        return Err(crate::error::Error::crypto("Nonce must be at least 16 bytes"));
+        return Err(crate::error::Error::crypto(
+            "Nonce must be at least 16 bytes",
+        ));
     }
 
     let protected = HeaderBuilder::new()
         .algorithm(coset::iana::Algorithm::EdDSA)
         .build();
 
-    let unprotected = HeaderBuilder::new()
-        .iv(nonce.to_vec())
-        .build();
+    let unprotected = HeaderBuilder::new().iv(nonce.to_vec()).build();
 
     let sign1 = CoseSign1Builder::new()
         .protected(protected)
@@ -565,10 +573,7 @@ mod tests {
         assert!(result2.is_ok());
 
         let apps = monitor.monitored_apps.read_recover();
-        let count = apps
-            .iter()
-            .filter(|a| *a == "com.example.Unique")
-            .count();
+        let count = apps.iter().filter(|a| *a == "com.example.Unique").count();
         assert_eq!(count, 1, "Duplicate apps should not be added");
     }
 
@@ -585,7 +590,10 @@ mod tests {
 
         // Next add should fail
         let result = monitor.add_monitored_app("com.example.TooMany".to_string());
-        assert!(matches!(result, Err(ClipboardError::MonitoringLimitExceeded)));
+        assert!(matches!(
+            result,
+            Err(ClipboardError::MonitoringLimitExceeded)
+        ));
     }
 
     #[test]

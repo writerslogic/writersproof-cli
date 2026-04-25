@@ -326,7 +326,9 @@ impl Sentinel {
     /// Rejects all-zero keys as invalid (likely uninitialized).
     pub fn set_signing_key(&self, key: SigningKey) {
         if key.to_bytes().iter().all(|&b| b == 0) {
-            log::error!("Rejected all-zero signing key — likely uninitialized; evidence will not be signed");
+            log::error!(
+                "Rejected all-zero signing key — likely uninitialized; evidence will not be signed"
+            );
             return;
         }
         let mut key_bytes = key.to_bytes();

@@ -234,8 +234,10 @@ fn test_wal_truncate_race_condition() {
 
     let wal = Arc::new(Wal::open(&path, session_id, signing_key).expect("open wal"));
 
-    wal.append(EntryType::Heartbeat, vec![1]).expect("append entry 1");
-    wal.append(EntryType::Heartbeat, vec![2]).expect("append entry 2");
+    wal.append(EntryType::Heartbeat, vec![1])
+        .expect("append entry 1");
+    wal.append(EntryType::Heartbeat, vec![2])
+        .expect("append entry 2");
 
     let wal_clone = Arc::clone(&wal);
     let handle = thread::spawn(move || {
@@ -545,7 +547,10 @@ fn test_prune_archives_keeps_newest() {
 
     // The three newest (timestamps 5000, 6000, 7000) should survive.
     for path in &remaining {
-        let name = path.file_name().expect("archive file name").to_string_lossy();
+        let name = path
+            .file_name()
+            .expect("archive file name")
+            .to_string_lossy();
         let ts: u64 = name
             .strip_prefix("test.wal.")
             .expect("strip prefix")
@@ -626,8 +631,7 @@ fn test_wal_flush_syncs_pending() {
     let signing_key = test_signing_key();
 
     // Use a large sync interval so appends don't auto-sync
-    let wal =
-        Wal::open_with_sync_interval(&path, session_id, signing_key, 1000).expect("open wal");
+    let wal = Wal::open_with_sync_interval(&path, session_id, signing_key, 1000).expect("open wal");
     wal.append(EntryType::Heartbeat, vec![1]).expect("append");
     wal.append(EntryType::DocumentHash, vec![2])
         .expect("append");
@@ -649,8 +653,7 @@ fn test_wal_checkpoint_forces_sync() {
     let signing_key = test_signing_key();
 
     // Large sync interval, but Checkpoint entry type should force sync
-    let wal =
-        Wal::open_with_sync_interval(&path, session_id, signing_key, 1000).expect("open wal");
+    let wal = Wal::open_with_sync_interval(&path, session_id, signing_key, 1000).expect("open wal");
     wal.append(EntryType::Checkpoint, vec![0xAA; 32])
         .expect("checkpoint append");
 

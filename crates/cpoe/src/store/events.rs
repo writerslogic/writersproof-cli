@@ -288,10 +288,14 @@ impl SecureStore {
             hw_cosign_signature: row.get(23)?,
             hw_cosign_pubkey: row.get(24)?,
             hw_cosign_salt_commitment: row.get(25)?,
-            hw_cosign_chain_index: row.get::<_, Option<i64>>(26)?.map(|v| u64::try_from(v).unwrap_or(0)),
+            hw_cosign_chain_index: row
+                .get::<_, Option<i64>>(26)?
+                .map(|v| u64::try_from(v).unwrap_or(0)),
             hw_cosign_entangled_hash: row.get(27)?,
             hw_cosign_entropy_digest: row.get(28)?,
-            hw_cosign_entropy_bytes: row.get::<_, Option<i64>>(29)?.map(|v| u64::try_from(v).unwrap_or(0)),
+            hw_cosign_entropy_bytes: row
+                .get::<_, Option<i64>>(29)?
+                .map(|v| u64::try_from(v).unwrap_or(0)),
             posme_proof: row.get(30)?,
         })
     }

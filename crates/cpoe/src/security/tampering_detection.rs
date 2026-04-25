@@ -157,24 +157,28 @@ impl TamperingDetector {
         max_orphaned_keys: usize,
     ) -> Result<Self> {
         if !(100.0..=1000.0).contains(&speed_limit_wpm) {
-            return Err(Error::validation(
-                format!("speed_limit_wpm must be 100-1000, got {}", speed_limit_wpm),
-            ));
+            return Err(Error::validation(format!(
+                "speed_limit_wpm must be 100-1000, got {}",
+                speed_limit_wpm
+            )));
         }
         if !(0.0..=1.0).contains(&timing_variance_min_cv) {
-            return Err(Error::validation(
-                format!("timing_variance_min_cv must be 0-1, got {}", timing_variance_min_cv),
-            ));
+            return Err(Error::validation(format!(
+                "timing_variance_min_cv must be 0-1, got {}",
+                timing_variance_min_cv
+            )));
         }
         if !(500..=10000).contains(&sleep_threshold_ms) {
-            return Err(Error::validation(
-                format!("sleep_threshold_ms must be 500-10000, got {}", sleep_threshold_ms),
-            ));
+            return Err(Error::validation(format!(
+                "sleep_threshold_ms must be 500-10000, got {}",
+                sleep_threshold_ms
+            )));
         }
         if !(1..=100).contains(&max_orphaned_keys) {
-            return Err(Error::validation(
-                format!("max_orphaned_keys must be 1-100, got {}", max_orphaned_keys),
-            ));
+            return Err(Error::validation(format!(
+                "max_orphaned_keys must be 1-100, got {}",
+                max_orphaned_keys
+            )));
         }
 
         Ok(Self {
@@ -278,11 +282,8 @@ impl TamperingDetector {
         }
 
         let mean = ikis_ms.iter().sum::<f64>() / ikis_ms.len() as f64;
-        let variance = ikis_ms
-            .iter()
-            .map(|x| (x - mean).powi(2))
-            .sum::<f64>()
-            / ikis_ms.len() as f64;
+        let variance =
+            ikis_ms.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
         let std_dev = variance.sqrt();
         let cv = std_dev / mean;
 
@@ -319,7 +320,8 @@ impl TamperingDetector {
 
                     // If pre-gap and post-gap timing are identical (within 5%), suspicious
                     if pre_gap_iki > 0 && post_gap_iki > 0 {
-                        let diff_ratio = ((post_gap_iki - pre_gap_iki).abs() as f64) / (pre_gap_iki as f64);
+                        let diff_ratio =
+                            ((post_gap_iki - pre_gap_iki).abs() as f64) / (pre_gap_iki as f64);
                         if diff_ratio < 0.05 {
                             return true; // Incomplete recovery
                         }
@@ -396,7 +398,11 @@ impl TamperingDetector {
     ///
     /// Verifies checkpoint_hash against computed hash of keystroke events.
     /// For now, returns false (deferred to checkpoint layer).
-    pub fn check_checkpoint_integrity(&self, _checkpoint_hash: &str, _events: &VecDeque<KeystrokeEvent>) -> bool {
+    pub fn check_checkpoint_integrity(
+        &self,
+        _checkpoint_hash: &str,
+        _events: &VecDeque<KeystrokeEvent>,
+    ) -> bool {
         // Implemented by checkpoint module
         false
     }

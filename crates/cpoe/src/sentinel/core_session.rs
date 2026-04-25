@@ -293,12 +293,14 @@ impl Sentinel {
                 log::info!("Auto-checkpoint committed for {path}");
                 let session_info = {
                     let sessions = self.sessions.read_recover();
-                    sessions.get(path).map(|s| (
-                        s.session_id.clone(),
-                        s.paste_context.is_some(),
-                        s.app_bundle_id.clone(),
-                        s.window_title.reveal().to_string(),
-                    ))
+                    sessions.get(path).map(|s| {
+                        (
+                            s.session_id.clone(),
+                            s.paste_context.is_some(),
+                            s.app_bundle_id.clone(),
+                            s.window_title.reveal().to_string(),
+                        )
+                    })
                 };
                 if let Some(ref tpm) = self.tpm_provider {
                     let mut sessions = self.sessions.write_recover();
@@ -323,7 +325,11 @@ impl Sentinel {
                         crate::store::text_fragments::KeystrokeContext::OriginalComposition
                     };
                     let sig = crate::store::text_fragments::sign_fragment(
-                        sk, sid, &content_hash, ts, &nonce,
+                        sk,
+                        sid,
+                        &content_hash,
+                        ts,
+                        &nonce,
                     );
                     let fragment = crate::store::text_fragments::TextFragment {
                         id: None,

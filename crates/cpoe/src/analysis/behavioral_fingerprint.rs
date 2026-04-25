@@ -165,22 +165,34 @@ impl BehavioralFingerprint {
 
         let skewness = stats::skewness(&intervals, welford_mean, std);
         let kurtosis = stats::kurtosis(&intervals, welford_mean, std);
-        
+
         let thinking_freq = para_count as f64 / samples.len() as f64;
         let total = intervals.len() as f64;
-        
+
         if total > 0.0 {
             for b in &mut interval_buckets {
                 *b /= total;
             }
         }
 
-        let sentence_pause_mean = if sentence_count > 0 { sentence_sum / sentence_count as f64 } else { 0.0 };
-        let paragraph_pause_mean = if para_count > 0 { para_sum / para_count as f64 } else { 0.0 };
+        let sentence_pause_mean = if sentence_count > 0 {
+            sentence_sum / sentence_count as f64
+        } else {
+            0.0
+        };
+        let paragraph_pause_mean = if para_count > 0 {
+            para_sum / para_count as f64
+        } else {
+            0.0
+        };
 
         let burst_speed_variance = if burst_speed_count >= 2 {
             let v = burst_speed_m2 / (burst_speed_count - 1) as f64;
-            if v.is_finite() { v } else { 0.0 }
+            if v.is_finite() {
+                v
+            } else {
+                0.0
+            }
         } else {
             0.0
         };
@@ -230,7 +242,7 @@ impl BehavioralFingerprint {
 
         for w in samples.windows(2) {
             let iv = interval_ms(&w[0], &w[1]);
-            
+
             if iv > 0.0 && iv < MAX_PAUSE_FILTER_MS {
                 intervals.push(iv);
 
@@ -282,7 +294,9 @@ impl BehavioralFingerprint {
         }
 
         if impossibly_fast * SUSPICIOUS_FAST_PERCENT > intervals.len() {
-            flags.push(ForgeryFlag::SuperhumanSpeed { count: impossibly_fast });
+            flags.push(ForgeryFlag::SuperhumanSpeed {
+                count: impossibly_fast,
+            });
         }
 
         // Fatigue pattern analysis directly operates on the single allocated interval slice
@@ -290,7 +304,7 @@ impl BehavioralFingerprint {
             let quarter = intervals.len() / 4;
             let first_mean = crate::utils::stats::mean(&intervals[..quarter]);
             let last_mean = crate::utils::stats::mean(&intervals[intervals.len() - quarter..]);
-            
+
             if first_mean > 0.0 && last_mean <= first_mean * FATIGUE_SLOWDOWN_RATIO {
                 flags.push(ForgeryFlag::NoFatiguePattern);
             }

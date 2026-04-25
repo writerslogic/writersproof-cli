@@ -34,8 +34,7 @@ pub fn device_identity() -> ([u8; 16], String) {
             );
             let mut fallback_id = [0u8; 16];
             rand::RngCore::fill_bytes(&mut rand::rng(), &mut fallback_id);
-            let machine_id =
-                sysinfo::System::host_name().unwrap_or_else(|| "unknown".to_string());
+            let machine_id = sysinfo::System::host_name().unwrap_or_else(|| "unknown".to_string());
             *guard = Some((false, fallback_id, machine_id.clone()));
             (fallback_id, machine_id)
         }

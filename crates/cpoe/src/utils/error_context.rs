@@ -33,7 +33,9 @@ impl ErrorContext {
     pub fn log_error(&self, error: &Error) {
         log::error!(
             "Operation: {} | Step: {} | Error: {:?}",
-            self.operation, self.step, error
+            self.operation,
+            self.step,
+            error
         );
     }
 
@@ -41,7 +43,10 @@ impl ErrorContext {
     pub fn log_error_with_context(&self, error: &Error, context: &str) {
         log::error!(
             "Operation: {} | Step: {} | Context: {} | Error: {:?}",
-            self.operation, self.step, context, error
+            self.operation,
+            self.step,
+            context,
+            error
         );
     }
 
@@ -58,11 +63,15 @@ impl ErrorContext {
             }
             // Cryptographic errors: never mention key material
             Error::Validation(msg) if msg.contains("signature") => {
-                "Evidence integrity check failed. Your content may have been tampered with.".to_string()
+                "Evidence integrity check failed. Your content may have been tampered with."
+                    .to_string()
             }
             // File errors: redact paths
             Error::Validation(msg) if msg.contains("/") || msg.contains("\\") => {
-                format!("File access error in {}. Please check permissions.", self.operation)
+                format!(
+                    "File access error in {}. Please check permissions.",
+                    self.operation
+                )
             }
             // Network errors: redact URLs and tokens
             Error::Validation(msg)
@@ -75,7 +84,10 @@ impl ErrorContext {
                 format!("Invalid input during {}. Please try again.", self.operation)
             }
             // All other errors
-            _ => format!("An error occurred during {}. Please try again.", self.operation),
+            _ => format!(
+                "An error occurred during {}. Please try again.",
+                self.operation
+            ),
         }
     }
 
@@ -98,8 +110,13 @@ impl ErrorContext {
                 let after_pattern = &result[start + pattern.len()..];
 
                 // Find the value: skip leading whitespace, capture until next whitespace/comma
-                let value_chars = after_pattern.chars().skip_while(|c| c.is_whitespace()).collect::<String>();
-                let end_pos = value_chars.find(|c: char| c.is_whitespace() || c == ',').unwrap_or(value_chars.len());
+                let value_chars = after_pattern
+                    .chars()
+                    .skip_while(|c| c.is_whitespace())
+                    .collect::<String>();
+                let end_pos = value_chars
+                    .find(|c: char| c.is_whitespace() || c == ',')
+                    .unwrap_or(value_chars.len());
                 let suffix = &after_pattern[after_pattern.len() - value_chars.len() + end_pos..];
 
                 result = format!("{}{}{}", prefix, replacement, suffix);
@@ -116,12 +133,8 @@ pub fn sanitize_for_user(error_type: &str, operation: &str) -> String {
         "SignatureInvalid" => {
             "Fragment integrity check failed. This content may have been tampered with.".to_string()
         }
-        "NonceReplay" => {
-            "Duplicate evidence detected. This may indicate tampering.".to_string()
-        }
-        "TimestampTooFar" => {
-            "Timestamp invalid. Please check your system clock.".to_string()
-        }
+        "NonceReplay" => "Duplicate evidence detected. This may indicate tampering.".to_string(),
+        "TimestampTooFar" => "Timestamp invalid. Please check your system clock.".to_string(),
         "DatabaseError" => {
             format!(
                 "Could not save authorship evidence for {}. Please try again.",
@@ -129,30 +142,22 @@ pub fn sanitize_for_user(error_type: &str, operation: &str) -> String {
             )
         }
         "PasteboardAccessDenied" => {
-            "Cannot access clipboard. Please check System Preferences → Security & Privacy.".to_string()
+            "Cannot access clipboard. Please check System Preferences → Security & Privacy."
+                .to_string()
         }
         "TextEncodingFailed" => {
             "Could not read clipboard content. Try a different format.".to_string()
         }
-        "InvalidSignature" => {
-            "Evidence signature verification failed.".to_string()
-        }
-        "SerializationFailed" => {
-            "Could not format evidence. Please try again.".to_string()
-        }
-        "CloudKitNetworkError" => {
-            "Cannot connect to iCloud. Will retry automatically.".to_string()
-        }
+        "InvalidSignature" => "Evidence signature verification failed.".to_string(),
+        "SerializationFailed" => "Could not format evidence. Please try again.".to_string(),
+        "CloudKitNetworkError" => "Cannot connect to iCloud. Will retry automatically.".to_string(),
         "AppAttestTokenInvalid" => {
             "Device verification failed. Please restart the app.".to_string()
         }
         "CredentialExpired" => {
             "Your authorship credential has expired. Request a new one.".to_string()
         }
-        _ => format!(
-            "An error occurred during {}. Please try again.",
-            operation
-        ),
+        _ => format!("An error occurred during {}. Please try again.", operation),
     }
 }
 

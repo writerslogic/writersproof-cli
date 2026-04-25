@@ -154,11 +154,16 @@ fn normalize(data: &[f64]) -> Vec<f64> {
     if data.iter().any(|v| !v.is_finite()) {
         // Reject non-finite values instead of silently propagating them
         log::warn!("labyrinth normalize: non-finite values in input, replacing with zeros");
-        return data.iter().map(|v| if v.is_finite() { *v } else { 0.0 }).collect();
+        return data
+            .iter()
+            .map(|v| if v.is_finite() { *v } else { 0.0 })
+            .collect();
     }
     let (min, max) = data
         .iter()
-        .fold((f64::MAX, f64::NEG_INFINITY), |(m, ax), &x| (m.min(x), ax.max(x)));
+        .fold((f64::MAX, f64::NEG_INFINITY), |(m, ax), &x| {
+            (m.min(x), ax.max(x))
+        });
     let range = (max - min).max(1e-9);
     data.iter().map(|&x| (x - min) / range).collect()
 }

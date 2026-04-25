@@ -627,7 +627,10 @@ fn test_entangled_chain_save_load() {
     );
     assert_eq!(loaded.checkpoints.len(), 1);
 
-    let binding = loaded.checkpoints[0].jitter_binding.as_ref().expect("loaded jitter binding");
+    let binding = loaded.checkpoints[0]
+        .jitter_binding
+        .as_ref()
+        .expect("loaded jitter binding");
     assert_eq!(binding.jitter_hash, [0xABu8; 32]);
     assert_eq!(binding.session_id, "session-test");
     assert_eq!(binding.keystroke_count, 42);
@@ -1035,7 +1038,12 @@ fn test_entangled_commit_with_physics_context() {
         )
         .expect("commit 1");
 
-    assert!(cp1.jitter_binding.as_ref().expect("jitter binding cp1").physics_seed.is_some());
+    assert!(cp1
+        .jitter_binding
+        .as_ref()
+        .expect("jitter binding cp1")
+        .physics_seed
+        .is_some());
     chain
         .verify()
         .expect("verify multi-checkpoint physics chain");
@@ -1469,7 +1477,9 @@ fn test_min_iterations_zero_rejected() {
     .expect("create chain")
     .with_signature_policy(SignaturePolicy::Optional);
 
-    let err = chain.commit(None).expect_err("should reject zero min_iterations");
+    let err = chain
+        .commit(None)
+        .expect_err("should reject zero min_iterations");
     assert!(
         err.to_string().contains("min_iterations=0"),
         "expected min_iterations=0 error, got: {err}"
@@ -1491,10 +1501,7 @@ fn test_clock_tolerance_tracked_in_report() {
     chain.checkpoints.push(cp1);
 
     let report = chain.verify_detailed();
-    assert!(
-        report.valid,
-        "clock drift within 1s tolerance should pass"
-    );
+    assert!(report.valid, "clock drift within 1s tolerance should pass");
     assert!(
         report.clock_tolerance_violations.len() > 0,
         "should track tolerance violations"
@@ -1512,7 +1519,11 @@ fn test_mac_sidecar_legacy_fallback() {
 
     let mac_key = b"test_key_32_bytes_padding_heree";
     let loaded = Chain::load_with_mac(&tmp_path, mac_key).expect("fallback to unverified load");
-    assert_eq!(loaded.checkpoints.len(), 1, "should load legacy chain without MAC");
+    assert_eq!(
+        loaded.checkpoints.len(),
+        1,
+        "should load legacy chain without MAC"
+    );
 }
 
 #[test]

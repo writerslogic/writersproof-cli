@@ -416,7 +416,7 @@ fn compute_error_distribution(
         } else {
             dist.isolated_errors += 1;
         }
-        
+
         prev_timestamp = Some(event.timestamp_ns);
     }
 

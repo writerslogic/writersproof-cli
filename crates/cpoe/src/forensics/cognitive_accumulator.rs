@@ -12,10 +12,10 @@
 //! cognitive analyzer to produce `CognitiveLayerMetrics`.
 
 use authorproof_protocol::forensics::cognitive::{
-    CorrectionEvent, CorrectionType, EditOp, WordBoundaryEvent,
-    analyze_cognitive_content, analyze_error_fingerprint,
+    analyze_cognitive_content, analyze_error_fingerprint, CorrectionEvent, CorrectionType, EditOp,
+    WordBoundaryEvent,
 };
-use cpoe_jitter::cognitive::{TimedKeystroke, analyze_cognitive_temporal};
+use cpoe_jitter::cognitive::{analyze_cognitive_temporal, TimedKeystroke};
 
 /// Maximum word boundaries tracked per session (prevents unbounded growth).
 const MAX_WORD_BOUNDARIES: usize = 5000;
@@ -117,8 +117,13 @@ impl CognitiveAccumulator {
 
         // Word boundary detection from character stream.
         if let Some(ch) = char_value {
-            let is_separator = ch.is_whitespace() || ch == '.' || ch == ','
-                || ch == '!' || ch == '?' || ch == ';' || ch == ':';
+            let is_separator = ch.is_whitespace()
+                || ch == '.'
+                || ch == ','
+                || ch == '!'
+                || ch == '?'
+                || ch == ';'
+                || ch == ':';
             let is_sentence_end = ch == '.' || ch == '!' || ch == '?';
 
             if is_separator && !self.current_word.is_empty() {
@@ -184,10 +189,7 @@ impl CognitiveAccumulator {
             bigram_fluency_ratio: t.map(|t| t.bigram_fluency_ratio).unwrap_or(0.0),
             lrd_correlation: content.lrd_correlation,
             non_append_ratio: content.non_append_ratio,
-            semantic_correction_ratio: error_fp
-                .as_ref()
-                .map(|fp| fp.semantic_ratio)
-                .unwrap_or(0.0),
+            semantic_correction_ratio: error_fp.as_ref().map(|fp| fp.semantic_ratio).unwrap_or(0.0),
             spoofing_indicator: spoofing,
             baseline_deviation: 0.0, // Requires cross-session data; populated by caller
         })
@@ -261,7 +263,13 @@ mod tests {
         // Type "the quick" with varying pauses.
         for (i, ch) in "the quick".chars().enumerate() {
             let iki_ns = if i == 4 { 500_000_000 } else { 120_000_000 }; // 500ms before "quick"
-            acc.record_keystroke(Some(ch), (i as i64 + 1) * 1_000_000_000, iki_ns, 1, i as i64 + 1);
+            acc.record_keystroke(
+                Some(ch),
+                (i as i64 + 1) * 1_000_000_000,
+                iki_ns,
+                1,
+                i as i64 + 1,
+            );
         }
         // "the" gets recorded as a word when space arrives.
         assert_eq!(acc.word_boundary_count(), 1);
@@ -290,11 +298,25 @@ mod tests {
         // Type "Hi. Ok"
         let text = "Hi. Ok";
         for (i, ch) in text.chars().enumerate() {
-            let iki_ns = if ch == 'O' { 1_500_000_000 } else { 100_000_000 };
-            acc.record_keystroke(Some(ch), (i as i64 + 1) * 1_000_000_000, iki_ns, 1, i as i64 + 1);
+            let iki_ns = if ch == 'O' {
+                1_500_000_000
+            } else {
+                100_000_000
+            };
+            acc.record_keystroke(
+                Some(ch),
+                (i as i64 + 1) * 1_000_000_000,
+                iki_ns,
+                1,
+                i as i64 + 1,
+            );
         }
         // Check that the 'O' after '. ' was marked as after_sentence_end.
-        let o_idx = acc.timed_keystrokes.iter().position(|k| k.char_byte == b'O').unwrap();
+        let o_idx = acc
+            .timed_keystrokes
+            .iter()
+            .position(|k| k.char_byte == b'O')
+            .unwrap();
         assert!(acc.timed_keystrokes[o_idx].after_sentence_end);
     }
 

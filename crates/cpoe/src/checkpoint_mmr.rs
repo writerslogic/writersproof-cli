@@ -89,9 +89,7 @@ impl CheckpointMmr {
             || chain_id == "."
             || chain_id == ".."
         {
-            return Err(Error::config(format!(
-                "invalid MMR chain id: {chain_id:?}"
-            )));
+            return Err(Error::config(format!("invalid MMR chain id: {chain_id:?}")));
         }
         std::fs::create_dir_all(mmr_dir)?;
         let store_path = mmr_dir.join(format!("{chain_id}.mmr"));

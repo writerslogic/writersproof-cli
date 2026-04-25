@@ -521,7 +521,10 @@ fn test_declaration_jitter_seal_tampering_detected() {
         .sign(&signing_key)
         .expect("sign");
 
-    decl.jitter_sealed.as_mut().expect("jitter seal present for tampering").jitter_hash = [0xFFu8; 32];
+    decl.jitter_sealed
+        .as_mut()
+        .expect("jitter seal present for tampering")
+        .jitter_hash = [0xFFu8; 32];
 
     assert!(decl.verify().is_err());
 }

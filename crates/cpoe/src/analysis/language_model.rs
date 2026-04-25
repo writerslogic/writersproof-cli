@@ -40,10 +40,7 @@ impl TfidfModel {
         // Group documents by label using references to avoid cloning
         let mut label_docs: HashMap<&String, Vec<&String>> = HashMap::new();
         for (label, text) in documents {
-            label_docs
-                .entry(label)
-                .or_default()
-                .push(text);
+            label_docs.entry(label).or_default().push(text);
         }
 
         // Train a model for each label
@@ -226,7 +223,10 @@ mod tests {
     fn test_tfidf_model_creation() {
         let docs = vec![
             ("class_a".to_string(), "python rust async await".to_string()),
-            ("class_b".to_string(), "email subject recipient dear".to_string()),
+            (
+                "class_b".to_string(),
+                "email subject recipient dear".to_string(),
+            ),
         ];
 
         let models = TfidfModel::train(&docs);
@@ -238,11 +238,13 @@ mod tests {
     #[test]
     fn test_tfidf_scoring() {
         let docs = vec![
-            ("code".to_string(), "function array async promise callback".to_string()),
+            (
+                "code".to_string(),
+                "function array async promise callback".to_string(),
+            ),
             (
                 "prose".to_string(),
-                "beautiful morning sunshine adventure journey"
-                    .to_string(),
+                "beautiful morning sunshine adventure journey".to_string(),
             ),
         ];
 
@@ -299,10 +301,7 @@ mod tests {
         }
 
         // Max score should be 1.0
-        let max_score = scores
-            .values()
-            .cloned()
-            .fold(0.0_f64, f64::max);
+        let max_score = scores.values().cloned().fold(0.0_f64, f64::max);
         assert!((max_score - 1.0).abs() < 0.01 || max_score == 0.0); // Float comparison tolerance
     }
 
@@ -317,7 +316,10 @@ mod tests {
     fn test_model_with_single_doc_per_class() {
         let docs = vec![
             ("type_a".to_string(), "unique term alpha beta".to_string()),
-            ("type_b".to_string(), "distinct word gamma delta".to_string()),
+            (
+                "type_b".to_string(),
+                "distinct word gamma delta".to_string(),
+            ),
         ];
 
         let models = TfidfModel::train(&docs);

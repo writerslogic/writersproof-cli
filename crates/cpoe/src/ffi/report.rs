@@ -55,7 +55,11 @@ fn compute_event_stats(events: &[crate::store::SecureEvent], ips: u64) -> EventS
             .filter(|s| s.is_finite())
             .collect();
         let avg = finite_scores.iter().sum::<f64>() / finite_scores.len().max(1) as f64;
-        if avg.is_finite() { avg } else { 0.0 }
+        if avg.is_finite() {
+            avg
+        } else {
+            0.0
+        }
     };
 
     let total_iterations: u64 = events.iter().map(|e| e.vdf_iterations).sum();
@@ -119,10 +123,7 @@ fn compute_event_stats(events: &[crate::store::SecureEvent], ips: u64) -> EventS
     }
 }
 
-fn build_checkpoints(
-    events: &[crate::store::SecureEvent],
-    ips: u64,
-) -> Vec<ReportCheckpoint> {
+fn build_checkpoints(events: &[crate::store::SecureEvent], ips: u64) -> Vec<ReportCheckpoint> {
     events
         .iter()
         .enumerate()
@@ -175,9 +176,7 @@ fn build_process_flags(
             signal: FlagSignal::Human,
         });
     }
-    if stats.paste_count == 0
-        || (stats.paste_count as f64 / event_count.max(1) as f64) < 0.1
-    {
+    if stats.paste_count == 0 || (stats.paste_count as f64 / event_count.max(1) as f64) < 0.1 {
         flags.push(ReportFlag {
             category: "Process".into(),
             flag: "Low Paste Ratio".into(),
@@ -233,7 +232,9 @@ fn build_process_flags(
         flags.push(ReportFlag {
             category: "Attestation".into(),
             flag: format!("Hardware-Bound Key ({})", tier_label),
-            detail: "Device signing key is bound to TPM/Secure Enclave; cannot be extracted or cloned.".into(),
+            detail:
+                "Device signing key is bound to TPM/Secure Enclave; cannot be extracted or cloned."
+                    .into(),
             signal: FlagSignal::Human,
         });
     }
@@ -246,7 +247,11 @@ fn build_process_flags(
                 "{} sequential iterations verify minimum elapsed wall-clock time.",
                 stats.total_iterations
             ),
-            signal: if vdf_secs > 60.0 { FlagSignal::Human } else { FlagSignal::Neutral },
+            signal: if vdf_secs > 60.0 {
+                FlagSignal::Human
+            } else {
+                FlagSignal::Neutral
+            },
         });
     }
     flags
@@ -377,14 +382,11 @@ fn populate_behavioral_fields(
         if c.percentiles[PERCENTILE_IDX_MEDIAN] > 0.0
             && c.percentiles[PERCENTILE_IDX_MEDIAN].is_finite()
         {
-            process.pause_median_sec =
-                Some(c.percentiles[PERCENTILE_IDX_MEDIAN] / 1_000_000_000.0);
+            process.pause_median_sec = Some(c.percentiles[PERCENTILE_IDX_MEDIAN] / 1_000_000_000.0);
         }
-        if c.percentiles[PERCENTILE_IDX_P90] > 0.0
-            && c.percentiles[PERCENTILE_IDX_P90].is_finite()
+        if c.percentiles[PERCENTILE_IDX_P90] > 0.0 && c.percentiles[PERCENTILE_IDX_P90].is_finite()
         {
-            process.pause_p95_sec =
-                Some(c.percentiles[PERCENTILE_IDX_P90] / 1_000_000_000.0);
+            process.pause_p95_sec = Some(c.percentiles[PERCENTILE_IDX_P90] / 1_000_000_000.0);
         }
     }
     let append_ratio = metrics.primary.monotonic_append_ratio.get();
@@ -457,15 +459,24 @@ fn build_forensic_flags(
                 crate::forensics::cross_modal::CrossModalVerdict::Consistent => "Consistent",
                 crate::forensics::cross_modal::CrossModalVerdict::Marginal => "Marginal",
                 crate::forensics::cross_modal::CrossModalVerdict::Inconsistent => "Inconsistent",
-                crate::forensics::cross_modal::CrossModalVerdict::Insufficient => "Insufficient data",
+                crate::forensics::cross_modal::CrossModalVerdict::Insufficient => {
+                    "Insufficient data"
+                }
             };
             flags.push(ReportFlag {
                 category: "Cross-Modal".into(),
                 flag: format!("Evidence Coherence: {}", verdict_label),
-                detail: format!("{}/{} cross-modal consistency checks passed.", passed, total),
+                detail: format!(
+                    "{}/{} cross-modal consistency checks passed.",
+                    passed, total
+                ),
                 signal: match cm.verdict {
-                    crate::forensics::cross_modal::CrossModalVerdict::Consistent => FlagSignal::Human,
-                    crate::forensics::cross_modal::CrossModalVerdict::Marginal => FlagSignal::Neutral,
+                    crate::forensics::cross_modal::CrossModalVerdict::Consistent => {
+                        FlagSignal::Human
+                    }
+                    crate::forensics::cross_modal::CrossModalVerdict::Marginal => {
+                        FlagSignal::Neutral
+                    }
                     _ => FlagSignal::Synthetic,
                 },
             });
@@ -951,7 +962,12 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     let writing_flow: Vec<FlowDataPoint> = {
         let first_ns = events.first().map(|e| e.timestamp_ns).unwrap_or(0);
-        let max_delta = events.iter().map(|e| e.size_delta.max(0)).max().unwrap_or(1).max(1);
+        let max_delta = events
+            .iter()
+            .map(|e| e.size_delta.max(0))
+            .max()
+            .unwrap_or(1)
+            .max(1);
         events
             .iter()
             .map(|e| FlowDataPoint {
@@ -977,7 +993,11 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         evidence_hash: Some(evidence_chain_hash),
         evidence_cbor_b64: None,
         signing_key_fingerprint: key_fp,
-        document_words: if stats.doc_size > 0 { Some(stats.doc_size.max(0) as u64 / 5) } else { None },
+        document_words: if stats.doc_size > 0 {
+            Some(stats.doc_size.max(0) as u64 / 5)
+        } else {
+            None
+        },
         document_chars: Some(stats.doc_size.max(0) as u64),
         document_sentences: None,
         document_paragraphs: None,
@@ -1093,8 +1113,10 @@ fn convert_war_report(r: &WarReport, guilloche_seed_hex: &str) -> FfiWarReport {
         dimensions: r.dimensions.iter().map(convert_dimension).collect(),
         limitations: r.limitations.clone(),
         guilloche_seed_hex: guilloche_seed_hex.to_string(),
-        provenance: r.provenance_breakdown.as_ref().map(|p| {
-            FfiProvenanceBreakdown {
+        provenance: r
+            .provenance_breakdown
+            .as_ref()
+            .map(|p| FfiProvenanceBreakdown {
                 total_fragments: p.total_fragments as u32,
                 original_composition_pct: p.original_composition_pct,
                 sourced_unknown_pct: p.sourced_unknown_pct,
@@ -1107,16 +1129,12 @@ fn convert_war_report(r: &WarReport, guilloche_seed_hex: &str) -> FfiWarReport {
                     .iter()
                     .map(|s| FfiProvenanceSource {
                         session_id: s.session_id.clone(),
-                        app_bundle_id: s
-                            .app_bundle_id
-                            .clone()
-                            .unwrap_or_default(),
+                        app_bundle_id: s.app_bundle_id.clone().unwrap_or_default(),
                         fragment_count: s.fragment_count as u32,
                         verified: s.verified,
                     })
                     .collect(),
-            }
-        }),
+            }),
     }
 }
 

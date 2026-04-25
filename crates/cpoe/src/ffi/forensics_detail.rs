@@ -100,7 +100,9 @@ impl FfiForensicBreakdown {
 }
 
 impl super::types::FfiErrResult for FfiForensicBreakdown {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::error(msg.into()) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::error(msg.into())
+    }
 }
 
 /// Return a detailed forensic breakdown for a tracked file.
@@ -113,7 +115,9 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
     let path = try_ffi!(validate_path_str(&path), FfiForensicBreakdown);
     let store = try_ffi!(open_store(), FfiForensicBreakdown);
     let events = try_ffi!(
-        store.get_events_for_file(&path).map_err(|e| format!("Failed to load events: {e}")),
+        store
+            .get_events_for_file(&path)
+            .map_err(|e| format!("Failed to load events: {e}")),
         FfiForensicBreakdown
     );
 

@@ -587,7 +587,11 @@ pub fn analyze_focus_patterns(
                 }
             }
         }
-        if pairs > 0 { mid_typing as f64 / pairs as f64 } else { 0.0 }
+        if pairs > 0 {
+            mid_typing as f64 / pairs as f64
+        } else {
+            0.0
+        }
     } else {
         0.0
     };

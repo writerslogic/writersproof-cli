@@ -543,14 +543,8 @@ pub(super) fn write_provenance_breakdown(html: &mut String, r: &WarReport) -> fm
             write!(
                 html,
                 "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                html_escape(
-                    src.session_id
-                        .get(..16)
-                        .unwrap_or(&src.session_id)
-                ),
-                html_escape(
-                    src.app_bundle_id.as_deref().unwrap_or("unknown")
-                ),
+                html_escape(src.session_id.get(..16).unwrap_or(&src.session_id)),
+                html_escape(src.app_bundle_id.as_deref().unwrap_or("unknown")),
                 src.fragment_count,
                 if src.verified { "Yes" } else { "No" },
             )?;

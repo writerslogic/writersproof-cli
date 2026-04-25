@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::helpers::{load_api_key, load_did, load_signing_key, open_store, validate_path_str};
+use crate::ffi::helpers::{
+    load_api_key, load_did, load_signing_key, open_store, validate_path_str,
+};
 use crate::ffi::types::try_ffi;
 use std::sync::OnceLock;
 
@@ -9,8 +11,7 @@ const MAX_EVIDENCE_FILE_SIZE: u64 = 64 * 1024 * 1024;
 
 fn read_bounded(path: &str) -> Result<Vec<u8>, String> {
     use std::io::Read;
-    let file =
-        std::fs::File::open(path).map_err(|e| format!("Failed to open file: {e}"))?;
+    let file = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {e}"))?;
     let len = file
         .metadata()
         .map_err(|e| format!("Failed to stat file: {e}"))?
@@ -93,7 +94,9 @@ fn err_beacon(msg: String) -> FfiBeaconResult {
 }
 
 impl super::types::FfiErrResult for FfiBeaconResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { err_beacon(msg.into()) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        err_beacon(msg.into())
+    }
 }
 
 fn beacon_sidecar_path(document_path: &str) -> Option<std::path::PathBuf> {
@@ -107,12 +110,11 @@ fn save_beacon_attestation(
     document_path: &str,
     attestation: &crate::evidence::WpBeaconAttestation,
 ) -> Result<(), String> {
-    let sidecar = beacon_sidecar_path(document_path)
-        .ok_or_else(|| "data dir not configured".to_string())?;
+    let sidecar =
+        beacon_sidecar_path(document_path).ok_or_else(|| "data dir not configured".to_string())?;
     let json = serde_json::to_vec(attestation)
         .map_err(|e| format!("beacon JSON serialization failed: {e}"))?;
-    std::fs::write(&sidecar, json)
-        .map_err(|e| format!("beacon sidecar write failed: {e}"))
+    std::fs::write(&sidecar, json).map_err(|e| format!("beacon sidecar write failed: {e}"))
 }
 
 pub(crate) fn load_beacon_attestation(
@@ -130,7 +132,8 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
     let canonical = try_ffi!(validate_path_str(&document_path), FfiBeaconResult);
     let store = try_ffi!(open_store(), FfiBeaconResult);
     let events = try_ffi!(
-        store.get_events_for_file(&canonical)
+        store
+            .get_events_for_file(&canonical)
             .map_err(|e| format!("Failed to load events: {e}")),
         FfiBeaconResult
     );
@@ -329,7 +332,8 @@ pub fn ffi_check_beacon_status(document_path: String) -> FfiBeaconResult {
 fn check_beacon_from_store(canonical: &str) -> FfiBeaconResult {
     let store = try_ffi!(open_store(), FfiBeaconResult);
     let events = try_ffi!(
-        store.get_events_for_file(canonical)
+        store
+            .get_events_for_file(canonical)
             .map_err(|e| format!("Failed to load events: {e}")),
         FfiBeaconResult
     );

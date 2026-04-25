@@ -179,9 +179,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.agiletortoise.Drafts-OSX",
         display_name: "Drafts",
         storage: StoragePattern::ContainerBased,
-        container_paths: &[
-            "Library/Group Containers/com.agiletortoise.Drafts-Shared",
-        ],
+        container_paths: &["Library/Group Containers/com.agiletortoise.Drafts-Shared"],
         needs_title_inference: true,
     },
     // ── Day One ────────────────────────────────────────────────────────────
@@ -189,9 +187,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.bloombuilt.dayone-mac",
         display_name: "Day One",
         storage: StoragePattern::DatabaseBacked,
-        container_paths: &[
-            "Library/Group Containers/5U8NS4GX82.com.dayoneapp.dayone",
-        ],
+        container_paths: &["Library/Group Containers/5U8NS4GX82.com.dayoneapp.dayone"],
         needs_title_inference: true,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
@@ -553,9 +549,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.microsoft.Outlook",
         display_name: "Microsoft Outlook",
         storage: StoragePattern::ContainerBased,
-        container_paths: &[
-            "Library/Group Containers/UBF8T346G9.Office/Outlook",
-        ],
+        container_paths: &["Library/Group Containers/UBF8T346G9.Office/Outlook"],
         needs_title_inference: true, // compose windows only expose subject
     },
 ];
@@ -708,7 +702,8 @@ impl AppRegistry {
     /// Replaces the static `TITLE_INFERRED_APPS` constant with a runtime
     /// query over the merged built-in + user app set.
     pub fn needs_title_inference(&self, bundle_id: &str) -> bool {
-        self.title_inferred.contains(&bundle_id.to_ascii_lowercase())
+        self.title_inferred
+            .contains(&bundle_id.to_ascii_lowercase())
     }
 
     /// Look up a built-in app by bundle ID (case-insensitive).
@@ -761,7 +756,9 @@ impl AppRegistry {
     /// so on IO failure the in-memory state is never inconsistent.
     pub fn add_user_app(&mut self, app: UserWritingApp) -> crate::error::Result<()> {
         if app.bundle_id.is_empty() {
-            return Err(crate::error::Error::validation("bundle_id must not be empty"));
+            return Err(crate::error::Error::validation(
+                "bundle_id must not be empty",
+            ));
         }
         if app.display_name.is_empty() {
             return Err(crate::error::Error::validation(
@@ -1102,7 +1099,8 @@ mod tests {
                     | StoragePattern::DatabaseBacked
             ) {
                 assert!(
-                    !app.container_paths.is_empty() || app.storage == StoragePattern::ContainerBased,
+                    !app.container_paths.is_empty()
+                        || app.storage == StoragePattern::ContainerBased,
                     "App '{}' has non-FileBased storage but no container_paths",
                     app.display_name
                 );

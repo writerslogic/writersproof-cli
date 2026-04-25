@@ -75,7 +75,8 @@ pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiRes
 
     let file_path_str = file_path.to_string_lossy().into_owned();
     let events = try_ffi!(
-        store.get_events_for_file(&file_path_str)
+        store
+            .get_events_for_file(&file_path_str)
             .map_err(|e| format!("Failed to load events: {e}")),
         FfiResult
     );
@@ -271,7 +272,10 @@ pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiRes
         None
     };
     let embedded_filename = if embedded_content.is_some() {
-        file_path.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+        file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string())
     } else {
         None
     };
@@ -471,7 +475,11 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
 
     let content = match wire.document_content {
         Some(c) => c,
-        None => return FfiResult::err("This .cpoe file does not contain an embedded document.".to_string()),
+        None => {
+            return FfiResult::err(
+                "This .cpoe file does not contain an embedded document.".to_string(),
+            )
+        }
     };
 
     // Verify content hash matches
@@ -480,7 +488,9 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         return FfiResult::err("Invalid content hash length in evidence packet.".to_string());
     }
     if hash[..] != wire.document.content_hash.digest[..] {
-        return FfiResult::err("Document content hash mismatch — file may be corrupted.".to_string());
+        return FfiResult::err(
+            "Document content hash mismatch — file may be corrupted.".to_string(),
+        );
     }
 
     let out = match crate::sentinel::helpers::validate_path(&output_path) {
@@ -574,7 +584,13 @@ fn collect_project_files(
 /// Walk up from the file to find the project root directory.
 /// Looks for common project markers; falls back to the file's parent.
 fn find_project_root(file_path: &std::path::Path) -> std::path::PathBuf {
-    let markers = [".git", ".scriv", "Package.swift", "Cargo.toml", ".writerslogic"];
+    let markers = [
+        ".git",
+        ".scriv",
+        "Package.swift",
+        "Cargo.toml",
+        ".writerslogic",
+    ];
     let mut dir = file_path.parent().unwrap_or(file_path).to_path_buf();
 
     // Walk up at most 5 levels looking for a project marker

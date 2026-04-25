@@ -103,7 +103,9 @@ pub fn ffi_sentinel_inject_keystroke(
             Err(poisoned) => poisoned.into_inner(),
         };
         let now = Instant::now();
-        let elapsed = window.start.map_or(true, |s| now.duration_since(s).as_secs() >= 1);
+        let elapsed = window
+            .start
+            .map_or(true, |s| now.duration_since(s).as_secs() >= 1);
         if elapsed {
             window.start = Some(now);
             window.count = 1;
@@ -259,4 +261,3 @@ pub fn ffi_sentinel_inject_keystroke(
     }
     true
 }
-

@@ -279,7 +279,11 @@ pub fn analyze_reflex_gate(samples: &[ProbeSample]) -> Result<ReflexGateResult, 
         });
     }
 
-    let min_latency_ms = responses.iter().copied().reduce(f64::min).unwrap_or(f64::INFINITY);
+    let min_latency_ms = responses
+        .iter()
+        .copied()
+        .reduce(f64::min)
+        .unwrap_or(f64::INFINITY);
     let (mean_latency_ms, variance) = crate::utils::stats::mean_and_variance(&responses);
     let std_latency_ms = variance.sqrt();
 
@@ -316,10 +320,7 @@ fn compute_lag1_autocorrelation(data: &[f64], mean: f64) -> f64 {
     }
 
     // Windows naturally processes adjacent pairs efficiently without offset index checking
-    let numerator: f64 = data
-        .windows(2)
-        .map(|w| (w[0] - mean) * (w[1] - mean))
-        .sum();
+    let numerator: f64 = data.windows(2).map(|w| (w[0] - mean) * (w[1] - mean)).sum();
 
     let denominator: f64 = data.iter().map(|&x| (x - mean).powi(2)).sum();
 

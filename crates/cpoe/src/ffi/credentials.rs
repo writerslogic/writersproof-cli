@@ -129,19 +129,27 @@ impl FfiCredentialStatusResult {
 }
 
 impl super::types::FfiErrResult for FfiCredentialResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 impl super::types::FfiErrResult for FfiSignedCredentialResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 impl super::types::FfiErrResult for FfiVerificationResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 impl super::types::FfiErrResult for FfiCredentialStatusResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -166,15 +174,14 @@ pub fn ffi_create_authorship_credential(
 
     let store = try_ffi!(open_store(), FfiCredentialResult);
     let fragments = try_ffi!(
-        store.get_fragments_for_session(&session_id)
+        store
+            .get_fragments_for_session(&session_id)
             .map_err(|e| format!("Failed to load fragments: {e}")),
         FfiCredentialResult
     );
 
     if fragments.is_empty() {
-        return FfiCredentialResult::err(
-            "No text fragments found for session",
-        );
+        return FfiCredentialResult::err("No text fragments found for session");
     }
 
     let author_did = super::helpers::load_did().ok();
@@ -192,29 +199,21 @@ pub fn ffi_create_authorship_credential(
 
     match credential.to_cbor() {
         Ok(cbor) => FfiCredentialResult::ok(hex::encode(cbor), doc_hash_hex),
-        Err(e) => FfiCredentialResult::err(
-            format!("Failed to encode credential: {e}"),
-        ),
+        Err(e) => FfiCredentialResult::err(format!("Failed to encode credential: {e}")),
     }
 }
 
 /// Sign a credential with the device signing key.
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_sign_credential(
-    credential_cbor_hex: String,
-) -> FfiSignedCredentialResult {
+pub fn ffi_sign_credential(credential_cbor_hex: String) -> FfiSignedCredentialResult {
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,
-        Err(e) => return FfiSignedCredentialResult::err(
-            format!("Invalid hex: {e}"),
-        ),
+        Err(e) => return FfiSignedCredentialResult::err(format!("Invalid hex: {e}")),
     };
 
     let mut credential = match AuthorshipCredential::from_cbor(&cbor_bytes) {
         Ok(c) => c,
-        Err(e) => return FfiSignedCredentialResult::err(
-            format!("Invalid credential CBOR: {e}"),
-        ),
+        Err(e) => return FfiSignedCredentialResult::err(format!("Invalid credential CBOR: {e}")),
     };
 
     let signing_key = try_ffi!(
@@ -224,9 +223,7 @@ pub fn ffi_sign_credential(
 
     match credential.sign_cose(&signing_key) {
         Ok(signed) => FfiSignedCredentialResult::ok(hex::encode(signed)),
-        Err(e) => FfiSignedCredentialResult::err(
-            format!("Signing failed: {e}"),
-        ),
+        Err(e) => FfiSignedCredentialResult::err(format!("Signing failed: {e}")),
     }
 }
 
@@ -238,9 +235,7 @@ pub fn ffi_verify_credential(
 ) -> FfiVerificationResult {
     let signed_bytes = match hex::decode(&signed_cbor_hex) {
         Ok(b) => b,
-        Err(e) => return FfiVerificationResult::err(
-            format!("Invalid signed hex: {e}"),
-        ),
+        Err(e) => return FfiVerificationResult::err(format!("Invalid signed hex: {e}")),
     };
 
     let pk_bytes = match hex::decode(&public_key_hex) {
@@ -249,16 +244,12 @@ pub fn ffi_verify_credential(
             arr.copy_from_slice(&b);
             arr
         }
-        _ => return FfiVerificationResult::err(
-            "public_key_hex must be 64 hex chars (32 bytes)",
-        ),
+        _ => return FfiVerificationResult::err("public_key_hex must be 64 hex chars (32 bytes)"),
     };
 
     let vk = match ed25519_dalek::VerifyingKey::from_bytes(&pk_bytes) {
         Ok(k) => k,
-        Err(e) => return FfiVerificationResult::err(
-            format!("Invalid public key: {e}"),
-        ),
+        Err(e) => return FfiVerificationResult::err(format!("Invalid public key: {e}")),
     };
 
     match AuthorshipCredential::verify_cose(&signed_bytes, &vk) {
@@ -266,29 +257,21 @@ pub fn ffi_verify_credential(
             credential.claims.attestation_tier,
             credential.claims.session_id,
         ),
-        Err(e) => FfiVerificationResult::err(
-            format!("Verification failed: {e}"),
-        ),
+        Err(e) => FfiVerificationResult::err(format!("Verification failed: {e}")),
     }
 }
 
 /// Get credential status (valid/expired) from CBOR bytes.
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_get_credential_status(
-    credential_cbor_hex: String,
-) -> FfiCredentialStatusResult {
+pub fn ffi_get_credential_status(credential_cbor_hex: String) -> FfiCredentialStatusResult {
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,
-        Err(e) => return FfiCredentialStatusResult::err(
-            format!("Invalid hex: {e}"),
-        ),
+        Err(e) => return FfiCredentialStatusResult::err(format!("Invalid hex: {e}")),
     };
 
     let credential = match AuthorshipCredential::from_cbor(&cbor_bytes) {
         Ok(c) => c,
-        Err(e) => return FfiCredentialStatusResult::err(
-            format!("Invalid credential CBOR: {e}"),
-        ),
+        Err(e) => return FfiCredentialStatusResult::err(format!("Invalid credential CBOR: {e}")),
     };
 
     FfiCredentialStatusResult::ok(

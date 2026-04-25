@@ -206,7 +206,8 @@ impl SecureStore {
         ) {
             log::warn!(
                 "WAL append for TextFragmentInsert failed (db row {}): {}",
-                id, e,
+                id,
+                e,
             );
         }
 
@@ -234,10 +235,7 @@ impl SecureStore {
     }
 
     /// Get all text fragments for a session, ordered by timestamp.
-    pub fn get_fragments_for_session(
-        &self,
-        session_id: &str,
-    ) -> anyhow::Result<Vec<TextFragment>> {
+    pub fn get_fragments_for_session(&self, session_id: &str) -> anyhow::Result<Vec<TextFragment>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, fragment_hash, session_id, source_app_bundle_id, source_window_title,
                     source_signature, nonce, timestamp, keystroke_context, keystroke_confidence,
@@ -307,7 +305,8 @@ impl SecureStore {
         // Build payload matching sign_fragment: DST || sid_len || session_id || hash || ts || nonce
         const DST: &[u8] = b"witnessd-text-fragment-v1";
         let sid_len = (session_id.len() as u32).to_le_bytes();
-        let mut payload = Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + nonce.len());
+        let mut payload =
+            Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + nonce.len());
         payload.extend_from_slice(DST);
         payload.extend_from_slice(&sid_len);
         payload.extend_from_slice(session_id.as_bytes());
@@ -417,10 +416,7 @@ impl SecureStore {
     /// Same validation as `insert_text_fragment` (nonce uniqueness, signature
     /// length, timestamp bounds) but sets `sync_state = 'synced'` directly.
     #[allow(dead_code)]
-    pub fn apply_remote_fragment(
-        &mut self,
-        fragment: &TextFragment,
-    ) -> anyhow::Result<i64> {
+    pub fn apply_remote_fragment(&mut self, fragment: &TextFragment) -> anyhow::Result<i64> {
         let now_ms = self.validate_fragment_fields(fragment)?;
 
         let tx = self.conn.transaction()?;
@@ -506,9 +502,7 @@ impl SecureStore {
             }
             SyncResolutionStrategy::KeepRemote => {
                 let remote = remote_fragment.ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Remote fragment required for KeepRemote strategy"
-                    )
+                    anyhow::anyhow!("Remote fragment required for KeepRemote strategy")
                 })?;
                 // Delete the local version and insert the remote one
                 self.conn.execute(
@@ -532,9 +526,7 @@ impl SecureStore {
                     match local_ts {
                         Some(ts) if ts >= remote.timestamp => {
                             // Local is newer or equal; keep it
-                            self.update_fragment_sync_state(
-                                fragment_id, "synced", None,
-                            )?;
+                            self.update_fragment_sync_state(fragment_id, "synced", None)?;
                         }
                         _ => {
                             // Remote is newer; replace local
@@ -547,9 +539,7 @@ impl SecureStore {
                     }
                 } else {
                     // No remote fragment provided; keep local
-                    self.update_fragment_sync_state(
-                        fragment_id, "synced", None,
-                    )?;
+                    self.update_fragment_sync_state(fragment_id, "synced", None)?;
                 }
             }
         }
@@ -646,9 +636,7 @@ mod tests {
         let hash = [1u8; 32];
         let nonce = [2u8; 16];
         let sig = [3u8; 64];
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_millis() as i64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
         let fragment = TextFragment {
             id: None,
@@ -677,7 +665,10 @@ mod tests {
 
         let looked_up = looked_up.unwrap();
         assert_eq!(looked_up.session_id, "session1");
-        assert_eq!(looked_up.keystroke_context, Some(KeystrokeContext::OriginalComposition));
+        assert_eq!(
+            looked_up.keystroke_context,
+            Some(KeystrokeContext::OriginalComposition)
+        );
         assert_eq!(looked_up.keystroke_confidence, Some(0.95));
 
         Ok(())
@@ -691,9 +682,7 @@ mod tests {
         let hash2 = [2u8; 32];
         let nonce = [3u8; 16];
         let sig = [4u8; 64];
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_millis() as i64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
         let frag1 = TextFragment {
             id: None,
@@ -757,7 +746,10 @@ mod tests {
 
     #[test]
     fn test_keystroke_context_serialization() {
-        assert_eq!(KeystrokeContext::OriginalComposition.as_str(), "OriginalComposition");
+        assert_eq!(
+            KeystrokeContext::OriginalComposition.as_str(),
+            "OriginalComposition"
+        );
         assert_eq!(KeystrokeContext::PastedContent.as_str(), "PastedContent");
         assert_eq!(KeystrokeContext::AfterPaste.as_str(), "AfterPaste");
 
@@ -780,9 +772,7 @@ mod tests {
     fn test_get_fragments_for_session() -> anyhow::Result<()> {
         let mut store = test_db()?;
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_millis() as i64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
         for i in 0..3 {
             let hash = [i as u8; 32];
@@ -826,9 +816,7 @@ mod tests {
         let hash = [1u8; 32];
         let nonce = [2u8; 16];
         let sig = [3u8; 64];
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_millis() as i64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64;
 
         let fragment = TextFragment {
             id: None,
@@ -868,10 +856,8 @@ mod tests {
         let hash = [1u8; 32];
         let nonce = [2u8; 16];
         let sig = [3u8; 64];
-        let future_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_millis() as i64
-            + 10 * 60 * 1000;
+        let future_ms =
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as i64 + 10 * 60 * 1000;
 
         let fragment = TextFragment {
             id: None,

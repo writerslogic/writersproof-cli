@@ -245,7 +245,10 @@ fn fft_radix2(real: &mut [f64], imag: &mut [f64]) {
 fn compute_psd(data: &[f64]) -> Result<Vec<f64>, PinkNoiseError> {
     let n = data.len();
     if n < 2 {
-        return Err(PinkNoiseError::InsufficientDataPoints { found: n, required: 2 });
+        return Err(PinkNoiseError::InsufficientDataPoints {
+            found: n,
+            required: 2,
+        });
     }
     let fft_size = n.next_power_of_two();
 

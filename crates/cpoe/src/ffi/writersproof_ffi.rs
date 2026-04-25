@@ -22,7 +22,9 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
         FfiResult
     );
     let doc_path = try_ffi!(
-        doc_path.canonicalize().map_err(|e| format!("Cannot resolve document path: {e}")),
+        doc_path
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve document path: {e}")),
         FfiResult
     );
 
@@ -30,7 +32,8 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     let store = try_ffi!(open_store(), FfiResult);
     let doc_path_str = doc_path.to_string_lossy().into_owned();
     let events = try_ffi!(
-        store.get_events_for_file(&doc_path_str)
+        store
+            .get_events_for_file(&doc_path_str)
             .map_err(|e| format!("Failed to load events: {e}")),
         FfiResult
     );
@@ -136,11 +139,17 @@ pub fn ffi_publish_evidence(
         return FfiPublishResult::ffi_err("Author attestation is required to publish");
     }
     if attestation.len() > MAX_ATTESTATION_LEN {
-        return FfiPublishResult::ffi_err(format!("Attestation too large: {} bytes (max {MAX_ATTESTATION_LEN})", attestation.len()));
+        return FfiPublishResult::ffi_err(format!(
+            "Attestation too large: {} bytes (max {MAX_ATTESTATION_LEN})",
+            attestation.len()
+        ));
     }
     if let Some(ref decl) = ai_declaration {
         if decl.len() > MAX_ATTESTATION_LEN {
-            return FfiPublishResult::ffi_err(format!("AI declaration too large: {} bytes (max {MAX_ATTESTATION_LEN})", decl.len()));
+            return FfiPublishResult::ffi_err(format!(
+                "AI declaration too large: {} bytes (max {MAX_ATTESTATION_LEN})",
+                decl.len()
+            ));
         }
     }
 
@@ -153,7 +162,9 @@ pub fn ffi_publish_evidence(
         FfiPublishResult
     );
     let doc_path = try_ffi!(
-        doc_path.canonicalize().map_err(|e| format!("Cannot resolve document path: {e}")),
+        doc_path
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve document path: {e}")),
         FfiPublishResult
     );
     let doc_path_str = doc_path.to_string_lossy().into_owned();
@@ -167,7 +178,8 @@ pub fn ffi_publish_evidence(
 
     let store = try_ffi!(open_store(), FfiPublishResult);
     let events = try_ffi!(
-        store.get_events_for_file(&doc_path_str)
+        store
+            .get_events_for_file(&doc_path_str)
             .map_err(|e| format!("Failed to load events: {e}")),
         FfiPublishResult
     );
@@ -186,7 +198,9 @@ pub fn ffi_publish_evidence(
     }
 
     // Verify chain integrity: each event's previous_hash must match prior event_hash.
-    let chain_valid = events.windows(2).all(|w| w[1].previous_hash == w[0].event_hash);
+    let chain_valid = events
+        .windows(2)
+        .all(|w| w[1].previous_hash == w[0].event_hash);
     if !chain_valid {
         return FfiPublishResult {
             success: false,
@@ -194,7 +208,9 @@ pub fn ffi_publish_evidence(
             record_id: None,
             verification_passed: false,
             checkpoint_count,
-            error_message: Some("Evidence chain verification failed. Cannot publish tampered evidence.".to_string()),
+            error_message: Some(
+                "Evidence chain verification failed. Cannot publish tampered evidence.".to_string(),
+            ),
         };
     }
 
@@ -226,7 +242,8 @@ pub fn ffi_publish_evidence(
         .map(|s| s.to_string());
 
     let rt = try_ffi!(
-        crate::ffi::beacon::beacon_runtime().map_err(|e| format!("Failed to get async runtime: {e}")),
+        crate::ffi::beacon::beacon_runtime()
+            .map_err(|e| format!("Failed to get async runtime: {e}")),
         FfiPublishResult
     );
 
@@ -348,7 +365,11 @@ pub fn ffi_sync_text_attestation(
     let queue_req = req.clone();
 
     let result = rt.block_on(async {
-        tokio::time::timeout(std::time::Duration::from_secs(15), client.submit_text_attestation(req)).await
+        tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            client.submit_text_attestation(req),
+        )
+        .await
     });
 
     match result {
@@ -368,7 +389,9 @@ pub fn ffi_sync_text_attestation(
                 }
                 Err(qe) => {
                     log::warn!("Failed to queue text attestation: {qe}");
-                    return FfiResult::err(format!("Sync failed ({err_msg}) and queuing failed: {qe}"));
+                    return FfiResult::err(format!(
+                        "Sync failed ({err_msg}) and queuing failed: {qe}"
+                    ));
                 }
             }
         }
@@ -413,11 +436,13 @@ pub fn ffi_sync_text_attestation(
                     log::warn!("Post-attestation anchor failed, queuing for retry: {e}");
                     if let Err(qe) = crate::writersproof::OfflineQueue::default_dir()
                         .and_then(|d| crate::writersproof::OfflineQueue::new(&d))
-                        .and_then(|q| q.enqueue_anchor(
-                            anchor_evidence_hash.clone(),
-                            anchor_sig.clone(),
-                            Some(anchor_tier.clone()),
-                        ))
+                        .and_then(|q| {
+                            q.enqueue_anchor(
+                                anchor_evidence_hash.clone(),
+                                anchor_sig.clone(),
+                                Some(anchor_tier.clone()),
+                            )
+                        })
                     {
                         log::warn!("Failed to queue anchor for retry: {qe}");
                     }
@@ -426,11 +451,13 @@ pub fn ffi_sync_text_attestation(
                     log::warn!("Post-attestation anchor timed out, queuing for retry");
                     if let Err(qe) = crate::writersproof::OfflineQueue::default_dir()
                         .and_then(|d| crate::writersproof::OfflineQueue::new(&d))
-                        .and_then(|q| q.enqueue_anchor(
-                            anchor_evidence_hash.clone(),
-                            anchor_sig.clone(),
-                            Some(anchor_tier.clone()),
-                        ))
+                        .and_then(|q| {
+                            q.enqueue_anchor(
+                                anchor_evidence_hash.clone(),
+                                anchor_sig.clone(),
+                                Some(anchor_tier.clone()),
+                            )
+                        })
                     {
                         log::warn!("Failed to queue anchor for retry: {qe}");
                     }
@@ -485,14 +512,11 @@ pub fn ffi_drain_text_attestation_queue() -> FfiResult {
     };
 
     let result = rt.block_on(async {
-        tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            async {
-                let text_result = queue.drain_text_attestations(&client).await?;
-                let anchor_result = queue.drain_anchors(&client).await?;
-                Ok::<_, crate::error::Error>((text_result, anchor_result))
-            },
-        )
+        tokio::time::timeout(std::time::Duration::from_secs(60), async {
+            let text_result = queue.drain_text_attestations(&client).await?;
+            let anchor_result = queue.drain_anchors(&client).await?;
+            Ok::<_, crate::error::Error>((text_result, anchor_result))
+        })
         .await
     });
 

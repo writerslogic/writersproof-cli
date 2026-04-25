@@ -954,8 +954,7 @@ fn test_analyze_forensics_ext_with_context() {
         total_keystrokes: 300,
         checkpoint_count: 5,
     };
-    let metrics =
-        analysis::analyze_forensics_ext(&events, &regions, None, None, None, &context);
+    let metrics = analysis::analyze_forensics_ext(&events, &regions, None, None, None, &context);
     assert!(metrics.assessment_score.get() >= 0.0);
     assert_eq!(metrics.checkpoint_count, 5);
 }
@@ -990,7 +989,10 @@ fn test_assessment_score_perfect_human() {
         ..Default::default()
     };
     let score = assessment::compute_assessment_score(&primary, &cadence, 0, 100, 0.8);
-    assert!(score > 0.8, "human-like input should score high, got {score}");
+    assert!(
+        score > 0.8,
+        "human-like input should score high, got {score}"
+    );
 }
 
 #[test]
@@ -1024,8 +1026,7 @@ fn test_assessment_score_anomalies_reduce_score() {
         coefficient_of_variation: 0.4,
         ..Default::default()
     };
-    let score_no_anomalies =
-        assessment::compute_assessment_score(&primary, &cadence, 0, 100, 0.0);
+    let score_no_anomalies = assessment::compute_assessment_score(&primary, &cadence, 0, 100, 0.0);
     let score_with_anomalies =
         assessment::compute_assessment_score(&primary, &cadence, 5, 100, 0.0);
     assert!(
@@ -1089,10 +1090,7 @@ fn test_cadence_score_normal() {
         ..Default::default()
     };
     let score = assessment::compute_cadence_score(&cadence);
-    assert!(
-        score > 0.8,
-        "normal cadence should score high, got {score}"
-    );
+    assert!(score > 0.8, "normal cadence should score high, got {score}");
 }
 
 #[test]

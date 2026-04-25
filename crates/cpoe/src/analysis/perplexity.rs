@@ -28,9 +28,15 @@ const ALPHABET_SIZE: f64 = 256.0;
 #[derive(Debug, Clone)]
 pub enum PerplexityError {
     /// Model has not been trained with enough data.
-    Undertrained { sample_count: usize, required: usize },
+    Undertrained {
+        sample_count: usize,
+        required: usize,
+    },
     /// Input text is too short for the n-gram order.
-    InputTooShort { input_len: usize, ngram_order: usize },
+    InputTooShort {
+        input_len: usize,
+        ngram_order: usize,
+    },
     /// No valid n-grams were evaluated (degenerate input).
     NoValidNgrams,
 }
@@ -38,12 +44,21 @@ pub enum PerplexityError {
 impl fmt::Display for PerplexityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Undertrained { sample_count, required } =>
-                write!(f, "model undertrained: {sample_count} samples < {required} required"),
-            Self::InputTooShort { input_len, ngram_order } =>
-                write!(f, "input too short: {input_len} chars <= n-gram order {ngram_order}"),
-            Self::NoValidNgrams =>
-                write!(f, "no valid n-grams evaluated"),
+            Self::Undertrained {
+                sample_count,
+                required,
+            } => write!(
+                f,
+                "model undertrained: {sample_count} samples < {required} required"
+            ),
+            Self::InputTooShort {
+                input_len,
+                ngram_order,
+            } => write!(
+                f,
+                "input too short: {input_len} chars <= n-gram order {ngram_order}"
+            ),
+            Self::NoValidNgrams => write!(f, "no valid n-grams evaluated"),
         }
     }
 }
@@ -88,7 +103,8 @@ impl PerplexityModel {
             let next_char = char_indices[i + self.n].1;
 
             *self.totals.entry(context.to_owned()).or_default() += 1;
-            *self.counts
+            *self
+                .counts
                 .entry(context.to_owned())
                 .or_default()
                 .entry(next_char)
@@ -127,7 +143,8 @@ impl PerplexityModel {
             let prob = if let Some(context_counts) = self.counts.get(context) {
                 let char_count = *context_counts.get(&next_char).unwrap_or(&0);
                 let total = *self.totals.get(context).unwrap_or(&1);
-                (char_count as f64 + SMOOTHING_ALPHA) / (total as f64 + SMOOTHING_ALPHA * ALPHABET_SIZE)
+                (char_count as f64 + SMOOTHING_ALPHA)
+                    / (total as f64 + SMOOTHING_ALPHA * ALPHABET_SIZE)
             } else {
                 SMOOTHING_ALPHA / (self.sample_count as f64 + ALPHABET_SIZE)
             };

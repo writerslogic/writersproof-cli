@@ -738,10 +738,7 @@ impl Chain {
         #[cfg(feature = "posme")]
         let (argon2_swf, posme_swf) = {
             let cn = challenge_nonce.as_ref();
-            let vdf_output_bytes = vdf_proof
-                .as_ref()
-                .map(|v| v.output)
-                .unwrap_or([0u8; 32]);
+            let vdf_output_bytes = vdf_proof.as_ref().map(|v| v.output).unwrap_or([0u8; 32]);
             let posme_seed = if ordinal == 0 {
                 vdf::posme_seed_genesis(
                     doc_cbor_for_genesis.as_deref().unwrap_or(&[]),

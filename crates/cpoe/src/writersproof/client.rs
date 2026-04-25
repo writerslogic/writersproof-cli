@@ -334,7 +334,10 @@ impl WritersProofClient {
     /// Publish evidence to WritersProof and receive a canonical URL.
     ///
     /// `POST /v1/publish`
-    pub async fn publish(&self, req: super::types::PublishRequest) -> Result<super::types::PublishResponse> {
+    pub async fn publish(
+        &self,
+        req: super::types::PublishRequest,
+    ) -> Result<super::types::PublishResponse> {
         let url = format!("{}/v1/publish", self.base_url);
         let mut http_req = self.client.post(&url).json(&req);
         if let Some(ref jwt) = self.jwt {
@@ -350,7 +353,10 @@ impl WritersProofClient {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_else(|e| format!("[unreadable: {e}]"));
+            let body = resp
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("[unreadable: {e}]"));
             return Err(Error::crypto(format!(
                 "publish failed: HTTP {status}: {body}"
             )));
@@ -635,17 +641,13 @@ impl WritersProofClient {
         if let Some(ref jwt) = self.jwt {
             http_req = http_req.bearer_auth(jwt.as_str());
         } else {
-            return Err(Error::crypto(
-                "credential issuance requires authentication",
-            ));
+            return Err(Error::crypto("credential issuance requires authentication"));
         }
 
         let resp = http_req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!(
-                "credential issue request failed: {e}"
-            )))?;
+            .map_err(|e| Error::crypto(format!("credential issue request failed: {e}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -679,10 +681,7 @@ impl WritersProofClient {
             )));
         }
 
-        let url = format!(
-            "{}/v1/credentials/{}/status",
-            self.base_url, credential_id
-        );
+        let url = format!("{}/v1/credentials/{}/status", self.base_url, credential_id);
         let mut req = self.client.get(&url);
         if let Some(ref jwt) = self.jwt {
             req = req.bearer_auth(jwt.as_str());
@@ -691,9 +690,7 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!(
-                "credential status request failed: {e}"
-            )))?;
+            .map_err(|e| Error::crypto(format!("credential status request failed: {e}")))?;
 
         if !resp.status().is_success() {
             return Err(Error::crypto(format!(
@@ -709,10 +706,7 @@ impl WritersProofClient {
     ///
     /// `POST /v1/credentials/:id/revoke`
     #[allow(dead_code)]
-    pub async fn revoke_credential(
-        &self,
-        credential_id: &str,
-    ) -> Result<()> {
+    pub async fn revoke_credential(&self, credential_id: &str) -> Result<()> {
         if !credential_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -723,10 +717,7 @@ impl WritersProofClient {
             )));
         }
 
-        let url = format!(
-            "{}/v1/credentials/{}/revoke",
-            self.base_url, credential_id
-        );
+        let url = format!("{}/v1/credentials/{}/revoke", self.base_url, credential_id);
         let mut req = self.client.post(&url);
         if let Some(ref jwt) = self.jwt {
             req = req.bearer_auth(jwt.as_str());
@@ -739,9 +730,7 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!(
-                "credential revoke request failed: {e}"
-            )))?;
+            .map_err(|e| Error::crypto(format!("credential revoke request failed: {e}")))?;
 
         if !resp.status().is_success() {
             return Err(Error::crypto(format!(

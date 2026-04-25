@@ -10,15 +10,15 @@ use crate::utils::DateTimeNanosExt;
 /// Prevents: future-dating, stale evidence, clock skew attacks.
 #[derive(Debug, Clone)]
 pub struct TimestampValidator {
-    max_future_drift_ns: i64,  // Default: 5 minutes
-    max_age_ns: Option<i64>,   // Optional: e.g., 24 hours for certain events
+    max_future_drift_ns: i64, // Default: 5 minutes
+    max_age_ns: Option<i64>,  // Optional: e.g., 24 hours for certain events
 }
 
 impl TimestampValidator {
     /// Create validator with standard settings (±5 min, no max age).
     pub fn new() -> Self {
         TimestampValidator {
-            max_future_drift_ns: 5 * 60 * 1_000_000_000,  // 5 minutes in nanoseconds
+            max_future_drift_ns: 5 * 60 * 1_000_000_000, // 5 minutes in nanoseconds
             max_age_ns: Some(24 * 60 * 60 * 1_000_000_000), // 24 hours in nanoseconds
         }
     }
@@ -163,7 +163,10 @@ impl TextValidator {
 
     /// Create validator with custom bounds.
     pub fn with_bounds(min_bytes: usize, max_bytes: usize) -> Self {
-        TextValidator { min_bytes, max_bytes }
+        TextValidator {
+            min_bytes,
+            max_bytes,
+        }
     }
 
     /// Validate text content.
@@ -288,7 +291,9 @@ mod tests {
     fn test_text_validator_custom_bounds() {
         let validator = TextValidator::with_bounds(10, 100);
         assert!(validator.validate("short").is_err()); // < 10 bytes
-        assert!(validator.validate("this is exactly the right length for this test").is_ok()); // 45 bytes
+        assert!(validator
+            .validate("this is exactly the right length for this test")
+            .is_ok()); // 45 bytes
         assert!(validator.validate(&"x".repeat(200)).is_err()); // > 100 bytes
     }
 
@@ -340,9 +345,9 @@ mod tests {
     #[test]
     fn test_text_validator_boundary_exact() {
         let validator = TextValidator::with_bounds(5, 10);
-        assert!(validator.validate(&"x".repeat(4)).is_err());  // 4 bytes - below min
-        assert!(validator.validate(&"x".repeat(5)).is_ok());   // 5 bytes - exact min
-        assert!(validator.validate(&"x".repeat(10)).is_ok());  // 10 bytes - exact max
+        assert!(validator.validate(&"x".repeat(4)).is_err()); // 4 bytes - below min
+        assert!(validator.validate(&"x".repeat(5)).is_ok()); // 5 bytes - exact min
+        assert!(validator.validate(&"x".repeat(10)).is_ok()); // 10 bytes - exact max
         assert!(validator.validate(&"x".repeat(11)).is_err()); // 11 bytes - above max
     }
 

@@ -31,10 +31,7 @@ pub struct AuthorshipCredential {
     pub validity: ValidityInfo,
     pub claims: AuthorshipClaims,
     /// COSE_Sign1 envelope bytes, populated after signing.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        with = "serde_bytes_opt"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
     pub issuer_signed: Option<Vec<u8>>,
 }
 
@@ -59,10 +56,7 @@ pub struct AuthorshipClaims {
     pub attestation_tier: String,
     pub process_verdict: String,
     pub authorship_confidence: f64,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        with = "serde_bytes_opt"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
     pub keystroke_proof: Option<Vec<u8>>,
     pub composition_ratio: Option<f64>,
     pub source_attributions: Vec<SourceAttribution>,
@@ -105,17 +99,15 @@ impl AuthorshipCredential {
         let mut attr_map = std::collections::HashMap::<String, SourceAttribution>::new();
         for f in fragments {
             if let Some(ref src_session) = f.source_session_id {
-                let entry = attr_map
-                    .entry(src_session.clone())
-                    .or_insert_with(|| SourceAttribution {
-                        source_session_id: src_session.clone(),
-                        source_app: f
-                            .source_app_bundle_id
-                            .clone()
-                            .unwrap_or_default(),
-                        fragment_count: 0,
-                        verified: false,
-                    });
+                let entry =
+                    attr_map
+                        .entry(src_session.clone())
+                        .or_insert_with(|| SourceAttribution {
+                            source_session_id: src_session.clone(),
+                            source_app: f.source_app_bundle_id.clone().unwrap_or_default(),
+                            fragment_count: 0,
+                            verified: false,
+                        });
                 entry.fragment_count += 1;
             }
         }
@@ -164,18 +156,14 @@ impl AuthorshipCredential {
     /// Deserialize a credential from CBOR bytes.
     #[allow(dead_code)]
     pub fn from_cbor(bytes: &[u8]) -> Result<Self> {
-        ciborium::from_reader(bytes)
-            .map_err(|e| Error::crypto(format!("CBOR decode error: {e}")))
+        ciborium::from_reader(bytes).map_err(|e| Error::crypto(format!("CBOR decode error: {e}")))
     }
 
     /// Wrap in a COSE_Sign1 envelope and sign with Ed25519.
     ///
     /// Sets `self.issuer_signed` and returns the signed COSE bytes.
     #[allow(dead_code)]
-    pub fn sign_cose(
-        &mut self,
-        signing_key: &ed25519_dalek::SigningKey,
-    ) -> Result<Vec<u8>> {
+    pub fn sign_cose(&mut self, signing_key: &ed25519_dalek::SigningKey) -> Result<Vec<u8>> {
         let payload = self.to_cbor()?;
 
         let protected = HeaderBuilder::new()
@@ -187,16 +175,12 @@ impl AuthorshipCredential {
             .protected(protected)
             .payload(payload)
             .create_signature(&[], |sig_data| {
-                match std::panic::catch_unwind(
-                    std::panic::AssertUnwindSafe(|| {
-                        signing_key.sign(sig_data).to_vec()
-                    }),
-                ) {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    signing_key.sign(sig_data).to_vec()
+                })) {
                     Ok(sig) => sig,
                     Err(_) => {
-                        sign_error = Some(Error::crypto(
-                            "Ed25519 signing failed",
-                        ));
+                        sign_error = Some(Error::crypto("Ed25519 signing failed"));
                         Vec::new()
                     }
                 }
@@ -208,9 +192,7 @@ impl AuthorshipCredential {
         }
 
         if sign1.signature.is_empty() {
-            return Err(Error::crypto(
-                "COSE signing produced empty signature",
-            ));
+            return Err(Error::crypto("COSE signing produced empty signature"));
         }
 
         let signed_bytes = sign1
@@ -230,9 +212,7 @@ impl AuthorshipCredential {
         let sign1 = coset::CoseSign1::from_slice(signed_bytes)
             .map_err(|e| Error::crypto(format!("COSE decode error: {e}")))?;
 
-        let expected_alg = coset::Algorithm::Assigned(
-            coset::iana::Algorithm::EdDSA,
-        );
+        let expected_alg = coset::Algorithm::Assigned(coset::iana::Algorithm::EdDSA);
         if sign1.protected.header.alg.as_ref() != Some(&expected_alg) {
             return Err(Error::crypto(
                 "Credential expected EdDSA algorithm in COSE header",
@@ -244,10 +224,8 @@ impl AuthorshipCredential {
         }
 
         sign1.verify_signature(&[], |sig_bytes, tbs_data| {
-            let signature =
-                ed25519_dalek::Signature::from_slice(sig_bytes).map_err(
-                    |_| Error::crypto("Invalid Ed25519 signature format"),
-                )?;
+            let signature = ed25519_dalek::Signature::from_slice(sig_bytes)
+                .map_err(|_| Error::crypto("Invalid Ed25519 signature format"))?;
             public_key
                 .verify(tbs_data, &signature)
                 .map_err(|_| Error::crypto("Credential signature verification failed"))
@@ -269,8 +247,7 @@ impl AuthorshipCredential {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
-        now_ms >= self.validity.issued_at
-            && now_ms <= self.validity.expires_at
+        now_ms >= self.validity.issued_at && now_ms <= self.validity.expires_at
     }
 }
 
@@ -291,8 +268,7 @@ mod serde_bytes_opt {
     pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> std::result::Result<Option<Vec<u8>>, D::Error> {
-        let opt: Option<serde_bytes::ByteBuf> =
-            Option::deserialize(deserializer)?;
+        let opt: Option<serde_bytes::ByteBuf> = Option::deserialize(deserializer)?;
         Ok(opt.map(|b| b.into_vec()))
     }
 }

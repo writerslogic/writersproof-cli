@@ -279,10 +279,7 @@ impl CollaborationSection {
         }
 
         if merged_start != 0 {
-            return Err(format!(
-                "Checkpoints not covered: 0..={}",
-                merged_start - 1
-            ));
+            return Err(format!("Checkpoints not covered: 0..={}", merged_start - 1));
         }
         if merged_end != total_checkpoints - 1 {
             return Err(format!(
@@ -382,8 +379,14 @@ impl Collaborator {
     pub fn signing_payload(&self) -> Vec<u8> {
         let mut map = std::collections::BTreeMap::new();
         map.insert("active_periods", serde_json::json!(self.active_periods));
-        map.insert("checkpoint_ranges", serde_json::json!(self.checkpoint_ranges));
-        map.insert("contribution_summary", serde_json::json!(self.contribution_summary));
+        map.insert(
+            "checkpoint_ranges",
+            serde_json::json!(self.checkpoint_ranges),
+        );
+        map.insert(
+            "contribution_summary",
+            serde_json::json!(self.contribution_summary),
+        );
         map.insert("display_name", serde_json::json!(self.display_name));
         map.insert("identifier", serde_json::json!(self.identifier));
         map.insert("public_key", serde_json::json!(self.public_key));

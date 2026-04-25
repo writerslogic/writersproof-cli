@@ -201,7 +201,9 @@ fn test_range_proof_verify_valid() {
         mmr.append(&[i]).expect("append");
     }
 
-    let proof = mmr.generate_range_proof(1, 3).expect("generate range proof");
+    let proof = mmr
+        .generate_range_proof(1, 3)
+        .expect("generate range proof");
     let leaf_data: Vec<Vec<u8>> = (1..=3u8).map(|i| vec![i]).collect();
     proof
         .verify(&leaf_data)
@@ -217,7 +219,9 @@ fn test_range_proof_verify_wrong_data() {
         mmr.append(&[i]).expect("append");
     }
 
-    let proof = mmr.generate_range_proof(0, 2).expect("generate range proof");
+    let proof = mmr
+        .generate_range_proof(0, 2)
+        .expect("generate range proof");
     let bad_data: Vec<Vec<u8>> = vec![vec![0], vec![1], vec![99]];
     let err = proof.verify(&bad_data).unwrap_err();
     assert!(matches!(err, MmrError::HashMismatch));
@@ -232,7 +236,9 @@ fn test_range_proof_wrong_count() {
         mmr.append(&[i]).expect("append");
     }
 
-    let proof = mmr.generate_range_proof(0, 1).expect("generate range proof");
+    let proof = mmr
+        .generate_range_proof(0, 1)
+        .expect("generate range proof");
     // Pass wrong number of leaves
     let err = proof.verify(&[vec![0]]).unwrap_err();
     assert!(matches!(err, MmrError::InvalidProof));
@@ -247,7 +253,9 @@ fn test_range_proof_serialize_deserialize_roundtrip() {
         mmr.append(&[i]).expect("append");
     }
 
-    let proof = mmr.generate_range_proof(2, 5).expect("generate range proof");
+    let proof = mmr
+        .generate_range_proof(2, 5)
+        .expect("generate range proof");
     let bytes = proof.serialize().expect("serialize should succeed");
     let restored = RangeProof::deserialize(&bytes).expect("deserialize should succeed");
 
@@ -285,7 +293,9 @@ fn test_range_proof_deserialize_wrong_version() {
     for i in 0..4u8 {
         mmr.append(&[i]).expect("append");
     }
-    let proof = mmr.generate_range_proof(0, 1).expect("generate range proof");
+    let proof = mmr
+        .generate_range_proof(0, 1)
+        .expect("generate range proof");
     let mut bytes = proof.serialize().expect("serialize");
     bytes[0] = 0xff;
     let err = RangeProof::deserialize(&bytes).unwrap_err();
@@ -371,7 +381,9 @@ fn test_large_mmr_proof_integrity() {
     }
 
     // Range proof spanning multiple subtrees
-    let range_proof = mmr.generate_range_proof(10, 20).expect("generate range proof");
+    let range_proof = mmr
+        .generate_range_proof(10, 20)
+        .expect("generate range proof");
     let leaf_data: Vec<Vec<u8>> = (10..=20u64).map(|i| i.to_le_bytes().to_vec()).collect();
     range_proof
         .verify(&leaf_data)

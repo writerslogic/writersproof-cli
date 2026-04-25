@@ -26,15 +26,25 @@ pub struct FfiSnapshotContent {
 
 impl FfiSnapshotContent {
     fn ok(plaintext: String) -> Self {
-        Self { success: true, plaintext: Some(plaintext), error_message: None }
+        Self {
+            success: true,
+            plaintext: Some(plaintext),
+            error_message: None,
+        }
     }
     fn err(msg: impl Into<String>) -> Self {
-        Self { success: false, plaintext: None, error_message: Some(msg.into()) }
+        Self {
+            success: false,
+            plaintext: None,
+            error_message: Some(msg.into()),
+        }
     }
 }
 
 impl super::types::FfiErrResult for FfiSnapshotContent {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -64,34 +74,47 @@ fn open_snapshot_store() -> Result<crate::snapshot::SnapshotStore, String> {
 pub fn ffi_snapshot_save(document_path: String, plaintext: String) -> FfiSnapshotSaveResult {
     if crate::sentinel::helpers::validate_path(&document_path).is_err() {
         return FfiSnapshotSaveResult {
-            success: false, snapshot_id: -1,
-            size_warning: None, error_message: Some("Invalid document path".to_string()),
+            success: false,
+            snapshot_id: -1,
+            size_warning: None,
+            error_message: Some("Invalid document path".to_string()),
         };
     }
     let mut store = match open_snapshot_store() {
         Ok(s) => s,
-        Err(e) => return FfiSnapshotSaveResult {
-            success: false, snapshot_id: -1,
-            size_warning: None, error_message: Some(e),
-        },
+        Err(e) => {
+            return FfiSnapshotSaveResult {
+                success: false,
+                snapshot_id: -1,
+                size_warning: None,
+                error_message: Some(e),
+            }
+        }
     };
     match store.save(&document_path, &plaintext, false) {
         Ok(id) => {
             let size_warning = store.storage_size().ok().and_then(|info| {
                 if info.over_threshold {
-                    Some(format!("Snapshot storage is {:.0} MB", info.total_bytes as f64 / 1_000_000.0))
+                    Some(format!(
+                        "Snapshot storage is {:.0} MB",
+                        info.total_bytes as f64 / 1_000_000.0
+                    ))
                 } else {
                     None
                 }
             });
             FfiSnapshotSaveResult {
-                success: true, snapshot_id: id,
-                size_warning, error_message: None,
+                success: true,
+                snapshot_id: id,
+                size_warning,
+                error_message: None,
             }
         }
         Err(e) => FfiSnapshotSaveResult {
-            success: false, snapshot_id: -1,
-            size_warning: None, error_message: Some(e),
+            success: false,
+            snapshot_id: -1,
+            size_warning: None,
+            error_message: Some(e),
         },
     }
 }

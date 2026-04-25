@@ -211,7 +211,8 @@ impl HybridJitterSession {
             Err(_) => {
                 log::warn!(
                     "negative session duration: started_at={} effective_end={}; returning 0",
-                    self.started_at, end
+                    self.started_at,
+                    end
                 );
                 Duration::from_secs(0)
             }

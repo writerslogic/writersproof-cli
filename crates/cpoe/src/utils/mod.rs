@@ -2,29 +2,29 @@
 
 //! Shared engine-wide utility functions.
 
+pub mod crypto_helpers;
+pub mod error_context;
+pub(crate) mod lock;
 pub mod mlock;
 pub mod probability;
 pub mod stats;
-pub mod time;
-pub(crate) mod lock;
 pub mod telemetry;
-pub mod crypto_helpers;
+pub mod time;
 pub mod validation;
-pub mod error_context;
 
+pub use crypto_helpers::{
+    compute_content_hash, constant_time_eq, NonceManager, SignatureKey, SignedPayloadBuilder,
+};
+pub use error_context::{sanitize_for_user, ErrorContext};
+pub(crate) use lock::{MutexRecover, RwLockRecover};
 pub use probability::Probability;
 pub use stats::{
     coefficient_of_variation, lerp_score, mean, mean_and_sample_std_dev, mean_and_sample_variance,
     mean_and_std_dev, mean_and_variance, median, std_dev,
 };
-pub use time::{duration_to_ms, now_ns, now_secs, ns_elapsed, ns_to_ms, ns_to_secs};
-pub use crypto_helpers::{
-    constant_time_eq, compute_content_hash, SignedPayloadBuilder, NonceManager, SignatureKey,
-};
-pub use validation::{TimestampValidator, BundleIdValidator, TextValidator};
-pub use error_context::{ErrorContext, sanitize_for_user};
 pub(crate) use time::DateTimeNanosExt;
-pub(crate) use lock::{MutexRecover, RwLockRecover};
+pub use time::{duration_to_ms, now_ns, now_secs, ns_elapsed, ns_to_ms, ns_to_secs};
+pub use validation::{BundleIdValidator, TextValidator, TimestampValidator};
 
 /// Hash a filesystem path (its UTF-8 string representation) with SHA-256.
 pub fn sha256_of_path(path: &std::path::Path) -> [u8; 32] {

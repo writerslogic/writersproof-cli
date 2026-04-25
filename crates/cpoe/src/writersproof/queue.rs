@@ -152,10 +152,7 @@ impl OfflineQueue {
             ) {
                 Ok(v) => v,
                 Err(e) => {
-                    self.update_entry_error(
-                        &mut entry,
-                        &format!("base64 decode failed: {e}"),
-                    )?;
+                    self.update_entry_error(&mut entry, &format!("base64 decode failed: {e}"))?;
                     continue;
                 }
             };
@@ -287,9 +284,8 @@ impl OfflineQueue {
                 break;
             }
         }
-        entries.sort_by(|a: &super::types::QueuedTextAttestation, b| {
-            a.created_at.cmp(&b.created_at)
-        });
+        entries
+            .sort_by(|a: &super::types::QueuedTextAttestation, b| a.created_at.cmp(&b.created_at));
         Ok(entries)
     }
 
@@ -321,7 +317,9 @@ impl OfflineQueue {
                 );
                 Self::validate_id(&entry.id)?;
                 let path = self.text_dir()?.join(format!("{}.json", entry.id));
-                if path.exists() { fs::remove_file(&path)?; }
+                if path.exists() {
+                    fs::remove_file(&path)?;
+                }
                 discard_count += 1;
                 continue;
             }
@@ -330,9 +328,8 @@ impl OfflineQueue {
             if entry.retry_count > 0 {
                 if let Ok(created) = chrono::DateTime::parse_from_rfc3339(&entry.created_at) {
                     let backoff_secs = 1i64 << entry.retry_count.min(9);
-                    let earliest_retry = created + chrono::Duration::seconds(
-                        backoff_secs * entry.retry_count as i64,
-                    );
+                    let earliest_retry = created
+                        + chrono::Duration::seconds(backoff_secs * entry.retry_count as i64);
                     if now < earliest_retry {
                         continue;
                     }
@@ -343,7 +340,9 @@ impl OfflineQueue {
                 Ok(_) => {
                     Self::validate_id(&entry.id)?;
                     let path = self.text_dir()?.join(format!("{}.json", entry.id));
-                    if path.exists() { fs::remove_file(&path)?; }
+                    if path.exists() {
+                        fs::remove_file(&path)?;
+                    }
                     success_count += 1;
                 }
                 Err(e) => {
@@ -428,9 +427,7 @@ impl OfflineQueue {
                 break;
             }
         }
-        entries.sort_by(|a: &super::types::QueuedAnchorRequest, b| {
-            a.created_at.cmp(&b.created_at)
-        });
+        entries.sort_by(|a: &super::types::QueuedAnchorRequest, b| a.created_at.cmp(&b.created_at));
         Ok(entries)
     }
 
@@ -442,10 +439,7 @@ impl OfflineQueue {
     /// Skips entries that haven't reached their backoff window yet.
     /// Entries exceeding MAX_ANCHOR_RETRIES are removed. Returns
     /// `(successful_count, discarded_count)`.
-    pub async fn drain_anchors(
-        &self,
-        client: &WritersProofClient,
-    ) -> Result<(usize, usize)> {
+    pub async fn drain_anchors(&self, client: &WritersProofClient) -> Result<(usize, usize)> {
         let entries = self.list_anchors()?;
         let mut success_count = 0;
         let mut discard_count = 0;
@@ -461,7 +455,9 @@ impl OfflineQueue {
                 );
                 Self::validate_id(&entry.id)?;
                 let path = self.anchor_dir()?.join(format!("{}.json", entry.id));
-                if path.exists() { fs::remove_file(&path)?; }
+                if path.exists() {
+                    fs::remove_file(&path)?;
+                }
                 discard_count += 1;
                 continue;
             }
@@ -470,9 +466,8 @@ impl OfflineQueue {
             if entry.retry_count > 0 {
                 if let Ok(created) = chrono::DateTime::parse_from_rfc3339(&entry.created_at) {
                     let backoff_secs = 1i64 << entry.retry_count.min(9);
-                    let earliest_retry = created + chrono::Duration::seconds(
-                        backoff_secs * entry.retry_count as i64,
-                    );
+                    let earliest_retry = created
+                        + chrono::Duration::seconds(backoff_secs * entry.retry_count as i64);
                     if now < earliest_retry {
                         continue;
                     }
@@ -493,7 +488,9 @@ impl OfflineQueue {
                 Ok(_) => {
                     Self::validate_id(&entry.id)?;
                     let path = self.anchor_dir()?.join(format!("{}.json", entry.id));
-                    if path.exists() { fs::remove_file(&path)?; }
+                    if path.exists() {
+                        fs::remove_file(&path)?;
+                    }
                     success_count += 1;
                 }
                 Err(e) => {

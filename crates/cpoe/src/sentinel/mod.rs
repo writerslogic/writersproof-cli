@@ -44,7 +44,7 @@ pub mod windows_focus;
 #[cfg(test)]
 mod tests;
 
-pub use self::clipboard::{ClipboardMonitor, CopyEvent, EvidenceEvent, ClipboardError};
+pub use self::clipboard::{ClipboardError, ClipboardMonitor, CopyEvent, EvidenceEvent};
 pub use self::core::Sentinel;
 pub use self::daemon::{
     cmd_start, cmd_start_foreground, cmd_status, cmd_stop, cmd_track, cmd_untrack, DaemonHandle,
@@ -55,8 +55,8 @@ pub use self::focus::{PollingSentinelFocusTracker, SentinelFocusTracker, WindowP
 pub use self::helpers::{
     check_idle_sessions_sync, compute_file_hash, create_document_hash_payload,
     create_session_start_payload, detect_paste_boundary, end_all_sessions_sync, end_session_sync,
-    focus_document_sync, handle_change_event_sync, handle_focus_event_sync,
-    is_within_paste_window, unfocus_document_sync, update_keystroke_context_window,
+    focus_document_sync, handle_change_event_sync, handle_focus_event_sync, is_within_paste_window,
+    unfocus_document_sync, update_keystroke_context_window,
 };
 pub use self::ipc_handler::SentinelIpcHandler;
 pub use self::shadow::ShadowManager;

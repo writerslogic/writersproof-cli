@@ -239,16 +239,15 @@ pub fn restrict_permissions(path: &Path, mode: u32) -> std::io::Result<()> {
         // Set owner-only DACL via Win32 API instead of shelling out to icacls.
         // This is faster, locale-independent, and immune to PATH misconfiguration.
         use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
         use windows::Win32::Security::Authorization::{
-            SetNamedSecurityInfoW, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
-            PROTECTED_DACL_SECURITY_INFORMATION,
+            SetNamedSecurityInfoW, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+            SE_FILE_OBJECT,
         };
         use windows::Win32::Security::{
-            InitializeSecurityDescriptor, SetSecurityDescriptorDacl,
-            SECURITY_DESCRIPTOR, SECURITY_DESCRIPTOR_REVISION,
-            ACL, PSECURITY_DESCRIPTOR, PACL,
+            InitializeSecurityDescriptor, SetSecurityDescriptorDacl, ACL, PACL,
+            PSECURITY_DESCRIPTOR, SECURITY_DESCRIPTOR, SECURITY_DESCRIPTOR_REVISION,
         };
-        use windows::core::PCWSTR;
 
         // Convert path to wide string
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -259,10 +258,10 @@ pub fn restrict_permissions(path: &Path, mode: u32) -> std::io::Result<()> {
                 PCWSTR(wide.as_ptr()),
                 SE_FILE_OBJECT,
                 DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-                None,  // owner (unchanged)
-                None,  // group (unchanged)
-                Some(std::ptr::null()),  // empty DACL = owner-only
-                None,  // SACL (unchanged)
+                None,                   // owner (unchanged)
+                None,                   // group (unchanged)
+                Some(std::ptr::null()), // empty DACL = owner-only
+                None,                   // SACL (unchanged)
             )
         };
         if let Err(e) = result {

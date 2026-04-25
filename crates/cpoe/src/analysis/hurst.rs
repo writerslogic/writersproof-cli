@@ -304,7 +304,7 @@ fn compute_dfa_fluctuation(profile: &[f64], scale: usize) -> f64 {
 }
 
 /// Computes the variance of the residuals of a linear regression over the segment.
-/// Uses mathematical expansion of Residual Sum of Squares (RSS) to compute slope 
+/// Uses mathematical expansion of Residual Sum of Squares (RSS) to compute slope
 /// and variance simultaneously in a single highly-optimized O(N) pass.
 fn detrend_variance(segment: &[f64]) -> f64 {
     let n = segment.len();

@@ -261,9 +261,19 @@ fn test_lamport_signature_roundtrip() {
         .expect("insert signed event");
 
     assert!(event.lamport_signature.is_some());
-    assert_eq!(event.lamport_signature.as_ref().expect("lamport sig").len(), 8192);
+    assert_eq!(
+        event.lamport_signature.as_ref().expect("lamport sig").len(),
+        8192
+    );
     assert!(event.lamport_pubkey_fingerprint.is_some());
-    assert_eq!(event.lamport_pubkey_fingerprint.as_ref().expect("lamport fingerprint").len(), 8);
+    assert_eq!(
+        event
+            .lamport_pubkey_fingerprint
+            .as_ref()
+            .expect("lamport fingerprint")
+            .len(),
+        8
+    );
 
     let events = store
         .get_events_for_file("/test/lamport.txt")
@@ -292,14 +302,15 @@ fn test_lamport_signature_verifies() {
 
     // Verify the Lamport signature by re-deriving the key
     let lamport_sig_bytes = event.lamport_signature.as_ref().expect("lamport sig");
-    let lamport_sig =
-        crate::crypto::lamport::LamportSignature::from_bytes(lamport_sig_bytes).expect("parse lamport sig");
+    let lamport_sig = crate::crypto::lamport::LamportSignature::from_bytes(lamport_sig_bytes)
+        .expect("parse lamport sig");
 
     // Re-derive the public key from the same seed
     let hk =
         hkdf::Hkdf::<sha2::Sha256>::new(Some(b"cpoe-lamport-event-v1"), &signing_key.to_bytes());
     let mut seed = [0u8; 32];
-    hk.expand(&event.event_hash, &mut seed).expect("hkdf expand");
+    hk.expand(&event.event_hash, &mut seed)
+        .expect("hkdf expand");
     let (_privkey, pubkey) = crate::crypto::lamport::LamportPrivateKey::from_seed(&seed);
 
     assert!(pubkey.verify(&event.event_hash, &lamport_sig));

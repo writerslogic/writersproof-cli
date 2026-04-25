@@ -31,7 +31,9 @@ pub fn compute_initial_digest(identity_fingerprint: Vec<u8>) -> BaselineDigest {
 /// Uses numerically stable running average: mu_n = mu_{n-1} + (x_n - mu_{n-1}) / n
 pub fn update_digest_in_place(digest: &mut BaselineDigest, summary: &SessionBehavioralSummary) {
     digest.session_count += 1;
-    digest.total_keystrokes = digest.total_keystrokes.saturating_add(summary.keystroke_count);
+    digest.total_keystrokes = digest
+        .total_keystrokes
+        .saturating_add(summary.keystroke_count);
 
     let total_weight: f64 = summary.iki_histogram.iter().sum();
     let mean_iki = if total_weight > f64::EPSILON {

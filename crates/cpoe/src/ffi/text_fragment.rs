@@ -40,15 +40,27 @@ pub struct FfiTextFragmentStoreResult {
 
 impl FfiTextFragmentStoreResult {
     fn ok(hash_hex: String, id: i64) -> Self {
-        Self { success: true, fragment_hash_hex: Some(hash_hex), fragment_id: id, error_message: None }
+        Self {
+            success: true,
+            fragment_hash_hex: Some(hash_hex),
+            fragment_id: id,
+            error_message: None,
+        }
     }
     fn err(msg: impl Into<String>) -> Self {
-        Self { success: false, fragment_hash_hex: None, fragment_id: -1, error_message: Some(msg.into()) }
+        Self {
+            success: false,
+            fragment_hash_hex: None,
+            fragment_id: -1,
+            error_message: Some(msg.into()),
+        }
     }
 }
 
 impl super::types::FfiErrResult for FfiTextFragmentStoreResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -83,7 +95,9 @@ impl FfiPasteRecordResult {
 }
 
 impl super::types::FfiErrResult for FfiPasteRecordResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -121,7 +135,9 @@ impl FfiAttestTextResult {
 }
 
 impl super::types::FfiErrResult for FfiAttestTextResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -445,9 +461,7 @@ pub fn ffi_attest_text(
             let sessions = s.sessions();
             let matched = sessions
                 .iter()
-                .filter(|sess| {
-                    sess.app_bundle_id == app_bundle_id && sess.keystroke_count > 0
-                })
+                .filter(|sess| sess.app_bundle_id == app_bundle_id && sess.keystroke_count > 0)
                 .max_by_key(|sess| sess.keystroke_count);
             if capture_active {
                 if let Some(sess) = matched {
@@ -535,10 +549,7 @@ pub fn ffi_attest_text(
 ///
 /// Used by the native messaging host where the browser has already hashed the
 /// text. Signs the hash with the device key and inserts a TextFragment record.
-pub fn store_attestation_from_hash(
-    content_hash: &str,
-    app_bundle_id: &str,
-) -> Result<(), String> {
+pub fn store_attestation_from_hash(content_hash: &str, app_bundle_id: &str) -> Result<(), String> {
     let hash_bytes =
         hex::decode(content_hash).map_err(|e| format!("Invalid content_hash hex: {e}"))?;
     if hash_bytes.len() != 32 {
@@ -599,15 +610,23 @@ pub struct FfiSyncResult {
 
 impl FfiSyncResult {
     fn ok() -> Self {
-        Self { success: true, error_message: None }
+        Self {
+            success: true,
+            error_message: None,
+        }
     }
     fn err(msg: impl Into<String>) -> Self {
-        Self { success: false, error_message: Some(msg.into()) }
+        Self {
+            success: false,
+            error_message: Some(msg.into()),
+        }
     }
 }
 
 impl super::types::FfiErrResult for FfiSyncResult {
-    fn ffi_err(msg: impl Into<String>) -> Self { Self::err(msg) }
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self::err(msg)
+    }
 }
 
 /// Mark a fragment as pending sync to CloudKit.
@@ -617,9 +636,7 @@ pub fn ffi_mark_fragment_for_sync(fragment_id: i64) -> FfiSyncResult {
 
     match store.mark_fragment_for_sync(fragment_id) {
         Ok(()) => FfiSyncResult::ok(),
-        Err(e) => FfiSyncResult::err(
-            format!("Failed to mark for sync: {e}"),
-        ),
+        Err(e) => FfiSyncResult::err(format!("Failed to mark for sync: {e}")),
     }
 }
 
@@ -637,15 +654,9 @@ pub fn ffi_update_fragment_sync_state(
         return FfiSyncResult::err(format!("Invalid sync state: {state}"));
     }
 
-    match store.update_fragment_sync_state(
-        fragment_id,
-        &state,
-        cloudkit_record_id.as_deref(),
-    ) {
+    match store.update_fragment_sync_state(fragment_id, &state, cloudkit_record_id.as_deref()) {
         Ok(()) => FfiSyncResult::ok(),
-        Err(e) => FfiSyncResult::err(
-            format!("Failed to update sync state: {e}"),
-        ),
+        Err(e) => FfiSyncResult::err(format!("Failed to update sync state: {e}")),
     }
 }
 
@@ -655,9 +666,7 @@ pub fn ffi_get_pending_sync_count() -> i64 {
     let store = match open_store() {
         Ok(s) => s,
         Err(e) => {
-            log::warn!(
-                "ffi_get_pending_sync_count: failed to open store: {e}"
-            );
+            log::warn!("ffi_get_pending_sync_count: failed to open store: {e}");
             return -1;
         }
     };
@@ -665,9 +674,7 @@ pub fn ffi_get_pending_sync_count() -> i64 {
     match store.get_pending_sync_count() {
         Ok(count) => count,
         Err(e) => {
-            log::warn!(
-                "ffi_get_pending_sync_count: query failed: {e}"
-            );
+            log::warn!("ffi_get_pending_sync_count: query failed: {e}");
             -1
         }
     }
@@ -697,49 +704,55 @@ pub fn ffi_apply_remote_fragment(
 
     let fragment_hash = match hex::decode(&fragment_hash_hex) {
         Ok(b) if b.len() == 32 => b,
-        _ => return FfiTextFragmentStoreResult::err(
-            "fragment_hash_hex must be 64 hex chars (32 bytes)",
-        ),
+        _ => {
+            return FfiTextFragmentStoreResult::err(
+                "fragment_hash_hex must be 64 hex chars (32 bytes)",
+            )
+        }
     };
     let source_signature = match hex::decode(&source_signature_hex) {
         Ok(b) if b.len() == 64 => b,
-        _ => return FfiTextFragmentStoreResult::err(
-            "source_signature_hex must be 128 hex chars (64 bytes)",
-        ),
+        _ => {
+            return FfiTextFragmentStoreResult::err(
+                "source_signature_hex must be 128 hex chars (64 bytes)",
+            )
+        }
     };
     let nonce = match hex::decode(&nonce_hex) {
         Ok(b) if b.len() == 16 => b,
-        _ => return FfiTextFragmentStoreResult::err(
-            "nonce_hex must be 32 hex chars (16 bytes)",
-        ),
+        _ => return FfiTextFragmentStoreResult::err("nonce_hex must be 32 hex chars (16 bytes)"),
     };
 
     // Verify signature before accepting remote fragment.
     let pub_bytes = match hex::decode(&signing_public_key_hex) {
         Ok(b) if b.len() == 32 => b,
-        _ => return FfiTextFragmentStoreResult::err(
-            "signing_public_key_hex must be 64 hex chars (32 bytes)",
-        ),
+        _ => {
+            return FfiTextFragmentStoreResult::err(
+                "signing_public_key_hex must be 64 hex chars (32 bytes)",
+            )
+        }
     };
     {
         use ed25519_dalek::{Signature, Verifier, VerifyingKey};
         let vk = match VerifyingKey::from_bytes(
-            pub_bytes.as_slice().try_into().expect("length validated at 32 bytes"),
+            pub_bytes
+                .as_slice()
+                .try_into()
+                .expect("length validated at 32 bytes"),
         ) {
             Ok(k) => k,
-            Err(e) => return FfiTextFragmentStoreResult::err(
-                format!("Invalid public key: {e}"),
-            ),
+            Err(e) => return FfiTextFragmentStoreResult::err(format!("Invalid public key: {e}")),
         };
         // Signature::from_bytes is infallible in ed25519-dalek v2.
-        let sig_arr: &[u8; 64] = source_signature.as_slice().try_into().expect("length validated at 64 bytes");
+        let sig_arr: &[u8; 64] = source_signature
+            .as_slice()
+            .try_into()
+            .expect("length validated at 64 bytes");
         let sig = Signature::from_bytes(sig_arr);
         // Reconstruct the domain-tagged payload that was signed.
         const DST: &[u8] = b"witnessd-text-fragment-v1";
         let sid_len = (session_id.len() as u32).to_le_bytes();
-        let mut payload = Vec::with_capacity(
-            DST.len() + 4 + session_id.len() + 32 + 8 + 16,
-        );
+        let mut payload = Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + 16);
         payload.extend_from_slice(DST);
         payload.extend_from_slice(&sid_len);
         payload.extend_from_slice(session_id.as_bytes());
@@ -781,13 +794,8 @@ pub fn ffi_apply_remote_fragment(
     let mut store = try_ffi!(open_store(), FfiTextFragmentStoreResult);
 
     match store.apply_remote_fragment(&fragment) {
-        Ok(id) => FfiTextFragmentStoreResult::ok(
-            hex::encode(&fragment_hash),
-            id,
-        ),
-        Err(e) => FfiTextFragmentStoreResult::err(
-            format!("Failed to apply remote fragment: {e}"),
-        ),
+        Ok(id) => FfiTextFragmentStoreResult::ok(hex::encode(&fragment_hash), id),
+        Err(e) => FfiTextFragmentStoreResult::err(format!("Failed to apply remote fragment: {e}")),
     }
 }
 
@@ -812,79 +820,69 @@ pub fn ffi_resolve_sync_conflict(
         "keep_local" => SyncResolutionStrategy::KeepLocal,
         "keep_remote" => SyncResolutionStrategy::KeepRemote,
         "keep_newest" => SyncResolutionStrategy::KeepNewest,
-        _ => return FfiSyncResult::err(format!(
-            "Invalid strategy '{strategy}'; \
+        _ => {
+            return FfiSyncResult::err(format!(
+                "Invalid strategy '{strategy}'; \
              expected keep_local, keep_remote, or keep_newest"
-        )),
+            ))
+        }
     };
 
-    let remote_fragment =
-        if strat != SyncResolutionStrategy::KeepLocal {
-            let hash = match remote_fragment_hash_hex
-                .as_deref()
-                .map(hex::decode)
-            {
-                Some(Ok(b)) if b.len() == 32 => b,
-                _ => return FfiSyncResult::err(
-                    "Remote fragment hash required",
-                ),
-            };
-            let sig = match remote_signature_hex
-                .as_deref()
-                .map(hex::decode)
-            {
-                Some(Ok(b)) if b.len() == 64 => b,
-                _ => return FfiSyncResult::err(
-                    "Remote signature required",
-                ),
-            };
-            let nonce = match remote_nonce_hex
-                .as_deref()
-                .map(hex::decode)
-            {
-                Some(Ok(b)) if b.len() == 16 => b,
-                _ => return FfiSyncResult::err(
-                    "Remote nonce required",
-                ),
-            };
-            let sid = match remote_session_id {
-                Some(ref s) if !s.is_empty() => s.clone(),
-                _ => return FfiSyncResult::err("Remote session ID required for KeepRemote/KeepNewest"),
-            };
-            let ts = match remote_timestamp_ms {
-                Some(t) if t > 0 => t,
-                _ => return FfiSyncResult::err("Remote timestamp required for KeepRemote/KeepNewest"),
-            };
-            Some(TextFragment {
-                id: None,
-                fragment_hash: hash,
-                session_id: sid,
-                source_app_bundle_id: None,
-                source_window_title: None,
-                source_signature: sig,
-                nonce,
-                timestamp: ts,
-                keystroke_context: None,
-                keystroke_confidence: None,
-                keystroke_sequence_hash: None,
-                source_session_id: None,
-                source_evidence_packet: None,
-                wal_entry_hash: None,
-                cloudkit_record_id: remote_cloudkit_record_id,
-                sync_state: None,
-            })
-        } else {
-            None
+    let remote_fragment = if strat != SyncResolutionStrategy::KeepLocal {
+        let hash = match remote_fragment_hash_hex.as_deref().map(hex::decode) {
+            Some(Ok(b)) if b.len() == 32 => b,
+            _ => return FfiSyncResult::err("Remote fragment hash required"),
         };
+        let sig = match remote_signature_hex.as_deref().map(hex::decode) {
+            Some(Ok(b)) if b.len() == 64 => b,
+            _ => return FfiSyncResult::err("Remote signature required"),
+        };
+        let nonce = match remote_nonce_hex.as_deref().map(hex::decode) {
+            Some(Ok(b)) if b.len() == 16 => b,
+            _ => return FfiSyncResult::err("Remote nonce required"),
+        };
+        let sid = match remote_session_id {
+            Some(ref s) if !s.is_empty() => s.clone(),
+            _ => return FfiSyncResult::err("Remote session ID required for KeepRemote/KeepNewest"),
+        };
+        let ts = match remote_timestamp_ms {
+            Some(t) if t > 0 => t,
+            _ => return FfiSyncResult::err("Remote timestamp required for KeepRemote/KeepNewest"),
+        };
+        Some(TextFragment {
+            id: None,
+            fragment_hash: hash,
+            session_id: sid,
+            source_app_bundle_id: None,
+            source_window_title: None,
+            source_signature: sig,
+            nonce,
+            timestamp: ts,
+            keystroke_context: None,
+            keystroke_confidence: None,
+            keystroke_sequence_hash: None,
+            source_session_id: None,
+            source_evidence_packet: None,
+            wal_entry_hash: None,
+            cloudkit_record_id: remote_cloudkit_record_id,
+            sync_state: None,
+        })
+    } else {
+        None
+    };
 
     let mut store = try_ffi!(open_store(), FfiSyncResult);
 
     // Verify remote fragment signature before accepting it
     if let Some(ref frag) = remote_fragment {
-        let hash_arr: &[u8; 32] = frag.fragment_hash.as_slice()
+        let hash_arr: &[u8; 32] = frag
+            .fragment_hash
+            .as_slice()
             .try_into()
             .expect("length validated at 32 bytes");
-        let sig_arr: &[u8; 64] = frag.source_signature.as_slice()
+        let sig_arr: &[u8; 64] = frag
+            .source_signature
+            .as_slice()
             .try_into()
             .expect("length validated at 64 bytes");
         let signing_key = try_ffi!(
@@ -902,24 +900,16 @@ pub fn ffi_resolve_sync_conflict(
             &pub_bytes,
         ) {
             Ok(true) => {}
-            Ok(false) => return FfiSyncResult::err(
-                "Remote fragment signature verification failed",
-            ),
-            Err(e) => return FfiSyncResult::err(
-                format!("Signature verification error: {e}"),
-            ),
+            Ok(false) => {
+                return FfiSyncResult::err("Remote fragment signature verification failed")
+            }
+            Err(e) => return FfiSyncResult::err(format!("Signature verification error: {e}")),
         }
     }
 
-    match store.resolve_sync_conflict(
-        fragment_id,
-        strat,
-        remote_fragment.as_ref(),
-    ) {
+    match store.resolve_sync_conflict(fragment_id, strat, remote_fragment.as_ref()) {
         Ok(()) => FfiSyncResult::ok(),
-        Err(e) => FfiSyncResult::err(
-            format!("Failed to resolve conflict: {e}"),
-        ),
+        Err(e) => FfiSyncResult::err(format!("Failed to resolve conflict: {e}")),
     }
 }
 
@@ -934,13 +924,16 @@ mod tests {
 
     #[test]
     fn test_normalize_unicode_precomposed() {
-        assert_eq!(normalize_for_attestation("caf\u{00e9} r\u{00e9}sum\u{00e9}"), "caf\u{00e9}r\u{00e9}sum\u{00e9}");
+        assert_eq!(
+            normalize_for_attestation("caf\u{00e9} r\u{00e9}sum\u{00e9}"),
+            "caf\u{00e9}r\u{00e9}sum\u{00e9}"
+        );
     }
 
     #[test]
     fn test_normalize_nfc_nfd_equivalence() {
-        let nfc = "caf\u{00e9}";          // precomposed é
-        let nfd = "cafe\u{0301}";          // e + combining acute
+        let nfc = "caf\u{00e9}"; // precomposed é
+        let nfd = "cafe\u{0301}"; // e + combining acute
         assert_eq!(
             normalize_for_attestation(nfc),
             normalize_for_attestation(nfd),
@@ -949,7 +942,10 @@ mod tests {
 
     #[test]
     fn test_normalize_digits() {
-        assert_eq!(normalize_for_attestation("I wrote 5 chapters"), "iwrote5chapters");
+        assert_eq!(
+            normalize_for_attestation("I wrote 5 chapters"),
+            "iwrote5chapters"
+        );
     }
 
     #[test]
@@ -975,13 +971,19 @@ mod tests {
     #[test]
     fn test_normalize_roman_numerals_kept() {
         // U+2160 (Nl category) — is_alphabetic() = true, lowercases to U+2170
-        assert_eq!(normalize_for_attestation("Chapter\u{2160}"), "chapter\u{2170}");
+        assert_eq!(
+            normalize_for_attestation("Chapter\u{2160}"),
+            "chapter\u{2170}"
+        );
     }
 
     #[test]
     fn test_normalize_arabic_superscript_alef() {
         // U+0670 — Other_Alphabetic, is_alphabetic() = true
-        assert_eq!(normalize_for_attestation("\u{0627}\u{0670}"), "\u{0627}\u{0670}");
+        assert_eq!(
+            normalize_for_attestation("\u{0627}\u{0670}"),
+            "\u{0627}\u{0670}"
+        );
     }
 
     #[test]
@@ -1032,7 +1034,10 @@ mod tests {
 
     #[test]
     fn test_normalize_emoji_stripped() {
-        assert_eq!(normalize_for_attestation("I \u{2764}\u{FE0F} writing"), "iwriting");
+        assert_eq!(
+            normalize_for_attestation("I \u{2764}\u{FE0F} writing"),
+            "iwriting"
+        );
     }
 
     #[test]
@@ -1124,14 +1129,19 @@ mod tests {
         assert!(!result.fragment_hash_hex.is_empty());
         assert_eq!(result.fragment_hash_hex.len(), 64);
         assert_eq!(result.writersproof_id.len(), 16);
-        assert!(result.fragment_hash_hex.starts_with(&result.writersproof_id));
+        assert!(result
+            .fragment_hash_hex
+            .starts_with(&result.writersproof_id));
         assert!(result.attestation_text.contains("WritersProof Declared"));
         assert!(result.attestation_text.contains("verify.writersproof.com"));
         assert!(result.attestation_text.contains(&result.writersproof_id));
 
         // Verify the stored fragment is retrievable by hash.
         let lookup = ffi_text_fragment_lookup(result.fragment_hash_hex.clone());
-        assert!(lookup.is_some(), "stored attestation fragment not found by hash");
+        assert!(
+            lookup.is_some(),
+            "stored attestation fragment not found by hash"
+        );
         let frag = lookup.unwrap();
         assert_eq!(frag.fragment_hash_hex, result.fragment_hash_hex);
 

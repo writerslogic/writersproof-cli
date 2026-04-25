@@ -75,13 +75,13 @@ impl ProvenanceMetrics {
                         } else {
                             sourced_unknown_count += 1;
                         }
-                        let entry = source_map
-                            .entry(src_session.clone())
-                            .or_insert_with(|| SourceSessionAccum {
+                        let entry = source_map.entry(src_session.clone()).or_insert_with(|| {
+                            SourceSessionAccum {
                                 app_bundle_id: frag.source_app_bundle_id.clone(),
                                 count: 0,
                                 verified,
-                            });
+                            }
+                        });
                         entry.count += 1;
                     } else {
                         // Pasted but no source session tracked
@@ -109,8 +109,8 @@ impl ProvenanceMetrics {
             1.0 // No sourced content = fully trusted original
         };
 
-        let authenticity = original_ratio * AUTHENTICITY_WEIGHT_ORIGINAL
-            + trust * AUTHENTICITY_WEIGHT_TRUST;
+        let authenticity =
+            original_ratio * AUTHENTICITY_WEIGHT_ORIGINAL + trust * AUTHENTICITY_WEIGHT_TRUST;
 
         let source_sessions: Vec<SourceSessionInfo> = source_map
             .into_iter()

@@ -177,7 +177,6 @@ pub fn ffi_start_ephemeral_session(context_label: String) -> FfiEphemeralSession
             checkpoint_count: 0,
             keystroke_count: 0,
 
-
             content_snapshots: Vec::new(),
             canary_seed: None,
             last_checkpoint_at: None,
@@ -544,8 +543,12 @@ pub fn ffi_ephemeral_checkpoint_hash(
     };
 
     flush_session_state_fields(
-        &session_id, &flush_context_label, flush_started_at_ns,
-        checkpoint_count, flush_keystroke_count, flush_jitter_count,
+        &session_id,
+        &flush_context_label,
+        flush_started_at_ns,
+        checkpoint_count,
+        flush_keystroke_count,
+        flush_jitter_count,
     );
 
     let msg = format!(
@@ -679,7 +682,9 @@ fn flush_session_state_fields(
     let path = recovery_dir.join(format!("{session_id}.json"));
     let tmp_path = recovery_dir.join(format!("{session_id}.json.tmp"));
     if let Ok(bytes) = serde_json::to_vec_pretty(&state) {
-        if let Err(e) = std::fs::write(&tmp_path, &bytes).and_then(|_| std::fs::rename(&tmp_path, &path)) {
+        if let Err(e) =
+            std::fs::write(&tmp_path, &bytes).and_then(|_| std::fs::rename(&tmp_path, &path))
+        {
             log::warn!("Failed to persist ephemeral session {session_id}: {e}");
         }
     }

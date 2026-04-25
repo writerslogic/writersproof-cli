@@ -32,7 +32,11 @@ pub fn handle_focus_event_sync(
     // allowed through so the targeted document's focus state updates correctly.
     if let Some(ref target) = *targeted_path.read_recover() {
         if !event.path.is_empty() && event.path != *target {
-            super::trace!("[FOCUS] targeted mode: ignoring {:?} (target={:?})", event.path, target);
+            super::trace!(
+                "[FOCUS] targeted mode: ignoring {:?} (target={:?})",
+                event.path,
+                target
+            );
             return;
         }
     }
@@ -415,8 +419,7 @@ pub fn handle_change_event_sync(
     // Scrivener chapter content: extract the .scriv package root so all chapters
     // in a project contribute to the same session checkpoint.
     let normalized_path = if !is_wal_event {
-        extract_scrivener_package_root(&event.path)
-            .unwrap_or_else(|| event.path.clone())
+        extract_scrivener_package_root(&event.path).unwrap_or_else(|| event.path.clone())
     } else {
         event.path.clone()
     };
@@ -441,8 +444,7 @@ pub fn handle_change_event_sync(
     // currently focused session. Read current_focus before acquiring sessions to
     // maintain lock order (current_focus → sessions).
     if is_wal_event {
-        let focused_path_opt = current_focus_opt
-            .and_then(|cf| cf.read_recover().clone());
+        let focused_path_opt = current_focus_opt.and_then(|cf| cf.read_recover().clone());
         if let Some(ref focused_path) = focused_path_opt {
             let mut sessions_map = sessions.write_recover();
             if let Some(session) = sessions_map.get_mut(focused_path.as_str()) {
@@ -969,7 +971,10 @@ pub(crate) fn try_hw_cosign(
     let clock_ms = clock_info.as_ref().map(|c| c.clock).unwrap_or(0);
     let caps = tpm.capabilities();
     let counter = if caps.monotonic_counter {
-        clock_info.as_ref().map(|c| u64::from(c.reset_count)).unwrap_or(0)
+        clock_info
+            .as_ref()
+            .map(|c| u64::from(c.reset_count))
+            .unwrap_or(0)
     } else {
         clock_ms
     };
@@ -1050,7 +1055,8 @@ pub fn detect_paste_boundary(
     if current_timestamp < last_keystroke_timestamp {
         log::warn!(
             "Timestamp regression in paste detection: current={} < last={}",
-            current_timestamp, last_keystroke_timestamp
+            current_timestamp,
+            last_keystroke_timestamp
         );
         return (super::types::KeystrokeContext::PastedContent, 0.80);
     }
@@ -1076,11 +1082,7 @@ pub fn detect_paste_boundary(
     match signals {
         3 => (super::types::KeystrokeContext::PastedContent, 0.99),
         2 => {
-            let confidence = if time_delta_ms > 2000 {
-                0.92
-            } else {
-                0.85
-            };
+            let confidence = if time_delta_ms > 2000 { 0.92 } else { 0.85 };
             (super::types::KeystrokeContext::PastedContent, confidence)
         }
         1 => {
@@ -1115,10 +1117,7 @@ pub fn update_keystroke_context_window(
 }
 
 /// Check if current keystroke is within paste context window.
-pub fn is_within_paste_window(
-    session: &super::types::DocumentSession,
-    current_time: i64,
-) -> bool {
+pub fn is_within_paste_window(session: &super::types::DocumentSession, current_time: i64) -> bool {
     match &session.paste_context {
         Some(ctx) => current_time < ctx.context_window_end,
         None => false,

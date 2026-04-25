@@ -62,14 +62,16 @@ impl EntropyValidator {
     /// Create a new entropy validator with custom thresholds.
     pub fn with_config(min_entropy_bits: f64, sample_window: usize) -> Result<Self> {
         if !(0.0..=10.0).contains(&min_entropy_bits) {
-            return Err(Error::validation(
-                format!("min_entropy_bits must be 0.0-10.0, got {}", min_entropy_bits),
-            ));
+            return Err(Error::validation(format!(
+                "min_entropy_bits must be 0.0-10.0, got {}",
+                min_entropy_bits
+            )));
         }
         if !(10..=1000).contains(&sample_window) {
-            return Err(Error::validation(
-                format!("sample_window must be 10-1000, got {}", sample_window),
-            ));
+            return Err(Error::validation(format!(
+                "sample_window must be 10-1000, got {}",
+                sample_window
+            )));
         }
         Ok(Self {
             min_entropy_bits,
@@ -82,17 +84,20 @@ impl EntropyValidator {
     /// Returns: (entropy_bits_per_keystroke, entropy_assessment)
     /// entropy_bits: Shannon entropy of inter-keystroke interval distribution
     /// assessment: "high", "medium", "low", "critical" based on threshold
-    pub fn measure_entropy(
-        &self,
-        samples: &VecDeque<KeystrokeSample>,
-    ) -> (f64, EntropyAssessment) {
+    pub fn measure_entropy(&self, samples: &VecDeque<KeystrokeSample>) -> (f64, EntropyAssessment) {
         if samples.len() < 2 {
             // Insufficient data; cannot measure entropy
             return (0.0, EntropyAssessment::InsufficientData);
         }
 
         let window_size = self.sample_window.min(samples.len());
-        let window_samples: Vec<_> = samples.iter().rev().take(window_size).rev().copied().collect();
+        let window_samples: Vec<_> = samples
+            .iter()
+            .rev()
+            .take(window_size)
+            .rev()
+            .copied()
+            .collect();
 
         // Extract inter-keystroke intervals (IKI) in milliseconds
         let mut ikis_ms = Vec::new();
@@ -114,11 +119,8 @@ impl EntropyValidator {
 
         // Calculate statistics
         let mean_iki = ikis_ms.iter().sum::<f64>() / ikis_ms.len() as f64;
-        let variance = ikis_ms
-            .iter()
-            .map(|x| (x - mean_iki).powi(2))
-            .sum::<f64>()
-            / ikis_ms.len() as f64;
+        let variance =
+            ikis_ms.iter().map(|x| (x - mean_iki).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
         let std_dev = variance.sqrt();
         let cv = std_dev / mean_iki;
 
@@ -231,11 +233,8 @@ impl EntropyValidator {
 
         // Pattern 1: Monotonic timing (all IKIs nearly equal)
         let mean = ikis_ms.iter().sum::<f64>() / ikis_ms.len() as f64;
-        let variance = ikis_ms
-            .iter()
-            .map(|x| (x - mean).powi(2))
-            .sum::<f64>()
-            / ikis_ms.len() as f64;
+        let variance =
+            ikis_ms.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
         let std_dev = variance.sqrt();
 
         if std_dev < mean * 0.05 {
@@ -401,9 +400,21 @@ mod tests {
         // Add keystrokes with variable intervals (80-200ms)
         let mut timestamp = 0i64;
         let intervals_ns = [
-            80_000_000, 150_000_000, 120_000_000, 200_000_000, 100_000_000,
-            180_000_000, 90_000_000, 160_000_000, 110_000_000, 190_000_000,
-            95_000_000, 170_000_000, 105_000_000, 185_000_000, 115_000_000,
+            80_000_000,
+            150_000_000,
+            120_000_000,
+            200_000_000,
+            100_000_000,
+            180_000_000,
+            90_000_000,
+            160_000_000,
+            110_000_000,
+            190_000_000,
+            95_000_000,
+            170_000_000,
+            105_000_000,
+            185_000_000,
+            115_000_000,
         ];
 
         for &interval in &intervals_ns {
@@ -466,7 +477,9 @@ mod tests {
     #[test]
     fn test_shannon_entropy_uniform_distribution() {
         let validator = EntropyValidator::new();
-        let values = vec![100.0, 200.0, 300.0, 400.0, 500.0, 100.0, 200.0, 300.0, 400.0, 500.0];
+        let values = vec![
+            100.0, 200.0, 300.0, 400.0, 500.0, 100.0, 200.0, 300.0, 400.0, 500.0,
+        ];
         let entropy = validator.calculate_shannon_entropy(&values);
         assert!(entropy > 0.0);
     }

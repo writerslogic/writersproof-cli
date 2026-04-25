@@ -149,7 +149,7 @@ pub fn verify_signature_for_provider(
             }
             Err(TpmError::UnsupportedPublicKey)
         }
-        _ => Err(TpmError::NotAvailable)
+        _ => Err(TpmError::NotAvailable),
     }
 }
 

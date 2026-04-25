@@ -34,7 +34,8 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
 
     let source_str = source.to_string_lossy().to_string();
     let events = try_ffi!(
-        store.get_events_for_file(&source_str)
+        store
+            .get_events_for_file(&source_str)
             .map_err(|e| format!("Failed to load events: {e}")),
         FfiResult
     );
