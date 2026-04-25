@@ -468,7 +468,10 @@ impl SealedIdentityStore {
         }
 
         match wrapped[0] {
-            0x01 => self.software_unwrap_v1(wrapped),
+            0x01 => {
+                log::warn!("Loading legacy V1 sealed identity; will migrate to V2 on next save");
+                self.software_unwrap_v1(wrapped)
+            }
             0x02 => self.software_unwrap_v2(wrapped),
             _ => Err(SealedIdentityError::BlobCorrupted),
         }

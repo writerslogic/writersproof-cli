@@ -17,7 +17,9 @@ macro_rules! trace {
 }
 pub(crate) use trace;
 
+pub mod app_discovery;
 pub mod app_registry;
+pub use app_discovery::ProbeResult;
 pub use app_registry::{AppRegistry, ProbeConfidence, UserWritingApp};
 pub mod behavioral_key;
 pub mod clipboard;

@@ -4,6 +4,7 @@
 
 pub mod crypto_helpers;
 pub mod error_context;
+pub mod formatting;
 pub(crate) mod lock;
 pub mod mlock;
 pub mod probability;
@@ -16,6 +17,7 @@ pub use crypto_helpers::{
     compute_content_hash, constant_time_eq, NonceManager, SignatureKey, SignedPayloadBuilder,
 };
 pub use error_context::{sanitize_for_user, ErrorContext};
+pub use formatting::{format_bytes, format_duration_human, format_number, hash_bytes};
 pub(crate) use lock::{MutexRecover, RwLockRecover};
 pub use probability::Probability;
 pub use stats::{

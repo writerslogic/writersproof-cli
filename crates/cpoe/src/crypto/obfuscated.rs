@@ -131,3 +131,76 @@ impl<T> std::fmt::Debug for Obfuscated<T> {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn obfuscated_string_roundtrip() {
+        let obs = ObfuscatedString::new("secret password 123!");
+        assert_eq!(obs.reveal().as_str(), "secret password 123!");
+    }
+
+    #[test]
+    fn obfuscated_string_empty() {
+        assert_eq!(ObfuscatedString::new("").reveal().as_str(), "");
+    }
+
+    #[test]
+    fn obfuscated_string_unicode() {
+        let obs = ObfuscatedString::new("Hello 世界 🌍");
+        assert_eq!(obs.reveal().as_str(), "Hello 世界 🌍");
+    }
+
+    #[test]
+    fn obfuscated_string_data_is_not_plaintext() {
+        let obs = ObfuscatedString::new("my secret value");
+        assert_ne!(obs.data, "my secret value".as_bytes());
+    }
+
+    #[test]
+    fn obfuscated_string_debug_is_redacted() {
+        let debug = format!("{:?}", ObfuscatedString::new("secret"));
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("REDACTED"));
+    }
+
+    #[test]
+    fn obfuscated_string_equality_constant_time() {
+        let a = ObfuscatedString::new("same");
+        let b = ObfuscatedString::new("same");
+        assert_eq!(a, b);
+        assert_ne!(a, ObfuscatedString::new("different"));
+    }
+
+    #[test]
+    fn obfuscated_string_clone_reveals_same() {
+        let obs = ObfuscatedString::new("cloneable");
+        assert_eq!(obs.reveal().as_str(), obs.clone().reveal().as_str());
+    }
+
+    #[test]
+    fn obfuscated_struct_roundtrip() {
+        let obs = Obfuscated::new(&42u64);
+        assert_eq!(obs.reveal(), Some(42u64));
+    }
+
+    #[test]
+    fn obfuscated_struct_equality() {
+        assert_eq!(Obfuscated::new(&100u32), Obfuscated::new(&100u32));
+        assert_ne!(Obfuscated::new(&100u32), Obfuscated::new(&200u32));
+    }
+
+    #[test]
+    fn obfuscated_struct_debug_is_redacted() {
+        let debug = format!("{:?}", Obfuscated::new(&"secret".to_string()));
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("REDACTED"));
+    }
+
+    #[test]
+    fn default_obfuscated_string_is_empty() {
+        assert_eq!(ObfuscatedString::default().reveal().as_str(), "");
+    }
+}

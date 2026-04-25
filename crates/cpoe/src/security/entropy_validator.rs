@@ -275,8 +275,8 @@ impl EntropyValidator {
         }
 
         // Pattern 3: Rapid burst (>300 WPM sustained)
-        // 300 WPM ≈ 60 keystrokes per 12 seconds ≈ 200ms mean IKI
-        if mean < 200.0 {
+        // 300 WPM = 1500 CPM = 25 keystrokes/sec = 40ms mean IKI
+        if mean < 40.0 {
             patterns.push("rapid_burst".to_string());
         }
 
@@ -459,7 +459,7 @@ mod tests {
         let validator = EntropyValidator::new();
         let mut samples = VecDeque::new();
 
-        // Very fast typing (150ms intervals = ~400 WPM)
+        // Inhuman typing speed: 30ms intervals = 33 keys/sec = 400 WPM
         let mut timestamp = 0i64;
         for _ in 0..20 {
             samples.push_back(KeystrokeSample {
@@ -467,7 +467,7 @@ mod tests {
                 key_code: 65,
                 is_burst: true,
             });
-            timestamp += 150_000_000; // 150ms = fast
+            timestamp += 30_000_000; // 30ms = inhuman speed
         }
 
         let patterns = validator.detect_low_entropy_patterns(&samples);

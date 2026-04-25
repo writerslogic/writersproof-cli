@@ -109,3 +109,96 @@ impl LamportPublicKey {
         fp
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sign_and_verify_roundtrip() {
+        let seed = [0x42u8; 32];
+        let (privkey, pubkey) = LamportPrivateKey::from_seed(&seed);
+        let msg: [u8; 32] = Sha256::digest(b"test message").into();
+        let sig = privkey.sign(&msg);
+        assert!(pubkey.verify(&msg, &sig));
+    }
+
+    #[test]
+    fn wrong_message_fails_verification() {
+        let seed = [0x42u8; 32];
+        let (privkey, pubkey) = LamportPrivateKey::from_seed(&seed);
+        let msg1: [u8; 32] = Sha256::digest(b"message 1").into();
+        let msg2: [u8; 32] = Sha256::digest(b"message 2").into();
+        let sig = privkey.sign(&msg1);
+        assert!(!pubkey.verify(&msg2, &sig));
+    }
+
+    #[test]
+    fn wrong_key_fails_verification() {
+        let (privkey, _) = LamportPrivateKey::from_seed(&[0x01; 32]);
+        let (_, pubkey2) = LamportPrivateKey::from_seed(&[0x02; 32]);
+        let msg: [u8; 32] = Sha256::digest(b"test").into();
+        let sig = privkey.sign(&msg);
+        assert!(!pubkey2.verify(&msg, &sig));
+    }
+
+    #[test]
+    fn signature_size_is_8192_bytes() {
+        let (privkey, _) = LamportPrivateKey::from_seed(&[0xAA; 32]);
+        let msg = [0u8; 32];
+        let sig = privkey.sign(&msg);
+        assert_eq!(sig.to_bytes().len(), 256 * 32);
+    }
+
+    #[test]
+    fn public_key_size_is_16384_bytes() {
+        let (_, pubkey) = LamportPrivateKey::from_seed(&[0xBB; 32]);
+        assert_eq!(pubkey.to_bytes().len(), 256 * 2 * 32);
+    }
+
+    #[test]
+    fn fingerprint_is_8_bytes() {
+        let (_, pubkey) = LamportPrivateKey::from_seed(&[0xCC; 32]);
+        assert_eq!(pubkey.fingerprint().len(), 8);
+    }
+
+    #[test]
+    fn deterministic_key_generation() {
+        let (_, pk1) = LamportPrivateKey::from_seed(&[0xDD; 32]);
+        let (_, pk2) = LamportPrivateKey::from_seed(&[0xDD; 32]);
+        assert_eq!(pk1.to_bytes(), pk2.to_bytes());
+    }
+
+    #[test]
+    fn different_seeds_produce_different_keys() {
+        let (_, pk1) = LamportPrivateKey::from_seed(&[0x01; 32]);
+        let (_, pk2) = LamportPrivateKey::from_seed(&[0x02; 32]);
+        assert_ne!(pk1.to_bytes(), pk2.to_bytes());
+    }
+
+    #[test]
+    fn signature_from_bytes_roundtrip() {
+        let (privkey, _) = LamportPrivateKey::from_seed(&[0xEE; 32]);
+        let sig = privkey.sign(&[0xFF; 32]);
+        let bytes = sig.to_bytes().to_vec();
+        let recovered = LamportSignature::from_bytes(&bytes).unwrap();
+        assert_eq!(recovered.to_bytes(), bytes);
+    }
+
+    #[test]
+    fn signature_from_bytes_wrong_length_returns_none() {
+        assert!(LamportSignature::from_bytes(&[0u8; 100]).is_none());
+    }
+
+    #[test]
+    fn public_key_from_bytes_wrong_length_returns_none() {
+        assert!(LamportPublicKey::from_bytes(&[0u8; 100]).is_none());
+    }
+
+    #[test]
+    fn truncated_signature_fails_verification() {
+        let (_, pubkey) = LamportPrivateKey::from_seed(&[0x11; 32]);
+        let bad_sig = LamportSignature { revealed: vec![0u8; 100] };
+        assert!(!pubkey.verify(&[0u8; 32], &bad_sig));
+    }
+}

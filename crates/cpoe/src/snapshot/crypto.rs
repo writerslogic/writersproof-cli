@@ -79,11 +79,14 @@ pub fn decrypt_blob(
 
     key.zeroize();
 
-    const MAX_SNAPSHOT_SIZE: usize = 100 * 1024 * 1024;
-    let plaintext = zstd::decode_all(compressed.as_slice())
+    const MAX_SNAPSHOT_SIZE: u64 = 100 * 1024 * 1024;
+    let decoder = zstd::stream::read::Decoder::new(compressed.as_slice())
+        .map_err(|e| format!("zstd decoder init failed: {e}"))?;
+    let mut limited = std::io::Read::take(decoder, MAX_SNAPSHOT_SIZE + 1);
+    let mut plaintext = Vec::new();
+    std::io::Read::read_to_end(&mut limited, &mut plaintext)
         .map_err(|e| format!("zstd decompress failed: {e}"))?;
-
-    if plaintext.len() > MAX_SNAPSHOT_SIZE {
+    if plaintext.len() as u64 > MAX_SNAPSHOT_SIZE {
         return Err("decompressed snapshot exceeds size limit".to_string());
     }
 
