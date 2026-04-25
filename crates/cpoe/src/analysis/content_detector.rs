@@ -910,6 +910,7 @@ impl ContentDetector {
     }
 
     /// Select the best matching context type based on scores.
+    #[allow(clippy::too_many_arguments)]
     fn select_best_match(
         &self,
         code_score: f64,

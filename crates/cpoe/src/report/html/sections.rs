@@ -544,7 +544,7 @@ pub(super) fn write_provenance_breakdown(html: &mut String, r: &WarReport) -> fm
                 html,
                 "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>",
                 html_escape(
-                    &src.session_id
+                    src.session_id
                         .get(..16)
                         .unwrap_or(&src.session_id)
                 ),

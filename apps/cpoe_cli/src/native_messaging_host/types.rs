@@ -65,6 +65,13 @@ pub(crate) enum Request {
     OpenView {
         view: String,
     },
+    TextAttestation {
+        content_hash: String,
+        tier: String,
+        writersproof_id: String,
+        attested_at: String,
+        app_bundle_id: String,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -126,6 +133,11 @@ pub(crate) enum Response {
     },
     ViewOpened {
         message: String,
+    },
+    TextAttestationResult {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     Error {
         message: String,

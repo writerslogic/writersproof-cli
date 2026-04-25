@@ -782,6 +782,72 @@ pub(crate) fn handle_ai_content_copied(
     }
 }
 
+pub(crate) fn handle_text_attestation(
+    content_hash: String,
+    tier: String,
+    writersproof_id: String,
+    attested_at: String,
+    app_bundle_id: String,
+) -> Response {
+    if let Err(msg) = validate_content_hash(&content_hash) {
+        return Response::TextAttestationResult {
+            success: false,
+            error: Some(msg),
+        };
+    }
+
+    if !matches!(tier.as_str(), "verified" | "corroborated" | "declared") {
+        return Response::TextAttestationResult {
+            success: false,
+            error: Some(format!("Invalid tier: {tier}")),
+        };
+    }
+
+    if !((writersproof_id.len() == 8 || writersproof_id.len() == 16)
+        && writersproof_id.chars().all(|c| c.is_ascii_hexdigit()))
+    {
+        return Response::TextAttestationResult {
+            success: false,
+            error: Some("writersproof_id must be 8 or 16 hex characters".into()),
+        };
+    }
+
+    if attested_at.is_empty() {
+        return Response::TextAttestationResult {
+            success: false,
+            error: Some("attested_at is required".into()),
+        };
+    }
+
+    // Best-effort local store — will fail with empty content since the hash
+    // is precomputed by the browser; that is expected.
+    let _ = cpoe::ffi::text_fragment::ffi_attest_text(
+        String::new(),
+        app_bundle_id.clone(),
+        String::new(),
+    );
+
+    let sync_result = cpoe::ffi::writersproof_ffi::ffi_sync_text_attestation(
+        content_hash,
+        tier,
+        writersproof_id,
+        attested_at,
+        app_bundle_id,
+    );
+
+    if sync_result.success {
+        Response::TextAttestationResult {
+            success: true,
+            error: None,
+        }
+    } else {
+        Response::TextAttestationResult {
+            success: false,
+            error: sync_result.error_message,
+        }
+    }
+}
+
 const ALLOWED_VIEWS: &[&str] = &[
     "dashboard", "settings", "versionHistory", "history", "export", "checkpoint",
 ];

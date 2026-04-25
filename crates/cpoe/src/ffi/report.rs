@@ -27,6 +27,7 @@ fn forensic_cache() -> &'static dashmap::DashMap<String, ForensicCacheEntry> {
     CACHE.get_or_init(dashmap::DashMap::new)
 }
 
+#[allow(dead_code)] // fields used for future report sections
 struct EventStats {
     avg_forensic: f64,
     total_iterations: u64,
@@ -808,14 +809,14 @@ fn build_dimensions(
 }
 
 fn compute_provenance(
-    store: &crate::store::SecureEventStore,
-) -> Option<crate::report::types::ProvenanceBreakdown> {
+    store: &crate::store::SecureStore,
+) -> Option<crate::report::ProvenanceBreakdown> {
     let fragments = store.get_all_fragments().unwrap_or_default();
     if fragments.is_empty() {
         return None;
     }
     let m = crate::forensics::ProvenanceMetrics::compute(&fragments);
-    Some(crate::report::types::ProvenanceBreakdown {
+    Some(crate::report::ProvenanceBreakdown {
         total_fragments: m.total_fragments,
         original_composition_pct: m.original_composition_ratio * 100.0,
         sourced_unknown_pct: m.sourced_unknown_ratio * 100.0,
@@ -826,7 +827,7 @@ fn compute_provenance(
         sources: m
             .source_sessions
             .into_iter()
-            .map(|s| crate::report::types::ProvenanceSource {
+            .map(|s| crate::report::ProvenanceSource {
                 session_id: s.session_id,
                 app_bundle_id: s.app_bundle_id,
                 fragment_count: s.fragment_count,

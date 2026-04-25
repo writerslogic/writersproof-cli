@@ -136,7 +136,7 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
         file_size,
         Some(context_note),
     );
-    event.device_id = *dev_id;
+    event.device_id = dev_id;
     event.machine_id = mach_id.clone();
     event.size_delta = size_delta;
     event.context_type = Some("derivative".to_string());

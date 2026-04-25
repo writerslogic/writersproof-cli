@@ -243,7 +243,7 @@ pub fn ffi_text_fragment_store(
     let nonce = generate_nonce();
 
     let signing_key = match load_signing_key() {
-        Ok(k) => zeroize::Zeroizing::new(k),
+        Ok(k) => k,
         Err(e) => return FfiTextFragmentStoreResult::err(format!("Signing key unavailable: {e}")),
     };
 
@@ -391,7 +391,7 @@ pub fn ffi_sentinel_record_paste(
     if let Some(ref focused_path) = focus {
         if let Ok(session) = sentinel.session(focused_path) {
             let signing_key = match load_signing_key() {
-                Ok(k) => zeroize::Zeroizing::new(k),
+                Ok(k) => k,
                 Err(e) => {
                     log::warn!("Cannot sign paste fragment: {e}");
                     return FfiPasteRecordResult::ok(text_hash_hex, matched_session_id);
@@ -493,7 +493,7 @@ pub fn ffi_attest_text(
     let nonce = generate_nonce();
 
     let signing_key = match load_signing_key() {
-        Ok(k) => zeroize::Zeroizing::new(k),
+        Ok(k) => k,
         Err(e) => {
             return FfiAttestTextResult::err(format!("Signing key unavailable: {e}"));
         }

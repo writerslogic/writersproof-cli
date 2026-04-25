@@ -60,7 +60,7 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
 
     // Load signing key and sign the raw hash bytes (matches CLI: signing_key.sign(latest.event_hash.as_slice()))
     let signing_key = match load_signing_key() {
-        Ok(k) => zeroize::Zeroizing::new(k),
+        Ok(k) => k,
         Err(e) => {
             return FfiResult::err(e);
         }
@@ -228,7 +228,7 @@ pub fn ffi_publish_evidence(
     let evidence_hash = hex::encode(latest.content_hash);
 
     let signing_key = match load_signing_key() {
-        Ok(k) => zeroize::Zeroizing::new(k),
+        Ok(k) => k,
         Err(e) => return fail(e),
     };
     let signature = {
@@ -318,7 +318,7 @@ pub fn ffi_sync_text_attestation(
     }
 
     let signing_key = match load_signing_key() {
-        Ok(k) => zeroize::Zeroizing::new(k),
+        Ok(k) => k,
         Err(e) => return FfiResult::err(format!("Signing key unavailable: {e}")),
     };
 
@@ -407,14 +407,13 @@ pub fn ffi_sync_text_attestation(
             let anchor_sig = match load_signing_key() {
                 Ok(k) => {
                     use ed25519_dalek::Signer;
-                    let sk = zeroize::Zeroizing::new(k);
                     const DST: &[u8] = b"witnessd-anchor-v1";
                     let hash_bytes = hex::decode(&anchor_evidence_hash).unwrap_or_default();
                     let mut payload = Vec::with_capacity(DST.len() + hash_bytes.len());
                     payload.extend_from_slice(DST);
                     payload.extend_from_slice(&hash_bytes);
-                    let sig = hex::encode(sk.sign(&payload).to_bytes());
-                    drop(sk);
+                    let sig = hex::encode(k.sign(&payload).to_bytes());
+                    drop(k);
                     sig
                 }
                 Err(e) => {
@@ -423,12 +422,12 @@ pub fn ffi_sync_text_attestation(
                 }
             };
             let anchor_req = crate::writersproof::AnchorRequest {
-                evidence_hash: anchor_evidence_hash,
+                evidence_hash: anchor_evidence_hash.clone(),
                 author_did: String::new(),
-                signature: anchor_sig,
+                signature: anchor_sig.clone(),
                 metadata: Some(crate::writersproof::AnchorMetadata {
                     document_name: None,
-                    tier: Some(anchor_tier),
+                    tier: Some(anchor_tier.clone()),
                 }),
             };
             let anchor_result = rt.block_on(async {
@@ -440,8 +439,32 @@ pub fn ffi_sync_text_attestation(
             });
             match anchor_result {
                 Ok(Ok(_)) => {}
-                Ok(Err(e)) => log::warn!("Post-attestation anchor failed: {e}"),
-                Err(_) => log::warn!("Post-attestation anchor timed out"),
+                Ok(Err(e)) => {
+                    log::warn!("Post-attestation anchor failed, queuing for retry: {e}");
+                    if let Err(qe) = crate::writersproof::OfflineQueue::default_dir()
+                        .and_then(|d| crate::writersproof::OfflineQueue::new(&d))
+                        .and_then(|q| q.enqueue_anchor(
+                            anchor_evidence_hash.clone(),
+                            anchor_sig.clone(),
+                            Some(anchor_tier.clone()),
+                        ))
+                    {
+                        log::warn!("Failed to queue anchor for retry: {qe}");
+                    }
+                }
+                Err(_) => {
+                    log::warn!("Post-attestation anchor timed out, queuing for retry");
+                    if let Err(qe) = crate::writersproof::OfflineQueue::default_dir()
+                        .and_then(|d| crate::writersproof::OfflineQueue::new(&d))
+                        .and_then(|q| q.enqueue_anchor(
+                            anchor_evidence_hash.clone(),
+                            anchor_sig.clone(),
+                            Some(anchor_tier.clone()),
+                        ))
+                    {
+                        log::warn!("Failed to queue anchor for retry: {qe}");
+                    }
+                }
             }
             FfiResult::ok(format!("Synced: {writersproof_id}"))
         }
@@ -469,11 +492,15 @@ pub fn ffi_drain_text_attestation_queue() -> FfiResult {
         Err(e) => return FfiResult::err(format!("Cannot open queue: {e}")),
     };
 
-    let count = match queue.text_attestation_count() {
-        Ok(0) => return FfiResult::ok("Queue empty".to_string()),
+    let text_count = match queue.text_attestation_count() {
         Ok(n) => n,
         Err(e) => return FfiResult::err(format!("Cannot read queue: {e}")),
     };
+    let anchor_count = queue.list_anchors().map(|v| v.len()).unwrap_or(0);
+
+    if text_count == 0 && anchor_count == 0 {
+        return FfiResult::ok("Queue empty".to_string());
+    }
 
     let rt = match crate::ffi::beacon::beacon_runtime() {
         Ok(rt) => rt,
@@ -490,7 +517,11 @@ pub fn ffi_drain_text_attestation_queue() -> FfiResult {
     let result = rt.block_on(async {
         tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            queue.drain_text_attestations(&client),
+            async {
+                let text_result = queue.drain_text_attestations(&client).await?;
+                let anchor_result = queue.drain_anchors(&client).await?;
+                Ok::<_, crate::error::Error>((text_result, anchor_result))
+            },
         )
         .await
     });
@@ -498,6 +529,19 @@ pub fn ffi_drain_text_attestation_queue() -> FfiResult {
     match result {
         Err(_) => FfiResult::err("Queue drain timed out".to_string()),
         Ok(Err(e)) => FfiResult::err(format!("Queue drain failed: {e}")),
-        Ok(Ok(n)) => FfiResult::ok(format!("Drained {n}/{count} text attestations")),
+        Ok(Ok(((text_ok, text_discarded), (anchor_ok, anchor_discarded)))) => {
+            let mut parts = Vec::new();
+            if text_count > 0 {
+                parts.push(format!("Drained {text_ok}/{text_count} text attestations"));
+            }
+            if anchor_count > 0 {
+                parts.push(format!("anchors {anchor_ok}/{anchor_count}"));
+            }
+            let total_discarded = text_discarded + anchor_discarded;
+            if total_discarded > 0 {
+                parts.push(format!("discarded {total_discarded}"));
+            }
+            FfiResult::ok(parts.join(", "))
+        }
     }
 }

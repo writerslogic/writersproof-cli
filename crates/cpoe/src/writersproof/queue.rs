@@ -299,23 +299,30 @@ impl OfflineQueue {
     /// Submit queued text attestations via `client`.
     ///
     /// Skips entries that haven't reached their backoff window yet.
-    /// Entries exceeding MAX_TEXT_RETRIES are removed. Returns count of
-    /// successful submissions.
+    /// Entries exceeding MAX_TEXT_RETRIES are removed. Returns
+    /// `(successful_count, discarded_count)`.
     pub async fn drain_text_attestations(
         &self,
         client: &WritersProofClient,
-    ) -> Result<usize> {
+    ) -> Result<(usize, usize)> {
         let entries = self.list_text_attestations()?;
         let mut success_count = 0;
+        let mut discard_count = 0;
         let now = Utc::now();
 
         for mut entry in entries {
             // Remove entries that exceeded max retries.
             if entry.retry_count >= Self::MAX_TEXT_RETRIES {
-                log::info!("Discarding text attestation {} after {} retries", entry.id, entry.retry_count);
+                log::warn!(
+                    "Discarding text attestation {} after {} retries (last error: {})",
+                    entry.id,
+                    entry.retry_count,
+                    entry.last_error.as_deref().unwrap_or("unknown")
+                );
                 Self::validate_id(&entry.id)?;
                 let path = self.text_dir()?.join(format!("{}.json", entry.id));
                 if path.exists() { fs::remove_file(&path)?; }
+                discard_count += 1;
                 continue;
             }
 
@@ -351,12 +358,157 @@ impl OfflineQueue {
             }
         }
 
-        Ok(success_count)
+        Ok((success_count, discard_count))
     }
 
     /// Number of queued text attestations.
     pub fn text_attestation_count(&self) -> Result<usize> {
         Ok(self.list_text_attestations()?.len())
+    }
+
+    // --- Anchor queue (separate subdirectory) ---
+
+    fn anchor_dir(&self) -> Result<PathBuf> {
+        let dir = self.queue_dir.join("anchors");
+        fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
+    /// Queue a failed anchor request for later submission.
+    pub fn enqueue_anchor(
+        &self,
+        evidence_hash: String,
+        signature: String,
+        tier: Option<String>,
+    ) -> Result<String> {
+        let id = format!(
+            "{}-{}",
+            Utc::now().format("%Y%m%d%H%M%S"),
+            hex::encode(rand::random::<[u8; 4]>())
+        );
+
+        let entry = super::types::QueuedAnchorRequest {
+            id: id.clone(),
+            evidence_hash,
+            signature,
+            tier,
+            retry_count: 0,
+            last_error: None,
+            created_at: Utc::now().to_rfc3339(),
+        };
+
+        let dir = self.anchor_dir()?;
+        let path = dir.join(format!("{id}.json"));
+        let data = serde_json::to_vec_pretty(&entry)
+            .map_err(|e| Error::checkpoint(format!("anchor queue serialize: {e}")))?;
+        atomic_write(&path, &data)?;
+        Ok(id)
+    }
+
+    /// List queued anchor requests.
+    pub fn list_anchors(&self) -> Result<Vec<super::types::QueuedAnchorRequest>> {
+        let dir = match self.anchor_dir() {
+            Ok(d) => d,
+            Err(_) => return Ok(Vec::new()),
+        };
+        let mut entries = Vec::new();
+        for entry in fs::read_dir(&dir)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            match fs::read(&path) {
+                Ok(data) => match serde_json::from_slice(&data) {
+                    Ok(queued) => entries.push(queued),
+                    Err(e) => log::warn!("Malformed anchor queue entry {}: {e}", path.display()),
+                },
+                Err(e) => log::warn!("Failed to read anchor queue entry {}: {e}", path.display()),
+            }
+            if entries.len() >= Self::MAX_LIST_ENTRIES {
+                break;
+            }
+        }
+        entries.sort_by(|a: &super::types::QueuedAnchorRequest, b| {
+            a.created_at.cmp(&b.created_at)
+        });
+        Ok(entries)
+    }
+
+    /// Maximum retry attempts before a queued anchor is discarded.
+    const MAX_ANCHOR_RETRIES: u32 = 5;
+
+    /// Submit queued anchor requests via `client`.
+    ///
+    /// Skips entries that haven't reached their backoff window yet.
+    /// Entries exceeding MAX_ANCHOR_RETRIES are removed. Returns
+    /// `(successful_count, discarded_count)`.
+    pub async fn drain_anchors(
+        &self,
+        client: &WritersProofClient,
+    ) -> Result<(usize, usize)> {
+        let entries = self.list_anchors()?;
+        let mut success_count = 0;
+        let mut discard_count = 0;
+        let now = Utc::now();
+
+        for mut entry in entries {
+            if entry.retry_count >= Self::MAX_ANCHOR_RETRIES {
+                log::warn!(
+                    "Discarding anchor {} after {} retries (last error: {})",
+                    entry.id,
+                    entry.retry_count,
+                    entry.last_error.as_deref().unwrap_or("unknown")
+                );
+                Self::validate_id(&entry.id)?;
+                let path = self.anchor_dir()?.join(format!("{}.json", entry.id));
+                if path.exists() { fs::remove_file(&path)?; }
+                discard_count += 1;
+                continue;
+            }
+
+            // Exponential backoff: wait 2^retry_count seconds (1s, 2s, 4s, 8s, 16s).
+            if entry.retry_count > 0 {
+                if let Ok(created) = chrono::DateTime::parse_from_rfc3339(&entry.created_at) {
+                    let backoff_secs = 1i64 << entry.retry_count.min(9);
+                    let earliest_retry = created + chrono::Duration::seconds(
+                        backoff_secs * entry.retry_count as i64,
+                    );
+                    if now < earliest_retry {
+                        continue;
+                    }
+                }
+            }
+
+            let req = super::types::AnchorRequest {
+                evidence_hash: entry.evidence_hash.clone(),
+                author_did: String::new(),
+                signature: entry.signature.clone(),
+                metadata: Some(super::types::AnchorMetadata {
+                    document_name: None,
+                    tier: entry.tier.clone(),
+                }),
+            };
+
+            match client.anchor(req).await {
+                Ok(_) => {
+                    Self::validate_id(&entry.id)?;
+                    let path = self.anchor_dir()?.join(format!("{}.json", entry.id));
+                    if path.exists() { fs::remove_file(&path)?; }
+                    success_count += 1;
+                }
+                Err(e) => {
+                    entry.retry_count += 1;
+                    entry.last_error = Some(e.to_string());
+                    Self::validate_id(&entry.id)?;
+                    let path = self.anchor_dir()?.join(format!("{}.json", entry.id));
+                    let data = serde_json::to_vec_pretty(&entry)
+                        .map_err(|e| Error::checkpoint(format!("anchor queue update: {e}")))?;
+                    atomic_write(&path, &data)?;
+                }
+            }
+        }
+
+        Ok((success_count, discard_count))
     }
 }
 

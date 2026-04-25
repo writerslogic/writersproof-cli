@@ -413,6 +413,7 @@ pub(super) fn build_war_report(
         anomalies: Vec::new(),
         verifiable_credential_json: None,
         author_did: None,
+        provenance_breakdown: None,
     }
 }
 

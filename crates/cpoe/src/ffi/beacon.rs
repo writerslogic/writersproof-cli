@@ -8,7 +8,7 @@ const MAX_EVIDENCE_FILE_SIZE: u64 = 64 * 1024 * 1024;
 
 fn read_bounded(path: &str) -> Result<Vec<u8>, String> {
     use std::io::Read;
-    let mut file =
+    let file =
         std::fs::File::open(path).map_err(|e| format!("Failed to open file: {e}"))?;
     let len = file
         .metadata()

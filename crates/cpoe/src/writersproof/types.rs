@@ -357,6 +357,21 @@ pub struct QueuedTextAttestation {
     pub created_at: String,
 }
 
+/// An anchor request queued for later submission when the initial attempt fails.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedAnchorRequest {
+    pub id: String,
+    pub evidence_hash: String,
+    pub signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    pub retry_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    pub created_at: String,
+}
+
 /// Request body for `POST /v1/credentials/issue`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

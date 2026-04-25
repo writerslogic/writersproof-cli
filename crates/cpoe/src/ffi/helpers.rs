@@ -4,7 +4,6 @@ use crate::forensics::EventData;
 use crate::store::SecureStore;
 use authorproof_protocol::rfc::wire_types::AttestationTier;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use zeroize::Zeroizing;
 
 /// Cached device identity for populating evidence events.

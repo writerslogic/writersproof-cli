@@ -52,7 +52,7 @@ pub fn ffi_create_checkpoint(path: String, message: String) -> FfiResult {
         file_size,
         context_note,
     );
-    event.device_id = *dev_id;
+    event.device_id = dev_id;
     event.machine_id = mach_id.clone();
 
     match store.add_secure_event(&mut event) {

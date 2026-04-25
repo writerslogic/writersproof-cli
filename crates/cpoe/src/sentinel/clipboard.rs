@@ -281,6 +281,7 @@ impl ClipboardMonitor {
     ///
     /// Returns Some(CopyEvent) if change detected and text valid, None if unchanged.
     /// Deduplication via change count and timestamp throttling (100ms).
+    #[allow(clippy::await_holding_lock)] // CB-002: locks held across .await intentionally for TOCTOU prevention
     async fn check_clipboard_change(&self) -> std::result::Result<Option<CopyEvent>, ClipboardError> {
         let now = Utc::now().timestamp_millis();
 

@@ -65,6 +65,7 @@ pub(crate) fn request_type_name(req: &Request) -> &'static str {
         Request::SnapshotSave { .. } => "SnapshotSave",
         Request::AiContentCopied { .. } => "AiContentCopied",
         Request::OpenView { .. } => "OpenView",
+        Request::TextAttestation { .. } => "TextAttestation",
     }
 }
 
