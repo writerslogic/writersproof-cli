@@ -166,8 +166,8 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
         mean_iki_ms,
         std_dev_iki_ms,
         coefficient_of_variation: cv,
-        burst_count: metrics.cadence.burst_count as u32,
-        pause_count: metrics.cadence.pause_count as u32,
+        burst_count: u32::try_from(metrics.cadence.burst_count).unwrap_or(u32::MAX),
+        pause_count: u32::try_from(metrics.cadence.pause_count).unwrap_or(u32::MAX),
         mean_bps: finite_or(metrics.velocity.mean_bps, 0.0),
         max_bps: finite_or(metrics.velocity.max_bps, 0.0),
         hurst_exponent: metrics.hurst_exponent.filter(|h| h.is_finite()),
@@ -175,7 +175,7 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
         perplexity_score: finite_or(metrics.perplexity_score, 0.0),
         risk_level: metrics.risk_level.to_string().to_lowercase(),
         protocol_verdict: format!("{:?}", protocol_verdict),
-        anomaly_count: profile.anomalies.len() as u32,
+        anomaly_count: u32::try_from(profile.anomalies.len()).unwrap_or(u32::MAX),
         anomalies,
         writing_mode: metrics
             .writing_mode

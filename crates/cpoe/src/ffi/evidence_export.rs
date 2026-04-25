@@ -477,8 +477,19 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         Ok(p) => p,
         Err(e) => return FfiResult::err(format!("Invalid output path: {e}")),
     };
-    if let Err(e) = std::fs::write(&out, &*content) {
-        return FfiResult::err(format!("Failed to write document: {e}"));
+    {
+        use std::io::Write;
+        let dir = out.parent().unwrap_or(std::path::Path::new("."));
+        let mut tmp = match tempfile::NamedTempFile::new_in(dir) {
+            Ok(t) => t,
+            Err(e) => return FfiResult::err(format!("Failed to create temp file: {e}")),
+        };
+        if let Err(e) = tmp.write_all(&content) {
+            return FfiResult::err(format!("Failed to write document: {e}"));
+        }
+        if let Err(e) = tmp.persist(&out) {
+            return FfiResult::err(format!("Failed to finalize document: {e}"));
+        }
     }
 
     FfiResult::ok(format!("Document extracted to {}", out.display()))
