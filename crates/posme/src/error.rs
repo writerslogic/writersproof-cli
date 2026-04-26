@@ -14,7 +14,7 @@ pub enum PosmeError {
     /// Merkle path verification failed.
     MerkleVerifyFailed { step_id: u32, address: u32 },
     /// Pointer-chase address mismatch during verification.
-    AddressMismatch { step_id: u32, read_index: u8, expected: u32, got: u32 },
+    AddressMismatch { step_id: u32, read_index: u32, expected: u32, got: u32 },
     /// Symbiotic write verification failed.
     WriteMismatch { step_id: u32 },
     /// Root chain verification failed.
@@ -23,6 +23,8 @@ pub enum PosmeError {
     TranscriptMismatch { step_id: u32 },
     /// Fiat-Shamir challenge derivation mismatch.
     ChallengeMismatch,
+    /// Jitter entropy in entangled proof is below minimum threshold.
+    JitterEntropyInsufficient { variance: f64, threshold: f64 },
 }
 
 impl fmt::Display for PosmeError {
@@ -46,6 +48,9 @@ impl fmt::Display for PosmeError {
                 write!(f, "transcript mismatch at step {step_id}")
             }
             Self::ChallengeMismatch => write!(f, "Fiat-Shamir challenge mismatch"),
+            Self::JitterEntropyInsufficient { variance, threshold } => {
+                write!(f, "jitter entropy insufficient: variance {variance:.2} < threshold {threshold:.2}")
+            }
         }
     }
 }

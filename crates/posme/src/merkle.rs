@@ -10,6 +10,7 @@
 
 use crate::block::{Block, LAMBDA};
 use crate::hash::posme_hash;
+use subtle::ConstantTimeEq;
 
 /// Compute the leaf hash for a block.
 pub fn leaf_hash(block: &Block) -> [u8; LAMBDA] {
@@ -114,7 +115,7 @@ pub fn verify_path(
         };
         pos /= 2;
     }
-    current == *root
+    current.ct_eq(root).into()
 }
 
 /// Verify that a single-leaf update transforms root_before into root_after.

@@ -24,6 +24,7 @@ const MIN_ARENA_BLOCKS: u32 = 1 << 10; // 64 KiB (relaxed for testing)
 const MIN_READS_PER_STEP: u8 = 4;
 const MIN_CHALLENGES: u16 = 2;
 const MIN_RECURSION_DEPTH: u8 = 1;
+const MAX_RECURSION_DEPTH: u8 = 8;
 // Maximum bounds to prevent OOM on untrusted proofs.
 // Arena: 2^22 blocks = 256 MiB arena (2x headroom over MAXIMUM tier 2^21).
 // Steps: 2^24 (2x headroom over MAXIMUM tier 4*2^21 = 2^23).
@@ -87,6 +88,12 @@ impl PosmeParams {
                 self.recursion_depth
             )));
         }
+        if self.recursion_depth > MAX_RECURSION_DEPTH {
+            return Err(PosmeError::InvalidParams(format!(
+                "recursion_depth {} > maximum {MAX_RECURSION_DEPTH}",
+                self.recursion_depth
+            )));
+        }
         Ok(())
     }
 
@@ -145,12 +152,15 @@ impl PosmeParams {
     }
 
     /// Select tier by content tier (1=core, 2=standard, 3=enhanced, 4=maximum).
-    pub fn for_tier(tier: u8) -> Self {
+    pub fn for_tier(tier: u8) -> Result<Self> {
         match tier {
-            1 => Self::core(),
-            2 => Self::standard(),
-            3 => Self::enhanced(),
-            _ => Self::maximum(),
+            1 => Ok(Self::core()),
+            2 => Ok(Self::standard()),
+            3 => Ok(Self::enhanced()),
+            4 => Ok(Self::maximum()),
+            _ => Err(PosmeError::InvalidParams(format!(
+                "tier {tier} out of range [1, 4]"
+            ))),
         }
     }
 

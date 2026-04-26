@@ -14,7 +14,8 @@ use crate::error::{Error, Result};
 ///
 /// Returns the CBOR-serialized proof bytes for storage in `Checkpoint.posme_swf`.
 pub fn compute(seed: [u8; 32], tier: u8) -> Result<Vec<u8>> {
-    let params = posme::PosmeParams::for_tier(tier);
+    let params = posme::PosmeParams::for_tier(tier)
+        .map_err(|e| Error::crypto(format!("PoSME invalid tier: {e}")))?;
     let proof = posme::prover::execute(&seed, &params)
         .map_err(|e| Error::crypto(format!("PoSME execution failed: {e}")))?;
     ciborium_encode(&proof)
@@ -25,9 +26,11 @@ pub fn compute(seed: [u8; 32], tier: u8) -> Result<Vec<u8>> {
 ///
 /// `seed`: 32-byte seed that was used during computation.
 /// `proof_bytes`: raw CBOR from `Checkpoint.posme_swf`.
-pub fn verify(seed: [u8; 32], proof_bytes: &[u8]) -> Result<bool> {
+pub fn verify(seed: [u8; 32], proof_bytes: &[u8]) -> Result<()> {
     let proof: posme::PosmeProof = ciborium_decode(proof_bytes)
         .map_err(|e| Error::crypto(format!("PoSME proof deserialization failed: {e}")))?;
+    proof.validate_structure()
+        .map_err(|e| Error::crypto(format!("PoSME proof structure invalid: {e}")))?;
     posme::verifier::verify(&seed, &proof)
         .map_err(|e| Error::crypto(format!("PoSME verification failed: {e}")))
 }
@@ -36,7 +39,8 @@ pub fn verify(seed: [u8; 32], proof_bytes: &[u8]) -> Result<bool> {
 ///
 /// `jitter_hashes`: behavioral jitter sample hashes collected during the session.
 pub fn compute_entangled(seed: [u8; 32], tier: u8, jitter_hashes: &[[u8; 32]]) -> Result<Vec<u8>> {
-    let params = posme::PosmeParams::for_tier(tier);
+    let params = posme::PosmeParams::for_tier(tier)
+        .map_err(|e| Error::crypto(format!("PoSME invalid tier: {e}")))?;
     let proof = posme::prover::execute_entangled(&seed, &params, jitter_hashes)
         .map_err(|e| Error::crypto(format!("PoSME entangled execution failed: {e}")))?;
     ciborium_encode(&proof)
@@ -44,8 +48,9 @@ pub fn compute_entangled(seed: [u8; 32], tier: u8, jitter_hashes: &[[u8; 32]]) -
 }
 
 /// Select PoSME parameters for a content tier.
-pub fn params_for_tier(tier: u8) -> posme::PosmeParams {
+pub fn params_for_tier(tier: u8) -> Result<posme::PosmeParams> {
     posme::PosmeParams::for_tier(tier)
+        .map_err(|e| Error::crypto(format!("PoSME invalid tier: {e}")))
 }
 
 fn ciborium_encode<T: serde::Serialize>(value: &T) -> std::result::Result<Vec<u8>, String> {
@@ -67,7 +72,7 @@ mod tests {
         let seed = [0x42u8; 32];
         let proof_bytes = compute(seed, 1).expect("compute");
         assert!(!proof_bytes.is_empty());
-        assert!(verify(seed, &proof_bytes).expect("verify"));
+        verify(seed, &proof_bytes).expect("verify");
     }
 
     #[test]
@@ -75,8 +80,7 @@ mod tests {
         let seed = [0x42u8; 32];
         let proof_bytes = compute(seed, 1).expect("compute");
         let wrong_seed = [0x43u8; 32];
-        let result = verify(wrong_seed, &proof_bytes);
-        assert!(result.is_err() || !result.unwrap());
+        assert!(verify(wrong_seed, &proof_bytes).is_err());
     }
 
     #[test]

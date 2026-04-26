@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use crate::block::Block;
+use crate::error::PosmeError;
 use crate::params::PosmeParams;
 
 /// Algorithm ID for standard PoSME.
@@ -82,4 +83,37 @@ pub struct WriterProof {
     pub writer_step_id: u32,
     pub step_witness: Option<Box<StepProof>>,
     pub init_merkle_path: Option<Vec<[u8; 32]>>,
+}
+
+/// Maximum allowed writer nesting depth to prevent stack overflow from
+/// maliciously crafted proofs during deserialization or traversal.
+pub const MAX_PROOF_NESTING_DEPTH: usize = 10;
+
+impl PosmeProof {
+    /// Validate structural bounds on a deserialized proof.
+    ///
+    /// Call this after deserializing an untrusted proof to check that recursive
+    /// nesting depth does not exceed `MAX_PROOF_NESTING_DEPTH`. Without this
+    /// check, a crafted proof with deep nesting can cause stack overflow.
+    pub fn validate_structure(&self) -> Result<(), PosmeError> {
+        for sp in &self.challenged_steps {
+            check_step_depth(sp, 0)?;
+        }
+        Ok(())
+    }
+}
+
+fn check_step_depth(sp: &StepProof, depth: usize) -> Result<(), PosmeError> {
+    if depth > MAX_PROOF_NESTING_DEPTH {
+        return Err(PosmeError::VerificationFailed(format!(
+            "proof nesting depth {} exceeds maximum {MAX_PROOF_NESTING_DEPTH}",
+            depth
+        )));
+    }
+    for w in &sp.writers {
+        if let Some(ref witness) = w.step_witness {
+            check_step_depth(witness, depth + 1)?;
+        }
+    }
+    Ok(())
 }
