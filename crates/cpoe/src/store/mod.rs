@@ -23,6 +23,10 @@ pub use types::SecureEvent;
 /// SQLite busy timeout in milliseconds. Shared with `AccessLog` (see `access_log.rs`).
 pub(crate) const BUSY_TIMEOUT_MS: u32 = 5000;
 
+/// Maximum SQLite page count. With the default 4096-byte page size this caps
+/// the database at ~2 GiB, preventing unbounded disk growth from long sessions.
+const MAX_PAGE_COUNT: u64 = 524_288;
+
 /// HMAC-integrity-protected SQLite event store with hash chaining.
 pub struct SecureStore {
     pub(crate) conn: Connection,
@@ -58,7 +62,8 @@ impl SecureStore {
         let _: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
         conn.execute_batch(&format!(
             "PRAGMA busy_timeout={BUSY_TIMEOUT_MS}; PRAGMA foreign_keys=ON; \
-             PRAGMA synchronous=FULL;"
+             PRAGMA synchronous=FULL; \
+             PRAGMA max_page_count={MAX_PAGE_COUNT};"
         ))?;
 
         let mut store = Self {

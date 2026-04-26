@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::ffi::helpers::load_signing_key;
-use crate::ffi::types::FfiResult;
+use crate::ffi::types::{try_ffi, FfiResult};
 use crate::identity::did_webvh::WebVHIdentity;
 
 const FFI_TIMEOUT_SECS: u64 = 30;

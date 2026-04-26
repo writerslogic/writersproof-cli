@@ -56,6 +56,9 @@ pub fn ffi_config_add_excluded_path(path: String) -> FfiResult {
     if path.is_empty() {
         return FfiResult::err("Path cannot be empty");
     }
+    if path.len() > 4096 {
+        return FfiResult::err("Path too long");
+    }
     let new_path = PathBuf::from(&path);
     with_config_mut(|config| {
         if !config

@@ -144,6 +144,12 @@ pub struct Sentinel {
     pub(crate) writersproof_client: Arc<crate::writersproof::WritersProofClient>,
     /// Platform-specific hardware and OS feature provider.
     pub(crate) platform: Arc<dyn crate::platform::PlatformProvider>,
+    /// Unified app registry (built-in + user-added writing apps).
+    pub(crate) app_registry: Arc<RwLock<super::app_registry::AppRegistry>>,
+    /// Cached SQLite event store; lazily opened when the signing key is first
+    /// available, invalidated on key change. Eliminates per-checkpoint connection
+    /// churn (WAL init, HMAC key derivation, integrity verification on every open).
+    pub(crate) cached_store: Arc<Mutex<Option<crate::store::SecureStore>>>,
 }
 
 impl Sentinel {
@@ -182,6 +188,8 @@ impl Sentinel {
             .map_err(|e| SentinelError::Anyhow(anyhow::anyhow!(e)))?,
         );
 
+        let app_registry = super::app_registry::AppRegistry::load(&config.writersproof_dir);
+
         let sentinel = Self {
             config: Arc::new(config),
             snapshots_enabled: Arc::new(AtomicBool::new(snapshots_default)),
@@ -217,6 +225,8 @@ impl Sentinel {
             tpm_provider,
             writersproof_client,
             platform,
+            app_registry: Arc::new(RwLock::new(app_registry)),
+            cached_store: Arc::new(Mutex::new(None)),
         };
         mouse_stego_seed.zeroize();
         Ok(sentinel)
@@ -333,6 +343,8 @@ impl Sentinel {
         }
         let mut key_bytes = key.to_bytes();
         self.signing_key.write_recover().set_key(key);
+        // Invalidate cached store — the HMAC key derives from the signing key.
+        *self.cached_store.lock_recover() = None;
         // Update stego seed without re-acquiring the signing_key lock
         self.update_mouse_stego_seed_from(&key_bytes);
         key_bytes.zeroize();
@@ -361,9 +373,34 @@ impl Sentinel {
         let mut seed_copy = bytes;
         let signing_key = SigningKey::from_bytes(&bytes);
         self.signing_key.write_recover().set_key(signing_key);
+        *self.cached_store.lock_recover() = None;
         bytes.zeroize();
         self.update_mouse_stego_seed_from(&seed_copy);
         seed_copy.zeroize();
+    }
+
+    /// Get or lazily open the cached SecureStore connection.
+    ///
+    /// Returns `None` if the signing key is not yet available. The store is
+    /// invalidated automatically when the signing key changes via
+    /// `set_signing_key` / `set_hmac_key`.
+    pub(crate) fn get_or_open_store(&self) -> Option<std::sync::MutexGuard<'_, Option<crate::store::SecureStore>>> {
+        let mut guard = self.cached_store.lock_recover();
+        if guard.is_some() {
+            return Some(guard);
+        }
+        let sk = self.signing_key.read_recover().key()?;
+        let db_path = self.config.writersproof_dir.join("events.db");
+        match crate::store::open_store_with_signing_key(&sk, &db_path) {
+            Ok(store) => {
+                *guard = Some(store);
+                Some(guard)
+            }
+            Err(e) => {
+                log::warn!("Failed to open cached store: {e}");
+                None
+            }
+        }
     }
 
     /// Start the sentinel event loop (focus, keystroke, mouse monitoring).
@@ -446,6 +483,7 @@ impl Sentinel {
         let snapshots_flag = Arc::clone(&self.snapshots_enabled);
 
         let writersproof_client_for_loop = Arc::clone(&self.writersproof_client);
+        let cached_store_for_loop = Arc::clone(&self.cached_store);
         let mut session_events_rx = self.session_events_tx.subscribe();
 
         let event_loop_handle_ref = Arc::clone(&self.event_loop_handle);
@@ -541,13 +579,28 @@ impl Sentinel {
                             continue;
                         }
 
-                        // Handle keyUp: compute dwell time and update last_keyup_ts
+                        // Handle keyUp: compute dwell time, backfill the matching
+                        // keyDown sample in the focused session's jitter buffer, and
+                        // update last_keyup_ts for flight-time computation.
                         if event.event_type == crate::platform::KeyEventType::Up {
                             if let Some(down_ts) = pending_downs.remove(&event.keycode) {
-                                let _dwell = crate::utils::ns_elapsed(event.timestamp_ns, down_ts);
-                                // Dwell time is stored when the corresponding keyDown
-                                // sample was created; keyUp events are not stored as
-                                // separate jitter samples.
+                                let dwell = crate::utils::ns_elapsed(event.timestamp_ns, down_ts);
+                                // Backfill dwell_time_ns on the most recent sample whose
+                                // timestamp matches the keyDown that originated this keyUp.
+                                let focused_path = current_focus.read_recover().clone();
+                                if let Some(ref path) = focused_path {
+                                    let mut map = sessions.write_recover();
+                                    if let Some(session) = map.get_mut(path.as_str()) {
+                                        if let Some(sample) = session
+                                            .jitter_samples
+                                            .iter_mut()
+                                            .rev()
+                                            .find(|s| s.timestamp_ns == down_ts)
+                                        {
+                                            sample.dwell_time_ns = Some(dwell);
+                                        }
+                                    }
+                                }
                             }
                             last_keyup_ts_ns = event.timestamp_ns;
                             continue;
@@ -799,6 +852,61 @@ impl Sentinel {
                                     log::error!("Idle-end checkpoint task panicked: {e}");
                                 }
                             }
+                            // H-NEW-2: Persist cumulative stats before ending the session.
+                            {
+                                let map = sessions.read_recover();
+                                if let Some(session) = map.get(path.as_str()) {
+                                    let now_secs = SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map(|d| d.as_secs() as i64)
+                                        .unwrap_or(0);
+                                    let stats = crate::store::DocumentStats {
+                                        file_path: path.clone(),
+                                        total_keystrokes: i64::try_from(
+                                            session.total_keystrokes(),
+                                        )
+                                        .unwrap_or(i64::MAX),
+                                        total_focus_ms: session.total_focus_ms_cumulative(),
+                                        session_count: i64::from(session.session_number + 1),
+                                        total_duration_secs: session
+                                            .start_time
+                                            .elapsed()
+                                            .map(|d| d.as_secs() as i64)
+                                            .unwrap_or(0),
+                                        first_tracked_at: session
+                                            .first_tracked_at
+                                            .and_then(|t| {
+                                                t.duration_since(std::time::UNIX_EPOCH).ok()
+                                            })
+                                            .map(|d| d.as_secs() as i64)
+                                            .unwrap_or(now_secs),
+                                        last_tracked_at: now_secs,
+                                    };
+                                    drop(map);
+                                    let sk_opt =
+                                        signing_key_for_cp.read_recover().key();
+                                    if let Some(sk) = sk_opt {
+                                        let mut key_bytes = sk.to_bytes();
+                                        let hmac_key =
+                                            crate::crypto::derive_hmac_key(&key_bytes);
+                                        key_bytes.zeroize();
+                                        drop(sk);
+                                        let db =
+                                            writersproof_dir.join("events.db");
+                                        if let Ok(store) =
+                                            crate::store::SecureStore::open(&db, hmac_key)
+                                        {
+                                            if let Err(e) =
+                                                store.save_document_stats(&stats)
+                                            {
+                                                log::warn!(
+                                                    "Idle-end stats persist failed: {e}"
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             end_session_sync(path, &sessions, &session_events_tx);
                         }
 
@@ -999,12 +1107,9 @@ impl Sentinel {
                                              first_at, _ordinal, has_hw_sched, session_id,
                                              has_paste_ctx, app_bundle_id, window_title)) = session_snapshot
                                 {
-                                    // Persist cumulative keystroke count (no lock held)
-                                    if let Some(ref sk) = sk_opt {
-                                        let db = writersproof_dir.join("events.db");
-                                        if let Ok(mut store) =
-                                            crate::store::open_store_with_signing_key(sk, &db)
-                                        {
+                                    // Persist cumulative keystroke count via cached store.
+                                    let sk_for_frag = sk_opt.clone();
+                                    if let Some(ref mut store) = *cached_store_for_loop.lock_recover() {
                                             let stats = crate::store::DocumentStats {
                                                 file_path: path.clone(),
                                                 total_keystrokes: i64::try_from(total_ks)
@@ -1040,9 +1145,13 @@ impl Sentinel {
                                                 } else {
                                                     crate::store::text_fragments::KeystrokeContext::OriginalComposition
                                                 };
-                                                let sig = crate::store::text_fragments::sign_fragment(
-                                                    sk, &session_id, &frag_hash, ts, &nonce,
-                                                );
+                                                let sig = if let Some(ref sk) = sk_for_frag {
+                                                    crate::store::text_fragments::sign_fragment(
+                                                        sk, &session_id, &frag_hash, ts, &nonce,
+                                                    )
+                                                } else {
+                                                    [0u8; 64]
+                                                };
                                                 let fragment = crate::store::text_fragments::TextFragment {
                                                     id: None,
                                                     fragment_hash: frag_hash.to_vec(),
@@ -1067,7 +1176,6 @@ impl Sentinel {
                                                     log::warn!("Failed to insert text fragment for {path}: {e}");
                                                 }
                                             }
-                                        }
                                     }
 
                                     // Save document snapshot if enabled (no lock held)
@@ -1115,11 +1223,6 @@ impl Sentinel {
                                                     }
                                                 }
                                             };
-                                            let store_and_path = sk_opt.as_ref().and_then(|sk| {
-                                                let db = writersproof_dir.join("events.db");
-                                                crate::store::open_store_with_signing_key(sk, &db).ok()
-                                            });
-
                                             let nonce_bytes_opt = challenge_nonce.as_ref().and_then(|nonce_hex| {
                                                 match hex::decode(nonce_hex) {
                                                     Ok(bytes) if bytes.len() == 32 => {
@@ -1134,6 +1237,7 @@ impl Sentinel {
                                                 }
                                             });
 
+                                            let store_guard = cached_store_for_loop.lock_recover();
                                             let mut map = sessions.write_recover();
                                             if let Some(session) = map.get_mut(path.as_str()) {
                                                 try_hw_cosign(
@@ -1141,7 +1245,7 @@ impl Sentinel {
                                                     tpm.as_ref(),
                                                     &content_hash,
                                                     nonce_bytes_opt.as_ref(),
-                                                    store_and_path.as_ref().map(|s| (s, path.as_str())),
+                                                    store_guard.as_ref().map(|s| (s, path.as_str())),
                                                 );
                                             }
                                         }
@@ -1175,6 +1279,41 @@ impl Sentinel {
     pub async fn stop(&self) -> Result<()> {
         if !self.running.swap(false, Ordering::SeqCst) {
             return Ok(());
+        }
+
+        // H-NEW-1: Commit final checkpoints for all sessions with pending
+        // keystrokes BEFORE setting stopping=true (which blocks checkpoints).
+        {
+            let candidates: Vec<String> = {
+                let map = self.sessions.read_recover();
+                map.iter()
+                    .filter(|(p, s)| {
+                        s.keystroke_count > s.last_checkpoint_keystrokes
+                            && !p.starts_with("shadow://")
+                    })
+                    .map(|(p, _)| p.clone())
+                    .collect()
+            };
+            let sk = Arc::clone(&self.signing_key);
+            let dir = self.config.writersproof_dir.clone();
+            let stop_flag = Arc::clone(&self.stopping);
+            for path in candidates {
+                let sk_c = Arc::clone(&sk);
+                let dir_c = dir.clone();
+                let stop_c = Arc::clone(&stop_flag);
+                let p = path.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    super::helpers::commit_checkpoint_for_path(
+                        &p,
+                        "Final-checkpoint",
+                        &sk_c,
+                        &dir_c,
+                        &None,
+                        &stop_c,
+                    )
+                })
+                .await;
+            }
         }
 
         // Set stopping flag FIRST so in-flight spawn_blocking checkpoint

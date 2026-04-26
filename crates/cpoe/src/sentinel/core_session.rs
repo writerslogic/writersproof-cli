@@ -17,15 +17,10 @@ use zeroize::Zeroize;
 use super::core::Sentinel;
 
 impl Sentinel {
-    /// Open the event store using the sentinel's signing key.
-    fn open_event_store(&self) -> anyhow::Result<crate::store::SecureStore> {
-        let signing_key_local = self
-            .signing_key
-            .read_recover()
-            .key()
-            .ok_or_else(|| anyhow::anyhow!("signing key not initialized"))?;
-        let db_path = self.config.writersproof_dir.join("events.db");
-        crate::store::open_store_with_signing_key(&signing_key_local, &db_path)
+    /// Get the cached event store, opening it lazily if needed.
+    fn open_event_store(&self) -> anyhow::Result<std::sync::MutexGuard<'_, Option<crate::store::SecureStore>>> {
+        self.get_or_open_store()
+            .ok_or_else(|| anyhow::anyhow!("signing key not initialized"))
     }
 
     /// Begin witnessing a file, creating a session and WAL entry.
@@ -92,17 +87,11 @@ impl Sentinel {
             session.current_hash = Some(hash);
         }
 
-        // Load cumulative stats from previous sessions.
-        // AUD-041 fix: Do not call self.open_event_store() while holding sessions lock,
-        // as it re-acquires signing_key (level 1) after sessions (level 2).
-        let db_path = self.config.writersproof_dir.join("events.db");
-        let store_res = match key {
-            Some(ref sk) => crate::store::open_store_with_signing_key(sk, &db_path),
-            None => Err(anyhow::anyhow!("signing key not initialized")),
-        };
+        // Load cumulative stats from previous sessions via cached store.
+        let store_guard = self.get_or_open_store();
 
-        match store_res {
-            Ok(store) => match store.load_document_stats(&path_str) {
+        match store_guard {
+            Some(ref guard) => match guard.as_ref().unwrap().load_document_stats(&path_str) {
                 Ok(Some(stats)) => {
                     session.cumulative_keystrokes_base =
                         u64::try_from(stats.total_keystrokes).unwrap_or(0);
@@ -123,8 +112,8 @@ impl Sentinel {
                     session.first_tracked_at = Some(SystemTime::now());
                 }
             },
-            Err(e) => {
-                log::warn!("Failed to open store for document stats: {e}");
+            None => {
+                log::warn!("Failed to open store for document stats: signing key unavailable");
                 session.first_tracked_at = Some(SystemTime::now());
             }
         }
@@ -264,19 +253,18 @@ impl Sentinel {
         if !self.running.load(std::sync::atomic::Ordering::SeqCst) {
             return false;
         }
-        // Use the cached signing key so no fresh level-1 lock is taken while
-        // other locks are held later in this function.
-        let db_path = self.config.writersproof_dir.join("events.db");
-        let mut store = match sk_cached.as_ref() {
-            Some(sk) => match crate::store::open_store_with_signing_key(sk, &db_path) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::warn!("Auto-checkpoint store open failed: {e}");
-                    return false;
-                }
-            },
+        // Use the cached store to avoid per-checkpoint connection churn.
+        let mut store_guard = match self.get_or_open_store() {
+            Some(g) => g,
             None => {
                 log::warn!("Auto-checkpoint skipped: signing key not initialized");
+                return false;
+            }
+        };
+        let store = match store_guard.as_mut() {
+            Some(s) => s,
+            None => {
+                log::warn!("Auto-checkpoint skipped: store not available");
                 return false;
             }
         };
@@ -404,7 +392,8 @@ impl Sentinel {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(now_ts);
             match store_result {
-                Ok(store) => {
+                Ok(ref guard) if guard.is_some() => {
+                    let store = guard.as_ref().unwrap();
                     let prev_dur = store
                         .load_document_stats(&path_str)
                         .ok()
@@ -429,6 +418,7 @@ impl Sentinel {
                 Err(e) => {
                     log::warn!("Failed to open store to save document stats: {e}");
                 }
+                _ => {}
             }
 
             let session_path = path_str.clone();

@@ -328,8 +328,129 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
 
             println!("Configuration reset to defaults.");
         }
+        ConfigAction::App { action } => cmd_app(action, &dir)?,
     }
 
+    Ok(())
+}
+
+fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<()> {
+    use cpoe::sentinel::app_registry::{AppRegistry, UserWritingApp};
+    use cpoe::sentinel::app_discovery::probe_app;
+
+    match action {
+        crate::cli::AppAction::Add { name } => {
+            let bundle_id = match name {
+                Some(n) => n,
+                None => {
+                    print!("Bundle ID or app name: ");
+                    io::stdout().flush()?;
+                    let mut input = String::new();
+                    io::stdin().lock().read_line(&mut input)?;
+                    input.trim().to_string()
+                }
+            };
+            if bundle_id.is_empty() {
+                bail!("No app specified");
+            }
+
+            println!("Probing {bundle_id}...");
+            let probe = probe_app(&bundle_id);
+
+            let confidence_label = match probe.confidence {
+                cpoe::sentinel::app_registry::ProbeConfidence::High => "high",
+                cpoe::sentinel::app_registry::ProbeConfidence::Medium => "medium",
+                cpoe::sentinel::app_registry::ProbeConfidence::Low => "low",
+            };
+            println!(
+                "  Name:       {}",
+                probe.display_name
+            );
+            println!(
+                "  Storage:    {:?}",
+                probe.storage
+            );
+            println!(
+                "  Confidence: {confidence_label}",
+            );
+            if !probe.container_paths.is_empty() {
+                println!("  Containers: {}", probe.container_paths.join(", "));
+            }
+
+            print!("Add this app? (yes/no): ");
+            io::stdout().flush()?;
+            let mut response = String::new();
+            io::stdin().lock().read_line(&mut response)?;
+            if crate::util::parse_yes_no(&response) != Some(true) {
+                println!("Cancelled.");
+                return Ok(());
+            }
+
+            let app = UserWritingApp {
+                bundle_id,
+                display_name: probe.display_name,
+                storage: probe.storage,
+                container_paths: probe.container_paths,
+                needs_title_inference: probe.needs_title_inference,
+                added_at: std::time::SystemTime::now(),
+                probe_confidence: probe.confidence,
+            };
+            let mut registry = AppRegistry::load(data_dir);
+            registry.add_user_app(app)?;
+            println!("App added.");
+        }
+        crate::cli::AppAction::List => {
+            let registry = AppRegistry::load(data_dir);
+
+            println!("Built-in apps:");
+            for app in cpoe::sentinel::app_registry::KNOWN_WRITING_APPS {
+                println!("  {} ({})", app.display_name, app.bundle_id);
+            }
+
+            let user = registry.user_apps();
+            if user.is_empty() {
+                println!("\nNo user-added apps.");
+            } else {
+                println!("\nUser-added apps:");
+                for app in user {
+                    println!("  {} ({}) [{:?}]", app.display_name, app.bundle_id, app.probe_confidence);
+                }
+            }
+        }
+        crate::cli::AppAction::Remove { name } => {
+            let mut registry = AppRegistry::load(data_dir);
+            let found = registry.user_apps().iter().any(|a| {
+                a.bundle_id.eq_ignore_ascii_case(&name)
+                    || a.display_name.eq_ignore_ascii_case(&name)
+            });
+            if !found {
+                bail!("No user-added app matching '{name}'");
+            }
+
+            // Try bundle_id first, then display_name
+            let bid = registry
+                .user_apps()
+                .iter()
+                .find(|a| {
+                    a.bundle_id.eq_ignore_ascii_case(&name)
+                        || a.display_name.eq_ignore_ascii_case(&name)
+                })
+                .map(|a| a.bundle_id.clone())
+                .unwrap();
+
+            print!("Remove '{bid}'? (yes/no): ");
+            io::stdout().flush()?;
+            let mut response = String::new();
+            io::stdin().lock().read_line(&mut response)?;
+            if crate::util::parse_yes_no(&response) != Some(true) {
+                println!("Cancelled.");
+                return Ok(());
+            }
+
+            registry.remove_user_app(&bid)?;
+            println!("App removed.");
+        }
+    }
     Ok(())
 }
 

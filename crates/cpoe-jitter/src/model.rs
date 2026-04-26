@@ -43,6 +43,9 @@ const MIN_STD_DEV_THRESHOLD_US: u64 = 50;
 const MIN_IKI_STD_DEV_THRESHOLD_US: u64 = 5000;
 const CONFIDENCE_PENALTY_PER_ANOMALY: f64 = 0.25;
 const MIN_PATTERN_CHECKS_EXCLUSIVE: usize = 2;
+/// Maximum plausible IKI: 10 minutes in microseconds. Values above this
+/// are rejected as invalid input rather than silently capped.
+const MAX_PLAUSIBLE_IKI_US: u64 = 600_000_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanModel {
@@ -182,31 +185,29 @@ impl HumanModel {
         )
     }
 
-    /// Zero-allocation validation directly from the Evidence slice.
+    /// Validate directly from an Evidence slice by extracting jitter values.
     pub fn validate_records(&self, records: &[Evidence]) -> ValidationResult {
-        let oor = out_of_range_anomaly(
-            records.iter().map(|e| e.jitter()),
-            |&j| j < self.jitter_min_us || j > self.jitter_max_us,
-            self.jitter_min_us as u64,
-            self.jitter_max_us as u64,
-            "jitter",
-        );
-        let (perfect_count, perfect_pairs) = self.compute_perfect_counts_records(records);
-        let pattern = self.detect_repeating_pattern_records(records);
-        let (stats, variance_n2) = self.compute_stats(records.iter().map(|e| e.jitter()));
-        self.validate_inner(
-            records.len(),
-            stats,
-            variance_n2,
-            oor,
-            perfect_count,
-            perfect_pairs,
-            pattern,
-            MIN_STD_DEV_THRESHOLD_US,
-        )
+        let jitters: Vec<Jitter> = records.iter().map(|e| e.jitter()).collect();
+        self.validate(&jitters)
     }
 
     pub fn validate_iki(&self, intervals_us: &[u64]) -> ValidationResult {
+        // Reject implausible IKI values (>10 min) as invalid input.
+        if let Some(pos) = intervals_us.iter().position(|&v| v > MAX_PLAUSIBLE_IKI_US) {
+            return ValidationResult {
+                is_human: false,
+                confidence: 0.0,
+                anomalies: vec![Anomaly {
+                    kind: AnomalyKind::OutOfRange,
+                    position: pos,
+                    detail: format!(
+                        "IKI value {}µs exceeds maximum plausible interval ({}µs)",
+                        intervals_us[pos], MAX_PLAUSIBLE_IKI_US
+                    ),
+                }],
+                stats: SequenceStats { count: 0, mean: 0.0, std_dev: 0.0, min: 0, max: 0 },
+            };
+        }
         let oor = out_of_range_anomaly(
             intervals_us.iter().copied(),
             |&iki| iki < self.iki_min_us as u64 || iki > self.iki_max_us as u64,
@@ -214,9 +215,10 @@ impl HumanModel {
             self.iki_max_us as u64,
             "IKI",
         );
+        // Safe cast: all values are <= MAX_PLAUSIBLE_IKI_US (600M) < u32::MAX (4.2B).
         let capped: Vec<u32> = intervals_us
             .iter()
-            .map(|&v| v.min(u32::MAX as u64) as u32)
+            .map(|&v| v as u32)
             .collect();
 
         let (perfect_count, perfect_pairs) = self.compute_perfect_counts_jitters(&capped);
@@ -280,7 +282,8 @@ impl HumanModel {
         // perfect_count / perfect_pairs > max_perfect_ratio
         // ⟺ perfect_count × 10000 > round(max_perfect_ratio × 10000) × perfect_pairs
         if perfect_pairs > 0 {
-            let ratio_bps = libm::round(self.max_perfect_ratio * 10000.0) as u64;
+            let clamped_ratio = self.max_perfect_ratio.clamp(0.0, 1.0);
+            let ratio_bps = libm::round(clamped_ratio * 10000.0) as u64;
             if (perfect_count as u64) * 10000 > ratio_bps * (perfect_pairs as u64) {
                 let pct = perfect_count as f64 / perfect_pairs as f64 * 100.0;
                 anomalies.push(Anomaly {
@@ -371,15 +374,6 @@ impl HumanModel {
         (perfect_count, pairs)
     }
 
-    fn compute_perfect_counts_records(&self, records: &[Evidence]) -> (usize, usize) {
-        let perfect_count = records
-            .windows(2)
-            .filter(|w| w[0].jitter() == w[1].jitter())
-            .count();
-        let pairs = if records.len() > 1 { records.len() - 1 } else { 0 };
-        (perfect_count, pairs)
-    }
-
     fn detect_repeating_pattern_jitters(&self, jitters: &[Jitter]) -> Option<usize> {
         if jitters.len() < 6 {
             return None;
@@ -411,37 +405,4 @@ impl HumanModel {
         None
     }
 
-    fn detect_repeating_pattern_records(&self, records: &[Evidence]) -> Option<usize> {
-        if records.len() < 6 {
-            return None;
-        }
-
-        for pattern_len in 2..=5 {
-            if records.len() < pattern_len * 3 {
-                continue;
-            }
-
-            let pattern = &records[..pattern_len];
-            let mut matches = 0;
-            let mut checks = 0;
-
-            for chunk in records.chunks(pattern_len) {
-                if chunk.len() == pattern_len {
-                    checks += 1;
-                    let is_match = chunk
-                        .iter()
-                        .zip(pattern.iter())
-                        .all(|(c, p)| c.jitter() == p.jitter());
-                    if is_match {
-                        matches += 1;
-                    }
-                }
-            }
-
-            if checks > MIN_PATTERN_CHECKS_EXCLUSIVE && matches * 5 > checks * 4 {
-                return Some(pattern_len);
-            }
-        }
-        None
-    }
 }

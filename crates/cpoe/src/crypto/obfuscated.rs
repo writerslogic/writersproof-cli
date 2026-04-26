@@ -138,13 +138,15 @@ mod tests {
 
     #[test]
     fn obfuscated_string_roundtrip() {
-        let obs = ObfuscatedString::new("secret password 123!");
-        assert_eq!(obs.reveal().as_str(), "secret password 123!");
+        let original = "secret password 123!";
+        let obs = ObfuscatedString::new(original);
+        assert_eq!(obs.reveal().as_str(), original);
     }
 
     #[test]
     fn obfuscated_string_empty() {
-        assert_eq!(ObfuscatedString::new("").reveal().as_str(), "");
+        let obs = ObfuscatedString::new("");
+        assert_eq!(obs.reveal().as_str(), "");
     }
 
     #[test]
@@ -155,13 +157,15 @@ mod tests {
 
     #[test]
     fn obfuscated_string_data_is_not_plaintext() {
-        let obs = ObfuscatedString::new("my secret value");
-        assert_ne!(obs.data, "my secret value".as_bytes());
+        let secret = "my secret value";
+        let obs = ObfuscatedString::new(secret);
+        assert_ne!(obs.data, secret.as_bytes());
     }
 
     #[test]
     fn obfuscated_string_debug_is_redacted() {
-        let debug = format!("{:?}", ObfuscatedString::new("secret"));
+        let obs = ObfuscatedString::new("secret");
+        let debug = format!("{:?}", obs);
         assert!(!debug.contains("secret"));
         assert!(debug.contains("REDACTED"));
     }
@@ -171,36 +175,53 @@ mod tests {
         let a = ObfuscatedString::new("same");
         let b = ObfuscatedString::new("same");
         assert_eq!(a, b);
-        assert_ne!(a, ObfuscatedString::new("different"));
+
+        let c = ObfuscatedString::new("different");
+        assert_ne!(a, c);
     }
 
     #[test]
     fn obfuscated_string_clone_reveals_same() {
         let obs = ObfuscatedString::new("cloneable");
-        assert_eq!(obs.reveal().as_str(), obs.clone().reveal().as_str());
+        let cloned = obs.clone();
+        assert_eq!(obs.reveal().as_str(), cloned.reveal().as_str());
     }
 
     #[test]
     fn obfuscated_struct_roundtrip() {
-        let obs = Obfuscated::new(&42u64);
+        let val: u64 = 42;
+        let obs = Obfuscated::new(&val);
         assert_eq!(obs.reveal(), Some(42u64));
     }
 
     #[test]
+    fn obfuscated_struct_string_roundtrip() {
+        let val = "hello world".to_string();
+        let obs = Obfuscated::new(&val);
+        assert_eq!(obs.reveal(), Some("hello world".to_string()));
+    }
+
+    #[test]
     fn obfuscated_struct_equality() {
-        assert_eq!(Obfuscated::new(&100u32), Obfuscated::new(&100u32));
-        assert_ne!(Obfuscated::new(&100u32), Obfuscated::new(&200u32));
+        let a = Obfuscated::new(&100u32);
+        let b = Obfuscated::new(&100u32);
+        assert_eq!(a, b);
+
+        let c = Obfuscated::new(&200u32);
+        assert_ne!(a, c);
     }
 
     #[test]
     fn obfuscated_struct_debug_is_redacted() {
-        let debug = format!("{:?}", Obfuscated::new(&"secret".to_string()));
+        let obs = Obfuscated::new(&"secret".to_string());
+        let debug = format!("{:?}", obs);
         assert!(!debug.contains("secret"));
         assert!(debug.contains("REDACTED"));
     }
 
     #[test]
     fn default_obfuscated_string_is_empty() {
-        assert_eq!(ObfuscatedString::default().reveal().as_str(), "");
+        let obs = ObfuscatedString::default();
+        assert_eq!(obs.reveal().as_str(), "");
     }
 }

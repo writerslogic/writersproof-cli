@@ -24,6 +24,14 @@ pub fn ffi_sentinel_es_file_write(path: String, pid: i32, signing_id: String) ->
         None => return false,
     };
 
+    let path = match crate::sentinel::helpers::validate_path(&path) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(e) => {
+            log::warn!("ES file write path rejected: {e}");
+            return false;
+        }
+    };
+
     // Only act on paths that are actually being tracked.
     let tracked = sentinel.tracked_files();
     if !tracked.iter().any(|t| t == &path) {
@@ -53,6 +61,11 @@ pub fn ffi_sentinel_es_ai_tool_detected(
     ppid: i32,
     exec_path: String,
 ) -> bool {
+    if signing_id.len() > 512 || exec_path.len() > 4096 {
+        log::warn!("ES AI tool params too long: signing_id={}, exec_path={}", signing_id.len(), exec_path.len());
+        return false;
+    }
+
     let sentinel = match get_running_sentinel() {
         Some(s) => s,
         None => return false,

@@ -452,14 +452,28 @@ pub fn ffi_get_compact_ref(path: String) -> String {
 /// Returns an FfiResult with the output path on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult {
-    let cpoe_path = match crate::sentinel::helpers::validate_path(&cpoe_path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => return FfiResult::err(format!("Invalid cpoe path: {e}")),
-    };
-    let data = match std::fs::read(&cpoe_path) {
-        Ok(d) => d,
-        Err(e) => return FfiResult::err(format!("Failed to read .cpoe file: {e}")),
-    };
+    let cpoe_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&cpoe_path)
+            .map(|p| p.to_string_lossy().to_string())
+            .map_err(|e| format!("Invalid cpoe path: {e}")),
+        FfiResult
+    );
+    const MAX_CPOE_FILE_SIZE: u64 = 256 * 1024 * 1024; // 256 MB
+    let meta = try_ffi!(
+        std::fs::metadata(&cpoe_path).map_err(|e| format!("Failed to stat .cpoe file: {e}")),
+        FfiResult
+    );
+    if meta.len() > MAX_CPOE_FILE_SIZE {
+        return FfiResult::err(format!(
+            "File too large: {} bytes (max {})",
+            meta.len(),
+            MAX_CPOE_FILE_SIZE
+        ));
+    }
+    let data = try_ffi!(
+        std::fs::read(&cpoe_path).map_err(|e| format!("Failed to read .cpoe file: {e}")),
+        FfiResult
+    );
 
     let cbor_payload = crate::ffi::helpers::unwrap_cose_or_raw(&data);
     let wire: EvidencePacketWire = match authorproof_protocol::codec::cbor::decode_tagged(
@@ -493,10 +507,11 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         );
     }
 
-    let out = match crate::sentinel::helpers::validate_path(&output_path) {
-        Ok(p) => p,
-        Err(e) => return FfiResult::err(format!("Invalid output path: {e}")),
-    };
+    let out = try_ffi!(
+        crate::sentinel::helpers::validate_path(&output_path)
+            .map_err(|e| format!("Invalid output path: {e}")),
+        FfiResult
+    );
     {
         use std::io::Write;
         let dir = out.parent().unwrap_or(std::path::Path::new("."));

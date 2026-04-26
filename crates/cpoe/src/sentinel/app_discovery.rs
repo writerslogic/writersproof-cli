@@ -7,6 +7,8 @@
 //! registry to pre-fill metadata when the user adds a custom app.
 
 use super::app_registry::{ProbeConfidence, StoragePattern};
+#[cfg(target_os = "macos")]
+use core_foundation::base::TCFType;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -389,9 +391,16 @@ struct AxProbeResult {
     needs_title_inference: bool,
 }
 
-// Re-use AX FFI declarations from the canonical platform module.
+// AX FFI declarations (ApplicationServices framework, already linked).
 #[cfg(target_os = "macos")]
-use crate::platform::macos::ffi::{AXUIElementCopyAttributeValue, AXUIElementCreateApplication};
+extern "C" {
+    fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
+    fn AXUIElementCopyAttributeValue(
+        element: *mut std::ffi::c_void,
+        attribute: core_foundation_sys::string::CFStringRef,
+        value: *mut core_foundation_sys::base::CFTypeRef,
+    ) -> i32;
+}
 
 // ---------------------------------------------------------------------------
 // macOS ObjC helpers

@@ -50,16 +50,16 @@ pub struct TimedKeystroke {
     pub after_sentence_end: bool,
 }
 
-/// Top 50 most common English bigrams by frequency.
+/// Top 50 most common English bigrams (sorted for binary search).
 /// Source: Peter Norvig corpus analysis / Mayzner & Tresselt.
 const COMMON_BIGRAMS: &[[u8; 2]] = &[
-    *b"th", *b"he", *b"in", *b"er", *b"an", *b"re", *b"on", *b"at",
-    *b"en", *b"nd", *b"ti", *b"es", *b"or", *b"te", *b"of", *b"ed",
-    *b"is", *b"it", *b"al", *b"ar", *b"st", *b"to", *b"nt", *b"ng",
-    *b"se", *b"ha", *b"as", *b"ou", *b"io", *b"le", *b"ve", *b"co",
-    *b"me", *b"de", *b"hi", *b"ri", *b"ro", *b"ic", *b"ne", *b"ea",
-    *b"ra", *b"ce", *b"li", *b"ch", *b"ll", *b"be", *b"ma", *b"si",
-    *b"om", *b"ur",
+    *b"al", *b"an", *b"ar", *b"as", *b"at", *b"be", *b"ce", *b"ch",
+    *b"co", *b"de", *b"ea", *b"ed", *b"en", *b"er", *b"es", *b"ha",
+    *b"he", *b"hi", *b"ic", *b"in", *b"io", *b"is", *b"it", *b"le",
+    *b"li", *b"ll", *b"ma", *b"me", *b"nd", *b"ne", *b"ng", *b"nt",
+    *b"of", *b"om", *b"on", *b"or", *b"ou", *b"ra", *b"re", *b"ri",
+    *b"ro", *b"se", *b"si", *b"st", *b"te", *b"th", *b"ti", *b"to",
+    *b"ur", *b"ve",
 ];
 
 /// Analyze cognitive vs transcriptive writing from timed keystrokes.
@@ -199,7 +199,7 @@ fn compute_bigram_fluency(keystrokes: &[TimedKeystroke]) -> (f64, usize) {
 }
 
 fn is_common_bigram(bigram: &[u8; 2]) -> bool {
-    COMMON_BIGRAMS.iter().any(|b| b == bigram)
+    COMMON_BIGRAMS.binary_search(bigram).is_ok()
 }
 
 /// Map sentence initiation ratio to [0, 1] cognitive probability.
@@ -277,15 +277,23 @@ pub fn compute_iki_modality(keystrokes: &[TimedKeystroke]) -> f64 {
 
     // Combine: peaks indicate modes, CV indicates spread.
     // Cognitive: 3+ peaks and CV > 0.8. Transcriptive: 1 peak and CV < 0.4.
-    let peak_score = match peaks {
-        0 | 1 => 0.1,
-        2 => 0.5,
-        3 => 0.8,
-        _ => 0.95,
-    };
-    let cv_score = crate::sigmoid(cv, 5.0, 0.6);
+    const PEAK_SCORE_1: f64 = 0.1;
+    const PEAK_SCORE_2: f64 = 0.5;
+    const PEAK_SCORE_3: f64 = 0.8;
+    const PEAK_SCORE_MANY: f64 = 0.95;
+    const CV_SIGMOID_STEEPNESS: f64 = 5.0;
+    const CV_SIGMOID_MIDPOINT: f64 = 0.6;
+    const PEAK_WEIGHT: f64 = 0.5;
 
-    peak_score * 0.5 + cv_score * 0.5
+    let peak_score = match peaks {
+        0 | 1 => PEAK_SCORE_1,
+        2 => PEAK_SCORE_2,
+        3 => PEAK_SCORE_3,
+        _ => PEAK_SCORE_MANY,
+    };
+    let cv_score = crate::sigmoid(cv, CV_SIGMOID_STEEPNESS, CV_SIGMOID_MIDPOINT);
+
+    peak_score * PEAK_WEIGHT + cv_score * (1.0 - PEAK_WEIGHT)
 }
 
 #[cfg(test)]

@@ -354,6 +354,14 @@ pub fn ffi_sentinel_record_paste(
     if !detection_confidence.is_finite() {
         return FfiPasteRecordResult::err("detection_confidence must be a finite number");
     }
+    // F-001: Bound pasted text to 10 MB to prevent memory exhaustion.
+    const MAX_PASTE_SIZE: usize = 10 * 1024 * 1024;
+    if pasted_text.len() > MAX_PASTE_SIZE {
+        return FfiPasteRecordResult::err(format!(
+            "Pasted text too large: {} bytes (max {MAX_PASTE_SIZE})",
+            pasted_text.len()
+        ));
+    }
 
     // Update sentinel paste counter (same as old ffi_sentinel_notify_paste).
     let sentinel = match super::sentinel::get_running_sentinel() {
@@ -443,6 +451,13 @@ pub fn ffi_attest_text(
     app_bundle_id: String,
     window_title: String,
 ) -> FfiAttestTextResult {
+    const MAX_ATTEST_TEXT_SIZE: usize = 10 * 1024 * 1024;
+    if text_content.len() > MAX_ATTEST_TEXT_SIZE {
+        return FfiAttestTextResult::err(format!(
+            "Text too large: {} bytes (max {MAX_ATTEST_TEXT_SIZE})",
+            text_content.len()
+        ));
+    }
     let (normalized, fragment_hash) = hash_normalized_text(&text_content);
     if normalized.is_empty() {
         return FfiAttestTextResult::err("No attestable content after normalization");

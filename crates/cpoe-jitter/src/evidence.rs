@@ -221,10 +221,9 @@ impl EvidenceChain {
         &self.records
     }
 
-    /// Mutable access to the evidence records, exposed for integrity tests
-    /// that deliberately tamper with the chain and then assert that
-    /// validation detects the mutation. Production code should prefer
-    /// `append()` and the read-only `records()` accessor.
+    /// Mutable access to the evidence records for integrity tests that
+    /// deliberately tamper with the chain. Not available in production builds.
+    #[cfg(test)]
     #[doc(hidden)]
     pub fn records_mut(&mut self) -> &mut Vec<Evidence> {
         &mut self.records
@@ -403,4 +402,51 @@ fn current_timestamp_us() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_micros() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_evidence_chain_tamper_detection() {
+        let secret = [99u8; 32];
+        let mut chain = EvidenceChain::with_secret(&secret);
+
+        for i in 0..10u32 {
+            let evidence = Evidence::pure_with_timestamp(1000 + i * 100, (i as u64 + 1) * 1000);
+            chain.append(evidence).unwrap();
+        }
+        assert!(chain.verify_integrity(&secret));
+
+        // Tamper: modify a jitter value in the middle
+        if let Evidence::Pure { jitter, .. } = &mut chain.records_mut()[5] {
+            *jitter = 99999;
+        }
+        assert!(
+            !chain.verify_integrity(&secret),
+            "Tampered chain should fail integrity check"
+        );
+
+        // Tamper: swap two records
+        let mut chain2 = EvidenceChain::with_secret(&secret);
+        for i in 0..5u32 {
+            chain2
+                .append(Evidence::pure_with_timestamp(
+                    1000 + i * 100,
+                    (i as u64 + 1) * 1000,
+                ))
+                .unwrap();
+        }
+        assert!(chain2.verify_integrity(&secret));
+        chain2.records_mut().swap(1, 3);
+        assert!(
+            !chain2.verify_integrity(&secret),
+            "Swapped records should fail integrity"
+        );
+        assert!(
+            !chain2.validate_sequences(),
+            "Swapped records should fail sequence validation"
+        );
+    }
 }

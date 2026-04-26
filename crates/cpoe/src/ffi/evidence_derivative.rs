@@ -159,24 +159,21 @@ pub fn ffi_export_c2pa_manifest(
     document_path: String,
     output_path: String,
 ) -> FfiResult {
-    let evidence_file = match crate::sentinel::helpers::validate_path(&evidence_path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid evidence path: {e}"));
-        }
-    };
-    let doc_file = match crate::sentinel::helpers::validate_path(&document_path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid document path: {e}"));
-        }
-    };
-    let out_file = match crate::sentinel::helpers::validate_path(&output_path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid output path: {e}"));
-        }
-    };
+    let evidence_file = try_ffi!(
+        crate::sentinel::helpers::validate_path(&evidence_path)
+            .map_err(|e| format!("Invalid evidence path: {e}")),
+        FfiResult
+    );
+    let doc_file = try_ffi!(
+        crate::sentinel::helpers::validate_path(&document_path)
+            .map_err(|e| format!("Invalid document path: {e}")),
+        FfiResult
+    );
+    let out_file = try_ffi!(
+        crate::sentinel::helpers::validate_path(&output_path)
+            .map_err(|e| format!("Invalid output path: {e}")),
+        FfiResult
+    );
 
     if !evidence_file.exists() {
         return FfiResult::err(format!(

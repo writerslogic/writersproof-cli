@@ -103,18 +103,29 @@ pub(crate) fn load_hmac_key() -> Option<Zeroizing<Vec<u8>>> {
 
 /// Load the Ed25519 signing key from the data directory, zeroizing intermediates.
 pub(crate) fn load_signing_key() -> Result<ed25519_dalek::SigningKey, String> {
+    use std::io::Read;
     use zeroize::Zeroize;
 
     let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
     let key_path = data_dir.join("signing_key");
-    let meta = std::fs::symlink_metadata(&key_path)
+    // Open first, then fstat the handle to avoid TOCTOU between stat and open.
+    let key_file = std::fs::File::open(&key_path)
+        .map_err(|e| format!("Failed to open signing key: {e}"))?;
+    let meta = key_file
+        .metadata()
         .map_err(|e| format!("Failed to stat signing key: {e}"))?;
     if !meta.is_file() {
         return Err("Signing key path is not a regular file".to_string());
     }
-    let key_data = Zeroizing::new(
-        std::fs::read(&key_path).map_err(|e| format!("Failed to read signing key: {e}"))?,
-    );
+    if meta.len() > 1024 {
+        return Err(format!("Signing key file too large: {} bytes", meta.len()));
+    }
+    let mut key_data = Zeroizing::new(Vec::new());
+    {
+        let mut f = key_file;
+        f.read_to_end(&mut key_data)
+            .map_err(|e| format!("Failed to read signing key: {e}"))?;
+    }
     if key_data.len() < 32 {
         return Err("Signing key is too short".to_string());
     }
@@ -402,39 +413,11 @@ pub(crate) fn events_to_forensic_data(events: &[crate::store::SecureEvent]) -> V
 
 /// Build per-event edit region maps from secure events.
 ///
-/// Each event with an `id` gets a single `RegionData` entry derived from its
-/// file size and size delta via `compute_edit_extents`. Used by report and
-/// forensics_detail to feed `analyze_forensics`.
+/// Delegates to `forensics::build_edit_regions` (single source of truth).
 pub(crate) fn build_edit_regions(
     events: &[crate::store::SecureEvent],
 ) -> std::collections::HashMap<i64, Vec<crate::forensics::RegionData>> {
-    let max_file_size = events.iter().map(|e| e.file_size.max(1)).max().unwrap_or(1) as f32;
-    let mut regions = std::collections::HashMap::new();
-    for e in events {
-        if let Some(id) = e.id {
-            let delta = e.size_delta;
-            let sign = if delta > 0 {
-                1
-            } else if delta < 0 {
-                -1
-            } else {
-                0
-            };
-            let (cursor_pct, extent) =
-                crate::forensics::compute_edit_extents(e.file_size, delta, max_file_size);
-            let end_pct = (cursor_pct + extent).min(1.0);
-            regions.insert(
-                id,
-                vec![crate::forensics::RegionData {
-                    start_pct: cursor_pct,
-                    end_pct,
-                    delta_sign: sign,
-                    byte_count: delta.abs(),
-                }],
-            );
-        }
-    }
-    regions
+    crate::forensics::build_edit_regions(events)
 }
 
 /// Run the full forensics pipeline on stored events: convert to EventData,

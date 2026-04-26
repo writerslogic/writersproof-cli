@@ -80,6 +80,8 @@ pub fn decrypt_blob(
     key.zeroize();
 
     const MAX_SNAPSHOT_SIZE: u64 = 100 * 1024 * 1024;
+    // Use a size-limited reader to prevent decompression bombs from
+    // allocating unbounded memory before the size check.
     let decoder = zstd::stream::read::Decoder::new(compressed.as_slice())
         .map_err(|e| format!("zstd decoder init failed: {e}"))?;
     let mut limited = std::io::Read::take(decoder, MAX_SNAPSHOT_SIZE + 1);

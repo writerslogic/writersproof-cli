@@ -87,7 +87,8 @@ impl HybridJitterSession {
             k
         });
 
-        let mut secret = derive_session_secret(material.as_ref(), b"cpoe-hybrid-session-v1", None);
+        let mut secret = derive_session_secret(material.as_ref(), b"cpoe-hybrid-session-v1", None)
+            .map_err(|e| e.to_string())?;
         material.zeroize();
         let cpoe_jitter_session = PhysSession::new(&secret);
         secret.zeroize();
@@ -424,7 +425,8 @@ impl HybridJitterSession {
             k
         });
 
-        let mut secret = derive_session_secret(material.as_ref(), b"cpoe-hybrid-session-v1", None);
+        let mut secret = derive_session_secret(material.as_ref(), b"cpoe-hybrid-session-v1", None)
+            .map_err(|e| e.to_string())?;
         material.zeroize();
 
         let document_tracker = DocumentTracker {

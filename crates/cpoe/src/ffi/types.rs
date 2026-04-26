@@ -28,6 +28,11 @@ pub struct FfiResult {
     pub success: bool,
     pub message: Option<String>,
     pub error_message: Option<String>,
+    /// Machine-readable error code for structured matching on the Swift side.
+    /// Well-known codes: "accessibility_permission", "input_monitoring_permission",
+    /// "not_initialized", "not_running", "timeout", "data_dir".
+    /// None on success or when no specific code applies.
+    pub error_code: Option<String>,
 }
 
 impl FfiResult {
@@ -36,6 +41,7 @@ impl FfiResult {
             success: true,
             message: Some(message.into()),
             error_message: None,
+            error_code: None,
         }
     }
     pub fn err(message: impl Into<String>) -> Self {
@@ -43,6 +49,15 @@ impl FfiResult {
             success: false,
             message: None,
             error_message: Some(message.into()),
+            error_code: None,
+        }
+    }
+    pub fn err_with_code(message: impl Into<String>, code: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            message: None,
+            error_message: Some(message.into()),
+            error_code: Some(code.into()),
         }
     }
 }
@@ -51,6 +66,16 @@ impl FfiErrResult for FfiResult {
     fn ffi_err(msg: impl Into<String>) -> Self {
         Self::err(msg)
     }
+}
+
+/// Well-known FFI error codes for structured matching.
+pub mod error_codes {
+    pub const ACCESSIBILITY_PERMISSION: &str = "accessibility_permission";
+    pub const INPUT_MONITORING_PERMISSION: &str = "input_monitoring_permission";
+    pub const NOT_INITIALIZED: &str = "not_initialized";
+    pub const NOT_RUNNING: &str = "not_running";
+    pub const TIMEOUT: &str = "timeout";
+    pub const DATA_DIR: &str = "data_dir";
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +120,10 @@ pub struct FfiTrackedFile {
     pub forensic_score: f64,
     pub risk_level: String,
     pub keystroke_count: u64,
+    /// Whether this file meets the process score threshold for verification.
+    /// Derived from the engine's forensic analysis; Swift should use this
+    /// rather than re-deriving from forensic_score thresholds.
+    pub meets_threshold: bool,
 }
 
 #[derive(Debug, Clone)]

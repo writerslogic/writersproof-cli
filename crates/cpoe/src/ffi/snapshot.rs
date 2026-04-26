@@ -72,6 +72,18 @@ fn open_snapshot_store() -> Result<crate::snapshot::SnapshotStore, String> {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_save(document_path: String, plaintext: String) -> FfiSnapshotSaveResult {
+    const MAX_SNAPSHOT_SIZE: usize = 50 * 1024 * 1024; // 50 MB
+    if plaintext.len() > MAX_SNAPSHOT_SIZE {
+        return FfiSnapshotSaveResult {
+            success: false,
+            snapshot_id: -1,
+            size_warning: None,
+            error_message: Some(format!(
+                "Document too large for snapshot: {} bytes (max {MAX_SNAPSHOT_SIZE})",
+                plaintext.len()
+            )),
+        };
+    }
     if crate::sentinel::helpers::validate_path(&document_path).is_err() {
         return FfiSnapshotSaveResult {
             success: false,

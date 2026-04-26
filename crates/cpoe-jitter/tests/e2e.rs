@@ -81,51 +81,9 @@ fn test_session_with_hardware_fallback() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Evidence chain tamper detection
+// 3. Evidence chain tamper detection — moved to evidence.rs (inline #[cfg(test)])
+//    so records_mut() can be gated to test-only builds.
 // ---------------------------------------------------------------------------
-
-#[test]
-fn test_evidence_chain_tamper_detection() {
-    let secret = [99u8; 32];
-    let mut chain = EvidenceChain::with_secret(&secret);
-
-    // Build a legitimate chain
-    for i in 0..10 {
-        let evidence = Evidence::pure_with_timestamp(1000 + i * 100, (i as u64 + 1) * 1000);
-        chain.append(evidence).unwrap();
-    }
-    assert!(chain.verify_integrity(&secret));
-
-    // Tamper: modify a jitter value in the middle
-    if let Evidence::Pure { jitter, .. } = &mut chain.records_mut()[5] {
-        *jitter = 99999;
-    }
-    assert!(
-        !chain.verify_integrity(&secret),
-        "Tampered chain should fail integrity check"
-    );
-
-    // Tamper: swap two records
-    let mut chain2 = EvidenceChain::with_secret(&secret);
-    for i in 0..5 {
-        chain2
-            .append(Evidence::pure_with_timestamp(
-                1000 + i * 100,
-                (i as u64 + 1) * 1000,
-            ))
-            .unwrap();
-    }
-    assert!(chain2.verify_integrity(&secret));
-    chain2.records_mut().swap(1, 3);
-    assert!(
-        !chain2.verify_integrity(&secret),
-        "Swapped records should fail integrity"
-    );
-    assert!(
-        !chain2.validate_sequences(),
-        "Swapped records should fail sequence validation"
-    );
-}
 
 // ---------------------------------------------------------------------------
 // 4. Human model: realistic typing classified as human
@@ -198,8 +156,8 @@ fn test_session_key_derivation_deterministic() {
     let master = [0xAA; 32];
     let context = b"session-2026-03-25-doc-abc";
 
-    let key1 = derive_session_secret(&master, context, None);
-    let key2 = derive_session_secret(&master, context, None);
+    let key1 = derive_session_secret(&master, context, None).unwrap();
+    let key2 = derive_session_secret(&master, context, None).unwrap();
 
     assert_eq!(*key1, *key2, "Same inputs must produce same session key");
     assert_ne!(*key1, [0u8; 32], "Derived key should not be all zeros");
@@ -213,9 +171,9 @@ fn test_session_key_derivation_deterministic() {
 fn test_session_different_context_different_key() {
     let master = [0xBB; 32];
 
-    let key_a = derive_session_secret(&master, b"context-alpha", None);
-    let key_b = derive_session_secret(&master, b"context-beta", None);
-    let key_c = derive_session_secret(&master, b"context-alpha-extended", None);
+    let key_a = derive_session_secret(&master, b"context-alpha", None).unwrap();
+    let key_b = derive_session_secret(&master, b"context-beta", None).unwrap();
+    let key_c = derive_session_secret(&master, b"context-alpha-extended", None).unwrap();
 
     assert_ne!(
         *key_a, *key_b,
@@ -226,7 +184,7 @@ fn test_session_different_context_different_key() {
 
     // Different master keys with same context also differ
     let other_master = [0xCC; 32];
-    let key_d = derive_session_secret(&other_master, b"context-alpha", None);
+    let key_d = derive_session_secret(&other_master, b"context-alpha", None).unwrap();
     assert_ne!(
         *key_a, *key_d,
         "Different masters must produce different keys"

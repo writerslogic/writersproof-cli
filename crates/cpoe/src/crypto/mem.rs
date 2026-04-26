@@ -85,46 +85,55 @@ mod tests {
 
     #[test]
     fn protected_key_stores_and_retrieves() {
-        assert_eq!(ProtectedKey::new([0xAB; 32]).as_bytes(), &[0xAB; 32]);
+        let key = ProtectedKey::new([0xAB; 32]);
+        assert_eq!(key.as_bytes(), &[0xAB; 32]);
     }
 
     #[test]
     fn protected_key_deref() {
-        let slice: &[u8; 16] = &*ProtectedKey::new([0x42; 16]);
+        let key = ProtectedKey::new([0x42; 16]);
+        let slice: &[u8; 16] = &*key;
         assert_eq!(slice, &[0x42; 16]);
     }
 
     #[test]
     fn protected_key_debug_is_redacted() {
-        let debug = format!("{:?}", ProtectedKey::new([0xFF; 32]));
+        let key = ProtectedKey::new([0xFF; 32]);
+        let debug = format!("{:?}", key);
         assert!(!debug.contains("ff"));
         assert!(debug.contains("PROTECTED"));
     }
 
     #[test]
     fn protected_key_from_zeroizing() {
-        let key = ProtectedKey::from_zeroizing(Zeroizing::new([0x01; 32]));
+        let z = Zeroizing::new([0x01; 32]);
+        let key = ProtectedKey::from_zeroizing(z);
         assert_eq!(key.as_bytes(), &[0x01; 32]);
     }
 
     #[test]
     fn protected_buf_stores_and_retrieves() {
-        assert_eq!(ProtectedBuf::new(vec![1, 2, 3]).as_slice(), &[1, 2, 3]);
+        let buf = ProtectedBuf::new(vec![1, 2, 3, 4, 5]);
+        assert_eq!(buf.as_slice(), &[1, 2, 3, 4, 5]);
     }
 
     #[test]
     fn protected_buf_deref() {
-        let slice: &[u8] = &*ProtectedBuf::new(vec![10, 20]);
-        assert_eq!(slice, &[10, 20]);
+        let buf = ProtectedBuf::new(vec![10, 20, 30]);
+        let slice: &[u8] = &*buf;
+        assert_eq!(slice, &[10, 20, 30]);
     }
 
     #[test]
     fn protected_buf_debug_is_redacted() {
-        assert!(format!("{:?}", ProtectedBuf::new(vec![0xFF])).contains("PROTECTED"));
+        let buf = ProtectedBuf::new(vec![0xFF; 10]);
+        let debug = format!("{:?}", buf);
+        assert!(debug.contains("PROTECTED"));
     }
 
     #[test]
     fn protected_buf_empty() {
-        assert!(ProtectedBuf::new(vec![]).as_slice().is_empty());
+        let buf = ProtectedBuf::new(vec![]);
+        assert!(buf.as_slice().is_empty());
     }
 }

@@ -65,7 +65,10 @@ pub fn ffi_sentinel_start() -> FfiResult {
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => {
-            return FfiResult::err("Cannot determine data directory".to_string());
+            return FfiResult::err_with_code(
+                "Cannot determine data directory",
+                crate::ffi::types::error_codes::DATA_DIR,
+            );
         }
     };
 
@@ -85,19 +88,19 @@ pub fn ffi_sentinel_start() -> FfiResult {
 
     #[cfg(target_os = "macos")]
     if !accessibility_granted {
-        return FfiResult::err(
+        return FfiResult::err_with_code(
             "Accessibility permission required — grant access in System \
-                 Settings > Privacy & Security > Accessibility"
-                .to_string(),
+                 Settings > Privacy & Security > Accessibility",
+            crate::ffi::types::error_codes::ACCESSIBILITY_PERMISSION,
         );
     }
 
     #[cfg(target_os = "macos")]
     if !input_monitoring_granted {
-        return FfiResult::err(
+        return FfiResult::err_with_code(
             "Input Monitoring permission required — grant access in System \
-                 Settings > Privacy & Security > Input Monitoring"
-                .to_string(),
+                 Settings > Privacy & Security > Input Monitoring",
+            crate::ffi::types::error_codes::INPUT_MONITORING_PERMISSION,
         );
     }
 
@@ -199,7 +202,10 @@ pub fn ffi_sentinel_stop() -> FfiResult {
     let sentinel = match get_sentinel() {
         Some(s) => s,
         None => {
-            return FfiResult::err("Sentinel not initialized".to_string());
+            return FfiResult::err_with_code(
+                "Sentinel not initialized",
+                crate::ffi::types::error_codes::NOT_INITIALIZED,
+            );
         }
     };
 
@@ -244,12 +250,18 @@ pub fn ffi_sentinel_restart_keystroke_capture() -> FfiResult {
     let sentinel = match get_sentinel() {
         Some(s) => s,
         None => {
-            return FfiResult::err("Sentinel not initialized".to_string());
+            return FfiResult::err_with_code(
+                "Sentinel not initialized",
+                crate::ffi::types::error_codes::NOT_INITIALIZED,
+            );
         }
     };
 
     if !sentinel.is_running() {
-        return FfiResult::err("Sentinel not running".to_string());
+        return FfiResult::err_with_code(
+            "Sentinel not running",
+            crate::ffi::types::error_codes::NOT_RUNNING,
+        );
     }
 
     if sentinel.restart_keystroke_capture() {

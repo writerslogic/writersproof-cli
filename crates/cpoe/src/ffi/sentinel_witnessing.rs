@@ -3,7 +3,7 @@
 //! FFI functions for witnessing start/stop/status.
 
 use super::sentinel::get_sentinel;
-use crate::ffi::types::{FfiResult, FfiSentinelStatus, FfiWitnessingStatus};
+use crate::ffi::types::{try_ffi, FfiResult, FfiSentinelStatus, FfiWitnessingStatus};
 use crate::RwLockRecover;
 
 /// Start witnessing a specific file path.
@@ -24,12 +24,11 @@ pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
     }
 
     // AUD-084: Validate path to prevent traversal attacks (canonicalize to resolve symlinks)
-    let validated_path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid path: {e}"));
-        }
-    };
+    let validated_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&path)
+            .map_err(|e| format!("Invalid path: {e}")),
+        FfiResult
+    );
 
     match sentinel.start_witnessing(&validated_path) {
         Ok(()) => FfiResult::ok(format!("Now witnessing: {}", validated_path.display())),
@@ -49,12 +48,11 @@ pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
     };
 
     // H-025: Validate path before passing to stop_witnessing (same as start_witnessing).
-    let validated_path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid path: {e}"));
-        }
-    };
+    let validated_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&path)
+            .map_err(|e| format!("Invalid path: {e}")),
+        FfiResult
+    );
 
     match sentinel.stop_witnessing(&validated_path) {
         Ok(()) => FfiResult::ok(format!("Stopped witnessing: {}", validated_path.display())),

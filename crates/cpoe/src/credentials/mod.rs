@@ -272,3 +272,130 @@ mod serde_bytes_opt {
         Ok(opt.map(|b| b.into_vec()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::SigningKey;
+
+    fn make_test_credential() -> AuthorshipCredential {
+        AuthorshipCredential {
+            document_type: DOCTYPE_AUTHORSHIP_V1.to_string(),
+            namespace: NAMESPACE_AUTHORSHIP.to_string(),
+            validity: ValidityInfo {
+                issued_at: 1_000_000,
+                expires_at: 1_000_000 + DEFAULT_VALIDITY_MS,
+                issuer: "test".to_string(),
+            },
+            claims: AuthorshipClaims {
+                author_did: Some("did:web:example.com".to_string()),
+                document_hash: vec![0xAA; 32],
+                session_id: "test-session-1".to_string(),
+                attestation_tier: "HardwareBound".to_string(),
+                process_verdict: "human_authored".to_string(),
+                authorship_confidence: 0.95,
+                keystroke_proof: None,
+                composition_ratio: Some(0.85),
+                source_attributions: vec![],
+                ai_disclosure: None,
+            },
+            issuer_signed: None,
+        }
+    }
+
+    #[test]
+    fn test_cbor_roundtrip() {
+        let cred = make_test_credential();
+        let bytes = cred.to_cbor().expect("encode");
+        let decoded = AuthorshipCredential::from_cbor(&bytes).expect("decode");
+        assert_eq!(decoded.document_type, DOCTYPE_AUTHORSHIP_V1);
+        assert_eq!(decoded.claims.session_id, "test-session-1");
+        assert!((decoded.claims.authorship_confidence - 0.95).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_sign_verify_cose_roundtrip() {
+        let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+
+        let mut cred = make_test_credential();
+        let signed_bytes = cred.sign_cose(&signing_key).expect("sign");
+
+        assert!(cred.issuer_signed.is_some());
+        assert!(!signed_bytes.is_empty());
+
+        let verified =
+            AuthorshipCredential::verify_cose(&signed_bytes, &verifying_key).expect("verify");
+        assert_eq!(verified.claims.session_id, "test-session-1");
+        assert_eq!(verified.claims.document_hash, vec![0xAA; 32]);
+        assert!(verified.issuer_signed.is_some());
+    }
+
+    #[test]
+    fn test_verify_cose_wrong_key_fails() {
+        let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+        let wrong_key = SigningKey::from_bytes(&[99u8; 32]).verifying_key();
+
+        let mut cred = make_test_credential();
+        let signed_bytes = cred.sign_cose(&signing_key).expect("sign");
+
+        let err = AuthorshipCredential::verify_cose(&signed_bytes, &wrong_key);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_verify_cose_tampered_payload_fails() {
+        let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+
+        let mut cred = make_test_credential();
+        let mut signed_bytes = cred.sign_cose(&signing_key).expect("sign");
+
+        // Tamper with a byte in the middle
+        if signed_bytes.len() > 50 {
+            signed_bytes[50] ^= 0xFF;
+        }
+
+        let err = AuthorshipCredential::verify_cose(&signed_bytes, &verifying_key);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_is_valid_checks_expiry() {
+        let mut cred = make_test_credential();
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        cred.validity.issued_at = now_ms - 1000;
+        cred.validity.expires_at = now_ms + 60_000;
+        assert!(cred.is_valid());
+
+        // Expired credential
+        cred.validity.expires_at = now_ms - 1;
+        assert!(!cred.is_valid());
+    }
+
+    #[test]
+    fn test_confidence_clamped() {
+        let cred = AuthorshipCredential::from_session(
+            "sess-1",
+            &[],
+            "SoftwareOnly",
+            "human_authored",
+            1.5, // exceeds 1.0
+            None,
+        );
+        assert!((cred.claims.authorship_confidence - 1.0).abs() < f64::EPSILON);
+
+        let cred2 = AuthorshipCredential::from_session(
+            "sess-2",
+            &[],
+            "SoftwareOnly",
+            "human_authored",
+            -0.5, // below 0.0
+            None,
+        );
+        assert!(cred2.claims.authorship_confidence.abs() < f64::EPSILON);
+    }
+}

@@ -382,6 +382,13 @@ pub fn analyze_forensics_ext_with_focus(
         apply_focus_penalties(&mut metrics.assessment_score, &metrics.focus);
     }
 
+    if !metrics.cross_window_matches.is_empty() {
+        super::assessment::apply_cross_window_penalties(
+            &mut metrics.assessment_score,
+            &metrics.cross_window_matches,
+        );
+    }
+
     metrics.risk_level = determine_risk_level(metrics.assessment_score.get(), events.len());
 
     metrics.writing_mode = Some(super::writing_mode::classify_writing_mode(

@@ -53,9 +53,9 @@ pub use traits::JitterEngine;
 
 /// Derive a session-specific secret from a master key using HKDF-SHA256.
 ///
-/// `master_key` should be at least 16 bytes of high-entropy material.
-/// An empty or short key is cryptographically degenerate; HKDF will still
-/// produce output but with reduced security margin.
+/// `master_key` MUST be at least 16 bytes of high-entropy material.
+/// Returns [`Error::InvalidParameter`] if `master_key` is shorter than 16
+/// bytes, preventing silent use of cryptographically degenerate keys.
 ///
 /// `salt` provides domain separation between sessions. Callers SHOULD provide
 /// a unique salt per session (e.g., a random nonce or session ID) to prevent
@@ -66,21 +66,24 @@ pub fn derive_session_secret(
     master_key: &[u8],
     context: &[u8],
     salt: Option<&[u8]>,
-) -> Zeroizing<[u8; 32]> {
+) -> Result<Zeroizing<[u8; 32]>, Error> {
     use hkdf::Hkdf;
     use sha2::Sha256;
 
-    debug_assert!(
-        master_key.len() >= 16,
-        "master_key should be at least 16 bytes"
-    );
+    if master_key.len() < 16 {
+        return Err(Error::InvalidParameter(
+            "master_key must be at least 16 bytes",
+        ));
+    }
     let hk = Hkdf::<Sha256>::new(salt, master_key);
     let mut output = [0u8; 32];
     hk.expand(context, &mut output)
         .expect("32 bytes is a valid output length for HKDF-SHA256");
-    Zeroizing::new(output)
+    Ok(Zeroizing::new(output))
 }
 
+/// Hardware entropy sample: a SHA-256 hash of raw timing data with an
+/// estimated min-entropy in bits. Produced by [`PhysJitter::sample`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PhysHash {
     pub hash: [u8; 32],
@@ -96,7 +99,7 @@ impl From<[u8; 32]> for PhysHash {
     }
 }
 
-/// Microseconds.
+/// Jitter value in microseconds, derived from HMAC over timing entropy.
 pub type Jitter = u32;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -190,13 +193,19 @@ impl Default for HybridEngine {
     }
 }
 
+/// Minimum entropy bits required for hardware sampling by default.
+/// 8 bits = 256:1 entropy ratio, matching NIST SP 800-90B minimum
+/// for conditioned noise sources on µs-resolution timers.
+#[cfg(feature = "std")]
+const MIN_PHYS_ENTROPY_DEFAULT: u8 = 8;
+
 #[cfg(feature = "std")]
 impl HybridEngine {
     pub fn new(phys: PhysJitter, fallback: PureJitter) -> Self {
         Self {
             phys,
             fallback,
-            min_phys_entropy: 8,
+            min_phys_entropy: MIN_PHYS_ENTROPY_DEFAULT,
             hardware_fallback_count: std::sync::atomic::AtomicU64::new(0),
         }
     }
@@ -415,9 +424,20 @@ mod no_std_compatible_tests {
     #[test]
     fn test_derive_session_secret() {
         let master = [1u8; 32];
-        let secret1 = derive_session_secret(&master, b"context1", None);
-        let secret2 = derive_session_secret(&master, b"context2", None);
+        let secret1 = derive_session_secret(&master, b"context1", None).unwrap();
+        let secret2 = derive_session_secret(&master, b"context2", None).unwrap();
         assert_ne!(secret1, secret2);
+    }
+
+    #[test]
+    fn test_derive_session_secret_rejects_short_key() {
+        let short_key = [0xAA; 15];
+        let result = derive_session_secret(&short_key, b"ctx", None);
+        assert!(result.is_err());
+
+        let min_key = [0xBB; 16];
+        let result = derive_session_secret(&min_key, b"ctx", None);
+        assert!(result.is_ok());
     }
 
     #[test]

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{
-    load_api_key, load_did, load_events_for_path, load_signing_key, open_store,
+    load_api_key, load_did, load_signing_key, open_store, validate_path_str,
 };
 use crate::ffi::types::try_ffi;
 use std::sync::OnceLock;
@@ -99,6 +99,16 @@ impl super::types::FfiErrResult for FfiBeaconResult {
     }
 }
 
+impl super::types::FfiErrResult for FfiBeaconListResult {
+    fn ffi_err(msg: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            beacons: vec![],
+            error_message: Some(msg.into()),
+        }
+    }
+}
+
 fn beacon_sidecar_path(document_path: &str) -> Option<std::path::PathBuf> {
     let data_dir = crate::ffi::helpers::get_data_dir()?;
     let path_hash = crate::utils::sha256_of_path(std::path::Path::new(document_path));
@@ -114,7 +124,14 @@ fn save_beacon_attestation(
         beacon_sidecar_path(document_path).ok_or_else(|| "data dir not configured".to_string())?;
     let json = serde_json::to_vec(attestation)
         .map_err(|e| format!("beacon JSON serialization failed: {e}"))?;
-    std::fs::write(&sidecar, json).map_err(|e| format!("beacon sidecar write failed: {e}"))
+    let parent = sidecar.parent().unwrap_or(std::path::Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| format!("beacon sidecar temp file failed: {e}"))?;
+    std::io::Write::write_all(&mut tmp, &json)
+        .map_err(|e| format!("beacon sidecar write failed: {e}"))?;
+    tmp.persist(&sidecar)
+        .map_err(|e| format!("beacon sidecar persist failed: {e}"))?;
+    Ok(())
 }
 
 pub(crate) fn load_beacon_attestation(
@@ -158,30 +175,30 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
                 .unwrap_or_else(|| "unknown".into())
         }
     };
-    let api_key = match load_api_key() {
-        Ok(k) => k,
-        Err(e) => return err_beacon(format!("WritersProof API key not configured. {e}")),
-    };
+    let api_key = try_ffi!(
+        load_api_key().map_err(|e| format!("WritersProof API key not configured. {e}")),
+        FfiBeaconResult
+    );
     if api_key.trim().is_empty() {
         return err_beacon("WritersProof API key is empty".to_string());
     }
 
-    let rt = match beacon_runtime() {
-        Ok(rt) => rt,
-        Err(e) => return err_beacon(format!("Failed to create async runtime: {e}")),
-    };
+    let rt = try_ffi!(
+        beacon_runtime().map_err(|e| format!("Failed to create async runtime: {e}")),
+        FfiBeaconResult
+    );
 
     if timeout_secs < 5 {
         log::warn!("ffi_submit_beacon: timeout_secs {timeout_secs} below minimum 5; using 5");
     }
     let effective_timeout = timeout_secs.clamp(5, 120);
 
-    let client = match crate::writersproof::WritersProofClient::new(
-        crate::writersproof::client::DEFAULT_API_URL,
-    ) {
-        Ok(c) => c.with_jwt(api_key),
-        Err(e) => return err_beacon(format!("Failed to create API client: {e}")),
-    };
+    let client = try_ffi!(
+        crate::writersproof::WritersProofClient::new(crate::writersproof::client::DEFAULT_API_URL)
+            .map_err(|e| format!("Failed to create API client: {e}")),
+        FfiBeaconResult
+    )
+    .with_jwt(api_key);
 
     let result = rt.block_on(async {
         let beacon_future = client.fetch_beacon(&checkpoint_hash, effective_timeout);
@@ -274,15 +291,8 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_check_beacon_status(document_path: String) -> FfiBeaconResult {
-    let canonical = match crate::sentinel::helpers::validate_path(&document_path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => return err_beacon(e),
-    };
-
-    let data = match read_bounded(&canonical) {
-        Ok(d) => d,
-        Err(e) => return err_beacon(e),
-    };
+    let canonical = try_ffi!(validate_path_str(&document_path), FfiBeaconResult);
+    let data = try_ffi!(read_bounded(&canonical), FfiBeaconResult);
     let cbor_payload = crate::ffi::helpers::unwrap_cose_or_raw(&data);
 
     let packet = match crate::evidence::Packet::decode(&cbor_payload) {
@@ -350,27 +360,8 @@ fn check_beacon_from_store(canonical: &str) -> FfiBeaconResult {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_beacons(document_path: String) -> FfiBeaconListResult {
-    let canonical = match crate::sentinel::helpers::validate_path(&document_path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => {
-            return FfiBeaconListResult {
-                success: false,
-                beacons: vec![],
-                error_message: Some(e),
-            };
-        }
-    };
-
-    let data = match read_bounded(&canonical) {
-        Ok(d) => d,
-        Err(e) => {
-            return FfiBeaconListResult {
-                success: false,
-                beacons: vec![],
-                error_message: Some(e),
-            };
-        }
-    };
+    let canonical = try_ffi!(validate_path_str(&document_path), FfiBeaconListResult);
+    let data = try_ffi!(read_bounded(&canonical), FfiBeaconListResult);
 
     let cbor_payload = crate::ffi::helpers::unwrap_cose_or_raw(&data);
     let packet = match crate::evidence::Packet::decode(&cbor_payload) {

@@ -27,23 +27,20 @@ impl SentinelIpcHandler {
         }
     }
 
-    fn open_db(&self) -> Result<crate::store::SecureStore, String> {
-        let db_path = self.sentinel.config.writersproof_dir.join("events.db");
-        let guard = self.sentinel.signing_key.read_recover();
-        let signing_key = guard
-            .key()
-            .ok_or("Signing key not initialized (or locked)")?;
-        let store = crate::store::open_store_with_signing_key(&signing_key, &db_path)
-            .map_err(|e| format!("Database error: {e}"))?;
-        drop(guard);
-        Ok(store)
+    fn open_db(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, Option<crate::store::SecureStore>>, String> {
+        self.sentinel
+            .get_or_open_store()
+            .ok_or_else(|| "Signing key not initialized (or locked)".to_string())
     }
 
     fn load_events(
         &self,
         path: &std::path::Path,
     ) -> Result<Vec<crate::store::SecureEvent>, String> {
-        let db = self.open_db()?;
+        let guard = self.open_db()?;
+        let db = guard.as_ref().ok_or("Store not available")?;
         db.get_events_for_file(path)
             .map_err(|e| format!("Failed to load events: {e}"))
     }
@@ -89,7 +86,8 @@ impl SentinelIpcHandler {
         verifier_nonce: [u8; 32],
     ) -> Result<IpcMessage, String> {
         let file_path = super::helpers::validate_path(&file_path)?;
-        let db = self.open_db()?;
+        let guard = self.open_db()?;
+        let db = guard.as_ref().ok_or("Store not available")?;
         let events = db
             .get_events_for_file(&file_path)
             .map_err(|e| format!("Failed to load events: {e}"))?;

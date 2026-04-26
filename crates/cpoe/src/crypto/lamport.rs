@@ -62,7 +62,7 @@ impl LamportPrivateKey {
         (Self { secrets }, LamportPublicKey { hashes })
     }
 
-    pub fn sign(&self, msg_hash: &[u8; 32]) -> LamportSignature {
+    pub fn sign(self, msg_hash: &[u8; 32]) -> LamportSignature {
         let mut revealed = vec![0u8; N * H_SZ];
         for i in 0..N {
             let bit = (msg_hash[i / 8] >> (7 - (i % 8))) & 1;
@@ -118,9 +118,10 @@ mod tests {
     fn sign_and_verify_roundtrip() {
         let seed = [0x42u8; 32];
         let (privkey, pubkey) = LamportPrivateKey::from_seed(&seed);
-        let msg: [u8; 32] = Sha256::digest(b"test message").into();
-        let sig = privkey.sign(&msg);
-        assert!(pubkey.verify(&msg, &sig));
+        let msg = Sha256::digest(b"test message");
+        let msg_hash: [u8; 32] = msg.into();
+        let sig = privkey.sign(&msg_hash);
+        assert!(pubkey.verify(&msg_hash, &sig));
     }
 
     #[test]
@@ -179,26 +180,32 @@ mod tests {
     #[test]
     fn signature_from_bytes_roundtrip() {
         let (privkey, _) = LamportPrivateKey::from_seed(&[0xEE; 32]);
-        let sig = privkey.sign(&[0xFF; 32]);
+        let msg = [0xFF; 32];
+        let sig = privkey.sign(&msg);
         let bytes = sig.to_bytes().to_vec();
         let recovered = LamportSignature::from_bytes(&bytes).unwrap();
-        assert_eq!(recovered.to_bytes(), bytes);
+        assert_eq!(recovered.to_bytes(), sig.to_bytes());
     }
 
     #[test]
     fn signature_from_bytes_wrong_length_returns_none() {
         assert!(LamportSignature::from_bytes(&[0u8; 100]).is_none());
+        assert!(LamportSignature::from_bytes(&[]).is_none());
     }
 
     #[test]
     fn public_key_from_bytes_wrong_length_returns_none() {
         assert!(LamportPublicKey::from_bytes(&[0u8; 100]).is_none());
+        assert!(LamportPublicKey::from_bytes(&[]).is_none());
     }
 
     #[test]
     fn truncated_signature_fails_verification() {
         let (_, pubkey) = LamportPrivateKey::from_seed(&[0x11; 32]);
-        let bad_sig = LamportSignature { revealed: vec![0u8; 100] };
-        assert!(!pubkey.verify(&[0u8; 32], &bad_sig));
+        let msg = [0u8; 32];
+        let bad_sig = LamportSignature {
+            revealed: vec![0u8; 100],
+        };
+        assert!(!pubkey.verify(&msg, &bad_sig));
     }
 }

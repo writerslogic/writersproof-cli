@@ -292,6 +292,7 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
         success: true,
         message: Some(msg),
         error_message: persist_error,
+        error_code: None,
     }
 }
 
@@ -560,6 +561,7 @@ pub fn ffi_ephemeral_checkpoint_hash(
         success: true,
         message: Some(msg),
         error_message: persist_error,
+        error_code: None,
     }
 }
 

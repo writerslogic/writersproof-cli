@@ -278,6 +278,11 @@ pub fn focus_document_sync(
             (None, None)
         };
         let k = signing_key.read_recover().key();
+        // If the key just became available, drain any WAL entries that were
+        // buffered while the BehavioralKey was locked.
+        if let Some(ref sk) = k {
+            drain_pending_wal(sk);
+        }
         let stats = {
             let db_path = wal_dir.parent().unwrap_or(wal_dir).join("events.db");
             k.as_ref().and_then(|sk| {
@@ -662,7 +667,57 @@ pub fn end_all_sessions_sync(
     }
 }
 
+/// Pending WAL entry buffered while the signing key was unavailable.
+struct PendingWalEntry {
+    session_id: String,
+    session_id_bytes: [u8; 32],
+    wal_dir: PathBuf,
+    entry_type: EntryType,
+    payload: Vec<u8>,
+}
+
+/// Maximum buffered WAL entries before oldest are dropped.
+const MAX_PENDING_WAL_ENTRIES: usize = 256;
+
+static PENDING_WAL: std::sync::Mutex<Vec<PendingWalEntry>> = std::sync::Mutex::new(Vec::new());
+
+/// Drain any buffered WAL entries now that a signing key is available.
+/// Called from `focus_document_sync` and checkpoint paths when a key is obtained.
+pub(super) fn drain_pending_wal(key: &SigningKey) {
+    use crate::MutexRecover;
+    let entries: Vec<PendingWalEntry> = {
+        let mut pending = PENDING_WAL.lock_recover();
+        std::mem::take(&mut *pending)
+    };
+    if entries.is_empty() {
+        return;
+    }
+    log::info!("Draining {} buffered WAL entries", entries.len());
+    for entry in entries {
+        let wal_path = entry.wal_dir.join(format!("{}.wal", entry.session_id));
+        match Wal::open(&wal_path, entry.session_id_bytes, key.clone()) {
+            Ok(wal) => {
+                if let Err(e) = wal.append(entry.entry_type, entry.payload) {
+                    log::error!(
+                        "WAL append (deferred) failed for session {}: {}",
+                        entry.session_id,
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                log::error!(
+                    "WAL open (deferred) failed for session {}: {}",
+                    entry.session_id,
+                    e
+                );
+            }
+        }
+    }
+}
+
 /// Append an entry to the session's WAL file, handling hex decode, key check, and errors.
+/// If the signing key is unavailable, the entry is buffered for later draining.
 fn wal_append_session_event(
     session_id: &str,
     wal_dir: &Path,
@@ -674,27 +729,44 @@ fn wal_append_session_event(
     let hex_str = session_id
         .get(..64.min(session_id.len()))
         .unwrap_or(session_id);
-    if hex::decode_to_slice(hex_str, &mut session_id_bytes).is_ok() {
-        if let Some(key) = key {
-            let wal_path = wal_dir.join(format!("{}.wal", session_id));
-            match Wal::open(&wal_path, session_id_bytes, key) {
-                Ok(wal) => {
-                    if let Err(e) = wal.append(entry_type, payload) {
-                        log::error!("WAL append failed for session {}: {}", session_id, e);
-                    }
-                }
-                Err(e) => {
-                    log::error!("WAL open failed for session {}: {}", session_id, e);
+    if hex::decode_to_slice(hex_str, &mut session_id_bytes).is_err() {
+        log::error!("Invalid session ID hex: {}", session_id);
+        return;
+    }
+
+    if let Some(key) = key {
+        let wal_path = wal_dir.join(format!("{}.wal", session_id));
+        match Wal::open(&wal_path, session_id_bytes, key) {
+            Ok(wal) => {
+                if let Err(e) = wal.append(entry_type, payload) {
+                    log::error!("WAL append failed for session {}: {}", session_id, e);
                 }
             }
-        } else {
-            log::error!(
-                "Signing key not initialized, skipping WAL for session {}",
-                session_id
-            );
+            Err(e) => {
+                log::error!("WAL open failed for session {}: {}", session_id, e);
+            }
         }
     } else {
-        log::error!("Invalid session ID hex: {}", session_id);
+        use crate::MutexRecover;
+        let mut pending = PENDING_WAL.lock_recover();
+        if pending.len() >= MAX_PENDING_WAL_ENTRIES {
+            log::warn!(
+                "Pending WAL buffer full ({MAX_PENDING_WAL_ENTRIES}); dropping oldest entry"
+            );
+            pending.remove(0);
+        }
+        log::warn!(
+            "Signing key unavailable; buffering WAL entry for session {} ({} pending)",
+            session_id,
+            pending.len() + 1
+        );
+        pending.push(PendingWalEntry {
+            session_id: session_id.to_string(),
+            session_id_bytes,
+            wal_dir: wal_dir.to_path_buf(),
+            entry_type,
+            payload,
+        });
     }
 }
 

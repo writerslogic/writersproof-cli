@@ -158,10 +158,10 @@ pub struct EvidenceEvent {
 pub struct ClipboardMonitor {
     /// Monitored app bundle IDs (protected by RwLock).
     monitored_apps: Arc<RwLock<Vec<String>>>,
-    /// Last recorded pasteboard change count (for deduplication).
-    last_change_count: Arc<RwLock<i32>>,
-    /// Timestamp of last copy event (for debounce).
-    last_copy_time: Arc<RwLock<i64>>,
+    /// Last recorded pasteboard change count (atomic for lock-free dedup).
+    last_change_count: Arc<std::sync::atomic::AtomicI32>,
+    /// Timestamp of last copy event in millis (atomic for lock-free debounce).
+    last_copy_time: Arc<std::sync::atomic::AtomicI64>,
     /// Broadcast sender for evidence events.
     pending_evidence_tx: broadcast::Sender<EvidenceEvent>,
 }
@@ -174,8 +174,8 @@ impl ClipboardMonitor {
     pub fn new() -> std::result::Result<Self, ClipboardError> {
         Ok(ClipboardMonitor {
             monitored_apps: Arc::new(RwLock::new(default_monitored_apps())),
-            last_change_count: Arc::new(RwLock::new(0)),
-            last_copy_time: Arc::new(RwLock::new(0)),
+            last_change_count: Arc::new(std::sync::atomic::AtomicI32::new(0)),
+            last_copy_time: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             pending_evidence_tx: broadcast::channel(100).0,
         })
     }
@@ -281,27 +281,26 @@ impl ClipboardMonitor {
     ///
     /// Returns Some(CopyEvent) if change detected and text valid, None if unchanged.
     /// Deduplication via change count and timestamp throttling (100ms).
-    #[allow(clippy::await_holding_lock)] // CB-002: locks held across .await intentionally for TOCTOU prevention
     async fn check_clipboard_change(
         &self,
     ) -> std::result::Result<Option<CopyEvent>, ClipboardError> {
+        use std::sync::atomic::Ordering;
+
         let now = Utc::now().timestamp_millis();
 
-        // CB-002: Acquire write locks upfront to eliminate TOCTOU race between
-        // reading last_change_count/last_copy_time and updating them.
-        let mut last_copy_guard = self.last_copy_time.write_recover();
-        let mut last_count_guard = self.last_change_count.write_recover();
-
-        // Debounce: reject if < 100ms since last copy
-        if now.saturating_sub(*last_copy_guard) < CLIPBOARD_DEBOUNCE_MS as i64 {
+        // Debounce: reject if < 100ms since last copy (lock-free).
+        let prev_time = self.last_copy_time.load(Ordering::Acquire);
+        if now.saturating_sub(prev_time) < CLIPBOARD_DEBOUNCE_MS as i64 {
             return Ok(None);
         }
 
-        // Get current pasteboard change count and text
+        // Async pasteboard read — no locks held across this .await.
         let (current_count, text) = self.read_pasteboard().await?;
 
-        // Check if change count matches (skip if no change)
-        if current_count == *last_count_guard {
+        // Dedup via compare_exchange on change count. If another task raced
+        // and already processed this change count, we lose the CAS and skip.
+        let prev_count = self.last_change_count.load(Ordering::Acquire);
+        if current_count == prev_count {
             return Ok(None);
         }
 
@@ -322,22 +321,27 @@ impl ClipboardMonitor {
 
         let window_title = self.get_focused_window_title().await?;
 
+        // Claim this change count atomically. If another task got here first,
+        // compare_exchange fails and we skip (no duplicate processing).
+        if self
+            .last_change_count
+            .compare_exchange(prev_count, current_count, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Ok(None);
+        }
+        self.last_copy_time.store(now, Ordering::Release);
+
         let text_hash = crypto_helpers::compute_content_hash(text.as_bytes());
 
-        let copy_event = CopyEvent {
+        Ok(Some(CopyEvent {
             timestamp: now,
             app_bundle_id,
             window_title,
             text,
             text_hash,
             pasteboard_change_count: current_count,
-        };
-
-        // Update state atomically (guards already held)
-        *last_count_guard = current_count;
-        *last_copy_guard = now;
-
-        Ok(Some(copy_event))
+        }))
     }
 
     /// Try to attach evidence to pasteboard if text matches a session fragment.

@@ -211,7 +211,14 @@ impl IpcServer {
         }
     }
 
-    /// Run the IPC server with a message handler, with shutdown signal
+    /// Maximum time to wait for in-flight connections to finish during shutdown.
+    const SHUTDOWN_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// Run the IPC server with a message handler, with shutdown signal.
+    ///
+    /// On shutdown, stops accepting new connections, then waits up to
+    /// [`SHUTDOWN_DRAIN_TIMEOUT`](Self::SHUTDOWN_DRAIN_TIMEOUT) for in-flight
+    /// handlers to complete before returning.
     pub async fn run_with_shutdown<H: IpcMessageHandler>(
         self,
         handler: Arc<H>,
@@ -219,6 +226,7 @@ impl IpcServer {
     ) -> Result<()> {
         let rate_limiter = Arc::clone(&self.rate_limiter);
         let active_connections = Arc::new(AtomicUsize::new(0));
+        let mut pending = tokio::task::JoinSet::new();
         #[cfg(not(target_os = "windows"))]
         {
             loop {
@@ -240,7 +248,7 @@ impl IpcServer {
                                 let rl = Arc::clone(&rate_limiter);
                                 let conn_count = Arc::clone(&active_connections);
                                 let al = self.access_log.clone();
-                                tokio::spawn(async move {
+                                pending.spawn(async move {
                                     handle_connection(stream, handler_clone, rl, al).await;
                                     conn_count.fetch_sub(1, Ordering::AcqRel);
                                 });
@@ -259,7 +267,6 @@ impl IpcServer {
                     }
                 }
             }
-            Ok(())
         }
         #[cfg(target_os = "windows")]
         {
@@ -286,7 +293,7 @@ impl IpcServer {
                             let rl = Arc::clone(&rate_limiter);
                             let conn_count = Arc::clone(&active_connections);
                             let al = self.access_log.clone();
-                            tokio::spawn(async move {
+                            pending.spawn(async move {
                                 super::server_windows::handle_windows_connection(server, handler_clone, rl, al).await;
                                 conn_count.fetch_sub(1, Ordering::AcqRel);
                             });
@@ -297,8 +304,28 @@ impl IpcServer {
                     }
                 }
             }
-            Ok(())
         }
+
+        // Drain in-flight connection handlers with a bounded timeout.
+        if !pending.is_empty() {
+            let n = pending.len();
+            log::info!("IPC: shutdown draining {n} in-flight connection(s)");
+            let drain = async {
+                while pending.join_next().await.is_some() {}
+            };
+            if tokio::time::timeout(Self::SHUTDOWN_DRAIN_TIMEOUT, drain)
+                .await
+                .is_err()
+            {
+                let remaining = pending.len();
+                log::warn!(
+                    "IPC: shutdown drain timed out after {:?} with {remaining} connection(s) still active",
+                    Self::SHUTDOWN_DRAIN_TIMEOUT
+                );
+                pending.abort_all();
+            }
+        }
+        Ok(())
     }
 }
 

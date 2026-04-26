@@ -286,10 +286,10 @@ pub fn ffi_sync_text_attestation(
         return FfiResult::err("writersproof_id must be 8 or 16 hex characters".to_string());
     }
 
-    let signing_key = match load_signing_key() {
-        Ok(k) => k,
-        Err(e) => return FfiResult::err(format!("Signing key unavailable: {e}")),
-    };
+    let signing_key = try_ffi!(
+        load_signing_key().map_err(|e| format!("Signing key unavailable: {e}")),
+        FfiResult
+    );
 
     let public_key_hex = hex::encode(signing_key.verifying_key().as_bytes());
 
@@ -297,10 +297,10 @@ pub fn ffi_sync_text_attestation(
     let signature_hex = {
         use ed25519_dalek::Signer;
         const DST: &[u8] = b"witnessd-text-attest-v1";
-        let hash_bytes = match hex::decode(&content_hash) {
-            Ok(b) => b,
-            Err(e) => return FfiResult::err(format!("Invalid content_hash hex: {e}")),
-        };
+        let hash_bytes = try_ffi!(
+            hex::decode(&content_hash).map_err(|e| format!("Invalid content_hash hex: {e}")),
+            FfiResult
+        );
         let mut payload = Vec::with_capacity(DST.len() + hash_bytes.len());
         payload.extend_from_slice(DST);
         payload.extend_from_slice(&hash_bytes);
@@ -319,17 +319,17 @@ pub fn ffi_sync_text_attestation(
         }
     };
 
-    let rt = match crate::ffi::beacon::beacon_runtime() {
-        Ok(rt) => rt,
-        Err(e) => return FfiResult::err(format!("Failed to get async runtime: {e}")),
-    };
-
-    let client = match crate::writersproof::WritersProofClient::new(
-        crate::writersproof::client::DEFAULT_API_URL,
-    ) {
-        Ok(c) => c.with_jwt(api_key),
-        Err(e) => return FfiResult::err(format!("Failed to create API client: {e}")),
-    };
+    let rt = try_ffi!(
+        crate::ffi::beacon::beacon_runtime()
+            .map_err(|e| format!("Failed to get async runtime: {e}")),
+        FfiResult
+    );
+    let client = try_ffi!(
+        crate::writersproof::WritersProofClient::new(crate::writersproof::client::DEFAULT_API_URL)
+            .map_err(|e| format!("Failed to create API client: {e}")),
+        FfiResult
+    )
+    .with_jwt(api_key);
 
     let anchor_evidence_hash = content_hash.clone();
     let anchor_tier = tier.clone();

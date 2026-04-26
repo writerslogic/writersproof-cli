@@ -9,9 +9,9 @@
 //!    `AXDocument` (container-based, cloud-library, or database-backed apps).
 //! 2. Emit a list of container directories to watch so file-change events
 //!    arrive even when the app uses a non-standard storage location.
-//! 3. Drive the `TITLE_INFERRED_APPS` constant in `types.rs` — any app in
-//!    this registry with `needs_title_inference: true` should also be listed
-//!    there.
+//! 3. Drive the title-inference check in `types.rs` —
+//!    `infer_document_path_from_title_with_bundle` queries
+//!    `needs_title_inference()` from this module at runtime.
 //!
 //! # Adding a new app
 //!
@@ -22,7 +22,7 @@
 //! - `container_paths`: slice of paths relative to `$HOME` that should be
 //!   added to the file-watch list. Use empty `&[]` for file-based apps.
 //! - `needs_title_inference`: `true` when the app does not expose a real
-//!   file path via `AXDocument` (must also appear in `TITLE_INFERRED_APPS`).
+//!   file path via `AXDocument`.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -74,8 +74,7 @@ pub struct WritingApp {
     /// These supplement (or replace) ordinary `AXDocument`-derived paths.
     pub container_paths: &'static [&'static str],
     /// When `true`, the sentinel will accept bare document names from the
-    /// window title even without a recognised file extension. The bundle ID
-    /// must also appear in `TITLE_INFERRED_APPS` in `sentinel/types.rs`.
+    /// window title even without a recognised file extension.
     pub needs_title_inference: bool,
 }
 
@@ -239,7 +238,22 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true, // Electron; exposes limited AX info
     },
-    // ── Obsidian (already in TITLE_INFERRED_APPS; listed here for container) ─
+    WritingApp {
+        bundle_id: "com.typora.Typora",
+        display_name: "Typora",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+    },
+    // ── MarkText ───────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.github.marktext",
+        display_name: "MarkText",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+    },
+    // ── Obsidian ────────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "md.obsidian",
         display_name: "Obsidian",
@@ -276,6 +290,21 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.notion.id",
         display_name: "Notion",
         storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+    },
+    WritingApp {
+        bundle_id: "com.notion.Notion",
+        display_name: "Notion",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+    },
+    // ── Figma ──────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.figma.Desktop",
+        display_name: "Figma",
+        storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
     },

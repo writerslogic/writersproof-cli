@@ -675,43 +675,9 @@ const DOC_EXTENSIONS: &[&str] = &[
     ".yml",
 ];
 
-/// Apps that do not expose `AXDocument` and require title-based document inference.
-///
-/// Includes Electron-based editors, native apps that store content in containers
-/// or cloud libraries (Bear, Ulysses), and any app whose window title is the
-/// only reliable source of document identity. For these apps, bare names without
-/// a recognised file extension are accepted as document identifiers.
-///
-/// Keep in sync with `sentinel/app_registry.rs` `needs_title_inference` fields.
-const TITLE_INFERRED_APPS: &[&str] = &[
-    // Electron editors
-    "abnerworks.Typora",
-    "com.typora.Typora",
-    "md.obsidian",
-    "com.zettlr.app",
-    "com.github.marktext",
-    "com.logseq.logseq",
-    "com.microsoft.VSCode",
-    "com.microsoft.VSCodeInsiders",
-    "com.todesktop.230313mzl4w4u92", // Cursor
-    "com.notion.id",
-    "com.notion.Notion",
-    "com.figma.Desktop",
-    "com.hemingwayapp.hemingway",
-    "com.celtx.mac",
-    // Container-based / cloud-library / database-backed apps (no AXDocument)
-    "com.ulyssesapp.mac",
-    "net.shinyfrog.bear",
-    "com.agiletortoise.Drafts-OSX",
-    "com.bloombuilt.dayone-mac",
-    "com.luki.paper.mac", // Craft
-    "com.microsoft.onenote.mac",
-    "com.apple.Notes",
-    "com.ommwriter.ommwriter",
-    "dev.warp.Warp-Stable",
-    "com.apple.mail",
-    "com.microsoft.Outlook",
-];
+// TITLE_INFERRED_APPS removed — the authoritative source is now
+// `app_registry::needs_title_inference()` which queries KNOWN_WRITING_APPS
+// (and, via AppRegistry, user-added apps).
 
 /// Window title fragments that indicate no real document is open.
 /// These are matched as exact (case-insensitive) whole titles, not substrings,
@@ -753,11 +719,7 @@ pub fn infer_document_path_from_title_with_bundle(
     }
 
     let is_title_inferred = bundle_id
-        .map(|id| {
-            TITLE_INFERRED_APPS
-                .iter()
-                .any(|e| e.eq_ignore_ascii_case(id))
-        })
+        .map(|id| super::app_registry::needs_title_inference(id))
         .unwrap_or(false);
 
     // Try standard separator-based extraction first.

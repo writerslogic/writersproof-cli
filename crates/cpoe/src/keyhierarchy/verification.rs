@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
-use super::crypto::{build_cert_data, fingerprint_for_public_key};
+use super::crypto::{build_cert_data, build_cert_data_with_expiry, fingerprint_for_public_key};
 use super::error::KeyHierarchyError;
 use super::types::{
     CheckpointSignature, KeyHierarchyEvidence, SessionBindingReport, SessionCertificate,
@@ -24,11 +24,12 @@ pub fn verify_session_certificate(cert: &SessionCertificate) -> Result<(), KeyHi
         }
     }
 
-    let cert_data = build_cert_data(
+    let cert_data = build_cert_data_with_expiry(
         cert.session_id,
         &cert.session_pubkey,
         cert.created_at,
         cert.document_hash,
+        cert.expires_at,
     );
 
     let pubkey = VerifyingKey::from_bytes(&cert.master_pubkey)

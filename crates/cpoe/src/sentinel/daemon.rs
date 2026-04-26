@@ -146,7 +146,7 @@ impl DaemonManager {
     /// stale file and retries once.
     pub fn acquire_pid_file(&self, pid: u32) -> Result<bool> {
         use std::fs::OpenOptions;
-        use std::io::Write;
+        use std::io::{Seek, Write};
 
         let parent = self.pid_file.parent().ok_or_else(|| {
             SentinelError::Io(std::io::Error::new(
@@ -159,41 +159,47 @@ impl DaemonManager {
         })?;
         fs::create_dir_all(parent)?;
 
-        match OpenOptions::new()
+        // Open-or-create the PID file and use an exclusive flock to
+        // eliminate the TOCTOU race between stale-PID removal and re-creation.
+        // The OS releases the lock automatically if the daemon crashes.
+        let mut f = OpenOptions::new()
+            .read(true)
             .write(true)
-            .create_new(true)
-            .open(&self.pid_file)
+            .create(true)
+            .truncate(false)
+            .open(&self.pid_file)?;
+
+        #[cfg(unix)]
         {
-            Ok(mut f) => {
-                writeln!(f, "{}", pid)?;
-                return Ok(true);
+            use std::os::unix::io::AsRawFd;
+            #[allow(deprecated)] // nix 0.29 deprecates flock() in favor of Flock::lock()
+            // but Flock::lock() consumes the fd, preventing subsequent writes.
+            match nix::fcntl::flock(f.as_raw_fd(), nix::fcntl::FlockArg::LockExclusiveNonblock) {
+                Ok(()) => {}
+                Err(nix::errno::Errno::EWOULDBLOCK) => {
+                    return Ok(false);
+                }
+                Err(e) => {
+                    return Err(SentinelError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("flock failed on PID file: {e}"),
+                    )));
+                }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(SentinelError::Io(e)),
         }
 
-        if let Ok(existing_pid) = self.read_pid() {
-            if is_process_running(existing_pid) {
-                return Ok(false);
-            }
-        }
-        // Residual TOCTOU: between remove_file and the second create_new,
-        // another daemon instance could race. The retry-once pattern limits
-        // impact; the loser gets AlreadyExists and returns Ok(false).
-        let _ = fs::remove_file(&self.pid_file);
+        // We hold the exclusive lock. If the file contains a stale PID from
+        // a crashed process, overwrite it. The lock proves no live daemon owns it.
+        f.set_len(0)?;
+        f.seek(std::io::SeekFrom::Start(0))?;
+        writeln!(f, "{}", pid)?;
+        f.sync_all()?;
 
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&self.pid_file)
-        {
-            Ok(mut f) => {
-                writeln!(f, "{}", pid)?;
-                Ok(true)
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-            Err(e) => Err(SentinelError::Io(e)),
-        }
+        // Intentionally leak the file handle so the flock is held for the
+        // daemon's lifetime. The OS releases it on process exit or crash.
+        std::mem::forget(f);
+
+        Ok(true)
     }
 
     /// Remove the PID file.

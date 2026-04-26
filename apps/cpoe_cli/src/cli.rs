@@ -349,4 +349,25 @@ pub enum ConfigAction {
         #[arg(short, long)]
         force: bool,
     },
+    /// Manage monitored writing applications
+    App {
+        #[command(subcommand)]
+        action: AppAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AppAction {
+    /// Add a writing application to monitor
+    Add {
+        /// App name or bundle ID (omit for interactive picker)
+        name: Option<String>,
+    },
+    /// List all monitored apps (built-in and user-added)
+    List,
+    /// Remove a user-added app
+    Remove {
+        /// Display name or bundle ID
+        name: String,
+    },
 }

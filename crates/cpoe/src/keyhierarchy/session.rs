@@ -11,7 +11,7 @@ use sha2::Digest;
 use zeroize::Zeroizing;
 
 use super::crypto::{
-    build_cert_data, compute_entangled_nonce, hkdf_expand, RATCHET_ADVANCE_DOMAIN,
+    build_cert_data_with_expiry, compute_entangled_nonce, hkdf_expand, RATCHET_ADVANCE_DOMAIN,
     RATCHET_INIT_DOMAIN, SESSION_DOMAIN, SIGNING_KEY_DOMAIN,
 };
 use super::error::KeyHierarchyError;
@@ -54,7 +54,14 @@ pub(crate) fn start_session_inner(
     // limitation tracked as SYS-033.
     let session_key = SigningKey::from_bytes(&session_seed);
     let session_pub = session_key.verifying_key().to_bytes();
-    let cert_data = build_cert_data(session_id, &session_pub, created_at, document_hash);
+    let expires_at = Some(created_at + chrono::Duration::hours(24));
+    let cert_data = build_cert_data_with_expiry(
+        session_id,
+        &session_pub,
+        created_at,
+        document_hash,
+        expires_at,
+    );
     let signature = signing_key.sign(&cert_data).to_bytes();
 
     let certificate = SessionCertificate {
@@ -65,7 +72,7 @@ pub(crate) fn start_session_inner(
         master_pubkey: master_pub_key,
         signature,
         version: VERSION,
-        expires_at: None,
+        expires_at,
         start_quote: None,
         end_quote: None,
         start_counter: None,

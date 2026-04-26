@@ -469,6 +469,8 @@ impl SealedIdentityStore {
 
         match wrapped[0] {
             0x01 => {
+                // V1 uses a static XOR cipher vulnerable to many-time pad attacks.
+                // Unwrap for migration to V2, then immediately re-seal.
                 log::warn!("Loading legacy V1 sealed identity; will migrate to V2 on next save");
                 self.software_unwrap_v1(wrapped)
             }

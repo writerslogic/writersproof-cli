@@ -114,6 +114,16 @@ pub fn ffi_get_provenance_metrics_for_document(path: String) -> FfiProvenanceMet
         error_message: None,
     };
 
+    let path = match crate::sentinel::helpers::validate_path(&path) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(e) => {
+            return FfiProvenanceMetrics {
+                error_message: Some(format!("Invalid path: {e}")),
+                ..empty
+            };
+        }
+    };
+
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,

@@ -48,13 +48,16 @@ fn main() {
     );
 
     println!("\nTamper detection demo...");
-    let mut tampered_chain = chain.clone();
-    if let Some(Evidence::Pure { jitter, .. }) = tampered_chain.records_mut().get_mut(2) {
-        *jitter = 9999;
+    // Simulate tampering via serialization round-trip with a modified jitter value.
+    let json = serde_json::to_string(&chain).unwrap();
+    let tampered_json = json.replacen("\"jitter\":1", "\"jitter\":9999", 1);
+    if let Ok(tampered_chain) = serde_json::from_str::<EvidenceChain>(&tampered_json) {
+        let tamper_detected = !tampered_chain.verify_integrity(&secret);
+        println!(
+            "  Tamper detected: {}",
+            if tamper_detected { "YES" } else { "NO" }
+        );
+    } else {
+        println!("  Tampered JSON failed to parse (also a detection signal)");
     }
-    let tamper_detected = !tampered_chain.verify_integrity(&secret);
-    println!(
-        "  Tamper detected: {}",
-        if tamper_detected { "YES" } else { "NO" }
-    );
 }

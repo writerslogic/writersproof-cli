@@ -3,6 +3,7 @@
 //! Seal verification and duration/key-provenance checks.
 
 use base64::Engine;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
 use crate::evidence::Packet;
 use crate::vdf;
@@ -231,7 +232,7 @@ pub(super) fn verify_key_provenance(
         }
 
         // Single pass: check ratchet indices are strictly monotonic, non-negative,
-        // and reference valid ratchet keys.
+        // reference valid ratchet keys, and cryptographically verify Ed25519 signatures.
         let mut prev_index = -1i64;
         for sig in &kh.checkpoint_signatures {
             let idx = sig.ratchet_index as i64;
@@ -264,6 +265,67 @@ pub(super) fn verify_key_provenance(
                     kh.ratchet_public_keys.len()
                 ));
                 continue;
+            }
+
+            // AUD-026: Cryptographically verify Ed25519 checkpoint signatures.
+            // Decode the ratchet public key and signature from hex, then verify.
+            let pubkey_bytes = match hex::decode(&kh.ratchet_public_keys[uidx]) {
+                Ok(b) if b.len() == 32 => b,
+                _ => {
+                    signing_key_consistent = false;
+                    warnings.push(format!(
+                        "Checkpoint {}: ratchet key {} has invalid hex/length",
+                        sig.ordinal, uidx
+                    ));
+                    continue;
+                }
+            };
+            let sig_bytes = match hex::decode(&sig.signature) {
+                Ok(b) if b.len() == 64 => b,
+                _ => {
+                    signing_key_consistent = false;
+                    warnings.push(format!(
+                        "Checkpoint {}: signature has invalid hex/length",
+                        sig.ordinal
+                    ));
+                    continue;
+                }
+            };
+            let hash_bytes = match hex::decode(&sig.checkpoint_hash) {
+                Ok(b) => b,
+                Err(_) => {
+                    signing_key_consistent = false;
+                    warnings.push(format!(
+                        "Checkpoint {}: checkpoint_hash has invalid hex",
+                        sig.ordinal
+                    ));
+                    continue;
+                }
+            };
+
+            let mut pk_arr = [0u8; 32];
+            pk_arr.copy_from_slice(&pubkey_bytes);
+            let mut sig_arr = [0u8; 64];
+            sig_arr.copy_from_slice(&sig_bytes);
+
+            match VerifyingKey::from_bytes(&pk_arr) {
+                Ok(vk) => {
+                    let ed_sig = Signature::from_bytes(&sig_arr);
+                    if vk.verify(&hash_bytes, &ed_sig).is_err() {
+                        signing_key_consistent = false;
+                        warnings.push(format!(
+                            "Checkpoint {}: Ed25519 signature verification FAILED",
+                            sig.ordinal
+                        ));
+                    }
+                }
+                Err(_) => {
+                    signing_key_consistent = false;
+                    warnings.push(format!(
+                        "Checkpoint {}: invalid Ed25519 public key",
+                        sig.ordinal
+                    ));
+                }
             }
         }
     } else {

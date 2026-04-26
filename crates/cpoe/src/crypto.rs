@@ -27,8 +27,21 @@ pub fn hash_file(path: &Path) -> std::io::Result<[u8; 32]> {
 
 /// Compute SHA-256 hash of a file, returning (hash, bytes_read).
 /// Eliminates TOCTOU races vs separate `fs::metadata` call.
+/// Rejects files larger than [`MAX_FILE_SIZE`](crate::MAX_FILE_SIZE) to prevent
+/// unbounded I/O on oversized inputs.
 pub fn hash_file_with_size(path: &Path) -> std::io::Result<([u8; 32], u64)> {
     let file = File::open(path)?;
+    let len = file.metadata()?.len();
+    if len > crate::MAX_FILE_SIZE {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "file size {} exceeds MAX_FILE_SIZE ({})",
+                len,
+                crate::MAX_FILE_SIZE
+            ),
+        ));
+    }
     hash_file_handle(file)
 }
 

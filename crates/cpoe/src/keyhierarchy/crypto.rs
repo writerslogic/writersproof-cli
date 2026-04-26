@@ -42,7 +42,17 @@ pub(crate) fn build_cert_data(
     created_at: DateTime<Utc>,
     document_hash: [u8; 32],
 ) -> Vec<u8> {
-    let mut data = Vec::with_capacity(32 + 32 + 8 + 32);
+    build_cert_data_with_expiry(session_id, session_pub_key, created_at, document_hash, None)
+}
+
+pub(crate) fn build_cert_data_with_expiry(
+    session_id: [u8; 32],
+    session_pub_key: &[u8],
+    created_at: DateTime<Utc>,
+    document_hash: [u8; 32],
+    expires_at: Option<DateTime<Utc>>,
+) -> Vec<u8> {
+    let mut data = Vec::with_capacity(32 + 32 + 8 + 32 + 9);
     data.extend_from_slice(&session_id);
     data.extend_from_slice(session_pub_key);
     let nanos = created_at.timestamp_nanos_safe();
@@ -53,6 +63,11 @@ pub(crate) fn build_cert_data(
     }
     data.extend_from_slice(&(nanos.max(0) as u64).to_be_bytes());
     data.extend_from_slice(&document_hash);
+    if let Some(exp) = expires_at {
+        data.push(1u8);
+        let exp_nanos = exp.timestamp_nanos_safe().max(0) as u64;
+        data.extend_from_slice(&exp_nanos.to_be_bytes());
+    }
     data
 }
 

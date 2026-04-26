@@ -227,6 +227,9 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
             metrics.risk_level.to_string()
         };
 
+        let meets_threshold =
+            count > 0 && adjusted_score >= 0.6 && adjusted_risk == "LOW";
+
         result.push(FfiTrackedFile {
             path,
             last_checkpoint_ns: last_ts,
@@ -234,6 +237,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
             forensic_score: adjusted_score,
             risk_level: adjusted_risk,
             keystroke_count: session_keystrokes as u64,
+            meets_threshold,
         });
     }
 
@@ -285,6 +289,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
                 forensic_score,
                 risk_level: "pending".to_string(),
                 keystroke_count: session.total_keystrokes(),
+                meets_threshold: false,
             });
         }
     }

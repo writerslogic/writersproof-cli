@@ -45,46 +45,8 @@ impl ForensicEngine {
         _file_path: &str,
         events: &[crate::store::SecureEvent],
     ) -> super::types::AuthorshipProfile {
-        let event_data: Vec<super::types::EventData> = events
-            .iter()
-            .map(|e| super::types::EventData {
-                id: e.id.unwrap_or(0),
-                timestamp_ns: e.timestamp_ns,
-                file_size: e.file_size,
-                size_delta: e.size_delta,
-                file_path: e.file_path.clone(),
-            })
-            .collect();
-
-        // Estimate edit regions from file size trajectory (no diff data available).
-        // Cursor position ~ file_size / max_file_size for sequential writing.
-        let max_file_size = events.iter().map(|e| e.file_size.max(1)).max().unwrap_or(1) as f32;
-        let mut regions = std::collections::HashMap::new();
-        for e in events {
-            if let Some(id) = e.id {
-                let delta = e.size_delta;
-                let sign = if delta > 0 {
-                    1
-                } else if delta < 0 {
-                    -1
-                } else {
-                    0
-                };
-                let (cursor_pct, extent) =
-                    super::types::compute_edit_extents(e.file_size, delta, max_file_size);
-                let end_pct = (cursor_pct + extent).min(1.0);
-                regions.insert(
-                    id,
-                    vec![super::types::RegionData {
-                        start_pct: cursor_pct,
-                        end_pct,
-                        delta_sign: sign,
-                        byte_count: delta.abs(),
-                    }],
-                );
-            }
-        }
-
+        let event_data = super::types::EventData::from_secure_events(events);
+        let regions = super::types::build_edit_regions(events);
         super::analysis::build_profile(&event_data, &regions)
     }
 

@@ -147,6 +147,41 @@ pub fn compute_edit_extents(file_size: i64, size_delta: i32, max_file_size: f32)
     (cursor, extent)
 }
 
+/// Build per-event edit region maps from secure events.
+///
+/// Each event with an `id` gets a single `RegionData` entry derived from its
+/// file size and size delta via `compute_edit_extents`.
+pub fn build_edit_regions(
+    events: &[crate::store::SecureEvent],
+) -> std::collections::HashMap<i64, Vec<RegionData>> {
+    let max_file_size = events.iter().map(|e| e.file_size.max(1)).max().unwrap_or(1) as f32;
+    let mut regions = std::collections::HashMap::new();
+    for e in events {
+        if let Some(id) = e.id {
+            let delta = e.size_delta;
+            let sign = if delta > 0 {
+                1
+            } else if delta < 0 {
+                -1
+            } else {
+                0
+            };
+            let (cursor_pct, extent) = compute_edit_extents(e.file_size, delta, max_file_size);
+            let end_pct = (cursor_pct + extent).min(1.0);
+            regions.insert(
+                id,
+                vec![RegionData {
+                    start_pct: cursor_pct,
+                    end_pct,
+                    delta_sign: sign,
+                    byte_count: delta.abs(),
+                }],
+            );
+        }
+    }
+    regions
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PrimaryMetrics {
     /// Fraction of edits at document end (>0.95 position).
