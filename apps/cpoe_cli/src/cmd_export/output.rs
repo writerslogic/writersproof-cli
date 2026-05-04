@@ -400,6 +400,66 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 }
             }
         }
+        "md" | "markdown" => {
+            let doc_name = file_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "document".to_string());
+
+            let first_ts = events.first().map(|e| e.timestamp_ns).unwrap_or(0);
+            let last_ts = events.last().map(|e| e.timestamp_ns).unwrap_or(0);
+            let first_date = chrono::DateTime::from_timestamp(first_ts / 1_000_000_000, 0)
+                .map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            let last_date = chrono::DateTime::from_timestamp(last_ts / 1_000_000_000, 0)
+                .map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let content_hash = events
+                .last()
+                .map(|e| hex::encode(e.content_hash))
+                .unwrap_or_default();
+
+            let md = format!(
+                "## Authorship Evidence — {doc_name}\n\
+                 \n\
+                 | Field | Value |\n\
+                 |-------|-------|\n\
+                 | Document | `{doc_name}` |\n\
+                 | Checkpoints | {checkpoints} |\n\
+                 | Period | {first_date} — {last_date} |\n\
+                 | Content SHA-256 | `{hash}` |\n\
+                 | Evidence Tier | {tier} (T{attest}) |\n\
+                 | VDF Duration | {vdf:?} |\n\
+                 \n\
+                 <details><summary>Verification</summary>\n\
+                 \n\
+                 ```\n\
+                 cpoe verify {out}\n\
+                 ```\n\
+                 \n\
+                 Evidence format: CPoE CBOR (tag {tag}), profile `{profile}`\n\
+                 </details>\n",
+                checkpoints = events.len(),
+                hash = &content_hash[..content_hash.len().min(16)],
+                tier = tier_lower,
+                attest = spec_attestation_tier,
+                vdf = total_vdf_time,
+                out = out_path.file_name().unwrap_or_default().to_string_lossy(),
+                tag = CBOR_TAG_EVIDENCE_PACKET,
+                profile = spec_profile_uri,
+            );
+
+            write_atomic(out_path, md.as_bytes())?;
+
+            if verbose {
+                println!();
+                println!("Markdown hash block exported to: {}", out_path.display());
+                println!("  Document: {}", doc_name);
+                println!("  Checkpoints: {}", events.len());
+                println!("  Size: {} bytes", md.len());
+            }
+        }
         _ => {
             let data = serde_json::to_string_pretty(packet)?;
             write_atomic(out_path, data.as_bytes())?;

@@ -68,6 +68,7 @@ fn default_output_path(file_path: &Path, format_lower: &str) -> PathBuf {
         "html" | "report" => format!("{}.report.html", name),
         "pdf" => format!("{}.report.pdf", name),
         "c2pa" => format!("{}.c2pa", name),
+        "md" | "markdown" => format!("{}.evidence.md", name),
         _ => format!("{}.evidence.json", name),
     };
     // Ensure the output filename has no path separators or traversal components.
