@@ -57,6 +57,42 @@ pub fn reset_inject_state() {
     window.count = 0;
 }
 
+/// Inject a keystroke with hold time (dwell) and flight time.
+///
+/// v3 adds `dwell_time_ns` (key-down to key-up duration) and
+/// `flight_time_ns` (previous key-up to this key-down) for behavioral
+/// ML analysis (dual-channel HT+FT CNN per QUACK methodology).
+///
+/// Pass 0 for either if not available; they will be stored as None.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_inject_keystroke_v3(
+    timestamp_ns: i64,
+    keycode: u16,
+    zone: u8,
+    source_state_id: i64,
+    keyboard_type: i64,
+    source_pid: i64,
+    char_value: String,
+    coalesced_count: u64,
+    modifier_flags_raw: u16,
+    dwell_time_ns: u64,
+    flight_time_ns: u64,
+) -> bool {
+    inject_keystroke_inner_v3(
+        timestamp_ns,
+        keycode,
+        zone,
+        source_state_id,
+        keyboard_type,
+        source_pid,
+        char_value,
+        coalesced_count,
+        crate::sentinel::types::ModifierFlags(modifier_flags_raw),
+        if dwell_time_ns > 0 { Some(dwell_time_ns) } else { None },
+        if flight_time_ns > 0 { Some(flight_time_ns) } else { None },
+    )
+}
+
 /// Inject a keystroke with modifier flags and semantic classification.
 ///
 /// Extended version of `ffi_sentinel_inject_keystroke` that also receives
@@ -126,6 +162,34 @@ fn inject_keystroke_inner(
     char_value: String,
     coalesced_count: u64,
     modifiers: crate::sentinel::types::ModifierFlags,
+) -> bool {
+    inject_keystroke_inner_v3(
+        timestamp_ns,
+        keycode,
+        zone,
+        source_state_id,
+        keyboard_type,
+        source_pid,
+        char_value,
+        coalesced_count,
+        modifiers,
+        None,
+        None,
+    )
+}
+
+fn inject_keystroke_inner_v3(
+    timestamp_ns: i64,
+    keycode: u16,
+    zone: u8,
+    source_state_id: i64,
+    keyboard_type: i64,
+    source_pid: i64,
+    char_value: String,
+    coalesced_count: u64,
+    modifiers: crate::sentinel::types::ModifierFlags,
+    dwell_time_ns: Option<u64>,
+    flight_time_ns: Option<u64>,
 ) -> bool {
     use crate::sentinel::types::KeystrokeSemantic;
 
@@ -275,8 +339,8 @@ fn inject_keystroke_inner(
         timestamp_ns,
         duration_since_last_ns,
         zone,
-        dwell_time_ns: None,
-        flight_time_ns: None,
+        dwell_time_ns,
+        flight_time_ns,
     };
     sentinel
         .activity_accumulator
@@ -301,8 +365,9 @@ fn inject_keystroke_inner(
                 session.jitter_samples.push(sample.clone());
             }
 
-            // Record semantic classification in session for evidence enrichment.
+            // Record semantic and device classification for evidence enrichment.
             session.record_semantic(semantic);
+            session.record_device_keystroke(keyboard_type);
 
             let validation = crate::forensics::validate_keystroke_event(
                 timestamp_ns,

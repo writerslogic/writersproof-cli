@@ -3,7 +3,7 @@
 pub use crate::crypto::ObfuscatedString;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
@@ -194,6 +194,59 @@ impl AiToolCategory {
             }
 
             _ => None,
+        }
+    }
+}
+
+/// Classification of physical keyboard device based on CGEvent keyboard_type field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum KeyboardDeviceClass {
+    /// Apple built-in keyboard (MacBook). Types 40-42, 44-45.
+    BuiltIn = 0,
+    /// External Apple keyboard (Magic Keyboard, etc.). Types 43, 46-50, 195-196.
+    ExternalApple = 1,
+    /// JIS keyboard layout (built-in or external). Types 42, 106.
+    Jis = 2,
+    /// ISO keyboard layout. Type 41.
+    Iso = 3,
+    /// Unknown or third-party keyboard.
+    Unknown = 4,
+}
+
+impl KeyboardDeviceClass {
+    /// Classify from macOS CGEvent keyboard_type field (field 10).
+    ///
+    /// Apple keyboard type values from IOHIDFamily headers:
+    /// - 40 (kANSI): MacBook built-in ANSI
+    /// - 41 (kISO): ISO layout
+    /// - 42 (kJIS): JIS layout
+    /// - 44-45: Standard US variants
+    /// - 43, 46-50: External Apple keyboards
+    /// - 106: JIS variant (external)
+    /// - 195-196: Magic Keyboard (M-series)
+    pub fn from_keyboard_type(kb_type: i64) -> Self {
+        match kb_type {
+            40 | 44 | 45 => Self::BuiltIn,
+            41 => Self::Iso,
+            42 => Self::Jis,
+            106 => Self::Jis,
+            43 | 46..=50 | 195 | 196 => Self::ExternalApple,
+            0 => Self::Unknown, // synthetic or sandboxed
+            _ if kb_type > 0 => Self::Unknown,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl fmt::Display for KeyboardDeviceClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BuiltIn => f.write_str("built-in"),
+            Self::ExternalApple => f.write_str("external-apple"),
+            Self::Jis => f.write_str("jis"),
+            Self::Iso => f.write_str("iso"),
+            Self::Unknown => f.write_str("unknown"),
         }
     }
 }
@@ -432,6 +485,31 @@ impl fmt::Display for KeystrokeContext {
     }
 }
 
+/// Classification of paste content origin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum PasteSource {
+    /// Content was previously typed in the same document session.
+    SameDocument = 0,
+    /// Content was typed in a different tracked document.
+    OtherDocument = 1,
+    /// Content from an untracked external source (browser, other app).
+    External = 2,
+    /// Source could not be determined.
+    Unknown = 3,
+}
+
+impl fmt::Display for PasteSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SameDocument => f.write_str("same-document"),
+            Self::OtherDocument => f.write_str("other-document"),
+            Self::External => f.write_str("external"),
+            Self::Unknown => f.write_str("unknown"),
+        }
+    }
+}
+
 /// Paste context tracking for a keystroke window.
 ///
 /// Tracks when a paste event occurred and the time window during which
@@ -444,6 +522,8 @@ pub struct PasteContext {
     pub context_window_end: i64,
     /// Number of keystrokes after paste (for metrics)
     pub keystroke_count_after_paste: usize,
+    /// Classification of where the pasted content originated.
+    pub source: PasteSource,
 }
 
 /// How an AI tool detection was established.
@@ -546,12 +626,36 @@ pub struct DocumentSession {
     pub paste_context: Option<PasteContext>,
     /// Per-session keystroke semantic counts for evidence enrichment.
     pub(crate) semantic_counts: SemanticAccumulator,
+    /// Per-device keystroke counts keyed by keyboard device class.
+    pub(crate) device_keystroke_counts: HashMap<KeyboardDeviceClass, u64>,
 }
 
 /// Accumulates keystroke semantic classification counts for a session.
 ///
 /// These counts are included in evidence packets to characterize the
 /// author's editing behavior without recording raw keystrokes.
+/// Whether a session is primarily new composition or revision of existing content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum SessionActivityType {
+    /// Primarily typing new content (<15% editing keystrokes).
+    Composing = 0,
+    /// Primarily revising existing content (>50% editing keystrokes).
+    Editing = 1,
+    /// Mix of composing and editing (15-50% editing keystrokes).
+    Mixed = 2,
+}
+
+impl fmt::Display for SessionActivityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Composing => f.write_str("composing"),
+            Self::Editing => f.write_str("editing"),
+            Self::Mixed => f.write_str("mixed"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SemanticAccumulator {
     pub characters: u64,
@@ -617,6 +721,24 @@ impl SemanticAccumulator {
         editing as f64 / total as f64
     }
 
+    /// Classify the session as primarily composing or editing.
+    ///
+    /// Thresholds: <15% editing = composing, >50% = editing, between = mixed.
+    /// Returns `None` if fewer than 20 keystrokes recorded.
+    pub fn session_activity_type(&self) -> Option<SessionActivityType> {
+        if self.total() < 20 {
+            return None;
+        }
+        let ratio = self.editing_ratio();
+        Some(if ratio < 0.15 {
+            SessionActivityType::Composing
+        } else if ratio > 0.50 {
+            SessionActivityType::Editing
+        } else {
+            SessionActivityType::Mixed
+        })
+    }
+
     /// Total keystrokes across all semantic types.
     pub fn total(&self) -> u64 {
         self.characters
@@ -678,6 +800,7 @@ impl Clone for DocumentSession {
             hw_cosign_chain_index: self.hw_cosign_chain_index,
             paste_context: self.paste_context.clone(),
             semantic_counts: self.semantic_counts.clone(),
+            device_keystroke_counts: self.device_keystroke_counts.clone(),
         }
     }
 }
@@ -736,12 +859,19 @@ impl DocumentSession {
             hw_cosign_chain_index: 0,
             paste_context: None,
             semantic_counts: SemanticAccumulator::default(),
+            device_keystroke_counts: HashMap::new(),
         }
     }
 
     /// Record a keystroke semantic classification.
     pub fn record_semantic(&mut self, semantic: KeystrokeSemantic) {
         self.semantic_counts.record(semantic);
+    }
+
+    /// Record a keystroke from a specific keyboard device type.
+    pub fn record_device_keystroke(&mut self, keyboard_type: i64) {
+        let device = KeyboardDeviceClass::from_keyboard_type(keyboard_type);
+        *self.device_keystroke_counts.entry(device).or_insert(0) += 1;
     }
 
     /// Total keystrokes across all sessions including current.

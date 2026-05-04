@@ -1193,6 +1193,7 @@ pub fn update_keystroke_context_window(
         paste_time,
         context_window_end: paste_time.saturating_add(window_nanos),
         keystroke_count_after_paste: 0,
+        source: super::types::PasteSource::Unknown,
     });
 }
 
