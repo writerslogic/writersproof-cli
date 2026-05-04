@@ -189,6 +189,7 @@ pub(crate) async fn cmd_commit(
             hw_cosign_entropy_digest: None,
             hw_cosign_entropy_bytes: None,
             posme_proof: None,
+            semantic_summary: None,
         };
 
         db.add_secure_event(&mut event).context("save checkpoint")?;

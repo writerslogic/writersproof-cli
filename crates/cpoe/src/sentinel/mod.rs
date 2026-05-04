@@ -55,10 +55,11 @@ pub use self::daemon::{
 pub use self::error::{Result, SentinelError};
 pub use self::focus::{PollingSentinelFocusTracker, SentinelFocusTracker, WindowProvider};
 pub use self::helpers::{
-    check_idle_sessions_sync, compute_file_hash, create_document_hash_payload,
-    create_session_start_payload, detect_paste_boundary, end_all_sessions_sync, end_session_sync,
-    focus_document_sync, handle_change_event_sync, handle_focus_event_sync, is_within_paste_window,
-    unfocus_document_sync, update_keystroke_context_window,
+    check_idle_sessions_sync, classify_paste_source, compute_file_hash,
+    create_document_hash_payload, create_session_start_payload, detect_paste_boundary,
+    end_all_sessions_sync, end_session_sync, focus_document_sync, handle_change_event_sync,
+    handle_focus_event_sync, is_within_paste_window, unfocus_document_sync,
+    update_keystroke_context_window,
 };
 pub use self::ipc_handler::SentinelIpcHandler;
 pub use self::shadow::ShadowManager;
@@ -67,7 +68,7 @@ pub use self::types::{
     infer_document_path_from_title_with_bundle, normalize_document_path, parse_url_parts,
     AiToolCategory, ChangeEvent, ChangeEventType, DetectedAiTool, DocumentSession, FocusEvent,
     FocusEventType, FocusSwitchRecord, KeystrokeContext, ObservationBasis, PasteContext,
-    SessionBinding, SessionEvent, SessionEventType, WindowInfo,
+    PasteSource, SessionBinding, SessionEvent, SessionEventType, WindowInfo,
 };
 
 // ---------------------------------------------------------------------------

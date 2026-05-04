@@ -246,6 +246,58 @@ fn test_evidence_packet_cbor_roundtrip() {
 }
 
 #[test]
+fn test_evidence_packet_crc32_footer_roundtrip() {
+    let packet = create_test_evidence_packet();
+    let cbor_data = packet.encode_cbor().expect("encode should succeed");
+
+    // Simulate CLI export: append CRC32 footer [CBOR][CRC32-BE][magic "CPOE"]
+    let crc = crc32fast::hash(&cbor_data);
+    let mut package = Vec::with_capacity(cbor_data.len() + 8);
+    package.extend_from_slice(&cbor_data);
+    package.extend_from_slice(&crc.to_be_bytes());
+    package.extend_from_slice(b"CPOE");
+
+    assert_eq!(package.len(), cbor_data.len() + 8);
+
+    // Simulate CLI verify: detect footer, strip, verify CRC, decode
+    assert_eq!(&package[package.len() - 4..], b"CPOE");
+    let crc_offset = package.len() - 8;
+    let stored_crc = u32::from_be_bytes([
+        package[crc_offset],
+        package[crc_offset + 1],
+        package[crc_offset + 2],
+        package[crc_offset + 3],
+    ]);
+    let stripped_cbor = &package[..crc_offset];
+    let computed_crc = crc32fast::hash(stripped_cbor);
+    assert_eq!(stored_crc, computed_crc, "CRC32 must match after round-trip");
+    assert_eq!(stored_crc, crc);
+
+    // Decode stripped CBOR and verify fields
+    let decoded =
+        EvidencePacketWire::decode_cbor(stripped_cbor).expect("decode after strip should succeed");
+    assert_eq!(decoded.version, 1);
+    assert_eq!(decoded.packet_id, packet.packet_id);
+    assert_eq!(decoded.checkpoints.len(), 3);
+
+    // Verify tampered CRC is detected
+    let mut tampered = package.clone();
+    tampered[0] ^= 0xFF; // flip a CBOR byte
+    let tampered_cbor = &tampered[..tampered.len() - 8];
+    let tampered_stored = u32::from_be_bytes([
+        tampered[tampered.len() - 8],
+        tampered[tampered.len() - 7],
+        tampered[tampered.len() - 6],
+        tampered[tampered.len() - 5],
+    ]);
+    assert_ne!(
+        crc32fast::hash(tampered_cbor),
+        tampered_stored,
+        "tampered data must fail CRC check"
+    );
+}
+
+#[test]
 fn test_attestation_result_cbor_roundtrip() {
     let result = create_test_attestation_result();
 

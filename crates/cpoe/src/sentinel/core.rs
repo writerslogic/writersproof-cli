@@ -1009,14 +1009,21 @@ impl Sentinel {
                             let cp_dir = writersproof_dir.clone();
                             let nonce_for_closure = challenge_nonce.clone();
                             let cp_stop = Arc::clone(&stopping_flag);
+                            let semantic_json = {
+                                let map = sessions.read_recover();
+                                map.get(path.as_str()).and_then(|s| {
+                                    serde_json::to_string(&s.semantic_counts).ok()
+                                })
+                            };
                             let committed = tokio::task::spawn_blocking(move || {
-                                commit_checkpoint_for_path(
+                                super::helpers::commit_checkpoint_for_path_with_semantics(
                                     &cp_path,
                                     "Auto-checkpoint",
                                     &cp_key,
                                     &cp_dir,
                                     &nonce_for_closure,
                                     &cp_stop,
+                                    semantic_json,
                                 )
                             })
                             .await
@@ -1294,6 +1301,18 @@ impl Sentinel {
                     .map(|(p, _)| p.clone())
                     .collect()
             };
+            let semantic_map: std::collections::HashMap<String, Option<String>> = {
+                let map = self.sessions.read_recover();
+                candidates
+                    .iter()
+                    .map(|p| {
+                        let json = map.get(p.as_str()).and_then(|s| {
+                            serde_json::to_string(&s.semantic_counts).ok()
+                        });
+                        (p.clone(), json)
+                    })
+                    .collect()
+            };
             let sk = Arc::clone(&self.signing_key);
             let dir = self.config.writersproof_dir.clone();
             let stop_flag = Arc::clone(&self.stopping);
@@ -1302,14 +1321,16 @@ impl Sentinel {
                 let dir_c = dir.clone();
                 let stop_c = Arc::clone(&stop_flag);
                 let p = path.clone();
+                let sem = semantic_map.get(&path).cloned().flatten();
                 let _ = tokio::task::spawn_blocking(move || {
-                    super::helpers::commit_checkpoint_for_path(
+                    super::helpers::commit_checkpoint_for_path_with_semantics(
                         &p,
                         "Final-checkpoint",
                         &sk_c,
                         &dir_c,
                         &None,
                         &stop_c,
+                        sem,
                     )
                 })
                 .await;

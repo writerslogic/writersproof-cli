@@ -5,7 +5,7 @@
 use super::helpers::get_data_dir;
 use super::types::{
     FfiConsentResult, FfiFingerprintDimension, FfiFingerprintSnapshot, FfiFingerprintStatus,
-    FfiFingerprintSummary, FfiFingerprintVerification, FfiResult,
+    FfiFingerprintSummary, FfiFingerprintVerification, FfiKeystrokeTimingArrays, FfiResult,
 };
 use crate::fingerprint::comparison;
 use crate::fingerprint::manager::FingerprintManager;
@@ -390,5 +390,47 @@ pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
     }) {
         Ok(v) => v,
         Err(_) => Vec::new(),
+    }
+}
+
+/// Return raw HT, FT, and IKI arrays from the activity accumulator
+/// for behavioral ML inference (dual-channel CNN).
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_keystroke_timing_arrays() -> FfiKeystrokeTimingArrays {
+    use super::sentinel::get_running_sentinel;
+    use crate::RwLockRecover;
+
+    let empty = FfiKeystrokeTimingArrays {
+        hold_times_ns: Vec::new(),
+        flight_times_ns: Vec::new(),
+        iki_ns: Vec::new(),
+        sample_count: 0,
+    };
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return empty,
+    };
+    let samples = sentinel.activity_accumulator.read_recover().samples();
+    let count = samples.len() as u64;
+
+    let hold_times_ns: Vec<i64> = samples
+        .iter()
+        .filter_map(|s| s.dwell_time_ns.map(|v| v as i64))
+        .collect();
+    let flight_times_ns: Vec<i64> = samples
+        .iter()
+        .filter_map(|s| s.flight_time_ns.map(|v| v as i64))
+        .collect();
+    let iki_ns: Vec<i64> = samples
+        .iter()
+        .map(|s| s.duration_since_last_ns as i64)
+        .filter(|&v| v > 0)
+        .collect();
+
+    FfiKeystrokeTimingArrays {
+        hold_times_ns,
+        flight_times_ns,
+        iki_ns,
+        sample_count: count,
     }
 }

@@ -1180,10 +1180,14 @@ pub fn detect_paste_boundary(
 ///
 /// Sets a time window during which subsequent keystrokes are marked as PastedContent.
 /// Window duration: typically 30 seconds after paste.
+///
+/// `source` classifies where the pasted content originated. Use
+/// [`classify_paste_source`] to derive this from a store lookup before calling.
 pub fn update_keystroke_context_window(
     session: &mut super::types::DocumentSession,
     paste_time: i64,
     context_window_ms: u64,
+    source: super::types::PasteSource,
 ) {
     let window_nanos = context_window_ms
         .checked_mul(1_000_000)
@@ -1193,8 +1197,40 @@ pub fn update_keystroke_context_window(
         paste_time,
         context_window_end: paste_time.saturating_add(window_nanos),
         keystroke_count_after_paste: 0,
-        source: super::types::PasteSource::Unknown,
+        source,
     });
+}
+
+/// Classify the origin of pasted content by looking up its hash in the store.
+///
+/// - If the hash matches a fragment from `current_session_id` -> `SameDocument`
+/// - If it matches a fragment from a different session -> `OtherDocument`
+/// - If no match is found (content came from outside) -> `External`
+/// - If the store is unavailable or the lookup fails -> `Unknown`
+pub fn classify_paste_source(
+    store: Option<&crate::store::SecureStore>,
+    text_hash: &[u8; 32],
+    current_session_id: &str,
+) -> super::types::PasteSource {
+    let store = match store {
+        Some(s) => s,
+        None => return super::types::PasteSource::Unknown,
+    };
+
+    match store.lookup_fragment_by_hash(text_hash) {
+        Ok(Some(fragment)) => {
+            if fragment.session_id == current_session_id {
+                super::types::PasteSource::SameDocument
+            } else {
+                super::types::PasteSource::OtherDocument
+            }
+        }
+        Ok(None) => super::types::PasteSource::External,
+        Err(e) => {
+            log::warn!("Paste source classification failed: {e}");
+            super::types::PasteSource::Unknown
+        }
+    }
 }
 
 /// Check if current keystroke is within paste context window.
@@ -1217,6 +1253,27 @@ pub(super) fn commit_checkpoint_for_path(
     writersproof_dir: &Path,
     challenge_nonce: &Option<String>,
     stopping: &AtomicBool,
+) -> Option<[u8; 32]> {
+    commit_checkpoint_for_path_with_semantics(
+        path,
+        reason,
+        signing_key,
+        writersproof_dir,
+        challenge_nonce,
+        stopping,
+        None,
+    )
+}
+
+/// Like `commit_checkpoint_for_path` but attaches a semantic keystroke summary.
+pub(super) fn commit_checkpoint_for_path_with_semantics(
+    path: &str,
+    reason: &str,
+    signing_key: &Arc<RwLock<super::behavioral_key::BehavioralKey>>,
+    writersproof_dir: &Path,
+    challenge_nonce: &Option<String>,
+    stopping: &AtomicBool,
+    semantic_summary: Option<String>,
 ) -> Option<[u8; 32]> {
     if stopping.load(Ordering::SeqCst) {
         log::debug!("Skipping checkpoint for {path}: sentinel stopping");
@@ -1271,6 +1328,7 @@ pub(super) fn commit_checkpoint_for_path(
         Some(reason.to_string()),
     );
     event.challenge_nonce = challenge_nonce.clone();
+    event.semantic_summary = semantic_summary;
     let sk_guard = signing_key.read_recover();
     let sk_opt = sk_guard.key();
     match store.add_secure_event_with_signer(&mut event, sk_opt.as_ref()) {
@@ -1380,7 +1438,12 @@ mod tests {
         );
 
         let paste_time = 5000 * MS_TO_NS;
-        update_keystroke_context_window(&mut session, paste_time, 30_000);
+        update_keystroke_context_window(
+            &mut session,
+            paste_time,
+            30_000,
+            PasteSource::Unknown,
+        );
 
         assert!(session.paste_context.is_some());
         let ctx = session.paste_context.as_ref().unwrap();
@@ -1430,6 +1493,48 @@ mod tests {
         assert_eq!(
             extract_bundle_package_root("/Users/me/Novel.scriv"),
             Some("/Users/me/Novel.scriv".to_string())
+        );
+    }
+
+    #[test]
+    fn test_classify_paste_source_no_store() {
+        let hash = [0u8; 32];
+        assert_eq!(
+            classify_paste_source(None, &hash, "session1"),
+            PasteSource::Unknown
+        );
+    }
+
+    #[test]
+    fn test_update_context_window_preserves_source() {
+        let mut session = DocumentSession::new(
+            "/test/doc.txt".to_string(),
+            "com.test.app".to_string(),
+            "TestApp".to_string(),
+            ObfuscatedString::new("Test Doc"),
+        );
+
+        let paste_time = 1000 * MS_TO_NS;
+        update_keystroke_context_window(
+            &mut session,
+            paste_time,
+            30_000,
+            PasteSource::SameDocument,
+        );
+        assert_eq!(
+            session.paste_context.as_ref().unwrap().source,
+            PasteSource::SameDocument,
+        );
+
+        update_keystroke_context_window(
+            &mut session,
+            paste_time,
+            30_000,
+            PasteSource::External,
+        );
+        assert_eq!(
+            session.paste_context.as_ref().unwrap().source,
+            PasteSource::External,
         );
     }
 }

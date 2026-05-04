@@ -217,7 +217,7 @@ pub(super) fn build_evidence_packet(ctx: &EvidencePacketContext<'_>) -> Result<s
         "presence": null,
         "hardware": null,
         "keystroke": keystroke_evidence,
-        "behavioral": null,
+        "behavioral": aggregate_semantic_summaries(events),
         "contexts": [],
         "external": null,
         "key_hierarchy": null,
@@ -384,6 +384,95 @@ pub(super) fn build_wire_packet_from_events(
         document_content: None,
         document_filename: None,
         project_files: None,
+    })
+}
+
+/// Aggregate semantic keystroke summaries from checkpoint events into a behavioral section.
+///
+/// Sums the per-checkpoint `SemanticAccumulator` snapshots to produce totals across
+/// the entire evidence chain.
+fn aggregate_semantic_summaries(events: &[cpoe::SecureEvent]) -> serde_json::Value {
+    let mut characters: u64 = 0;
+    let mut delete_backward: u64 = 0;
+    let mut delete_forward: u64 = 0;
+    let mut delete_word: u64 = 0;
+    let mut delete_line: u64 = 0;
+    let mut undo: u64 = 0;
+    let mut redo: u64 = 0;
+    let mut copy: u64 = 0;
+    let mut cut: u64 = 0;
+    let mut paste: u64 = 0;
+    let mut select_all: u64 = 0;
+    let mut navigation: u64 = 0;
+    let mut find: u64 = 0;
+    let mut save: u64 = 0;
+    let mut other_shortcut: u64 = 0;
+    let mut tab: u64 = 0;
+    let mut r#return: u64 = 0;
+    let mut found_any = false;
+
+    // Use the last event's semantic summary as the cumulative snapshot,
+    // since SemanticAccumulator accumulates over the entire session.
+    if let Some(last_summary) = events.iter().rev().find_map(|ev| ev.semantic_summary.as_ref()) {
+        if let Ok(acc) = serde_json::from_str::<serde_json::Value>(last_summary) {
+            characters = acc.get("characters").and_then(|v| v.as_u64()).unwrap_or(0);
+            delete_backward = acc.get("delete_backward").and_then(|v| v.as_u64()).unwrap_or(0);
+            delete_forward = acc.get("delete_forward").and_then(|v| v.as_u64()).unwrap_or(0);
+            delete_word = acc.get("delete_word").and_then(|v| v.as_u64()).unwrap_or(0);
+            delete_line = acc.get("delete_line").and_then(|v| v.as_u64()).unwrap_or(0);
+            undo = acc.get("undo").and_then(|v| v.as_u64()).unwrap_or(0);
+            redo = acc.get("redo").and_then(|v| v.as_u64()).unwrap_or(0);
+            copy = acc.get("copy").and_then(|v| v.as_u64()).unwrap_or(0);
+            cut = acc.get("cut").and_then(|v| v.as_u64()).unwrap_or(0);
+            paste = acc.get("paste").and_then(|v| v.as_u64()).unwrap_or(0);
+            select_all = acc.get("select_all").and_then(|v| v.as_u64()).unwrap_or(0);
+            navigation = acc.get("navigation").and_then(|v| v.as_u64()).unwrap_or(0);
+            find = acc.get("find").and_then(|v| v.as_u64()).unwrap_or(0);
+            save = acc.get("save").and_then(|v| v.as_u64()).unwrap_or(0);
+            other_shortcut = acc.get("other_shortcut").and_then(|v| v.as_u64()).unwrap_or(0);
+            tab = acc.get("tab").and_then(|v| v.as_u64()).unwrap_or(0);
+            r#return = acc.get("return").and_then(|v| v.as_u64()).unwrap_or(0);
+            found_any = true;
+        }
+    }
+
+    if !found_any {
+        return serde_json::Value::Null;
+    }
+
+    let total_deletions = delete_backward + delete_forward + delete_word + delete_line;
+    let total = characters + total_deletions + undo + redo + copy + cut + paste
+        + select_all + navigation + find + save + other_shortcut + tab + r#return;
+    let editing_count = total_deletions + undo + redo + cut + paste + select_all;
+    let editing_ratio = if total > 0 {
+        editing_count as f64 / total as f64
+    } else {
+        0.0
+    };
+
+    serde_json::json!({
+        "semantic_keystrokes": {
+            "characters": characters,
+            "delete_backward": delete_backward,
+            "delete_forward": delete_forward,
+            "delete_word": delete_word,
+            "delete_line": delete_line,
+            "undo": undo,
+            "redo": redo,
+            "copy": copy,
+            "cut": cut,
+            "paste": paste,
+            "select_all": select_all,
+            "navigation": navigation,
+            "find": find,
+            "save": save,
+            "other_shortcut": other_shortcut,
+            "tab": tab,
+            "return": r#return,
+            "total": total,
+            "total_deletions": total_deletions,
+            "editing_ratio": (editing_ratio * 1000.0).round() / 1000.0
+        }
     })
 }
 
