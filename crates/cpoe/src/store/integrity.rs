@@ -216,6 +216,11 @@ impl SecureStore {
                 .execute_batch("ALTER TABLE secure_events ADD COLUMN posme_proof BLOB;")?;
         }
 
+        if !has_column(&self.conn, "secure_events", "semantic_summary")? {
+            self.conn
+                .execute_batch("ALTER TABLE secure_events ADD COLUMN semantic_summary TEXT;")?;
+        }
+
         // Migration: ensure text_fragments tables exist (created in init_schema, but check for older DBs)
         if !has_column(&self.conn, "text_fragments", "fragment_hash")? {
             self.conn.execute_batch(

@@ -46,6 +46,8 @@ pub struct SecureEvent {
     pub hw_cosign_entropy_bytes: Option<u64>,
     /// PoSME proof bytes (CBOR-serialized PosmeProof).
     pub posme_proof: Option<Vec<u8>>,
+    /// JSON-serialized semantic keystroke summary (SemanticAccumulator snapshot).
+    pub semantic_summary: Option<String>,
 }
 
 impl SecureEvent {
@@ -90,6 +92,7 @@ impl SecureEvent {
             hw_cosign_entropy_digest: None,
             hw_cosign_entropy_bytes: None,
             posme_proof: None,
+            semantic_summary: None,
         }
     }
 }
