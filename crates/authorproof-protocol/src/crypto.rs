@@ -104,11 +104,21 @@ pub fn sign_evidence_cose(payload: &[u8], signer: &dyn EvidenceSigner) -> Result
 }
 
 /// C2PA 2.4 COSE_Sign1: x5chain in protected header per spec requirement.
-pub(crate) fn cose_sign1_c2pa(payload: &[u8], signer: &dyn EvidenceSigner) -> Result<Vec<u8>> {
+///
+/// When `cert_der` is `Some`, the DER-encoded X.509 certificate is placed in
+/// x5chain (label 33). Otherwise falls back to raw public key bytes.
+pub(crate) fn cose_sign1_c2pa(
+    payload: &[u8],
+    signer: &dyn EvidenceSigner,
+    cert_der: Option<&[u8]>,
+) -> Result<Vec<u8>> {
+    let x5chain_bytes = cert_der
+        .map(|d| d.to_vec())
+        .unwrap_or_else(|| signer.public_key());
     let mut protected_extra = coset::Header::default();
     protected_extra.rest.push((
         coset::Label::Int(33), // x5chain, RFC 9360
-        ciborium::Value::Bytes(signer.public_key()),
+        ciborium::Value::Bytes(x5chain_bytes),
     ));
     cose_sign1(payload, signer, protected_extra, coset::Header::default())
 }

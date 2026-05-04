@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use super::validation::{verify_manifest_signature, verify_manifest_with_key};
 use super::*;
 use crate::rfc::{Checkpoint, DocumentRef, EvidencePacket, HashAlgorithm, HashValue};
 use coset::CborSerializable;
@@ -430,4 +431,86 @@ fn test_asset_info_construction() {
     let roundtrip: AssetInfo = serde_json::from_str(&json).unwrap();
     assert_eq!(roundtrip.mime_type, info.mime_type);
     assert_eq!(roundtrip.file_extension, info.file_extension);
+}
+
+#[test]
+fn verify_manifest_signature_valid() {
+    let manifest = build_test_manifest();
+    let result = verify_manifest_signature(&manifest).expect("should parse and verify");
+    assert!(result, "Signature on freshly built manifest should be valid");
+}
+
+#[test]
+fn verify_manifest_with_known_key() {
+    let manifest = build_test_manifest();
+    let key = test_signing_key();
+    let pk = key.verifying_key().to_bytes();
+    let result = verify_manifest_with_key(&manifest, &pk).expect("should parse and verify");
+    assert!(result, "Signature should verify against the signing key");
+}
+
+#[test]
+fn verify_manifest_with_wrong_key_returns_false() {
+    let manifest = build_test_manifest();
+    let wrong_key = SigningKey::from_bytes(&[2u8; 32]);
+    let wrong_pk = wrong_key.verifying_key().to_bytes();
+    let result = verify_manifest_with_key(&manifest, &wrong_pk).expect("should parse");
+    assert!(!result, "Signature should not verify against a different key");
+}
+
+#[test]
+fn verify_manifest_tampered_signature_returns_false() {
+    let mut manifest = build_test_manifest();
+    let sign1 = coset::CoseSign1::from_slice(&manifest.signature).unwrap();
+    let mut tampered = sign1;
+    if let Some(byte) = tampered.signature.last_mut() {
+        *byte ^= 0xFF;
+    }
+    manifest.signature = tampered.to_vec().unwrap();
+
+    let result = verify_manifest_signature(&manifest).expect("should parse");
+    assert!(!result, "Tampered signature should fail verification");
+}
+
+#[test]
+fn verify_manifest_empty_signature_is_error() {
+    let mut manifest = build_test_manifest();
+    manifest.signature = Vec::new();
+    let result = verify_manifest_signature(&manifest);
+    assert!(result.is_err(), "Empty signature bytes should be a parse error");
+}
+
+#[test]
+fn validate_manifest_includes_signature_check() {
+    let manifest = build_test_manifest();
+    let result = validate_manifest(&manifest);
+    assert!(
+        result.is_valid(),
+        "Valid manifest with valid signature should pass: {:?}",
+        result.errors
+    );
+    assert!(
+        result.warnings.is_empty(),
+        "No warnings expected: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn validate_manifest_catches_bad_signature() {
+    let mut manifest = build_test_manifest();
+    let sign1 = coset::CoseSign1::from_slice(&manifest.signature).unwrap();
+    let mut tampered = sign1;
+    if let Some(byte) = tampered.signature.last_mut() {
+        *byte ^= 0xFF;
+    }
+    manifest.signature = tampered.to_vec().unwrap();
+
+    let result = validate_manifest(&manifest);
+    assert!(!result.is_valid());
+    assert!(
+        result.errors.iter().any(|e| e.contains("signature verification failed")),
+        "Should report signature failure: {:?}",
+        result.errors
+    );
 }

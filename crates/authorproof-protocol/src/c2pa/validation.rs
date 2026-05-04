@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use coset::CborSerializable;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
+
+use crate::error::{Error, Result};
 
 use super::types::{C2paManifest, ValidationResult};
 use super::{ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_HASH_DATA};
 
 /// §15.10.1.2 standard manifest validation.
 ///
-/// Signature verification requires a caller-provided public key; this method
-/// validates structure only and does not verify the COSE_Sign1 signature.
+/// Performs structural validation and verifies the COSE_Sign1 Ed25519
+/// signature against the public key embedded in the x5chain protected header.
+/// Parse failures during signature verification are reported as warnings
+/// rather than errors to allow structural validation to succeed independently.
 pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -111,6 +117,16 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
 
     if manifest.signature.is_empty() {
         errors.push("COSE_Sign1 signature is empty".to_string());
+    } else {
+        match verify_manifest_signature(manifest) {
+            Ok(true) => {}
+            Ok(false) => {
+                errors.push("COSE_Sign1 signature verification failed".to_string());
+            }
+            Err(e) => {
+                warnings.push(format!("Could not verify COSE_Sign1 signature: {e}"));
+            }
+        }
     }
 
     if manifest.manifest_label.is_empty() {
@@ -118,4 +134,86 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
     }
 
     ValidationResult { errors, warnings }
+}
+
+/// Verify the COSE_Sign1 signature on a manifest using the embedded x5chain key.
+///
+/// Extracts the public key from the x5chain header (either a raw 32-byte key
+/// or a DER-encoded X.509 certificate) and verifies the signature.
+pub fn verify_manifest_signature(manifest: &C2paManifest) -> Result<bool> {
+    let sign1 = coset::CoseSign1::from_slice(&manifest.signature)
+        .map_err(|e| Error::Crypto(format!("failed to parse COSE_Sign1: {e}")))?;
+
+    let pk_bytes = extract_public_key(&sign1)?;
+    let vk = VerifyingKey::from_bytes(&pk_bytes)
+        .map_err(|e| Error::Crypto(format!("invalid Ed25519 public key: {e}")))?;
+
+    verify_cose_sign1_ed25519(&sign1, &vk)
+}
+
+/// Verify the COSE_Sign1 signature on a manifest against a known public key.
+pub fn verify_manifest_with_key(
+    manifest: &C2paManifest,
+    public_key: &[u8; 32],
+) -> Result<bool> {
+    let sign1 = coset::CoseSign1::from_slice(&manifest.signature)
+        .map_err(|e| Error::Crypto(format!("failed to parse COSE_Sign1: {e}")))?;
+
+    let vk = VerifyingKey::from_bytes(public_key)
+        .map_err(|e| Error::Crypto(format!("invalid Ed25519 public key: {e}")))?;
+
+    verify_cose_sign1_ed25519(&sign1, &vk)
+}
+
+/// Extract the Ed25519 public key from x5chain (label 33) in the protected header.
+///
+/// Handles both raw 32-byte public keys (legacy) and DER-encoded X.509
+/// certificates (C2PA-compliant).
+fn extract_public_key(sign1: &coset::CoseSign1) -> Result<[u8; 32]> {
+    let pk_value = sign1
+        .protected
+        .header
+        .rest
+        .iter()
+        .find(|(label, _)| *label == coset::Label::Int(33))
+        .map(|(_, v)| v)
+        .ok_or_else(|| {
+            Error::Crypto("COSE_Sign1 protected header missing x5chain (label 33)".to_string())
+        })?;
+
+    match pk_value {
+        ciborium::Value::Bytes(bytes) if bytes.len() == 32 => {
+            let mut pk = [0u8; 32];
+            pk.copy_from_slice(bytes);
+            Ok(pk)
+        }
+        ciborium::Value::Bytes(bytes) if bytes.len() > 32 => {
+            super::cert::extract_public_key_from_cert(bytes)
+        }
+        ciborium::Value::Bytes(bytes) => Err(Error::Crypto(format!(
+            "x5chain value too short: expected >=32 bytes, got {}",
+            bytes.len()
+        ))),
+        _ => Err(Error::Crypto(
+            "x5chain header value must be a byte string".to_string(),
+        )),
+    }
+}
+
+/// Verify a COSE_Sign1 Ed25519 signature.
+fn verify_cose_sign1_ed25519(
+    sign1: &coset::CoseSign1,
+    vk: &VerifyingKey,
+) -> Result<bool> {
+    let result = sign1.verify_signature(&[], |sig, sig_data| {
+        let signature = Signature::from_slice(sig)
+            .map_err(|e| Error::Crypto(format!("invalid signature format: {e}")))?;
+        vk.verify(sig_data, &signature)
+            .map_err(|e| Error::Crypto(format!("signature verification failed: {e}")))
+    });
+
+    match result {
+        Ok(()) => Ok(true),
+        Err(_) => Ok(false),
+    }
 }

@@ -31,6 +31,7 @@ pub struct C2paManifestBuilder {
     format: Option<String>,
     evidence_url: Option<String>,
     manifest_label: String,
+    cert_der: Option<Vec<u8>>,
 }
 
 impl C2paManifestBuilder {
@@ -49,7 +50,18 @@ impl C2paManifestBuilder {
             format: None,
             evidence_url: None,
             manifest_label,
+            cert_der: None,
         }
+    }
+
+    /// Set a DER-encoded X.509 certificate for the x5chain COSE header.
+    ///
+    /// When set, the certificate bytes are placed in x5chain (label 33) instead
+    /// of raw public key bytes. Use [`super::cert::generate_self_signed_cert`]
+    /// to create one from an Ed25519 signing key.
+    pub fn cert_der(mut self, der: Vec<u8>) -> Self {
+        self.cert_der = Some(der);
+        self
     }
 
     /// Set the filename used in the hash-data hard binding assertion (§9.1).
@@ -221,7 +233,7 @@ impl C2paManifestBuilder {
 
         // §13.2: COSE_Sign1 with x5chain in protected header (C2PA 2.4)
         let claim_cbor = ciborium_to_vec(&claim)?;
-        let signature = sign_c2pa_claim(&claim_cbor, signer)?;
+        let signature = sign_c2pa_claim(&claim_cbor, signer, self.cert_der.as_deref())?;
 
         Ok(C2paManifest {
             claim,
@@ -234,7 +246,11 @@ impl C2paManifestBuilder {
 }
 
 /// §13.2: COSE_Sign1 with x5chain in protected header (C2PA 2.4).
-fn sign_c2pa_claim(claim_cbor: &[u8], signer: &dyn EvidenceSigner) -> Result<Vec<u8>> {
+fn sign_c2pa_claim(
+    claim_cbor: &[u8],
+    signer: &dyn EvidenceSigner,
+    cert_der: Option<&[u8]>,
+) -> Result<Vec<u8>> {
     let pk = signer.public_key();
     let algo = signer.algorithm();
     let expected_len = match algo {
@@ -254,5 +270,5 @@ fn sign_c2pa_claim(claim_cbor: &[u8], signer: &dyn EvidenceSigner) -> Result<Vec
             pk.len()
         )));
     }
-    crate::crypto::cose_sign1_c2pa(claim_cbor, signer)
+    crate::crypto::cose_sign1_c2pa(claim_cbor, signer, cert_der)
 }

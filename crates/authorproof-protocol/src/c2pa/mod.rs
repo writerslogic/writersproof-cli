@@ -6,6 +6,7 @@
 //! per C2PA 2.2 specification (2025-05-01). The manifest uses JUMBF
 //! (ISO 19566-5) box format with COSE_Sign1 signatures.
 
+pub mod cert;
 mod builder;
 mod jumbf;
 mod types;
@@ -22,7 +23,7 @@ pub use types::{
     HashDataAssertion, HashedExtUri, HashedUri, JitterSeal, JumbfInfo, MetadataAssertion,
     ProcessAssertion, SoftwareAgent, ValidationResult,
 };
-pub use validation::validate_manifest;
+pub use validation::{validate_manifest, verify_manifest_signature, verify_manifest_with_key};
 
 pub const ASSERTION_LABEL_CPOE: &str = "org.cpoe.evidence";
 pub const ASSERTION_LABEL_ACTIONS: &str = "c2pa.actions.v2";

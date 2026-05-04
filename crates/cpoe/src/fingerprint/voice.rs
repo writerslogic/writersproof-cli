@@ -305,6 +305,15 @@ pub struct BackspaceSignature {
     /// Average consecutive backspace run length.
     #[serde(default)]
     pub correction_burst_mean: f64,
+    /// Fraction of deletions that are word-level (Option+Backspace / Ctrl+Backspace).
+    #[serde(default)]
+    pub word_delete_rate: f64,
+    /// Fraction of deletions that are line-level (Cmd+Backspace).
+    #[serde(default)]
+    pub line_delete_rate: f64,
+    /// Fraction of deletions that are forward-delete (fn+Backspace / Delete key).
+    #[serde(default)]
+    pub forward_delete_rate: f64,
 }
 
 impl Default for BackspaceSignature {
@@ -317,6 +326,9 @@ impl Default for BackspaceSignature {
             early_correction_rate: 0.0,
             late_correction_rate: 0.0,
             correction_burst_mean: 0.0,
+            word_delete_rate: 0.0,
+            line_delete_rate: 0.0,
+            forward_delete_rate: 0.0,
         }
     }
 }
@@ -338,6 +350,12 @@ impl BackspaceSignature {
             self.late_correction_rate * self_weight + other.late_correction_rate * other_weight;
         self.correction_burst_mean =
             self.correction_burst_mean * self_weight + other.correction_burst_mean * other_weight;
+        self.word_delete_rate =
+            self.word_delete_rate * self_weight + other.word_delete_rate * other_weight;
+        self.line_delete_rate =
+            self.line_delete_rate * self_weight + other.line_delete_rate * other_weight;
+        self.forward_delete_rate =
+            self.forward_delete_rate * self_weight + other.forward_delete_rate * other_weight;
     }
 
     pub fn similarity(&self, other: &BackspaceSignature) -> f64 {
@@ -355,6 +373,9 @@ impl BackspaceSignature {
             relative_sim(self.early_correction_rate, other.early_correction_rate),
             relative_sim(self.late_correction_rate, other.late_correction_rate),
             relative_sim(self.correction_burst_mean, other.correction_burst_mean),
+            relative_sim(self.word_delete_rate, other.word_delete_rate),
+            relative_sim(self.line_delete_rate, other.line_delete_rate),
+            relative_sim(self.forward_delete_rate, other.forward_delete_rate),
         ];
         sims.iter().sum::<f64>() / sims.len() as f64
     }
@@ -557,6 +578,9 @@ pub struct StyleCollector {
     late_corrections: usize,
     /// Counts of (prev_word_len, cur_word_len) transitions for transition entropy
     word_length_transition_counts: HashMap<(usize, usize), usize>,
+    word_deletes: usize,
+    line_deletes: usize,
+    forward_deletes: usize,
 }
 
 impl StyleCollector {
@@ -587,6 +611,9 @@ impl StyleCollector {
             early_corrections: 0,
             late_corrections: 0,
             word_length_transition_counts: HashMap::new(),
+            word_deletes: 0,
+            line_deletes: 0,
+            forward_deletes: 0,
         }
     }
 
@@ -598,15 +625,20 @@ impl StyleCollector {
         char_value: Option<char>,
         semantic: crate::sentinel::types::KeystrokeSemantic,
     ) {
+        use crate::sentinel::types::KeystrokeSemantic as KS;
         if !self.fingerprint.consent_given {
             return;
         }
-        // Use semantic classification for deletion detection when available.
         if semantic.is_deletion() {
+            match semantic {
+                KS::DeleteWord => self.word_deletes += 1,
+                KS::DeleteLine => self.line_deletes += 1,
+                KS::DeleteForward => self.forward_deletes += 1,
+                _ => {}
+            }
             self.handle_backspace();
             return;
         }
-        // Delegate to existing logic for character processing.
         self.record_keystroke_inner(keycode, char_value);
     }
 
@@ -821,6 +853,14 @@ impl StyleCollector {
             if run_count > 0 {
                 fp.backspace_signature.correction_burst_mean =
                     run_sum as f64 / run_count as f64;
+            }
+
+            // Deletion type rates (from semantic classification).
+            if self.total_backspaces > 0 {
+                let tb = self.total_backspaces as f64;
+                fp.backspace_signature.word_delete_rate = self.word_deletes as f64 / tb;
+                fp.backspace_signature.line_delete_rate = self.line_deletes as f64 / tb;
+                fp.backspace_signature.forward_delete_rate = self.forward_deletes as f64 / tb;
             }
         }
 

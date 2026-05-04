@@ -224,34 +224,172 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
             }
         }
         "c2pa" => {
-            let evidence_packet: evidence::Packet =
-                serde_json::from_value(ctx.packet.clone()).context("create evidence packet")?;
+            use cpoe::authorproof_protocol::c2pa::C2paManifestBuilder;
+            use cpoe::authorproof_protocol::rfc::{
+                self as proto_rfc, Checkpoint as ProtoCheckpoint,
+                DocumentRef as ProtoDocumentRef, HashValue as ProtoHashValue,
+            };
+            use std::io::Read as _;
 
+            let latest = events
+                .last()
+                .ok_or_else(|| anyhow!("No events for C2PA export"))?;
+
+            let document = ProtoDocumentRef {
+                content_hash: ProtoHashValue {
+                    algorithm: proto_rfc::HashAlgorithm::Sha256,
+                    digest: latest.content_hash.to_vec(),
+                },
+                filename: file_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string()),
+                byte_length: latest.file_size.max(0) as u64,
+                char_count: latest.file_size.max(0) as u64,
+            };
+
+            let proto_checkpoints: Vec<ProtoCheckpoint> = events
+                .iter()
+                .enumerate()
+                .map(|(i, ev)| {
+                    let mut cp_id = vec![0u8; 16];
+                    cp_id[..16].copy_from_slice(&ev.event_hash[..16]);
+                    ProtoCheckpoint {
+                        sequence: i as u64,
+                        checkpoint_id: cp_id,
+                        timestamp: (ev.timestamp_ns / 1_000_000).max(0) as u64,
+                        content_hash: ProtoHashValue {
+                            algorithm: proto_rfc::HashAlgorithm::Sha256,
+                            digest: ev.content_hash.to_vec(),
+                        },
+                        char_count: ev.file_size.max(0) as u64,
+                        prev_hash: ProtoHashValue {
+                            algorithm: proto_rfc::HashAlgorithm::Sha256,
+                            digest: ev.previous_hash.to_vec(),
+                        },
+                        checkpoint_hash: ProtoHashValue {
+                            algorithm: proto_rfc::HashAlgorithm::Sha256,
+                            digest: ev.event_hash.to_vec(),
+                        },
+                        jitter_hash: None,
+                    }
+                })
+                .collect();
+
+            let mut packet_id = vec![0u8; 16];
+            getrandom::getrandom(&mut packet_id)
+                .context("generate random packet ID for C2PA export")?;
+
+            let proto_packet = proto_rfc::EvidencePacket {
+                version: 1,
+                profile_uri: spec_profile_uri.to_string(),
+                packet_id,
+                created: chrono::Utc::now().timestamp_millis() as u64,
+                document,
+                checkpoints: proto_checkpoints,
+                attestation_tier: Some(match *spec_attestation_tier {
+                    4 => proto_rfc::AttestationTier::HardwareHardened,
+                    3 => proto_rfc::AttestationTier::HardwareBound,
+                    2 => proto_rfc::AttestationTier::AttestedSoftware,
+                    _ => proto_rfc::AttestationTier::SoftwareOnly,
+                }),
+                baseline_verification: None,
+            };
+
+            let evidence_cbor =
+                cpoe::authorproof_protocol::encode_evidence(&proto_packet)
+                    .map_err(|e| anyhow!("CBOR encode evidence packet: {}", e))?;
+
+            let mut doc_file = std::fs::File::open(file_path).with_context(|| {
+                format!("open document for hashing: {}", file_path.display())
+            })?;
+            let mut hasher = sha2::Sha256::new();
+            let mut buf = [0u8; 8192];
+            loop {
+                let n = doc_file
+                    .read(&mut buf)
+                    .context("read document for hash")?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buf[..n]);
+            }
+            let doc_hash: [u8; 32] = hasher.finalize().into();
+
+            let doc_filename = file_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "document".to_string());
+
+            let mut builder = C2paManifestBuilder::new(
+                proto_packet,
+                evidence_cbor.clone(),
+                doc_hash,
+            )
+            .document_filename(&doc_filename)
+            .title(&doc_filename);
+
+            if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
+                let mime = match ext.to_lowercase().as_str() {
+                    "txt" | "text" => "text/plain",
+                    "md" | "markdown" => "text/markdown",
+                    "html" | "htm" => "text/html",
+                    "pdf" => "application/pdf",
+                    "docx" => {
+                        "application/vnd.openxmlformats-officedocument\
+                         .wordprocessingml.document"
+                    }
+                    "doc" => "application/msword",
+                    "rtf" => "application/rtf",
+                    "odt" => "application/vnd.oasis.opendocument.text",
+                    _ => "application/octet-stream",
+                };
+                builder = builder.format(mime);
+            }
+
+            let jumbf_bytes = builder
+                .build_jumbf(ctx.signer)
+                .map_err(|e| anyhow!("C2PA JUMBF build failed: {}", e))?;
+
+            write_atomic(out_path, &jumbf_bytes)?;
+
+            let json_path = out_path.with_extension("c2pa.json");
+            let evidence_packet_engine: evidence::Packet =
+                serde_json::from_value(ctx.packet.clone())
+                    .context("create evidence packet for assertion")?;
             let policy = cpoe::trust_policy::profiles::basic();
-            let block = war::Block::from_packet_appraised(&evidence_packet, ctx.signer, &policy)
-                .map_err(|e| anyhow!("WAR appraisal failed: {}", e))?;
-
-            let ear = block
-                .ear
-                .as_ref()
-                .ok_or_else(|| anyhow!("Appraised block missing EAR token"))?;
-
-            let assertion = war::profiles::c2pa::to_c2pa_assertion(ear)
-                .map_err(|e| anyhow!("C2PA assertion failed: {}", e))?;
-
-            let data = serde_json::to_string_pretty(&assertion)?;
-            write_atomic(out_path, data.as_bytes())?;
+            if let Ok(block) = war::Block::from_packet_appraised(
+                &evidence_packet_engine,
+                ctx.signer,
+                &policy,
+            ) {
+                if let Some(ear) = block.ear.as_ref() {
+                    if let Ok(assertion) =
+                        war::profiles::c2pa::to_c2pa_assertion(ear)
+                    {
+                        let json_data =
+                            serde_json::to_string_pretty(&assertion)?;
+                        write_atomic(&json_path, json_data.as_bytes())?;
+                    }
+                }
+            }
 
             if verbose {
                 println!();
                 println!(
-                    "C2PA assertion exported to {}. Embed in a C2PA manifest \
-                     using c2patool or similar tooling.",
+                    "C2PA JUMBF manifest exported to: {}",
                     out_path.display()
                 );
-                println!("  Label: {}", assertion.label);
-                println!("  Status: {}", assertion.data.status);
+                println!("  Format: JUMBF binary sidecar (ISO 19566-5)");
+                println!("  Document hash: {}", hex::encode(doc_hash));
                 println!("  Checkpoints: {}", events.len());
+                println!("  Manifest size: {} bytes", jumbf_bytes.len());
+                println!("  Evidence CBOR: {} bytes", evidence_cbor.len());
+                if json_path.exists() {
+                    println!(
+                        "  Assertion JSON: {}",
+                        json_path.display()
+                    );
+                }
             }
         }
         _ => {
