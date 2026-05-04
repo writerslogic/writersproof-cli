@@ -263,6 +263,14 @@ pub struct FfiWitnessingStatus {
     /// in degraded (focus-only) mode — keystrokes are not being counted.
     pub keystroke_capture_active: bool,
     pub error_message: Option<String>,
+    /// Ratio of editing keystrokes (delete, undo, cut, paste) to total keystrokes.
+    pub editing_ratio: f64,
+    /// Session activity classification: "composing", "editing", "mixed", or empty if insufficient data.
+    pub session_activity: String,
+    /// Total deletion keystrokes (backward + forward + word + line).
+    pub total_deletions: u64,
+    /// Number of undo operations in this session.
+    pub undo_count: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -351,4 +359,14 @@ pub struct FfiFingerprintSnapshot {
     pub sample_count: u64,
     pub timestamp: i64,
     pub dimensions: Vec<FfiFingerprintDimension>,
+}
+
+/// Raw keystroke timing arrays for behavioral ML inference.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiKeystrokeTimingArrays {
+    pub hold_times_ns: Vec<i64>,
+    pub flight_times_ns: Vec<i64>,
+    pub iki_ns: Vec<i64>,
+    pub sample_count: u64,
 }

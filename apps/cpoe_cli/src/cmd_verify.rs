@@ -409,6 +409,33 @@ fn write_war_appraisal(packet: &evidence::Packet, war_path: &PathBuf) -> Result<
 
 fn verify_cpop(file_path: &PathBuf, out: &OutputMode) -> Result<()> {
     let data = fs::read(file_path).context("read CPoE file")?;
+
+    // Strip and verify CRC32 footer if present: [CBOR][CRC32-BE 4 bytes][magic "CPOE" 4 bytes]
+    let data = if data.len() > 8 && &data[data.len() - 4..] == b"CPOE" {
+        let crc_offset = data.len() - 8;
+        let stored_crc = u32::from_be_bytes([
+            data[crc_offset],
+            data[crc_offset + 1],
+            data[crc_offset + 2],
+            data[crc_offset + 3],
+        ]);
+        let cbor_data = &data[..crc_offset];
+        let computed_crc = crc32fast::hash(cbor_data);
+        if stored_crc != computed_crc {
+            anyhow::bail!(
+                "CRC32 integrity check failed: stored {:08x}, computed {:08x}",
+                stored_crc,
+                computed_crc,
+            );
+        }
+        if !out.quiet && !out.json {
+            println!("  CRC32: {:08x} (verified)", computed_crc);
+        }
+        cbor_data.to_vec()
+    } else {
+        data
+    };
+
     // Evidence files may be COSE_Sign1 envelopes (signed) or raw CBOR (unsigned).
     let cbor_payload = cpoe::ffi::helpers::unwrap_cose_or_raw(&data);
     match cpoe::authorproof_protocol::rfc::wire_types::packet::EvidencePacketWire::decode_cbor(

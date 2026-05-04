@@ -194,6 +194,10 @@ fn not_tracking(capture_active: bool) -> FfiWitnessingStatus {
         document_has_focus: false,
         keystroke_capture_active: capture_active,
         error_message: None,
+        editing_ratio: 0.0,
+        session_activity: String::new(),
+        total_deletions: 0,
+        undo_count: 0,
     }
 }
 
@@ -291,5 +295,13 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         document_has_focus: doc_has_focus,
         keystroke_capture_active: capture_active,
         error_message: metrics.error,
+        editing_ratio: session.semantic_counts.editing_ratio(),
+        session_activity: session
+            .semantic_counts
+            .session_activity_type()
+            .map(|t| t.to_string())
+            .unwrap_or_default(),
+        total_deletions: session.semantic_counts.total_deletions(),
+        undo_count: session.semantic_counts.undo,
     }
 }

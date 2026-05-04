@@ -57,3 +57,4 @@ fs2 = "0.4"
 shell-words = "1.1"
 p256 = { version = "0.13", features = ["ecdh"] }
 base64 = "0.22"
+crc32fast = "1.4"

@@ -85,7 +85,14 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 .encode_cbor()
                 .map_err(|e| anyhow!("CBOR encode failed: {}", e))?;
 
-            write_atomic(out_path, &cbor_data)?;
+            // Append CRC32 integrity footer: [CBOR][CRC32-BE 4 bytes][magic "CPOE" 4 bytes]
+            let crc = crc32fast::hash(&cbor_data);
+            let mut package = Vec::with_capacity(cbor_data.len() + 8);
+            package.extend_from_slice(&cbor_data);
+            package.extend_from_slice(&crc.to_be_bytes());
+            package.extend_from_slice(b"CPOE");
+
+            write_atomic(out_path, &package)?;
 
             if verbose {
                 println!();
@@ -93,7 +100,8 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 println!("  Format: CBOR (CDDL-conformant, tagged)");
                 println!("  CBOR tag: {}", CBOR_TAG_EVIDENCE_PACKET);
                 println!("  Checkpoints: {}", events.len());
-                println!("  Size: {} bytes", cbor_data.len());
+                println!("  Size: {} bytes (CBOR {} + CRC32 footer 8)", package.len(), cbor_data.len());
+                println!("  CRC32: {:08x}", crc);
             }
         }
         "cwar" | "war" => {
