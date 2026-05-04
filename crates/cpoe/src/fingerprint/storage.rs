@@ -21,6 +21,8 @@ use crate::identity::SecureStorage;
 const PROFILE_EXTENSION: &str = ".profile";
 const NONCE_SIZE: usize = 12;
 const KEY_SIZE: usize = 32;
+const SNAPSHOTS_FILE: &str = "snapshots.json";
+const MAX_SNAPSHOTS: usize = 500;
 
 fn build_profile_path(storage_dir: &Path, id: &ProfileId) -> PathBuf {
     let safe_id: String = id
@@ -45,8 +47,17 @@ pub struct StoredProfile {
     pub updated_at: DateTime<Utc>,
     pub sample_count: u64,
     pub confidence: f64,
-    pub has_voice: bool,
+    #[serde(alias = "has_voice")]
+    pub has_style: bool,
     pub file_size: u64,
+}
+
+/// Lightweight periodic snapshot of fingerprint dimensions for evolution tracking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FingerprintSnapshot {
+    pub sample_count: u64,
+    pub timestamp: i64,
+    pub dimensions: Vec<(String, f64)>,
 }
 
 #[derive(Debug)]
@@ -57,6 +68,8 @@ pub struct FingerprintStorage {
     profile_index: HashMap<ProfileId, StoredProfile>,
     /// Tracks mtime per profile file path so refresh_index can skip unchanged files.
     file_mtimes: HashMap<PathBuf, SystemTime>,
+    /// In-memory cache of periodic fingerprint snapshots, bounded at MAX_SNAPSHOTS.
+    snapshots: Vec<FingerprintSnapshot>,
 }
 
 impl FingerprintStorage {
@@ -68,11 +81,14 @@ impl FingerprintStorage {
 
         let encryption_key = Zeroizing::new(load_or_create_fingerprint_key(storage_dir)?);
 
+        let snapshots = load_snapshots(storage_dir);
+
         let mut storage = Self {
             storage_dir: storage_dir.to_path_buf(),
             encryption_key,
             profile_index: HashMap::new(),
             file_mtimes: HashMap::new(),
+            snapshots,
         };
 
         storage.refresh_index()?;
@@ -149,7 +165,7 @@ impl FingerprintStorage {
             updated_at: fingerprint.updated_at,
             sample_count: fingerprint.sample_count,
             confidence: fingerprint.confidence,
-            has_voice: fingerprint.voice.is_some(),
+            has_style: fingerprint.style.is_some(),
             file_size: ciphertext.len() as u64,
         };
         self.profile_index.insert(fingerprint.id.clone(), metadata);
@@ -185,7 +201,7 @@ impl FingerprintStorage {
             updated_at: fingerprint.updated_at,
             sample_count: fingerprint.sample_count,
             confidence: fingerprint.confidence,
-            has_voice: fingerprint.voice.is_some(),
+            has_style: fingerprint.style.is_some(),
             file_size: ciphertext.len() as u64,
         })
     }
@@ -208,21 +224,21 @@ impl FingerprintStorage {
         Ok(())
     }
 
-    /// Strip voice data from all profiles (used on consent revocation).
-    pub fn delete_all_voice_data(&mut self) -> Result<()> {
+    /// Strip style data from all profiles (used on consent revocation).
+    pub fn delete_all_style_data(&mut self) -> Result<()> {
         let ids: Vec<ProfileId> = self.profile_index.keys().cloned().collect();
 
         for id in ids {
             match self.load(&id) {
                 Ok(mut fp) => {
-                    if fp.voice.is_some() {
-                        fp.voice = None;
+                    if fp.style.is_some() {
+                        fp.style = None;
                         self.save(&fp)?;
                     }
                 }
                 Err(e) => {
                     return Err(anyhow!(
-                        "Cannot decrypt profile {} to verify voice data removal: {}",
+                        "Cannot decrypt profile {} to verify style data removal: {}",
                         id,
                         e
                     ));
@@ -286,10 +302,10 @@ impl FingerprintStorage {
         Ok(plaintext)
     }
 
-    /// Export profile as unencrypted JSON (for backup). Voice data is stripped.
+    /// Export profile as unencrypted JSON (for backup). Style data is stripped.
     pub fn export_json(&self, id: &ProfileId) -> Result<String> {
         let mut fingerprint = self.load(id)?;
-        fingerprint.voice = None;
+        fingerprint.style = None;
         Ok(serde_json::to_string_pretty(&fingerprint)?)
     }
 
@@ -300,11 +316,55 @@ impl FingerprintStorage {
         self.save(&fingerprint)?;
         Ok(id)
     }
+
+    /// Append a snapshot, trimming to MAX_SNAPSHOTS, and persist to disk.
+    pub fn save_snapshot(&mut self, snapshot: FingerprintSnapshot) {
+        self.snapshots.push(snapshot);
+        if self.snapshots.len() > MAX_SNAPSHOTS {
+            let excess = self.snapshots.len() - MAX_SNAPSHOTS;
+            self.snapshots.drain(..excess);
+        }
+        self.persist_snapshots();
+    }
+
+    /// Return all stored snapshots.
+    pub fn get_snapshots(&self) -> &[FingerprintSnapshot] {
+        &self.snapshots
+    }
+
+    /// Clear all snapshots from memory and disk.
+    pub fn clear_snapshots(&mut self) {
+        self.snapshots.clear();
+        self.persist_snapshots();
+    }
+
+    fn persist_snapshots(&self) {
+        let path = self.storage_dir.join(SNAPSHOTS_FILE);
+        match serde_json::to_vec(&self.snapshots) {
+            Ok(data) => {
+                if let Err(e) = fs::write(&path, &data) {
+                    log::warn!("Failed to persist fingerprint snapshots: {}", e);
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to serialize fingerprint snapshots: {}", e);
+            }
+        }
+    }
 }
 
 impl Drop for FingerprintStorage {
     fn drop(&mut self) {
         self.encryption_key.zeroize();
+    }
+}
+
+/// Load snapshots from disk, returning an empty vec on any error.
+fn load_snapshots(storage_dir: &Path) -> Vec<FingerprintSnapshot> {
+    let path = storage_dir.join(SNAPSHOTS_FILE);
+    match fs::read(&path) {
+        Ok(data) => serde_json::from_slice(&data).unwrap_or_default(),
+        Err(_) => Vec::new(),
     }
 }
 

@@ -328,15 +328,12 @@ async fn cmd_track_start(
         }
 
         if last_save.elapsed() >= save_interval {
-            match session.lock() {
-                Ok(s) => {
-                    if let Err(e) = s.save(&session_path) {
-                        eprintln!("Warning: session save failed: {}", e);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Warning: session lock poisoned during save: {}", e);
-                }
+            let s = session.lock().unwrap_or_else(|poisoned| {
+                eprintln!("Warning: session mutex poisoned, recovering");
+                poisoned.into_inner()
+            });
+            if let Err(e) = s.save(&session_path) {
+                eprintln!("Warning: session save failed: {}", e);
             }
             last_save = Instant::now();
         }

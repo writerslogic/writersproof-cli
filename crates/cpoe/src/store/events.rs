@@ -136,6 +136,40 @@ impl SecureStore {
         self.get_events_for_file_limited(path, None)
     }
 
+    /// Retrieve events for a file path within a timestamp range (inclusive, nanoseconds).
+    pub fn get_events_for_file_in_range(
+        &self,
+        path: impl AsRef<Path>,
+        start_ns: i64,
+        end_ns: i64,
+    ) -> anyhow::Result<Vec<SecureEvent>> {
+        let path = path.as_ref().to_string_lossy();
+        let query = "SELECT id, device_id, machine_id, timestamp_ns, file_path, \
+                content_hash, file_size, size_delta, previous_hash, event_hash, hmac, \
+                context_type, context_note, vdf_input, vdf_output, vdf_iterations, \
+                forensic_score, is_paste, hardware_counter, input_method, \
+                lamport_signature, lamport_pubkey_fingerprint, challenge_nonce, \
+                hw_cosign_signature, hw_cosign_pubkey, hw_cosign_salt_commitment, \
+                hw_cosign_chain_index, hw_cosign_entangled_hash, \
+                hw_cosign_entropy_digest, hw_cosign_entropy_bytes, \
+                posme_proof \
+                FROM secure_events WHERE file_path = ?1 \
+                AND timestamp_ns >= ?2 AND timestamp_ns <= ?3 \
+                ORDER BY id ASC";
+        let mut stmt = self.conn.prepare(query)?;
+        let mut events = Vec::new();
+        let rows = stmt.query_map(
+            params![path.as_ref(), start_ns, end_ns],
+            Self::row_to_event_with_hmac,
+        )?;
+        for row in rows {
+            let (event, stored_hmac) = row?;
+            self.verify_event_row_hmac(&event, &stored_hmac)?;
+            events.push(event);
+        }
+        Ok(events)
+    }
+
     /// Retrieve events for a file path, ordered by insertion, with an optional limit.
     pub fn get_events_for_file_limited(
         &self,

@@ -334,6 +334,7 @@ pub fn ffi_get_log(path: String) -> Vec<FfiLogEntry> {
             ordinal: i as u64,
             timestamp_ns: ev.timestamp_ns,
             content_hash: hex::encode(ev.content_hash),
+            event_hash: hex::encode(ev.event_hash),
             file_size: ev.file_size,
             size_delta: ev.size_delta,
             message: ev.context_note,
@@ -482,6 +483,42 @@ pub fn ffi_get_snapshot_path(file_path: String, checkpoint_ordinal: u64) -> Stri
     } else {
         String::new()
     }
+}
+
+/// Compute the SHA-256 hex digest of a file using streaming reads (64 KB chunks).
+/// Returns an empty string if the file cannot be read or the path is rejected.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_hash_file(path: String) -> String {
+    use sha2::{Digest, Sha256};
+
+    if crate::sentinel::helpers::validate_path(&path).is_err() {
+        log::warn!("ffi_hash_file: path rejected: {path}");
+        return String::new();
+    }
+
+    let mut file = match std::fs::File::open(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            log::warn!("ffi_hash_file: cannot open {path}: {e}");
+            return String::new();
+        }
+    };
+
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 65_536];
+    loop {
+        use std::io::Read;
+        match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => hasher.update(&buf[..n]),
+            Err(e) => {
+                log::warn!("ffi_hash_file: read error for {path}: {e}");
+                return String::new();
+            }
+        }
+    }
+
+    hex::encode(hasher.finalize())
 }
 
 #[cfg(test)]

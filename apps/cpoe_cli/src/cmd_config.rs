@@ -57,7 +57,7 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                 "  activity_enabled: {}",
                 config.fingerprint.activity_enabled
             );
-            println!("  voice_enabled: {}", config.fingerprint.voice_enabled);
+            println!("  style_enabled: {}", config.fingerprint.style_enabled);
             println!("  retention_days: {}", config.fingerprint.retention_days);
             println!("  min_samples: {}", config.fingerprint.min_samples);
             println!();
@@ -113,11 +113,11 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                     config.fingerprint.activity_enabled =
                         parse_bool_lenient(&value).map_err(|e| anyhow!("{}", e))?;
                 }
-                ["fingerprint", "voice_enabled"] => {
+                ["fingerprint", "style_enabled"] => {
                     let enabled: bool = parse_bool_lenient(&value).map_err(|e| anyhow!("{}", e))?;
 
                     if enabled {
-                        // Trigger voice consent flow
+                        // Trigger style consent flow
                         use cpoe::fingerprint::{ConsentManager, ConsentStatus};
 
                         let mut consent_manager = ConsentManager::new(&config.data_dir)
@@ -126,17 +126,17 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
 
                         match consent_manager.status() {
                             ConsentStatus::Granted => {
-                                config.fingerprint.voice_enabled = true;
+                                config.fingerprint.style_enabled = true;
                             }
                             ConsentStatus::Denied | ConsentStatus::Revoked => {
-                                println!("You previously declined voice fingerprinting.");
+                                println!("You previously declined style fingerprinting.");
                                 println!();
-                                if !prompt_voice_consent(&mut consent_manager, &mut config)? {
+                                if !prompt_style_consent(&mut consent_manager, &mut config)? {
                                     return Ok(());
                                 }
                             }
                             ConsentStatus::NotRequested => {
-                                if !prompt_voice_consent(&mut consent_manager, &mut config)? {
+                                if !prompt_style_consent(&mut consent_manager, &mut config)? {
                                     return Ok(());
                                 }
                             }
@@ -149,7 +149,7 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                         consent_manager
                             .revoke_consent()
                             .map_err(|e| anyhow!("revoke consent: {}", e))?;
-                        config.fingerprint.voice_enabled = false;
+                        config.fingerprint.style_enabled = false;
                     }
                 }
                 ["fingerprint", "retention_days"] => {
@@ -454,16 +454,16 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
     Ok(())
 }
 
-fn prompt_voice_consent(
+fn prompt_style_consent(
     consent_manager: &mut cpoe::fingerprint::ConsentManager,
     config: &mut CpopConfig,
 ) -> Result<bool> {
-    println!("=== Voice Fingerprinting Consent ===");
+    println!("=== Style Fingerprinting Consent ===");
     println!();
     println!("{}", cpoe::fingerprint::consent::CONSENT_EXPLANATION);
     println!();
 
-    print!("Do you consent to voice fingerprinting? (yes/no): ");
+    print!("Do you consent to style fingerprinting? (yes/no): ");
     io::stdout().flush()?;
 
     let mut response = String::new();
@@ -473,17 +473,17 @@ fn prompt_voice_consent(
         consent_manager
             .grant_consent()
             .map_err(|e| anyhow!("record consent: {}", e))?;
-        config.fingerprint.voice_enabled = true;
+        config.fingerprint.style_enabled = true;
         config.persist()?;
         println!();
-        println!("Voice fingerprinting enabled.");
+        println!("Style fingerprinting enabled.");
         Ok(true)
     } else {
         consent_manager
             .deny_consent()
             .map_err(|e| anyhow!("record denial: {}", e))?;
         println!();
-        println!("Voice fingerprinting not enabled.");
+        println!("Style fingerprinting not enabled.");
         Ok(false)
     }
 }

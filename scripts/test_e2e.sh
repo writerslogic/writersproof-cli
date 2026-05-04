@@ -4,7 +4,8 @@
 # Requires: WritersProof running, Accessibility permission granted
 set -eo pipefail
 
-APP_PATH="/Users/davidcondrey/Library/Developer/Xcode/DerivedData/cpoe-acbocyyijoncmrdjcnabxgdfoebc/Build/Products/Debug/WritersProof.app"
+APP_PATH="${WRITERSPROOF_APP:-$(find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 4 -path "*/Build/Products/Debug/WritersProof.app" -print -quit 2>/dev/null)}"
+APP_PATH="${APP_PATH:-/Applications/WritersProof.app}"
 DB_PATH="$HOME/Library/Application Support/WritersProof/events.db"
 TEST_FILE="/tmp/cpoe_e2e_test_$(date +%s).txt"
 PASS=0; FAIL=0; SKIP=0

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{
-    load_api_key, load_did, load_signing_key, open_store, validate_path_str,
+    load_api_key, load_did, load_events_for_path, load_signing_key, open_store, validate_path_str,
 };
 use crate::ffi::types::try_ffi;
 use std::sync::OnceLock;

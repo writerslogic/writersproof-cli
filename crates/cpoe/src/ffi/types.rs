@@ -132,6 +132,7 @@ pub struct FfiLogEntry {
     pub ordinal: u64,
     pub timestamp_ns: i64,
     pub content_hash: String,
+    pub event_hash: String,
     pub file_size: i64,
     pub size_delta: i32,
     pub message: Option<String>,
@@ -291,9 +292,9 @@ impl FfiErrResult for FfiPublishResult {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiFingerprintStatus {
-    pub voice_enabled: bool,
-    pub voice_samples: u64,
-    pub voice_consent: bool,
+    pub style_enabled: bool,
+    pub style_samples: u64,
+    pub style_consent: bool,
     pub activity_enabled: bool,
     pub activity_samples: u64,
 }
@@ -322,4 +323,32 @@ pub struct FfiFingerprintDimension {
     pub name: String,
     pub value: f64,
     pub confidence: f64,
+    /// Human-readable representation for non-numeric dimensions
+    /// (e.g., dominant_zone="Right Index (32%)", peak_hour="14").
+    pub string_value: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiFingerprintVerification {
+    pub success: bool,
+    /// Overall similarity score (0.0-1.0).
+    pub similarity: f64,
+    /// Match probability (0.0-1.0). Currently mirrors similarity.
+    pub match_probability: f64,
+    /// Machine-readable verdict (e.g., "SameAuthor", "Inconclusive").
+    pub verdict: String,
+    /// Human-readable verdict description.
+    pub verdict_description: String,
+    /// Per-dimension similarity breakdown.
+    pub components: Vec<FfiFingerprintDimension>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiFingerprintSnapshot {
+    pub sample_count: u64,
+    pub timestamp: i64,
+    pub dimensions: Vec<FfiFingerprintDimension>,
 }

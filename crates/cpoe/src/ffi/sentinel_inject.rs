@@ -57,6 +57,41 @@ pub fn reset_inject_state() {
     window.count = 0;
 }
 
+/// Inject a keystroke with modifier flags and semantic classification.
+///
+/// Extended version of `ffi_sentinel_inject_keystroke` that also receives
+/// the modifier key bitmask from the host platform (NSEvent.modifierFlags
+/// mapped to our platform-independent `ModifierFlags` layout).
+///
+/// `modifier_flags_raw`: bitmask — bit 0=Shift, 1=Control, 2=Option/Alt,
+/// 3=Command/Super, 4=Fn, 5=CapsLock. The Swift host maps
+/// `NSEvent.modifierFlags` to this layout before calling.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_inject_keystroke_v2(
+    timestamp_ns: i64,
+    keycode: u16,
+    zone: u8,
+    source_state_id: i64,
+    keyboard_type: i64,
+    source_pid: i64,
+    char_value: String,
+    coalesced_count: u64,
+    modifier_flags_raw: u16,
+) -> bool {
+    inject_keystroke_inner(
+        timestamp_ns,
+        keycode,
+        zone,
+        source_state_id,
+        keyboard_type,
+        source_pid,
+        char_value,
+        coalesced_count,
+        crate::sentinel::types::ModifierFlags(modifier_flags_raw),
+    )
+}
+
+/// Backward-compatible entry point (no modifier flags).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_inject_keystroke(
     timestamp_ns: i64,
@@ -68,6 +103,32 @@ pub fn ffi_sentinel_inject_keystroke(
     char_value: String,
     coalesced_count: u64,
 ) -> bool {
+    inject_keystroke_inner(
+        timestamp_ns,
+        keycode,
+        zone,
+        source_state_id,
+        keyboard_type,
+        source_pid,
+        char_value,
+        coalesced_count,
+        crate::sentinel::types::ModifierFlags::default(),
+    )
+}
+
+fn inject_keystroke_inner(
+    timestamp_ns: i64,
+    keycode: u16,
+    zone: u8,
+    source_state_id: i64,
+    keyboard_type: i64,
+    source_pid: i64,
+    char_value: String,
+    coalesced_count: u64,
+    modifiers: crate::sentinel::types::ModifierFlags,
+) -> bool {
+    use crate::sentinel::types::KeystrokeSemantic;
+
     if char_value.len() > 16 {
         return false;
     }
@@ -120,12 +181,15 @@ pub fn ffi_sentinel_inject_keystroke(
         }
     }
 
-    // Feed voice fingerprint collector if enabled.
+    // Classify the keystroke semantic from keycode + modifier flags.
+    let semantic = KeystrokeSemantic::classify(keycode, modifiers);
+
+    // Feed style fingerprint collector if enabled.
     // Only the first character matters (NSEvent.characters can be multi-char for
     // dead keys, but we want the primary character for writing style analysis).
     let char_opt = char_value.chars().next();
-    if let Some(ref mut collector) = *sentinel.voice_collector.write_recover() {
-        collector.record_keystroke(keycode, char_opt);
+    if let Some(ref mut collector) = *sentinel.style_collector.write_recover() {
+        collector.record_keystroke_with_semantic(keycode, char_opt, semantic);
     }
 
     // Same verification as CGEventTap's verify_event_source.
@@ -236,6 +300,9 @@ pub fn ffi_sentinel_inject_keystroke(
             if pushed {
                 session.jitter_samples.push(sample.clone());
             }
+
+            // Record semantic classification in session for evidence enrichment.
+            session.record_semantic(semantic);
 
             let validation = crate::forensics::validate_keystroke_event(
                 timestamp_ns,

@@ -18,6 +18,17 @@ pub(super) fn classify_target(path: &Path) -> Result<TrackTarget> {
         ));
     }
 
+    // Reject symlinks at the entry point to prevent TOCTOU attacks where a
+    // symlink replaces the target between classification and checkpointing.
+    let meta = fs::symlink_metadata(path)
+        .with_context(|| format!("Cannot stat path: {}", path.display()))?;
+    if meta.file_type().is_symlink() {
+        return Err(anyhow!(
+            "Refusing to track symlink: {}\n\nTrack the real file instead.",
+            path.display()
+        ));
+    }
+
     let abs = fs::canonicalize(path)
         .with_context(|| format!("Cannot resolve path: {}", path.display()))?;
 

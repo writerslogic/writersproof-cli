@@ -56,6 +56,29 @@ pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> F
 /// Export stored events for a file as a CBOR evidence packet at the given tier.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiResult {
+    export_evidence_inner(path, tier, output, None, None)
+}
+
+/// Export stored events for a file within a date range as a CBOR evidence packet.
+/// `start_ns` and `end_ns` are inclusive nanosecond timestamps. Pass 0 for unbounded.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_export_evidence_range(
+    path: String,
+    tier: String,
+    output: String,
+    start_ns: i64,
+    end_ns: i64,
+) -> FfiResult {
+    export_evidence_inner(path, tier, output, Some(start_ns), Some(end_ns))
+}
+
+fn export_evidence_inner(
+    path: String,
+    tier: String,
+    output: String,
+    start_ns: Option<i64>,
+    end_ns: Option<i64>,
+) -> FfiResult {
     let file_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&path)
             .map_err(|e| format!("Invalid source path: {e}")),
@@ -74,12 +97,21 @@ pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiRes
     let store = try_ffi!(open_store(), FfiResult);
 
     let file_path_str = file_path.to_string_lossy().into_owned();
-    let events = try_ffi!(
-        store
-            .get_events_for_file(&file_path_str)
-            .map_err(|e| format!("Failed to load events: {e}")),
-        FfiResult
-    );
+    let events = if let (Some(start), Some(end)) = (start_ns, end_ns) {
+        try_ffi!(
+            store
+                .get_events_for_file_in_range(&file_path_str, start, end)
+                .map_err(|e| format!("Failed to load events: {e}")),
+            FfiResult
+        )
+    } else {
+        try_ffi!(
+            store
+                .get_events_for_file(&file_path_str)
+                .map_err(|e| format!("Failed to load events: {e}")),
+            FfiResult
+        )
+    };
 
     if events.is_empty() {
         return FfiResult::err("No events found for this file".to_string());

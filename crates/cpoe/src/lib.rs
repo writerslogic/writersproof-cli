@@ -92,7 +92,7 @@ pub use crate::vdf::{
 
 pub use crate::fingerprint::{
     ActivityFingerprint, AuthorFingerprint, ConsentManager, ConsentStatus, FingerprintComparison,
-    FingerprintManager, FingerprintStatus, ProfileId, VoiceFingerprint,
+    FingerprintManager, FingerprintStatus, ProfileId, StyleFingerprint,
 };
 
 pub use crate::collaboration::{

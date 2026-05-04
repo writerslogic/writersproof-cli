@@ -5,6 +5,7 @@
 pub mod attestation;
 pub mod beacon;
 pub mod chain;
+pub mod collaboration_ffi;
 pub mod credentials;
 pub mod ephemeral;
 pub mod evidence;
@@ -36,6 +37,7 @@ pub mod did_webvh_ffi;
 pub use attestation::*;
 pub use beacon::*;
 pub use chain::*;
+pub use collaboration_ffi::*;
 pub use credentials::*;
 pub use ephemeral::*;
 pub use evidence_checkpoint::*;

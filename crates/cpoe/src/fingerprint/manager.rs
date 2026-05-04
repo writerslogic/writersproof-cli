@@ -5,8 +5,8 @@ use crate::fingerprint::activity::{ActivityFingerprint, ActivityFingerprintAccum
 use crate::fingerprint::author::{AuthorFingerprint, ProfileId};
 use crate::fingerprint::comparison::{self, FingerprintComparison};
 use crate::fingerprint::consent::ConsentManager;
-use crate::fingerprint::storage::{FingerprintStorage, StoredProfile};
-use crate::fingerprint::voice::{VoiceCollector, VoiceFingerprint};
+use crate::fingerprint::storage::{FingerprintSnapshot, FingerprintStorage, StoredProfile};
+use crate::fingerprint::voice::{StyleCollector, StyleFingerprint};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -18,8 +18,9 @@ pub struct FingerprintManager {
     pub(crate) storage: FingerprintStorage,
     pub(crate) consent_manager: ConsentManager,
     pub(crate) activity_accumulator: ActivityFingerprintAccumulator,
-    pub(crate) voice_collector: Option<VoiceCollector>,
+    pub(crate) style_collector: Option<StyleCollector>,
     pub(crate) current_profile_id: Option<ProfileId>,
+    last_snapshot_samples: usize,
 }
 
 impl FingerprintManager {
@@ -32,8 +33,9 @@ impl FingerprintManager {
             storage,
             consent_manager,
             activity_accumulator: ActivityFingerprintAccumulator::new(),
-            voice_collector: None,
+            style_collector: None,
             current_profile_id: None,
+            last_snapshot_samples: 0,
         })
     }
 
@@ -41,8 +43,8 @@ impl FingerprintManager {
         let storage = FingerprintStorage::new(&config.storage_path)?;
         let consent_manager = ConsentManager::new(&config.storage_path)?;
 
-        let voice_collector = if config.voice_enabled && consent_manager.has_voice_consent()? {
-            Some(VoiceCollector::new())
+        let style_collector = if config.style_enabled && consent_manager.has_style_consent()? {
+            Some(StyleCollector::new())
         } else {
             None
         };
@@ -52,8 +54,9 @@ impl FingerprintManager {
             storage,
             consent_manager,
             activity_accumulator: ActivityFingerprintAccumulator::new(),
-            voice_collector,
+            style_collector,
             current_profile_id: None,
+            last_snapshot_samples: 0,
         })
     }
 
@@ -65,8 +68,8 @@ impl FingerprintManager {
         self.config.activity_enabled
     }
 
-    pub fn is_voice_enabled(&self) -> bool {
-        self.config.voice_enabled && self.voice_collector.is_some()
+    pub fn is_style_enabled(&self) -> bool {
+        self.config.style_enabled && self.style_collector.is_some()
     }
 
     pub fn enable_activity(&mut self) {
@@ -77,39 +80,39 @@ impl FingerprintManager {
         self.config.activity_enabled = false;
     }
 
-    pub fn request_voice_consent(&mut self) -> Result<bool> {
+    pub fn request_style_consent(&mut self) -> Result<bool> {
         let granted = self.consent_manager.begin_consent_request()?;
         if granted {
-            self.enable_voice_internal()?;
+            self.enable_style_internal()?;
         }
         Ok(granted)
     }
 
-    pub fn enable_voice(&mut self) -> Result<()> {
-        if !self.consent_manager.has_voice_consent()? {
+    pub fn enable_style(&mut self) -> Result<()> {
+        if !self.consent_manager.has_style_consent()? {
             return Err(anyhow::anyhow!(
-                "Voice fingerprinting requires consent. Call request_voice_consent() first."
+                "Style fingerprinting requires consent. Call request_style_consent() first."
             ));
         }
-        self.enable_voice_internal()
+        self.enable_style_internal()
     }
 
-    fn enable_voice_internal(&mut self) -> Result<()> {
-        self.config.voice_enabled = true;
-        if self.voice_collector.is_none() {
-            self.voice_collector = Some(VoiceCollector::new());
+    fn enable_style_internal(&mut self) -> Result<()> {
+        self.config.style_enabled = true;
+        if self.style_collector.is_none() {
+            self.style_collector = Some(StyleCollector::new());
         }
-        if let Some(ref mut collector) = self.voice_collector {
+        if let Some(ref mut collector) = self.style_collector {
             collector.set_consent(true);
         }
         Ok(())
     }
 
-    pub fn disable_voice(&mut self) -> Result<()> {
-        self.config.voice_enabled = false;
-        self.voice_collector = None;
+    pub fn disable_style(&mut self) -> Result<()> {
+        self.config.style_enabled = false;
+        self.style_collector = None;
         self.consent_manager.revoke_consent()?;
-        self.storage.delete_all_voice_data()?;
+        self.storage.delete_all_style_data()?;
         Ok(())
     }
 
@@ -118,10 +121,16 @@ impl FingerprintManager {
             return;
         }
         self.activity_accumulator.add_sample(sample);
+
+        let count = self.activity_accumulator.sample_count();
+        if count.saturating_sub(self.last_snapshot_samples) >= 50 {
+            self.take_snapshot();
+            self.last_snapshot_samples = count;
+        }
     }
 
-    pub fn record_keystroke_for_voice(&mut self, keycode: u16, char_value: Option<char>) {
-        if let Some(ref mut collector) = self.voice_collector {
+    pub fn record_keystroke_for_style(&mut self, keycode: u16, char_value: Option<char>) {
+        if let Some(ref mut collector) = self.style_collector {
             collector.record_keystroke(keycode, char_value);
         }
     }
@@ -130,8 +139,8 @@ impl FingerprintManager {
         self.activity_accumulator.current_fingerprint()
     }
 
-    pub fn current_voice_fingerprint(&self) -> Option<VoiceFingerprint> {
-        self.voice_collector
+    pub fn current_style_fingerprint(&self) -> Option<StyleFingerprint> {
+        self.style_collector
             .as_ref()
             .map(|c| c.current_fingerprint())
     }
@@ -144,13 +153,68 @@ impl FingerprintManager {
             AuthorFingerprint::new((*activity).clone())
         };
 
-        if let Some(voice) = self.current_voice_fingerprint() {
-            fingerprint = fingerprint.with_voice(voice);
+        if let Some(style) = self.current_style_fingerprint() {
+            fingerprint = fingerprint.with_style(style);
         }
 
         fingerprint.sample_count = self.activity_accumulator.sample_count() as u64;
         fingerprint.update_confidence();
         fingerprint
+    }
+
+    fn take_snapshot(&mut self) {
+        let fp = self.current_author_fingerprint();
+        let activity = self.current_activity_fingerprint();
+
+        let iki_mean = activity.iki_distribution.mean;
+        let iki_std = activity.iki_distribution.std_dev;
+        let iki_cv = if iki_mean > 0.0 {
+            (iki_std / iki_mean).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+
+        let zone_entropy = {
+            let freqs = &activity.zone_profile.zone_frequencies;
+            let e: f64 = freqs
+                .iter()
+                .filter(|&&f| f > 0.0)
+                .map(|&f| -f * f.ln())
+                .sum();
+            let max_entropy = (8.0_f64).ln();
+            if max_entropy > 0.0 {
+                (e / max_entropy).clamp(0.0, 1.0)
+            } else {
+                0.0
+            }
+        };
+
+        let correction_rate = self
+            .current_style_fingerprint()
+            .map(|s| s.correction_rate)
+            .unwrap_or(0.0);
+
+        let hurst = activity.hurst_exponent.unwrap_or(0.5);
+
+        let dimensions = vec![
+            ("typing_speed".into(), (activity.session_signature.mean_typing_speed / 120.0).clamp(0.0, 1.0)),
+            ("consistency".into(), 1.0 - iki_cv),
+            ("pause_depth".into(), (activity.pause_signature.thinking_pause_mean / 5000.0).clamp(0.0, 1.0)),
+            ("correction_rate".into(), correction_rate),
+            ("zone_diversity".into(), zone_entropy),
+            ("rhythm".into(), hurst),
+        ];
+
+        let snapshot = FingerprintSnapshot {
+            sample_count: fp.sample_count,
+            timestamp: chrono::Utc::now().timestamp(),
+            dimensions,
+        };
+        self.storage.save_snapshot(snapshot);
+    }
+
+    pub fn get_snapshots(&self) -> &[FingerprintSnapshot] {
+        self.storage.get_snapshots()
     }
 
     pub fn save_current(&mut self) -> Result<ProfileId> {
@@ -185,7 +249,7 @@ impl FingerprintManager {
 
     pub fn reset_session(&mut self) {
         self.activity_accumulator.reset();
-        if let Some(ref mut collector) = self.voice_collector {
+        if let Some(ref mut collector) = self.style_collector {
             collector.reset();
         }
     }
@@ -201,8 +265,8 @@ impl FingerprintManager {
             AuthorFingerprint::new(activity)
         };
 
-        if let Some(voice) = self.current_voice_fingerprint() {
-            fingerprint = fingerprint.with_voice(voice);
+        if let Some(style) = self.current_style_fingerprint() {
+            fingerprint = fingerprint.with_style(style);
         }
 
         fingerprint.sample_count = self.activity_accumulator.sample_count() as u64;
@@ -213,12 +277,12 @@ impl FingerprintManager {
     pub fn status(&self) -> FingerprintStatus {
         FingerprintStatus {
             activity_enabled: self.config.activity_enabled,
-            voice_enabled: self.config.voice_enabled,
-            voice_consent: self.consent_manager.has_voice_consent().unwrap_or(false),
+            style_enabled: self.config.style_enabled,
+            style_consent: self.consent_manager.has_style_consent().unwrap_or(false),
             current_profile_id: self.current_profile_id.clone(),
             activity_samples: self.activity_accumulator.sample_count(),
-            voice_samples: self
-                .voice_collector
+            style_samples: self
+                .style_collector
                 .as_ref()
                 .map(|c| c.sample_count())
                 .unwrap_or(0),
@@ -238,11 +302,14 @@ impl FingerprintManager {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FingerprintStatus {
     pub activity_enabled: bool,
-    pub voice_enabled: bool,
-    pub voice_consent: bool,
+    #[serde(alias = "voice_enabled")]
+    pub style_enabled: bool,
+    #[serde(alias = "voice_consent")]
+    pub style_consent: bool,
     pub current_profile_id: Option<ProfileId>,
     pub activity_samples: usize,
-    pub voice_samples: usize,
+    #[serde(alias = "voice_samples")]
+    pub style_samples: usize,
     pub confidence: f64,
     #[serde(default)]
     pub phys_ratio: Option<f64>,

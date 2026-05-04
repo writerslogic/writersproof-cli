@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 
 // Re-export sub-module types so existing `use activity::*` paths still work.
 pub use super::activity_analysis::{
-    CircadianPattern, IkiDistribution, PauseSignature, SessionSignature, ZoneProfile,
+    CircadianPattern, DigraphProfile, DimensionConfidence, DwellDistribution,
+    FlightTimeDistribution, IkiDistribution, PauseSignature, SessionSignature, ZoneProfile,
 };
 pub use super::activity_collection::ActivityFingerprintAccumulator;
 
@@ -47,6 +48,22 @@ pub struct ActivityFingerprint {
     pub circadian_pattern: CircadianPattern,
     pub session_signature: SessionSignature,
 
+    /// Key hold duration distribution
+    #[serde(default)]
+    pub dwell_distribution: DwellDistribution,
+    /// Key release-to-press interval distribution
+    #[serde(default)]
+    pub flight_distribution: FlightTimeDistribution,
+    /// Per-digraph (zone pair) IKI timing profile
+    #[serde(default)]
+    pub digraph_profile: DigraphProfile,
+    /// Hurst exponent of IKI time series (long-range dependence)
+    #[serde(default)]
+    pub hurst_exponent: Option<f64>,
+    /// Per-dimension confidence scores
+    #[serde(default)]
+    pub dimension_confidence: DimensionConfidence,
+
     /// Fraction of samples backed by hardware entropy (0.0-1.0).
     /// Only present when `cpoe_jitter` feature is active.
     #[serde(default)]
@@ -68,6 +85,11 @@ impl Default for ActivityFingerprint {
             pause_signature: PauseSignature::default(),
             circadian_pattern: CircadianPattern::default(),
             session_signature: SessionSignature::default(),
+            dwell_distribution: DwellDistribution::default(),
+            flight_distribution: FlightTimeDistribution::default(),
+            digraph_profile: DigraphProfile::default(),
+            hurst_exponent: None,
+            dimension_confidence: DimensionConfidence::default(),
             phys_ratio: None,
             mouse_idle_stats: None,
         }
@@ -106,6 +128,17 @@ impl ActivityFingerprint {
         fp.iki_distribution = IkiDistribution::from_intervals(&ikis);
         fp.zone_profile = ZoneProfile::from_samples(samples);
         fp.pause_signature = PauseSignature::from_intervals(&ikis);
+        fp.dwell_distribution = DwellDistribution::from_samples(samples);
+        fp.flight_distribution = FlightTimeDistribution::from_samples(samples);
+        fp.digraph_profile = DigraphProfile::from_samples(samples);
+        fp.session_signature.compute_burst_metrics(&ikis);
+
+        if ikis.len() >= 20 {
+            fp.hurst_exponent = crate::analysis::hurst::compute_hurst_rs(&ikis)
+                .ok()
+                .map(|h| h.exponent);
+        }
+
         fp.update_confidence();
 
         fp
@@ -127,8 +160,27 @@ impl ActivityFingerprint {
             .merge(&other.zone_profile, self_weight, other_weight);
         self.pause_signature
             .merge(&other.pause_signature, self_weight, other_weight);
+        self.dwell_distribution.weighted_merge(
+            &other.dwell_distribution,
+            self_weight,
+            other_weight,
+        );
+        self.flight_distribution.weighted_merge(
+            &other.flight_distribution,
+            self_weight,
+            other_weight,
+        );
+        self.digraph_profile
+            .weighted_merge(&other.digraph_profile, self_weight, other_weight);
         self.circadian_pattern.merge(&other.circadian_pattern);
         self.session_signature.merge(&other.session_signature);
+
+        self.hurst_exponent = match (self.hurst_exponent, other.hurst_exponent) {
+            (Some(a), Some(b)) => Some(a * self_weight + b * other_weight),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
 
         self.phys_ratio = match (self.phys_ratio, other.phys_ratio) {
             (Some(a), Some(b)) => Some(a * self_weight + b * other_weight),
@@ -171,14 +223,58 @@ impl ActivityFingerprint {
         let iki_sim = self.iki_distribution.similarity(&other.iki_distribution);
         let zone_sim = self.zone_profile.similarity(&other.zone_profile);
         let pause_sim = self.pause_signature.similarity(&other.pause_signature);
+        let dwell_sim = <DwellDistribution as WeightedDistribution>::similarity(
+            &self.dwell_distribution,
+            &other.dwell_distribution,
+        );
+        let flight_sim = <FlightTimeDistribution as WeightedDistribution>::similarity(
+            &self.flight_distribution,
+            &other.flight_distribution,
+        );
+        let digraph_sim = self.digraph_profile.similarity(&other.digraph_profile);
 
-        crate::utils::Probability::clamp(iki_sim * 0.4 + zone_sim * 0.35 + pause_sim * 0.25).get()
+        let mut score = iki_sim * 0.22
+            + zone_sim * 0.22
+            + pause_sim * 0.18
+            + dwell_sim * 0.08
+            + flight_sim * 0.10
+            + digraph_sim * 0.15;
+
+        match (self.hurst_exponent, other.hurst_exponent) {
+            (Some(h1), Some(h2)) => {
+                let hurst_sim = 1.0 - (h1 - h2).abs().min(1.0);
+                score += hurst_sim * 0.05;
+            }
+            _ => {
+                // Redistribute hurst's 0.05 weight across the other 6 dimensions
+                // by scaling them up proportionally: each weight * (1.0 / 0.95)
+                let scale = 1.0 / 0.95;
+                score = iki_sim * 0.22 * scale
+                    + zone_sim * 0.22 * scale
+                    + pause_sim * 0.18 * scale
+                    + dwell_sim * 0.08 * scale
+                    + flight_sim * 0.10 * scale
+                    + digraph_sim * 0.15 * scale;
+            }
+        }
+
+        crate::utils::Probability::clamp(score).get()
     }
 
-    /// Linear confidence saturating at `CONFIDENCE_SATURATION_SAMPLES`.
+    /// Update per-dimension and overall confidence from current state.
     fn update_confidence(&mut self) {
-        self.confidence =
-            (self.sample_count as f64 / super::comparison::CONFIDENCE_SATURATION_SAMPLES).min(1.0);
+        let has_dwell = self.dwell_distribution.mean > 0.0;
+        let has_flight = self.flight_distribution.mean > 0.0;
+        let has_hurst = self.hurst_exponent.is_some();
+
+        self.dimension_confidence = DimensionConfidence::from_sample_count(
+            self.sample_count,
+            has_dwell,
+            has_flight,
+            has_hurst,
+            self.circadian_pattern.total_samples,
+        );
+        self.confidence = self.dimension_confidence.overall();
     }
 }
 

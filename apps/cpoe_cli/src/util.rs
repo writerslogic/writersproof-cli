@@ -270,9 +270,16 @@ pub(crate) fn retry_on_busy<T, F: FnMut() -> Result<T>>(mut op: F) -> Result<T> 
                 if (msg.contains("database is locked") || msg.contains("SQLITE_BUSY"))
                     && attempt < SQLITE_BUSY_MAX_RETRIES - 1
                 {
-                    std::thread::sleep(std::time::Duration::from_millis(
-                        SQLITE_BUSY_BASE_DELAY_MS * (1 << attempt),
-                    ));
+                    let delay_ms = SQLITE_BUSY_BASE_DELAY_MS * (1 << attempt);
+                    if delay_ms > 500 {
+                        eprintln!(
+                            "Warning: SQLite busy, backing off for {}ms before retry {}/{}",
+                            delay_ms,
+                            attempt + 1,
+                            SQLITE_BUSY_MAX_RETRIES
+                        );
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
                     last_err = Some(e);
                     continue;
                 }

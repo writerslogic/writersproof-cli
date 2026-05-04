@@ -198,6 +198,217 @@ impl AiToolCategory {
     }
 }
 
+/// Modifier key state bitmask passed from the host platform.
+///
+/// On macOS, derived from `NSEvent.modifierFlags`. Platform-independent
+/// representation: each bit corresponds to a modifier family regardless
+/// of left/right distinction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ModifierFlags(pub u16);
+
+impl ModifierFlags {
+    pub const SHIFT: u16 = 1 << 0;
+    pub const CONTROL: u16 = 1 << 1;
+    pub const OPTION: u16 = 1 << 2; // Alt on non-Mac
+    pub const COMMAND: u16 = 1 << 3; // Super/Win on non-Mac
+    pub const FN: u16 = 1 << 4;
+    pub const CAPS_LOCK: u16 = 1 << 5;
+
+    pub fn has_shift(self) -> bool {
+        self.0 & Self::SHIFT != 0
+    }
+    pub fn has_control(self) -> bool {
+        self.0 & Self::CONTROL != 0
+    }
+    pub fn has_option(self) -> bool {
+        self.0 & Self::OPTION != 0
+    }
+    pub fn has_command(self) -> bool {
+        self.0 & Self::COMMAND != 0
+    }
+    pub fn has_fn(self) -> bool {
+        self.0 & Self::FN != 0
+    }
+    /// True if any non-Shift command modifier is active (Ctrl/Cmd/Option).
+    pub fn has_command_modifier(self) -> bool {
+        self.0 & (Self::CONTROL | Self::COMMAND | Self::OPTION) != 0
+    }
+}
+
+/// Semantic classification of a keystroke based on keycode + modifier state.
+///
+/// This allows evidence to record *what the user intended* (undo, copy, paste,
+/// select-all) without storing the actual character or document content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum KeystrokeSemantic {
+    /// Regular character input (typing).
+    Character = 0,
+    /// Backspace / delete backward.
+    DeleteBackward = 1,
+    /// Forward delete (fn+Backspace on Mac).
+    DeleteForward = 2,
+    /// Word delete (Option+Backspace on Mac, Ctrl+Backspace on Win/Linux).
+    DeleteWord = 3,
+    /// Line delete (Cmd+Backspace on Mac).
+    DeleteLine = 4,
+    /// Undo (Cmd+Z / Ctrl+Z).
+    Undo = 5,
+    /// Redo (Cmd+Shift+Z / Ctrl+Shift+Z / Ctrl+Y).
+    Redo = 6,
+    /// Copy (Cmd+C / Ctrl+C).
+    Copy = 7,
+    /// Cut (Cmd+X / Ctrl+X).
+    Cut = 8,
+    /// Paste (Cmd+V / Ctrl+V).
+    Paste = 9,
+    /// Select All (Cmd+A / Ctrl+A).
+    SelectAll = 10,
+    /// Navigation (arrow keys, Home, End, Page Up/Down).
+    Navigation = 11,
+    /// Find / search (Cmd+F / Ctrl+F).
+    Find = 12,
+    /// Save (Cmd+S / Ctrl+S).
+    Save = 13,
+    /// Other modifier combo not classified above.
+    OtherShortcut = 14,
+    /// Tab key.
+    Tab = 15,
+    /// Return / Enter key.
+    Return = 16,
+}
+
+impl KeystrokeSemantic {
+    /// Classify a keystroke from its keycode and modifier flags.
+    ///
+    /// macOS keycodes are used as the canonical reference. The calling FFI layer
+    /// is responsible for mapping platform keycodes to the macOS equivalents
+    /// (which the Swift host already provides natively).
+    pub fn classify(keycode: u16, modifiers: ModifierFlags) -> Self {
+        // macOS virtual keycodes (from Events.h / Carbon HIToolbox)
+        const KC_BACKSPACE: u16 = 0x33;
+        const KC_FWD_DELETE: u16 = 0x75;
+        const KC_TAB: u16 = 0x30;
+        const KC_RETURN: u16 = 0x24;
+        const KC_ENTER: u16 = 0x4C; // numpad Enter
+        const KC_Z: u16 = 0x06;
+        const KC_C: u16 = 0x08;
+        const KC_X: u16 = 0x07;
+        const KC_V: u16 = 0x09;
+        const KC_A: u16 = 0x00;
+        const KC_F: u16 = 0x03;
+        const KC_S: u16 = 0x01;
+        const KC_Y: u16 = 0x10;
+        const KC_LEFT: u16 = 0x7B;
+        const KC_RIGHT: u16 = 0x7C;
+        const KC_UP: u16 = 0x7E;
+        const KC_DOWN: u16 = 0x7D;
+        const KC_HOME: u16 = 0x73;
+        const KC_END: u16 = 0x77;
+        const KC_PGUP: u16 = 0x74;
+        const KC_PGDN: u16 = 0x79;
+
+        // Deletion keys (check before modifier combos)
+        if keycode == KC_BACKSPACE {
+            if modifiers.has_command() {
+                return Self::DeleteLine;
+            }
+            if modifiers.has_option() {
+                return Self::DeleteWord;
+            }
+            return Self::DeleteBackward;
+        }
+        if keycode == KC_FWD_DELETE {
+            if modifiers.has_option() {
+                return Self::DeleteWord;
+            }
+            return Self::DeleteForward;
+        }
+
+        // Navigation keys
+        if matches!(
+            keycode,
+            KC_LEFT | KC_RIGHT | KC_UP | KC_DOWN | KC_HOME | KC_END | KC_PGUP | KC_PGDN
+        ) {
+            return Self::Navigation;
+        }
+
+        if keycode == KC_TAB {
+            return Self::Tab;
+        }
+        if keycode == KC_RETURN || keycode == KC_ENTER {
+            return Self::Return;
+        }
+
+        // Command shortcuts (Cmd on Mac, Ctrl on Win/Linux)
+        if modifiers.has_command() || modifiers.has_control() {
+            return match keycode {
+                KC_Z if modifiers.has_shift() => Self::Redo,
+                KC_Z => Self::Undo,
+                KC_Y if modifiers.has_control() => Self::Redo, // Ctrl+Y (Windows)
+                KC_C => Self::Copy,
+                KC_X => Self::Cut,
+                KC_V => Self::Paste,
+                KC_A => Self::SelectAll,
+                KC_F => Self::Find,
+                KC_S => Self::Save,
+                _ => Self::OtherShortcut,
+            };
+        }
+
+        Self::Character
+    }
+
+    /// True if this semantic represents a deletion operation.
+    pub fn is_deletion(self) -> bool {
+        matches!(
+            self,
+            Self::DeleteBackward | Self::DeleteForward | Self::DeleteWord | Self::DeleteLine
+        )
+    }
+
+    /// True if this semantic represents editing (not typing new content).
+    pub fn is_editing(self) -> bool {
+        matches!(
+            self,
+            Self::DeleteBackward
+                | Self::DeleteForward
+                | Self::DeleteWord
+                | Self::DeleteLine
+                | Self::Undo
+                | Self::Redo
+                | Self::Cut
+                | Self::Paste
+                | Self::SelectAll
+        )
+    }
+}
+
+impl fmt::Display for KeystrokeSemantic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Character => "character",
+            Self::DeleteBackward => "delete-backward",
+            Self::DeleteForward => "delete-forward",
+            Self::DeleteWord => "delete-word",
+            Self::DeleteLine => "delete-line",
+            Self::Undo => "undo",
+            Self::Redo => "redo",
+            Self::Copy => "copy",
+            Self::Cut => "cut",
+            Self::Paste => "paste",
+            Self::SelectAll => "select-all",
+            Self::Navigation => "navigation",
+            Self::Find => "find",
+            Self::Save => "save",
+            Self::OtherShortcut => "other-shortcut",
+            Self::Tab => "tab",
+            Self::Return => "return",
+        };
+        f.write_str(s)
+    }
+}
+
 /// Source context of a keystroke during Phase 2 clipboard/paste tracking.
 // NOTE: A parallel KeystrokeContext exists in store/text_fragments.rs.
 // These should be consolidated in a future refactor.
@@ -333,6 +544,99 @@ pub struct DocumentSession {
     pub(crate) hw_cosign_chain_index: u64,
     /// Paste context window for keystroke classification (Phase 2.3).
     pub paste_context: Option<PasteContext>,
+    /// Per-session keystroke semantic counts for evidence enrichment.
+    pub(crate) semantic_counts: SemanticAccumulator,
+}
+
+/// Accumulates keystroke semantic classification counts for a session.
+///
+/// These counts are included in evidence packets to characterize the
+/// author's editing behavior without recording raw keystrokes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SemanticAccumulator {
+    pub characters: u64,
+    pub delete_backward: u64,
+    pub delete_forward: u64,
+    pub delete_word: u64,
+    pub delete_line: u64,
+    pub undo: u64,
+    pub redo: u64,
+    pub copy: u64,
+    pub cut: u64,
+    pub paste: u64,
+    pub select_all: u64,
+    pub navigation: u64,
+    pub find: u64,
+    pub save: u64,
+    pub other_shortcut: u64,
+    pub tab: u64,
+    pub r#return: u64,
+}
+
+impl SemanticAccumulator {
+    pub fn record(&mut self, semantic: KeystrokeSemantic) {
+        match semantic {
+            KeystrokeSemantic::Character => self.characters += 1,
+            KeystrokeSemantic::DeleteBackward => self.delete_backward += 1,
+            KeystrokeSemantic::DeleteForward => self.delete_forward += 1,
+            KeystrokeSemantic::DeleteWord => self.delete_word += 1,
+            KeystrokeSemantic::DeleteLine => self.delete_line += 1,
+            KeystrokeSemantic::Undo => self.undo += 1,
+            KeystrokeSemantic::Redo => self.redo += 1,
+            KeystrokeSemantic::Copy => self.copy += 1,
+            KeystrokeSemantic::Cut => self.cut += 1,
+            KeystrokeSemantic::Paste => self.paste += 1,
+            KeystrokeSemantic::SelectAll => self.select_all += 1,
+            KeystrokeSemantic::Navigation => self.navigation += 1,
+            KeystrokeSemantic::Find => self.find += 1,
+            KeystrokeSemantic::Save => self.save += 1,
+            KeystrokeSemantic::OtherShortcut => self.other_shortcut += 1,
+            KeystrokeSemantic::Tab => self.tab += 1,
+            KeystrokeSemantic::Return => self.r#return += 1,
+        }
+    }
+
+    /// Total deletion keystrokes across all deletion types.
+    pub fn total_deletions(&self) -> u64 {
+        self.delete_backward + self.delete_forward + self.delete_word + self.delete_line
+    }
+
+    /// Ratio of editing keystrokes to total keystrokes.
+    /// Returns 0.0 if no keystrokes recorded.
+    pub fn editing_ratio(&self) -> f64 {
+        let total = self.total();
+        if total == 0 {
+            return 0.0;
+        }
+        let editing = self.total_deletions()
+            + self.undo
+            + self.redo
+            + self.cut
+            + self.paste
+            + self.select_all;
+        editing as f64 / total as f64
+    }
+
+    /// Total keystrokes across all semantic types.
+    pub fn total(&self) -> u64 {
+        self.characters
+            + self.delete_backward
+            + self.delete_forward
+            + self.delete_word
+            + self.delete_line
+            + self.undo
+            + self.redo
+            + self.copy
+            + self.cut
+            + self.paste
+            + self.select_all
+            + self.navigation
+            + self.find
+            + self.save
+            + self.other_shortcut
+            + self.tab
+            + self.r#return
+    }
 }
 
 impl Clone for DocumentSession {
@@ -373,6 +677,7 @@ impl Clone for DocumentSession {
             last_hw_cosign_signature: self.last_hw_cosign_signature.clone(),
             hw_cosign_chain_index: self.hw_cosign_chain_index,
             paste_context: self.paste_context.clone(),
+            semantic_counts: self.semantic_counts.clone(),
         }
     }
 }
@@ -430,7 +735,13 @@ impl DocumentSession {
             last_hw_cosign_signature: None,
             hw_cosign_chain_index: 0,
             paste_context: None,
+            semantic_counts: SemanticAccumulator::default(),
         }
+    }
+
+    /// Record a keystroke semantic classification.
+    pub fn record_semantic(&mut self, semantic: KeystrokeSemantic) {
+        self.semantic_counts.record(semantic);
     }
 
     /// Total keystrokes across all sessions including current.

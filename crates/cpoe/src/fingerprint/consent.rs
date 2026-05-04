@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-//! Explicit consent management for voice fingerprinting.
+//! Explicit consent management for style fingerprinting.
 //!
-//! Grant: `cpoe fingerprint enable-voice` -- displays explanation,
+//! Grant: `cpoe fingerprint enable-style` -- displays explanation,
 //! records timestamped consent.
 //!
-//! Revoke: `cpoe fingerprint disable-voice` -- deletes all stored
-//! voice data and records revocation timestamp.
+//! Revoke: `cpoe fingerprint disable-style` -- deletes all stored
+//! style data and records revocation timestamp.
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
@@ -57,7 +57,7 @@ impl Default for ConsentRecord {
 pub const CONSENT_VERSION: &str = "1.0.0";
 
 pub const CONSENT_EXPLANATION: &str = r#"
-VOICE FINGERPRINTING CONSENT
+STYLE FINGERPRINTING CONSENT
 
 CPoE can optionally analyze your WRITING STYLE to create a unique
 fingerprint that helps verify you are the author of your documents.
@@ -80,14 +80,14 @@ This data is:
 - NEVER transmitted to any server
 - Completely DELETABLE by revoking consent
 
-Voice fingerprinting is OPTIONAL. Activity fingerprinting (typing rhythm)
+Style fingerprinting is OPTIONAL. Activity fingerprinting (typing rhythm)
 works without this and does not capture any content information.
 
-Do you consent to voice fingerprinting? [y/N]
+Do you consent to style fingerprinting? [y/N]
 "#;
 
 #[derive(Debug)]
-/// Persists consent state to `voice_consent.json`.
+/// Persists consent state to `style_consent.json`.
 pub struct ConsentManager {
     consent_file: PathBuf,
     record: ConsentRecord,
@@ -96,7 +96,7 @@ pub struct ConsentManager {
 impl ConsentManager {
     /// Load existing consent record from `base_path`, or initialize default.
     pub fn new(base_path: &Path) -> Result<Self> {
-        let consent_file = base_path.join("voice_consent.json");
+        let consent_file = base_path.join("style_consent.json");
 
         let mut record: ConsentRecord = if consent_file.exists() {
             let contents = fs::read_to_string(&consent_file)?;
@@ -126,7 +126,7 @@ impl ConsentManager {
         self.record.status
     }
 
-    pub fn has_voice_consent(&self) -> Result<bool> {
+    pub fn has_style_consent(&self) -> Result<bool> {
         Ok(self.record.status.is_granted())
     }
 
@@ -162,7 +162,7 @@ impl ConsentManager {
         Ok(())
     }
 
-    /// Revoke consent. Caller is responsible for deleting voice data.
+    /// Revoke consent. Caller is responsible for deleting style data.
     pub fn revoke_consent(&mut self) -> Result<()> {
         if self.record.status != ConsentStatus::Granted {
             return Err(anyhow!("Cannot revoke consent that was not granted"));
@@ -279,11 +279,11 @@ mod tests {
 
         manager.grant_consent().unwrap();
         assert_eq!(manager.status(), ConsentStatus::Granted);
-        assert!(manager.has_voice_consent().unwrap());
+        assert!(manager.has_style_consent().unwrap());
 
         manager.revoke_consent().unwrap();
         assert_eq!(manager.status(), ConsentStatus::Revoked);
-        assert!(!manager.has_voice_consent().unwrap());
+        assert!(!manager.has_style_consent().unwrap());
     }
 
     #[test]

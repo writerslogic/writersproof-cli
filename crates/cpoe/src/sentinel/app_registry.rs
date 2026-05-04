@@ -581,6 +581,86 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Group Containers/UBF8T346G9.Office/Outlook"],
         needs_title_inference: true, // compose windows only expose subject
     },
+    // ── TeXShop ────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "TeXShop",
+        display_name: "TeXShop",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Texpad ─────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.vallettaventures.Texpad",
+        display_name: "Texpad",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Craft ──────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.lukilabs.lukiapp",
+        display_name: "Craft",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[
+            "Library/Group Containers/group.com.lukilabs.lukiapp",
+        ],
+        needs_title_inference: true,
+    },
+    // ── Day One ────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.bloombuilt.dayone-mac",
+        display_name: "Day One",
+        storage: StoragePattern::DatabaseBacked,
+        container_paths: &[
+            "Library/Group Containers/5U8NS4GX82.com.bloombuilt.dayone",
+        ],
+        needs_title_inference: true,
+    },
+    // ── MacDown ────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.uranusjr.macdown",
+        display_name: "MacDown",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Drafts ─────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.agiletortoise.Drafts-OSX",
+        display_name: "Drafts",
+        storage: StoragePattern::CloudLibrary,
+        container_paths: &[
+            "Library/Mobile Documents/iCloud~com~agiletortoise~Drafts5/Documents",
+        ],
+        needs_title_inference: true,
+    },
+    // ── GoodNotes ──────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.goodnotesapp.x",
+        display_name: "GoodNotes",
+        storage: StoragePattern::CloudLibrary,
+        container_paths: &[
+            "Library/Mobile Documents/iCloud~com~goodnotesapp~x/Documents",
+        ],
+        needs_title_inference: true,
+    },
+    // ── CotEditor ──────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.coteditor.CotEditor",
+        display_name: "CotEditor",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── MacVim ─────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "org.vim.MacVim",
+        display_name: "MacVim",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
 ];
 
 /// Look up a `WritingApp` by bundle ID (case-insensitive).
@@ -890,6 +970,15 @@ mod tests {
         assert!(lookup("com.microsoft.Powerpoint").is_some());
         assert!(lookup("com.apple.mail").is_some());
         assert!(lookup("com.microsoft.Outlook").is_some());
+        assert!(lookup("TeXShop").is_some());
+        assert!(lookup("com.vallettaventures.Texpad").is_some());
+        assert!(lookup("com.lukilabs.lukiapp").is_some());
+        assert!(lookup("com.bloombuilt.dayone-mac").is_some());
+        assert!(lookup("com.uranusjr.macdown").is_some());
+        assert!(lookup("com.agiletortoise.Drafts-OSX").is_some());
+        assert!(lookup("com.goodnotesapp.x").is_some());
+        assert!(lookup("com.coteditor.CotEditor").is_some());
+        assert!(lookup("org.vim.MacVim").is_some());
     }
 
     #[test]
@@ -909,11 +998,21 @@ mod tests {
         assert!(needs_title_inference("dev.warp.Warp-Stable"));
         assert!(needs_title_inference("com.apple.mail"));
         assert!(needs_title_inference("com.microsoft.Outlook"));
+        // New title-inferred apps
+        assert!(needs_title_inference("com.lukilabs.lukiapp"));
+        assert!(needs_title_inference("com.bloombuilt.dayone-mac"));
+        assert!(needs_title_inference("com.agiletortoise.Drafts-OSX"));
+        assert!(needs_title_inference("com.goodnotesapp.x"));
         // New file-based apps (should NOT need inference)
         assert!(!needs_title_inference("com.sublimetext.4"));
         assert!(!needs_title_inference("com.panic.Nova"));
         assert!(!needs_title_inference("com.adobe.InDesign"));
         assert!(!needs_title_inference("com.apple.iWork.Keynote"));
+        assert!(!needs_title_inference("TeXShop"));
+        assert!(!needs_title_inference("com.vallettaventures.Texpad"));
+        assert!(!needs_title_inference("com.uranusjr.macdown"));
+        assert!(!needs_title_inference("com.coteditor.CotEditor"));
+        assert!(!needs_title_inference("org.vim.MacVim"));
     }
 
     #[test]

@@ -253,14 +253,24 @@ pub(crate) fn handle_checkpoint(
         }
     }
 
-    // Allow up to 1 second backward tolerance for NTP clock adjustments.
-    // SystemTime is not monotonic — laptops waking from sleep commonly see
-    // small backward jumps. Reject only large backward jumps (>1s).
-    const CLOCK_TOLERANCE_NS: u64 = 1_000_000_000;
+    // Backward clock tolerance: 100ms accommodates NTP micro-adjustments
+    // while rejecting replay attacks that rely on setting the clock back.
+    // Forward tolerance: 5s allows for minor clock-ahead drift.
+    const BACKWARD_TOLERANCE_NS: u64 = 100_000_000; // 100ms
+    const FORWARD_TOLERANCE_NS: u64 = 5_000_000_000; // 5s
+    if now_ns > session.last_checkpoint_ts.saturating_add(FORWARD_TOLERANCE_NS) {
+        return Response::Error {
+            message: format!(
+                "Timestamp too far in future: clock jumped forward by {:.1}s",
+                (now_ns - session.last_checkpoint_ts) as f64 / 1e9
+            ),
+            code: "TIMESTAMP_FUTURE".into(),
+        };
+    }
     if now_ns
         < session
             .last_checkpoint_ts
-            .saturating_sub(CLOCK_TOLERANCE_NS)
+            .saturating_sub(BACKWARD_TOLERANCE_NS)
     {
         return Response::Error {
             message: format!(

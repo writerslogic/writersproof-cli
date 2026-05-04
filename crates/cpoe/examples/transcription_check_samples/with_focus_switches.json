@@ -1,0 +1,170 @@
+{
+  "events": [
+    {
+      "id": 0,
+      "timestamp_ns": 1700000000000000000,
+      "file_size": 1,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 1,
+      "timestamp_ns": 1700000000120000000,
+      "file_size": 2,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 2,
+      "timestamp_ns": 1700000000240000000,
+      "file_size": 3,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 3,
+      "timestamp_ns": 1700000000360000000,
+      "file_size": 4,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 4,
+      "timestamp_ns": 1700000000480000000,
+      "file_size": 5,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 5,
+      "timestamp_ns": 1700000004600000000,
+      "file_size": 6,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 6,
+      "timestamp_ns": 1700000004720000000,
+      "file_size": 7,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 7,
+      "timestamp_ns": 1700000004840000000,
+      "file_size": 8,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 8,
+      "timestamp_ns": 1700000004960000000,
+      "file_size": 9,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 9,
+      "timestamp_ns": 1700000005080000000,
+      "file_size": 10,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 10,
+      "timestamp_ns": 1700000009200000000,
+      "file_size": 11,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 11,
+      "timestamp_ns": 1700000009320000000,
+      "file_size": 12,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 12,
+      "timestamp_ns": 1700000009440000000,
+      "file_size": 13,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 13,
+      "timestamp_ns": 1700000009560000000,
+      "file_size": 14,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 14,
+      "timestamp_ns": 1700000009680000000,
+      "file_size": 15,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 15,
+      "timestamp_ns": 1700000013800000000,
+      "file_size": 16,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 16,
+      "timestamp_ns": 1700000013920000000,
+      "file_size": 17,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 17,
+      "timestamp_ns": 1700000014040000000,
+      "file_size": 18,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 18,
+      "timestamp_ns": 1700000014160000000,
+      "file_size": 19,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    },
+    {
+      "id": 19,
+      "timestamp_ns": 1700000014280000000,
+      "file_size": 20,
+      "size_delta": 1,
+      "file_path": "/tmp/focus.txt"
+    }
+  ],
+  "focus_switches": [
+    {
+      "lost_at_ns": 1699999997000000000,
+      "regained_at_ns": 1699999999500000000,
+      "target_app": "AnotherWindow",
+      "target_bundle_id": "com.example.other"
+    },
+    {
+      "lost_at_ns": 1700000001600000000,
+      "regained_at_ns": 1700000004100000000,
+      "target_app": "AnotherWindow",
+      "target_bundle_id": "com.example.other"
+    },
+    {
+      "lost_at_ns": 1700000006200000000,
+      "regained_at_ns": 1700000008700000000,
+      "target_app": "AnotherWindow",
+      "target_bundle_id": "com.example.other"
+    },
+    {
+      "lost_at_ns": 1700000010800000000,
+      "regained_at_ns": 1700000013300000000,
+      "target_app": "AnotherWindow",
+      "target_bundle_id": "com.example.other"
+    }
+  ]
+}

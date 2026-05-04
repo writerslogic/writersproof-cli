@@ -16,13 +16,14 @@ pub mod voice;
 mod tests;
 
 pub use activity::{
-    ActivityFingerprint, ActivityFingerprintAccumulator, WeightedDistribution, ZoneProfile,
+    ActivityFingerprint, ActivityFingerprintAccumulator, DigraphProfile, DimensionConfidence,
+    DwellDistribution, FlightTimeDistribution, WeightedDistribution, ZoneProfile,
 };
 pub use author::{AuthorFingerprint, ProfileId};
 pub use comparison::{FingerprintComparison, ProfileMatcher};
 pub use consent::{ConsentManager, ConsentRecord, ConsentStatus};
 pub use manager::{FingerprintManager, FingerprintStatus};
-pub use storage::{FingerprintStorage, StoredProfile};
-pub use voice::{VoiceCollector, VoiceFingerprint};
+pub use storage::{FingerprintSnapshot, FingerprintStorage, StoredProfile};
+pub use voice::{StyleCollector, StyleFingerprint};
 
 pub use crate::config::FingerprintConfig;

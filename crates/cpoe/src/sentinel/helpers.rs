@@ -421,10 +421,10 @@ pub fn handle_change_event_sync(
     // a database write. They bypass the extension filter and are handled separately.
     let is_wal_event = is_sqlite_auxiliary_file(&event.path);
 
-    // Scrivener chapter content: extract the .scriv package root so all chapters
-    // in a project contribute to the same session checkpoint.
+    // Bundle documents (.scriv, .pages, .rtfd): extract the package root so
+    // internal file changes contribute to the same session checkpoint.
     let normalized_path = if !is_wal_event {
-        extract_scrivener_package_root(&event.path).unwrap_or_else(|| event.path.clone())
+        extract_bundle_package_root(&event.path).unwrap_or_else(|| event.path.clone())
     } else {
         event.path.clone()
     };
@@ -793,22 +793,30 @@ fn is_sqlite_auxiliary_file(path: &str) -> bool {
         || file_name.ends_with(".db-journal")
 }
 
-/// Extract the .scriv package root from a nested chapter content path.
+/// Bundle document extensions whose internal file changes should be
+/// attributed to the package root rather than individual files inside.
+const BUNDLE_DOC_EXTENSIONS: &[&str] = &[".scriv", ".pages", ".rtfd"];
+
+/// Extract the bundle document root from a nested internal path.
 ///
-/// Scrivener stores chapter content in:
-///   /path/to/Project.scriv/Files/Data/<UUID>/content.rtf
+/// macOS "package" documents store content inside a directory that looks
+/// like a single file in Finder:
+///   - Scrivener: Project.scriv/Files/Data/<UUID>/content.rtf
+///   - Pages:     Document.pages/Index/Tables/DataList-…
+///   - RTFD:      Note.rtfd/TXT.rtf  (rich text with attachments)
 ///
-/// This function strips back to the .scriv package root so checkpoint
-/// events are associated with the project rather than individual chapters.
-fn extract_scrivener_package_root(path: &str) -> Option<String> {
+/// This function walks up the path looking for a directory whose name
+/// ends with one of the known bundle extensions and returns it, so
+/// checkpoint events are associated with the package rather than
+/// individual internal files.
+fn extract_bundle_package_root(path: &str) -> Option<String> {
     let p = Path::new(path);
 
-    // Walk up the path looking for *.scriv directory
     for ancestor in p.ancestors() {
         if let Some(file_name) = ancestor.file_name().and_then(|n| n.to_str()) {
-            if file_name.ends_with(".scriv") {
-                if let Some(s) = ancestor.to_str() {
-                    return Some(s.to_string());
+            for ext in BUNDLE_DOC_EXTENSIONS {
+                if file_name.ends_with(ext) {
+                    return ancestor.to_str().map(|s| s.to_string());
                 }
             }
         }
@@ -1382,5 +1390,45 @@ mod tests {
 
         let past_window = paste_time + 31_000 * MS_TO_NS;
         assert!(!is_within_paste_window(&session, past_window));
+    }
+
+    #[test]
+    fn test_bundle_package_root_scriv() {
+        assert_eq!(
+            extract_bundle_package_root("/Users/me/Novel.scriv/Files/Data/ABC/content.rtf"),
+            Some("/Users/me/Novel.scriv".to_string())
+        );
+    }
+
+    #[test]
+    fn test_bundle_package_root_pages() {
+        assert_eq!(
+            extract_bundle_package_root("/Users/me/Report.pages/Index/Tables/DataList"),
+            Some("/Users/me/Report.pages".to_string())
+        );
+    }
+
+    #[test]
+    fn test_bundle_package_root_rtfd() {
+        assert_eq!(
+            extract_bundle_package_root("/Users/me/Note.rtfd/TXT.rtf"),
+            Some("/Users/me/Note.rtfd".to_string())
+        );
+    }
+
+    #[test]
+    fn test_bundle_package_root_none_for_plain_file() {
+        assert_eq!(extract_bundle_package_root("/Users/me/essay.md"), None);
+    }
+
+    #[test]
+    fn test_bundle_package_root_bare_bundle_returns_self() {
+        // If the path IS the bundle root, ancestors() includes self,
+        // so it returns the bundle path directly — functionally a no-op
+        // at the call site since the caller falls back to event.path.
+        assert_eq!(
+            extract_bundle_package_root("/Users/me/Novel.scriv"),
+            Some("/Users/me/Novel.scriv".to_string())
+        );
     }
 }

@@ -6,7 +6,7 @@
 |----------|------|-------|---------|----------------|
 | CRITICAL | 0    | 2     | 12      | 0              |
 | HIGH     | 0    | 19    | 56      | 0              |
-| MEDIUM   | 80   | 6     | 11      | 0              |
+| MEDIUM   | 28   | 36    | 34      | 0              |
 
 ## Compound Risk
 - [ ] **CLU-001** `ffi_crash_cascade`, CRITICAL, components: C-001, C-002, C-003, C-007
@@ -54,10 +54,10 @@
   Files: `HomePage.xaml.cs:185`, `SessionPage.xaml.cs:120`, `DashboardPage.xaml.cs:380`
   Fix: Implement OnNavigatedFrom with CancellationTokenSource.Cancel()
 
-- [ ] **SYS-008** `dateformatter_thread_safety`, 2 files, MEDIUM — macOS
-  <!-- pid:data_race | verified:true | first:2026-04-11 -->
+- [x] **SYS-008** `dateformatter_thread_safety`, 2 files, MEDIUM — macOS
+  <!-- pid:data_race | verified:true | first:2026-04-11 | fixed:2026-05-04 -->
   Files: `DataTransparencyView.swift:285`, `StatusBarController.swift:16`
-  Fix: Use ISO8601DateFormatter (thread-safe) or create per-call instances
+  Fix: Both sites are @MainActor-isolated; thread safety is guaranteed. DataTransparencyView formatter marked with safety comment.
 
 ## Critical
 - [x] **C-001** `[security]` `CPoEEngineFFI.swift:551`: Force unwrap of String from UTF-8 bytes can crash on invalid UTF-8 from Rust FFI
@@ -350,66 +350,72 @@
 <!-- Security: timing leaks, insufficient validation, stale auth -->
 <!-- Performance: CIContext caching, HashMap cleanup, validation spam -->
 
-- [ ] **M-001** `[concurrency]` `EndpointSecurityClient.swift:115`: ES callback no backpressure; unbounded task queue
-- [ ] **M-002** `[security]` `EndpointSecurityClient.swift:151`: Unvalidated union access in ES message
-- [ ] **M-003** `[error_handling]` `EngineService.swift:219`: Session cleanup timeout leaks task reference
-- [ ] **M-004** `[concurrency]` `CPoEEngineFFI+Sendable.swift:10`: @unchecked Sendable without Rust type audit
-- [ ] **M-005** `[security]` `EngineService.swift:105`: Environment variable race between instances
-- [ ] **M-006** `[error_handling]` `EngineService.swift:386`: getLog() returns empty array on timeout (ambiguous)
-- [ ] **M-007** `[security]` `ReceiptValidation.swift:331`: Hardcoded Apple Root CA fingerprint; no rotation
-- [ ] **M-008** `[security]` `ChallengeService.swift:115`: Session ID length not validated
-- [ ] **M-009** `[security]` `ReceiptValidation.swift:372`: ASN.1 iteration limit may reject large receipts
-- [ ] **M-010** `[security]` `DeviceAttestationService.swift:273`: Challenge freshness unreliable after sleep
-- [ ] **M-011** `[error_handling]` `AuthService+ErrorHandling.swift:108`: OAuth error matching via fragile string checks
-- [ ] **M-012** `[security]` `IntegrityHardening.swift:73`: Dylib check no symlink resolution
-- [ ] **M-013** `[security]` `IntegrityHardening.swift:35`: isBeingDebugged fails closed on sysctl error
-- [ ] **M-014** `[security]` `AuthService+Session.swift:48`: Rate limiter in UserDefaults; survives reinstall
-- [ ] **M-015** `[code_quality]` `KeychainHelper.swift:31`: Delete+add pattern has TOCTOU race
-- [ ] **M-016** `[concurrency]` `EncryptedSessionStore.swift:224`: Key rotation holds lock for entire rotation
-- [ ] **M-017** `[concurrency]` `AuthService+Session.swift:208`: authStateTask accessed from non-isolated deinit
-- [ ] **M-018** `[code_quality]` `ReceiptValidation.swift:328`: Bundle ID obfuscation via Unicode scalars
-- [ ] **M-019** `[error_handling]` `CloudSyncService.swift:387`: Audit log write swallows errors
-- [ ] **M-020** `[performance]` `DataDirectoryMonitor.swift:122`: Validation triggered per FSEvent batch
+- [x] **M-001** `[concurrency]` `EndpointSecurityClient.swift:115`: ES callback no backpressure; unbounded task queue
+- [-] **M-002** `[security]` `EndpointSecurityClient.swift:151`: Unvalidated union access in ES message
+- [x] **M-003** `[error_handling]` `EngineService.swift:219`: Session cleanup timeout leaks task reference
+  <!-- fixed:2026-05-04 (cleanupTask stored in CleanupTaskRegistry; cancel on dealloc) -->
+- [-] **M-004** `[concurrency]` `CPoEEngineFFI+Sendable.swift:10`: @unchecked Sendable without Rust type audit
+- [x] **M-005** `[security]` `EngineService.swift:105`: Environment variable race between instances
+- [x] **M-006** `[error_handling]` `EngineService.swift:386`: getLog() returns empty array on timeout (ambiguous)
+  <!-- fixed:2026-05-04 (returns nil on timeout; callers distinguish nil=error from []=empty) -->
+- [x] **M-007** `[security]` `ReceiptValidation.swift:331`: Hardcoded Apple Root CA fingerprint; no rotation
+- [x] **M-008** `[security]` `ChallengeService.swift:115`: Session ID length not validated
+  <!-- fixed:2026-05-04 (added !sid.isEmpty minimum length check) -->
+- [x] **M-009** `[security]` `ReceiptValidation.swift:372`: ASN.1 iteration limit may reject large receipts
+- [x] **M-010** `[security]` `DeviceAttestationService.swift:273`: Challenge freshness unreliable after sleep
+- [x] **M-011** `[error_handling]` `AuthService+ErrorHandling.swift:108`: OAuth error matching via fragile string checks
+- [x] **M-012** `[security]` `IntegrityHardening.swift:73`: Dylib check no symlink resolution
+  <!-- fixed:2026-05-04 (resolve symlinks via URL.resolvingSymlinksInPath before prefix check) -->
+- [x] **M-013** `[security]` `IntegrityHardening.swift:35`: isBeingDebugged fails closed on sysctl error
+- [x] **M-014** `[security]` `AuthService+Session.swift:48`: Rate limiter in UserDefaults; survives reinstall
+- [x] **M-015** `[code_quality]` `KeychainHelper.swift:31`: Delete+add pattern has TOCTOU race
+  <!-- fixed:2026-05-04 (retry on errSecDuplicateItem after delete; handles concurrent add from another process) -->
+- [x] **M-016** `[concurrency]` `EncryptedSessionStore.swift:224`: Key rotation holds lock for entire rotation
+- [-] **M-017** `[concurrency]` `AuthService+Session.swift:208`: authStateTask accessed from non-isolated deinit
+- [-] **M-018** `[code_quality]` `ReceiptValidation.swift:328`: Bundle ID obfuscation via Unicode scalars
+- [-] **M-019** `[error_handling]` `CloudSyncService.swift:387`: Audit log write swallows errors
+- [-] **M-020** `[performance]` `DataDirectoryMonitor.swift:122`: Validation triggered per FSEvent batch
 - [ ] **M-021** `[architecture]` `DataDirectoryIntegrityService.swift:382`: Private API (proc_listpids) usage
-- [ ] **M-022** `[concurrency]` `NotificationManager.swift:237`: Tasks cancelled but not awaited
+- [-] **M-022** `[concurrency]` `NotificationManager.swift:237`: Tasks cancelled but not awaited
 - [x] **M-023** `[performance]` `ProofCardService.swift:539`: CIContext created per call; should be cached
-- [ ] **M-024** `[architecture]` `DataDirectoryIntegrityService+Security.swift:260`: fdesetup blocks main thread
-- [ ] **M-025** `[maintainability]` `BrowserExtensionService.swift:780`: HMAC key cache no TTL
+- [x] **M-024** `[architecture]` `DataDirectoryIntegrityService+Security.swift:260`: fdesetup blocks main thread
+- [x] **M-025** `[maintainability]` `BrowserExtensionService.swift:780`: HMAC key cache no TTL
 - [ ] **M-026** `[architecture]` `PopoverComponents.swift:1`: God module; 942 lines mixed UI
 - [ ] **M-027** `[architecture]` `SettingsContent.swift:1`: God module; 1383 lines mixed UI+logic
-- [ ] **M-028** `[security]` `CheckpointFormView.swift:172`: File path from service without validation
-- [ ] **M-029** `[error_handling]` `DashboardSetupContent.swift:374`: Raw technical details in user alert
-- [ ] **M-030** `[code_quality]` `SettingsAccountTab.swift:463`: Hardcoded URL without constant
-- [ ] **M-031** `[security]` `SettingsUtilities.swift:40`: Path prefix matching without resolution
+- [x] **M-028** `[security]` `CheckpointFormView.swift:172`: File path from service without validation
+- [x] **M-029** `[error_handling]` `DashboardSetupContent.swift:374`: Raw technical details in user alert
+- [-] **M-030** `[code_quality]` `SettingsAccountTab.swift:463`: Hardcoded URL without constant
+- [-] **M-031** `[security]` `SettingsUtilities.swift:40`: Path prefix matching without resolution
 - [-] **M-032** `[error_handling]` `cmd_verify.rs:420`: File sync_all() result silently discarded
-- [ ] **M-033** `[error_handling]` `cmd_track/mod.rs:331`: Mutex poisoning recovery suppressed
+- [x] **M-033** `[error_handling]` `cmd_track/mod.rs:331`: Mutex poisoning recovery suppressed
 - [-] **M-034** `[security]` `native_messaging_host/protocol.rs:99`: Domain suffix matching without boundary check
-- [ ] **M-035** `[security]` `native_messaging_host/handlers.rs:275`: 1s clock tolerance allows backwards attacks
-- [ ] **M-036** `[security]` `native_messaging_host/handlers.rs:187`: Timing side-channel in hex validation
-- [ ] **M-037** `[security]` `cmd_track/filesystem.rs:69`: Symlink TOCTOU between classify and checkpoint
+- [x] **M-035** `[security]` `native_messaging_host/handlers.rs:275`: 1s clock tolerance allows backwards attacks
+- [-] **M-036** `[security]` `native_messaging_host/handlers.rs:187`: Timing side-channel in hex validation
+- [x] **M-037** `[security]` `cmd_track/filesystem.rs:69`: Symlink TOCTOU between classify and checkpoint
 - [-] **M-038** `[concurrency]` `cmd_track/mod.rs:214`: Ctrl+C handler races with HashMap access
 - [-] **M-039** `[performance]` `cmd_track/mod.rs:228`: HashMap retain in hot path O(n) per timeout
-- [ ] **M-040** `[code_quality]` `util.rs:262`: Exponential backoff reaches 1.6s with no user feedback
-- [ ] **M-041** `[maintainability]` `cmd_track/mod.rs:1`: 1107 lines; mixed concerns in event loop
-- [ ] **M-042** `[maintainability]` `native_messaging_host/handlers.rs:13`: handle_start_session 171 lines deeply nested
-- [ ] **M-043** `[architecture]` `native_messaging_host/mod.rs:40`: Error handling uses eprintln only
+- [x] **M-040** `[code_quality]` `util.rs:262`: Exponential backoff reaches 1.6s with no user feedback
+- [-] **M-041** `[maintainability]` `cmd_track/mod.rs:1`: 1107 lines; mixed concerns in event loop
+- [-] **M-042** `[maintainability]` `native_messaging_host/handlers.rs:13`: handle_start_session 171 lines deeply nested
+- [-] **M-043** `[architecture]` `native_messaging_host/mod.rs:40`: Error handling uses eprintln only
 - [ ] **M-044** `[architecture]` `cpoe_cli/src/`: Session types incompatible between NMH and CLI
-- [ ] **M-045** `[security]` `AppDelegate.swift:537`: Deep link handler processes before full init
-- [ ] **M-046** `[security]` `AppDelegate.swift:625`: Replay protection lost on app restart
+- [x] **M-045** `[security]` `AppDelegate.swift:537`: Deep link handler processes before full init
+- [x] **M-046** `[security]` `AppDelegate.swift:625`: Replay protection lost on app restart
 - [-] **M-047** `[concurrency]` `CPoEService+Polling.swift:156`: Pulse reset tasks accumulate
-- [ ] **M-048** `[error_handling]` `CPoEService+Polling.swift:40`: No monotonicity check on status updates
-- [ ] **M-049** `[security]` `CollaborationSession.swift:261`: Fingerprint collision in collaborator revocation
-- [ ] **M-050** `[architecture]` `CollaborationSession.swift:175`: No dedup for collaborator invitations
+- [x] **M-048** `[error_handling]` `CPoEService+Polling.swift:40`: No monotonicity check on status updates
+  <!-- fixed:2026-05-04 (guard: if same doc tracked and keystrokeCount decreased, keep higher value with warning log) -->
+- [-] **M-049** `[security]` `CollaborationSession.swift:261`: Fingerprint collision in collaborator revocation
+- [x] **M-050** `[architecture]` `CollaborationSession.swift:175`: No dedup for collaborator invitations
 - [x] **M-051** `[performance]` `HistoryPopoverViews.swift:169`: Search debounce leaks tasks
-- [ ] **M-052** `[security]` `LiveDemoView.swift:9`: TransparencyFeed injectable by any code
-- [ ] **M-053** `[concurrency]` `DataTransparencyView.swift:285`: DateFormatter not thread-safe
+- [-] **M-052** `[security]` `LiveDemoView.swift:9`: TransparencyFeed injectable by any code
+- [-] **M-053** `[concurrency]` `DataTransparencyView.swift:285`: DateFormatter not thread-safe
 - [-] **M-054** `[error_handling]` `PaywallView.swift:269`: isPurchasing stuck on throw
-- [ ] **M-055** `[security]` `CPoESettings.swift`: UserDefaults settings without encryption
-- [ ] **M-056** `[error_handling]` `AppDelegate.swift:515`: writePID() does not check return value
-- [ ] **M-057** `[error_handling]` `AppDelegate.swift:682`: Retry init without backoff
-- [ ] **M-058** `[architecture]` `CPoEApp.swift:41`: Menu setup mixed with app routing
-- [ ] **M-059** `[security]` `CodeSigningValidation.swift:152`: Hardcoded team ID
-- [ ] **M-060** `[architecture]` `VerifiableCredentialService.swift:146`: No proof format validation against W3C spec
+- [-] **M-055** `[security]` `CPoESettings.swift`: UserDefaults settings without encryption
+- [x] **M-056** `[error_handling]` `AppDelegate.swift:515`: writePID() does not check return value
+- [x] **M-057** `[error_handling]` `AppDelegate.swift:682`: Retry init without backoff
+- [-] **M-058** `[architecture]` `CPoEApp.swift:41`: Menu setup mixed with app routing
+- [x] **M-059** `[security]` `CodeSigningValidation.swift:152`: Hardcoded team ID
+- [-] **M-060** `[architecture]` `VerifiableCredentialService.swift:146`: No proof format validation against W3C spec
 - [ ] **M-061** `[performance]` `CPoEBridge.Infrastructure.cs:236`: O(n log n) cache eviction inline
 - [x] **M-062** `[error_handling]` `ErrorService.cs:164`: async void ShowInlineSuccess
 - [-] **M-063** `[error_handling]` `FileWatcherService.cs:202`: async void OnWatcherError
@@ -446,7 +452,7 @@
 - [ ] **M-094** `[code_quality]` `SettingsPage.xaml.cs:255`: Complex _isLoading state machine
 - [ ] **M-095** `[error_handling]` `TimelineDialog.xaml.cs:42`: ContinueWith null exception check missing
 - [ ] **M-096** `[error_handling]` `BatchVerifyDialog.xaml.cs:280`: ObjectDisposedException silently caught
-- [ ] **M-097** `[maintainability]` `NotificationManager.swift:772`: Inefficient notification sort
+- [-] **M-097** `[maintainability]` `NotificationManager.swift:772`: Inefficient notification sort
 
 ## Quick Wins
 | ID | Sev | File:Line | Issue | Effort |

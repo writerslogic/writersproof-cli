@@ -15,8 +15,42 @@ const INCONCLUSIVE_THRESHOLD: f64 = 0.40;
 /// Similarity above this threshold yields a LikelyDifferentAuthors verdict.
 const LIKELY_DIFFERENT_THRESHOLD: f64 = 0.20;
 
+/// All verdict thresholds for hysteresis checking.
+const VERDICT_THRESHOLDS: [f64; 4] = [
+    SAME_AUTHOR_THRESHOLD,
+    LIKELY_SAME_THRESHOLD,
+    INCONCLUSIVE_THRESHOLD,
+    LIKELY_DIFFERENT_THRESHOLD,
+];
+
 /// Confidence scales linearly with sample count, saturating at this value.
 pub(crate) const CONFIDENCE_SATURATION_SAMPLES: f64 = 200.0;
+
+// --- Per-dimension weights (activity) ---
+/// Inter-key interval distribution weight.
+const W_IKI: f64 = 0.20;
+/// Zone profile weight.
+const W_ZONE: f64 = 0.15;
+/// Pause signature weight.
+const W_PAUSE: f64 = 0.10;
+/// Dwell time distribution weight.
+const W_DWELL: f64 = 0.10;
+/// Flight time distribution weight.
+const W_FLIGHT: f64 = 0.08;
+/// Digraph profile weight.
+const W_DIGRAPH: f64 = 0.12;
+/// Hurst exponent weight.
+const W_HURST: f64 = 0.05;
+
+// --- Per-dimension weights (style) ---
+/// Word length distribution weight.
+const W_WORD_LEN: f64 = 0.05;
+/// Punctuation signature weight.
+const W_PUNCT: f64 = 0.05;
+/// N-gram signature weight.
+const W_NGRAM: f64 = 0.05;
+/// Correction/backspace pattern weight.
+const W_CORRECTION: f64 = 0.05;
 
 /// Pairwise fingerprint comparison result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,10 +60,25 @@ pub struct FingerprintComparison {
     /// 0.0 - 1.0
     pub similarity: f64,
     pub activity_similarity: f64,
-    pub voice_similarity: Option<f64>,
+    #[serde(alias = "voice_similarity")]
+    pub style_similarity: Option<f64>,
     pub confidence: f64,
     pub verdict: ComparisonVerdict,
     pub components: ComparisonComponents,
+}
+
+impl FingerprintComparison {
+    /// Sigmoid-based probability that the two profiles share authorship.
+    ///
+    /// Maps similarity through a logistic curve centered on the likely-same
+    /// threshold, then scales by confidence.
+    pub fn match_probability(&self) -> f64 {
+        let k = 10.0;
+        let midpoint = LIKELY_SAME_THRESHOLD;
+        let raw = 1.0 / (1.0 + (-k * (self.similarity - midpoint)).exp());
+        let result = raw * self.confidence;
+        if result.is_finite() { result.clamp(0.0, 1.0) } else { 0.0 }
+    }
 }
 
 /// Similarity-based authorship verdict.
@@ -58,6 +107,21 @@ impl ComparisonVerdict {
         }
     }
 
+    /// Classify with hysteresis: if similarity is within 0.05 of any threshold
+    /// and a previous verdict is provided, retain the previous verdict to avoid
+    /// flip-flopping on boundary values.
+    pub fn from_similarity_with_hysteresis(similarity: f64, previous: Option<Self>) -> Self {
+        let new = Self::from_similarity(similarity);
+        if let Some(prev) = previous {
+            for threshold in VERDICT_THRESHOLDS {
+                if (similarity - threshold).abs() < 0.05 {
+                    return prev;
+                }
+            }
+        }
+        new
+    }
+
     /// Return a human-readable description of this verdict.
     pub fn description(&self) -> &'static str {
         match self {
@@ -76,6 +140,16 @@ pub struct ComparisonComponents {
     pub iki_similarity: f64,
     pub zone_similarity: f64,
     pub pause_similarity: f64,
+    #[serde(default)]
+    pub dwell_similarity: Option<f64>,
+    #[serde(default)]
+    pub flight_similarity: Option<f64>,
+    #[serde(default)]
+    pub digraph_similarity: Option<f64>,
+    #[serde(default)]
+    pub hurst_similarity: Option<f64>,
+    #[serde(default)]
+    pub correction_similarity: Option<f64>,
     pub word_length_similarity: Option<f64>,
     pub punctuation_similarity: Option<f64>,
     pub ngram_similarity: Option<f64>,
@@ -95,8 +169,36 @@ pub fn compare_fingerprints(a: &AuthorFingerprint, b: &AuthorFingerprint) -> Fin
         .pause_signature
         .similarity(&b.activity.pause_signature);
 
-    let (voice_similarity, word_len_sim, punct_sim, ngram_sim) =
-        if let (Some(va), Some(vb)) = (&a.voice, &b.voice) {
+    use super::activity::WeightedDistribution;
+    let dwell_sim = Some(
+        <super::activity_analysis::DwellDistribution as WeightedDistribution>::similarity(
+            &a.activity.dwell_distribution,
+            &b.activity.dwell_distribution,
+        ),
+    );
+    let flight_sim = Some(
+        <super::activity_analysis::FlightTimeDistribution as WeightedDistribution>::similarity(
+            &a.activity.flight_distribution,
+            &b.activity.flight_distribution,
+        ),
+    );
+    let digraph_sim = Some(
+        <super::activity_analysis::DigraphProfile as WeightedDistribution>::similarity(
+            &a.activity.digraph_profile,
+            &b.activity.digraph_profile,
+        ),
+    );
+    let hurst_sim = match (a.activity.hurst_exponent, b.activity.hurst_exponent) {
+        (Some(ha), Some(hb)) => {
+            let sim = 1.0 - (ha - hb).abs().min(1.0);
+            if sim.is_finite() { Some(sim) } else { None }
+        }
+        _ => None,
+    };
+
+    // Style dimensions (including correction similarity from backspace patterns).
+    let (style_similarity, word_len_sim, punct_sim, ngram_sim, correction_sim) =
+        if let (Some(va), Some(vb)) = (&a.style, &b.style) {
             let sim = va.similarity(vb);
             let word_len = super::voice::histogram_similarity(
                 &va.word_length_distribution,
@@ -106,16 +208,18 @@ pub fn compare_fingerprints(a: &AuthorFingerprint, b: &AuthorFingerprint) -> Fin
                 .punctuation_signature
                 .similarity(&vb.punctuation_signature);
             let ngram = va.ngram_signature.similarity(&vb.ngram_signature);
-            (Some(sim), Some(word_len), Some(punct), Some(ngram))
+            let correction = va.backspace_signature.similarity(&vb.backspace_signature);
+            (Some(sim), Some(word_len), Some(punct), Some(ngram), Some(correction))
         } else {
-            (None, None, None, None)
+            (None, None, None, None, None)
         };
 
-    let similarity = if let Some(voice_sim) = voice_similarity {
-        activity_similarity * 0.6 + voice_sim * 0.4
-    } else {
-        activity_similarity
-    };
+    // Per-dimension weighted similarity with dynamic redistribution.
+    let similarity = weighted_similarity(
+        iki_sim, zone_sim, pause_sim,
+        dwell_sim, flight_sim, digraph_sim, hurst_sim,
+        word_len_sim, punct_sim, ngram_sim, correction_sim,
+    );
 
     let min_samples = a.sample_count.min(b.sample_count);
     let confidence = confidence_from_samples(min_samples);
@@ -125,17 +229,64 @@ pub fn compare_fingerprints(a: &AuthorFingerprint, b: &AuthorFingerprint) -> Fin
         profile_b: b.id.clone(),
         similarity,
         activity_similarity,
-        voice_similarity,
+        style_similarity,
         confidence,
         verdict: ComparisonVerdict::from_similarity(similarity),
         components: ComparisonComponents {
             iki_similarity: iki_sim,
             zone_similarity: zone_sim,
             pause_similarity: pause_sim,
+            dwell_similarity: dwell_sim,
+            flight_similarity: flight_sim,
+            digraph_similarity: digraph_sim,
+            hurst_similarity: hurst_sim,
+            correction_similarity: correction_sim,
             word_length_similarity: word_len_sim,
             punctuation_similarity: punct_sim,
             ngram_similarity: ngram_sim,
         },
+    }
+}
+
+/// Compute weighted similarity across all available dimensions.
+///
+/// When a dimension is absent (None), its weight is redistributed
+/// proportionally among the present dimensions.
+fn weighted_similarity(
+    iki: f64, zone: f64, pause: f64,
+    dwell: Option<f64>, flight: Option<f64>,
+    digraph: Option<f64>, hurst: Option<f64>,
+    word_len: Option<f64>, punct: Option<f64>,
+    ngram: Option<f64>, correction: Option<f64>,
+) -> f64 {
+    // Always-present activity dimensions.
+    let mut total_weight = W_IKI + W_ZONE + W_PAUSE;
+    let mut weighted_sum = iki * W_IKI + zone * W_ZONE + pause * W_PAUSE;
+
+    // Optional dimensions: add if present, skip if absent.
+    let optional: [(Option<f64>, f64); 7] = [
+        (dwell, W_DWELL),
+        (flight, W_FLIGHT),
+        (digraph, W_DIGRAPH),
+        (hurst, W_HURST),
+        (word_len, W_WORD_LEN),
+        (punct, W_PUNCT),
+        (ngram, W_NGRAM),
+    ];
+    // Correction weight comes from the style group.
+    let correction_pair = (correction, W_CORRECTION);
+
+    for (value, weight) in optional.iter().chain(std::iter::once(&correction_pair)) {
+        if let Some(v) = value {
+            weighted_sum += v * weight;
+            total_weight += weight;
+        }
+    }
+
+    if total_weight > 0.0 {
+        (weighted_sum / total_weight).clamp(0.0, 1.0)
+    } else {
+        0.0
     }
 }
 
@@ -425,5 +576,105 @@ mod tests {
         assert!((confidence_from_samples(100) - 0.5).abs() < f64::EPSILON);
         assert_eq!(confidence_from_samples(200), 1.0);
         assert_eq!(confidence_from_samples(1000), 1.0);
+    }
+
+    #[test]
+    fn test_match_probability_bounds() {
+        let fp1 = make_fingerprint("a", 200);
+        let fp2 = make_fingerprint("b", 200);
+        let comparison = compare_fingerprints(&fp1, &fp2);
+        let prob = comparison.match_probability();
+        assert!(prob >= 0.0 && prob <= 1.0);
+    }
+
+    #[test]
+    fn test_match_probability_low_confidence() {
+        let fp1 = make_fingerprint("a", 1);
+        let fp2 = make_fingerprint("b", 1);
+        let comparison = compare_fingerprints(&fp1, &fp2);
+        let prob = comparison.match_probability();
+        assert!(
+            prob < 0.5,
+            "low sample count should reduce probability, got {}",
+            prob
+        );
+    }
+
+    #[test]
+    fn test_match_probability_nan_safety() {
+        let comparison = FingerprintComparison {
+            profile_a: "a".to_string(),
+            profile_b: "b".to_string(),
+            similarity: f64::NAN,
+            activity_similarity: 0.0,
+            style_similarity: None,
+            confidence: 1.0,
+            verdict: ComparisonVerdict::Inconclusive,
+            components: ComparisonComponents::default(),
+        };
+        let prob = comparison.match_probability();
+        assert!(prob.is_finite(), "NaN input should produce finite output");
+    }
+
+    #[test]
+    fn test_hysteresis_keeps_verdict_near_boundary() {
+        let verdict = ComparisonVerdict::from_similarity_with_hysteresis(
+            0.81,
+            Some(ComparisonVerdict::LikelySameAuthor),
+        );
+        assert_eq!(verdict, ComparisonVerdict::LikelySameAuthor);
+    }
+
+    #[test]
+    fn test_hysteresis_changes_verdict_far_from_boundary() {
+        let verdict = ComparisonVerdict::from_similarity_with_hysteresis(
+            0.90,
+            Some(ComparisonVerdict::LikelySameAuthor),
+        );
+        assert_eq!(verdict, ComparisonVerdict::SameAuthor);
+    }
+
+    #[test]
+    fn test_hysteresis_at_likely_same_boundary() {
+        let verdict = ComparisonVerdict::from_similarity_with_hysteresis(
+            0.62,
+            Some(ComparisonVerdict::Inconclusive),
+        );
+        assert_eq!(verdict, ComparisonVerdict::Inconclusive);
+    }
+
+    #[test]
+    fn test_hysteresis_none_previous() {
+        let verdict =
+            ComparisonVerdict::from_similarity_with_hysteresis(0.81, None);
+        assert_eq!(verdict, ComparisonVerdict::SameAuthor);
+    }
+
+    #[test]
+    fn test_weighted_similarity_no_style() {
+        let sim = weighted_similarity(
+            0.9, 0.8, 0.7, None, None, None, None, None, None, None, None,
+        );
+        assert!(sim >= 0.0 && sim <= 1.0);
+        let expected =
+            (0.9 * W_IKI + 0.8 * W_ZONE + 0.7 * W_PAUSE) / (W_IKI + W_ZONE + W_PAUSE);
+        assert!(
+            (sim - expected).abs() < 1e-10,
+            "sim={} expected={}",
+            sim,
+            expected
+        );
+    }
+
+    #[test]
+    fn test_comparison_components_serde_default() {
+        let json =
+            r#"{"iki_similarity":0.5,"zone_similarity":0.5,"pause_similarity":0.5}"#;
+        let components: ComparisonComponents = serde_json::from_str(json).unwrap();
+        assert!(components.dwell_similarity.is_none());
+        assert!(components.flight_similarity.is_none());
+        assert!(components.digraph_similarity.is_none());
+        assert!(components.hurst_similarity.is_none());
+        assert!(components.correction_similarity.is_none());
     }
 }

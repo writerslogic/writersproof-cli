@@ -24,7 +24,7 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
             let min_samples = config.fingerprint.min_samples as usize;
 
             if out.json {
-                let voice_consent = match consent_manager.status() {
+                let style_consent = match consent_manager.status() {
                     ConsentStatus::Granted => "granted",
                     ConsentStatus::Denied => "denied",
                     ConsentStatus::Revoked => "revoked",
@@ -44,13 +44,13 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                     "{}",
                     serde_json::json!({
                         "activity_enabled": config.fingerprint.activity_enabled,
-                        "voice_enabled": config.fingerprint.voice_enabled,
-                        "voice_consent": voice_consent,
+                        "style_enabled": config.fingerprint.style_enabled,
+                        "style_consent": style_consent,
                         "profile_state": profile_state,
                         "progress": progress,
                         "confidence": fp_status.confidence,
                         "activity_samples": fp_status.activity_samples,
-                        "voice_samples": fp_status.voice_samples,
+                        "style_samples": fp_status.style_samples,
                         "current_profile_id": fp_status.current_profile_id,
                     })
                 );
@@ -73,7 +73,7 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                 }
             );
 
-            let voice_status = match consent_manager.status() {
+            let style_status = match consent_manager.status() {
                 ConsentStatus::Granted => "ENABLED (consent given)",
                 ConsentStatus::Denied => "disabled (consent denied)",
                 ConsentStatus::Revoked => "disabled (consent revoked)",
@@ -81,9 +81,9 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
             };
             println!();
             println!(
-                "Voice fingerprinting:    {}",
-                if config.fingerprint.voice_enabled {
-                    voice_status
+                "Style fingerprinting:    {}",
+                if config.fingerprint.style_enabled {
+                    style_status
                 } else {
                     "disabled"
                 }
@@ -106,8 +106,8 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                 println!("Profile: Ready");
                 println!("  Confidence: {:.1}%", fp_status.confidence * 100.0);
                 println!("  Activity samples: {}", fp_status.activity_samples);
-                if fp_status.voice_samples > 0 {
-                    println!("  Voice samples: {}", fp_status.voice_samples);
+                if fp_status.style_samples > 0 {
+                    println!("  Style samples: {}", fp_status.style_samples);
                 }
             }
         }
@@ -145,10 +145,10 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                                 "dominant_zone": fp.activity.zone_profile.dominant_zone().to_string(),
                             },
                         });
-                        if let Some(voice) = &fp.voice {
-                            obj["voice"] = serde_json::json!({
-                                "total_words": voice.total_words,
-                                "avg_word_length": voice.avg_word_length(),
+                        if let Some(style) = &fp.style {
+                            obj["style"] = serde_json::json!({
+                                "total_words": style.total_words,
+                                "avg_word_length": style.avg_word_length(),
                             });
                         }
                         println!("{}", obj);
@@ -176,11 +176,11 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                         fp.activity.zone_profile.dominant_zone()
                     );
 
-                    if let Some(voice) = &fp.voice {
+                    if let Some(style) = &fp.style {
                         println!();
-                        println!("Voice Fingerprint:");
-                        println!("  Word samples: {}", voice.total_words);
-                        println!("  Avg word length: {:.1}", voice.avg_word_length());
+                        println!("Style Fingerprint:");
+                        println!("  Word samples: {}", style.total_words);
+                        println!("  Avg word length: {:.1}", style.avg_word_length());
                     }
                 }
                 Err(e) => {
@@ -214,7 +214,7 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                         "profile_b": comparison.profile_b,
                         "similarity": comparison.similarity,
                         "activity_similarity": comparison.activity_similarity,
-                        "voice_similarity": comparison.voice_similarity,
+                        "style_similarity": comparison.style_similarity,
                         "confidence": comparison.confidence,
                         "verdict": comparison.verdict.description(),
                     })
@@ -236,8 +236,8 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                 "Activity Similarity: {:.1}%",
                 comparison.activity_similarity * 100.0
             );
-            if let Some(voice_sim) = comparison.voice_similarity {
-                println!("Voice Similarity: {:.1}%", voice_sim * 100.0);
+            if let Some(style_sim) = comparison.style_similarity {
+                println!("Style Similarity: {:.1}%", style_sim * 100.0);
             }
             println!();
             println!("Confidence: {:.1}%", comparison.confidence * 100.0);
@@ -260,7 +260,7 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                             "id": p.id,
                             "sample_count": p.sample_count,
                             "confidence": p.confidence,
-                            "has_voice": p.has_voice,
+                            "has_style": p.has_style,
                         })
                     })
                     .collect();
@@ -284,13 +284,13 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
 
             println!("Stored fingerprint profiles:");
             for profile in profiles {
-                let voice_indicator = if profile.has_voice { " [+voice]" } else { "" };
+                let style_indicator = if profile.has_style { " [+style]" } else { "" };
                 println!(
                     "  {}: {} samples, {:.0}% confidence{}",
                     profile.id,
                     profile.sample_count,
                     profile.confidence * 100.0,
-                    voice_indicator
+                    style_indicator
                 );
             }
         }

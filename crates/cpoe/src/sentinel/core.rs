@@ -111,7 +111,7 @@ pub struct Sentinel {
         Arc<RwLock<crate::fingerprint::ActivityFingerprintAccumulator>>,
     pub(crate) session_events_tx: broadcast::Sender<SessionEvent>,
     pub(crate) shutdown_tx: Arc<Mutex<Option<mpsc::Sender<()>>>>,
-    pub(crate) voice_collector: Arc<RwLock<Option<crate::fingerprint::VoiceCollector>>>,
+    pub(crate) style_collector: Arc<RwLock<Option<crate::fingerprint::StyleCollector>>>,
     mouse_idle_stats: Arc<RwLock<crate::platform::MouseIdleStats>>,
     mouse_stego_engine: Arc<RwLock<crate::platform::MouseStegoEngine>>,
     session_nonce: Arc<RwLock<Option<[u8; 32]>>>,
@@ -206,7 +206,7 @@ impl Sentinel {
             activity_accumulator: Arc::new(RwLock::new(
                 crate::fingerprint::ActivityFingerprintAccumulator::new(),
             )),
-            voice_collector: Arc::new(RwLock::new(None)),
+            style_collector: Arc::new(RwLock::new(None)),
             mouse_idle_stats: Arc::new(RwLock::new(crate::platform::MouseIdleStats::new())),
             mouse_stego_engine: Arc::new(RwLock::new(crate::platform::MouseStegoEngine::new(
                 mouse_stego_seed,
@@ -255,17 +255,17 @@ impl Sentinel {
         *nonce_lock = None;
     }
 
-    /// Enable voice fingerprint collection for behavioral biometrics.
-    pub fn enable_voice_fingerprinting(&self) {
-        let mut collector = self.voice_collector.write_recover();
+    /// Enable style fingerprint collection for behavioral biometrics.
+    pub fn enable_style_fingerprinting(&self) {
+        let mut collector = self.style_collector.write_recover();
         if collector.is_none() {
-            *collector = Some(crate::fingerprint::VoiceCollector::new());
+            *collector = Some(crate::fingerprint::StyleCollector::new());
         }
     }
 
-    /// Disable voice fingerprint collection and discard the collector.
-    pub fn disable_voice_fingerprinting(&self) {
-        let mut collector = self.voice_collector.write_recover();
+    /// Disable style fingerprint collection and discard the collector.
+    pub fn disable_style_fingerprinting(&self) {
+        let mut collector = self.style_collector.write_recover();
         *collector = None;
     }
 
@@ -299,9 +299,9 @@ impl Sentinel {
         self.activity_accumulator.write_recover().add_sample(sample);
     }
 
-    /// Return the current voice fingerprint, if collection is enabled.
-    pub fn current_voice_fingerprint(&self) -> Option<crate::fingerprint::VoiceFingerprint> {
-        self.voice_collector
+    /// Return the current style fingerprint, if collection is enabled.
+    pub fn current_style_fingerprint(&self) -> Option<crate::fingerprint::StyleFingerprint> {
+        self.style_collector
             .read_recover()
             .as_ref()
             .map(|c| c.current_fingerprint())
@@ -449,7 +449,7 @@ impl Sentinel {
         let mut mouse_rx = self.setup_mouse_bridge(&running);
 
         let activity_accumulator = Arc::clone(&self.activity_accumulator);
-        let voice_collector = Arc::clone(&self.voice_collector);
+        let style_collector = Arc::clone(&self.style_collector);
         let mouse_idle_stats = Arc::clone(&self.mouse_idle_stats);
         let mouse_stego_engine = Arc::clone(&self.mouse_stego_engine);
 
@@ -660,7 +660,7 @@ impl Sentinel {
                             signing_key.write_recover().add_entropy(&entropy_hash[..8]);
                         }
 
-                        if let Some(ref mut collector) = *voice_collector.write_recover() {
+                        if let Some(ref mut collector) = *style_collector.write_recover() {
                             collector.record_keystroke(event.keycode, event.char_value);
                         }
 

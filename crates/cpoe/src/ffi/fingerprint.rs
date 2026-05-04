@@ -4,10 +4,12 @@
 
 use super::helpers::get_data_dir;
 use super::types::{
-    FfiConsentResult, FfiFingerprintDimension, FfiFingerprintStatus, FfiFingerprintSummary,
-    FfiResult,
+    FfiConsentResult, FfiFingerprintDimension, FfiFingerprintSnapshot, FfiFingerprintStatus,
+    FfiFingerprintSummary, FfiFingerprintVerification, FfiResult,
 };
+use crate::fingerprint::comparison;
 use crate::fingerprint::manager::FingerprintManager;
+use log::{debug, info};
 use std::sync::Mutex;
 
 static FINGERPRINT_MANAGER: std::sync::OnceLock<Mutex<Option<FingerprintManager>>> =
@@ -45,18 +47,18 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
     match with_manager(|mgr| {
         let status = mgr.status();
         Ok(FfiFingerprintStatus {
-            voice_enabled: status.voice_enabled,
-            voice_samples: status.voice_samples as u64,
-            voice_consent: status.voice_consent,
+            style_enabled: status.style_enabled,
+            style_samples: status.style_samples as u64,
+            style_consent: status.style_consent,
             activity_enabled: status.activity_enabled,
             activity_samples: status.activity_samples as u64,
         })
     }) {
         Ok(s) => s,
         Err(_) => FfiFingerprintStatus {
-            voice_enabled: false,
-            voice_samples: 0,
-            voice_consent: false,
+            style_enabled: false,
+            style_samples: 0,
+            style_consent: false,
             activity_enabled: false,
             activity_samples: 0,
         },
@@ -70,54 +72,113 @@ pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
         let status = mgr.status();
         let activity = mgr.current_activity_fingerprint();
 
+        let conf = status.confidence;
+
         let mut dimensions = vec![
             FfiFingerprintDimension {
                 name: "typing_speed_wpm".into(),
                 value: activity.session_signature.mean_typing_speed,
-                confidence: status.confidence,
+                confidence: conf,
+                string_value: None,
             },
             FfiFingerprintDimension {
                 name: "iki_mean_ms".into(),
                 value: activity.iki_distribution.mean,
-                confidence: status.confidence,
+                confidence: conf,
+                string_value: None,
             },
             FfiFingerprintDimension {
                 name: "iki_std_dev_ms".into(),
                 value: activity.iki_distribution.std_dev,
-                confidence: status.confidence,
+                confidence: conf,
+                string_value: None,
             },
             FfiFingerprintDimension {
                 name: "sentence_pause_ms".into(),
                 value: activity.pause_signature.sentence_pause_mean,
-                confidence: status.confidence,
+                confidence: conf,
+                string_value: None,
             },
             FfiFingerprintDimension {
                 name: "thinking_pause_ms".into(),
                 value: activity.pause_signature.thinking_pause_mean,
-                confidence: status.confidence,
+                confidence: conf,
+                string_value: None,
             },
         ];
 
-        if let Some(ref voice) = mgr.current_voice_fingerprint() {
+        // Dominant keyboard zone
+        let dominant = activity.zone_profile.dominant_zone();
+        let dominant_freq = activity
+            .zone_profile
+            .zone_frequencies
+            .iter()
+            .copied()
+            .fold(0.0_f64, f64::max);
+        dimensions.push(FfiFingerprintDimension {
+            name: "dominant_zone".into(),
+            value: dominant_freq,
+            confidence: conf,
+            string_value: Some(dominant),
+        });
+
+        // Peak activity hour from circadian pattern
+        let (peak_idx, _) = activity
+            .circadian_pattern
+            .hourly_activity
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| {
+                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or((0, &0.0));
+        dimensions.push(FfiFingerprintDimension {
+            name: "peak_hour".into(),
+            value: peak_idx as f64,
+            confidence: conf,
+            string_value: Some(format!("{:02}:00", peak_idx)),
+        });
+
+        // Typing speed coefficient of variation (std_dev / mean)
+        let iki_mean = activity.iki_distribution.mean;
+        let iki_std = activity.iki_distribution.std_dev;
+        let typing_speed_cv = if iki_mean > 0.0 {
+            iki_std / iki_mean
+        } else {
+            0.0
+        };
+        dimensions.push(FfiFingerprintDimension {
+            name: "typing_speed_cv".into(),
+            value: typing_speed_cv,
+            confidence: conf,
+            string_value: None,
+        });
+
+        if let Some(ref style) = mgr.current_style_fingerprint() {
             dimensions.push(FfiFingerprintDimension {
                 name: "avg_word_length".into(),
-                value: voice.avg_word_length(),
-                confidence: status.confidence,
+                value: style.avg_word_length(),
+                confidence: conf,
+                string_value: None,
             });
             dimensions.push(FfiFingerprintDimension {
                 name: "correction_rate".into(),
-                value: voice.correction_rate,
-                confidence: status.confidence,
+                value: style.correction_rate,
+                confidence: conf,
+                string_value: None,
             });
         }
 
-        let activity_quality = (status.activity_samples as f64 / 500.0).min(1.0);
-        let total_samples = status.activity_samples as u64 + status.voice_samples as u64;
+        debug!("Fingerprint summary: {} dimensions", dimensions.len());
+
+        let author = mgr.current_author_fingerprint();
+        let quality_score = author.confidence;
+        let total_samples = status.activity_samples as u64 + status.style_samples as u64;
 
         Ok(FfiFingerprintSummary {
             success: true,
             dimensions,
-            quality_score: activity_quality,
+            quality_score,
             total_samples,
             error_message: None,
         })
@@ -133,15 +194,15 @@ pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
     }
 }
 
-/// Grant voice consent — calls ConsentManager::grant_consent().
+/// Grant style consent — calls ConsentManager::grant_consent().
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_grant_voice_consent() -> FfiConsentResult {
+pub fn ffi_grant_style_consent() -> FfiConsentResult {
     match with_manager(|mgr| {
         mgr.consent_manager
             .grant_consent()
             .map_err(|e| format!("Failed to grant consent: {e}"))?;
-        mgr.enable_voice()
-            .map_err(|e| format!("Failed to enable voice: {e}"))?;
+        mgr.enable_style()
+            .map_err(|e| format!("Failed to enable style: {e}"))?;
         Ok(FfiConsentResult {
             success: true,
             consent_given: true,
@@ -157,14 +218,14 @@ pub fn ffi_grant_voice_consent() -> FfiConsentResult {
     }
 }
 
-/// Revoke voice consent — calls FingerprintManager::disable_voice().
+/// Revoke style consent — calls FingerprintManager::disable_style().
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_revoke_voice_consent() -> FfiResult {
+pub fn ffi_revoke_style_consent() -> FfiResult {
     match with_manager(|mgr| {
-        mgr.disable_voice()
+        mgr.disable_style()
             .map_err(|e| format!("Failed to revoke consent: {e}"))?;
         Ok(FfiResult::ok(
-            "Voice fingerprinting disabled and data deleted",
+            "Style fingerprinting disabled and data deleted",
         ))
     }) {
         Ok(r) => r,
@@ -172,7 +233,7 @@ pub fn ffi_revoke_voice_consent() -> FfiResult {
     }
 }
 
-/// Reset all fingerprint data (activity + voice).
+/// Reset all fingerprint data (activity + style).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_reset_fingerprint() -> FfiResult {
     match with_manager(|mgr| {
@@ -202,5 +263,132 @@ pub fn ffi_export_fingerprint_json() -> FfiResult {
     }) {
         Ok(r) => r,
         Err(e) => FfiResult::err(e),
+    }
+}
+
+/// Compare current fingerprint against a stored profile.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_verify_fingerprint_match(
+    profile_id: String,
+) -> FfiFingerprintVerification {
+    match with_manager(|mgr| {
+        debug!("Verifying fingerprint match against profile {}", profile_id);
+
+        let current = mgr.current_author_fingerprint();
+        let stored = mgr
+            .load(&profile_id)
+            .map_err(|e| format!("Failed to load profile '{}': {e}", profile_id))?;
+
+        let result = comparison::compare_fingerprints(&current, &stored);
+
+        let components = vec![
+            FfiFingerprintDimension {
+                name: "iki_similarity".into(),
+                value: result.components.iki_similarity,
+                confidence: result.confidence,
+                string_value: None,
+            },
+            FfiFingerprintDimension {
+                name: "zone_similarity".into(),
+                value: result.components.zone_similarity,
+                confidence: result.confidence,
+                string_value: None,
+            },
+            FfiFingerprintDimension {
+                name: "pause_similarity".into(),
+                value: result.components.pause_similarity,
+                confidence: result.confidence,
+                string_value: None,
+            },
+        ];
+
+        info!(
+            "Fingerprint verification: similarity={:.3}, verdict={:?}",
+            result.similarity, result.verdict
+        );
+
+        Ok(FfiFingerprintVerification {
+            success: true,
+            similarity: result.similarity,
+            match_probability: result.match_probability(),
+            verdict: format!("{:?}", result.verdict),
+            verdict_description: result.verdict.description().to_string(),
+            components,
+            error_message: None,
+        })
+    }) {
+        Ok(v) => v,
+        Err(e) => FfiFingerprintVerification {
+            success: false,
+            similarity: 0.0,
+            match_probability: 0.0,
+            verdict: "Error".into(),
+            verdict_description: e.clone(),
+            components: Vec::new(),
+            error_message: Some(e),
+        },
+    }
+}
+
+/// List stored fingerprint profiles as a JSON array.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_list_fingerprint_profiles() -> FfiResult {
+    match with_manager(|mgr| {
+        debug!("Listing fingerprint profiles");
+        let profiles = mgr
+            .list_profiles()
+            .map_err(|e| format!("Failed to list profiles: {e}"))?;
+
+        let entries: Vec<serde_json::Value> = profiles
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p.id,
+                    "name": p.name,
+                    "created_at": p.created_at.to_rfc3339(),
+                    "updated_at": p.updated_at.to_rfc3339(),
+                    "sample_count": p.sample_count,
+                    "confidence": p.confidence,
+                    "has_style": p.has_style,
+                    "file_size": p.file_size,
+                })
+            })
+            .collect();
+
+        let json = serde_json::to_string_pretty(&entries)
+            .map_err(|e| format!("Serialization failed: {e}"))?;
+        Ok(FfiResult::ok(json))
+    }) {
+        Ok(r) => r,
+        Err(e) => FfiResult::err(e),
+    }
+}
+
+/// Return periodic fingerprint snapshots for evolution charting.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
+    match with_manager(|mgr| {
+        let snapshots = mgr.get_snapshots();
+        let result = snapshots
+            .iter()
+            .map(|s| FfiFingerprintSnapshot {
+                sample_count: s.sample_count,
+                timestamp: s.timestamp,
+                dimensions: s
+                    .dimensions
+                    .iter()
+                    .map(|(name, value)| FfiFingerprintDimension {
+                        name: name.clone(),
+                        value: *value,
+                        confidence: 1.0,
+                        string_value: None,
+                    })
+                    .collect(),
+            })
+            .collect();
+        Ok(result)
+    }) {
+        Ok(v) => v,
+        Err(_) => Vec::new(),
     }
 }

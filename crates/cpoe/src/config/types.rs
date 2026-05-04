@@ -109,7 +109,8 @@ pub struct FingerprintConfig {
     /// Typing dynamics (captures HOW you type, not WHAT)
     pub activity_enabled: bool,
     /// Writing style analysis (requires explicit consent)
-    pub voice_enabled: bool,
+    #[serde(alias = "voice_enabled")]
+    pub style_enabled: bool,
     pub retention_days: u32,
     /// Minimum samples before creating a profile
     pub min_samples: u32,
@@ -120,7 +121,7 @@ impl Default for FingerprintConfig {
     fn default() -> Self {
         Self {
             activity_enabled: true,
-            voice_enabled: false,
+            style_enabled: false,
             retention_days: 365,
             min_samples: 100,
             storage_path: dirs::home_dir()

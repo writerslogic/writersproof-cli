@@ -1,0 +1,215 @@
+{
+  "events": [
+    {
+      "id": 0,
+      "timestamp_ns": 1700000000000000000,
+      "file_size": 1,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 1,
+      "timestamp_ns": 1700000000180000000,
+      "file_size": 2,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 2,
+      "timestamp_ns": 1700000000360000000,
+      "file_size": 3,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 3,
+      "timestamp_ns": 1700000000540000000,
+      "file_size": 4,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 4,
+      "timestamp_ns": 1700000000720000000,
+      "file_size": 5,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 5,
+      "timestamp_ns": 1700000000900000000,
+      "file_size": 6,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 6,
+      "timestamp_ns": 1700000001880000000,
+      "file_size": 5,
+      "size_delta": -1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 7,
+      "timestamp_ns": 1700000002130000000,
+      "file_size": 4,
+      "size_delta": -1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 8,
+      "timestamp_ns": 1700000002480000000,
+      "file_size": 5,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 9,
+      "timestamp_ns": 1700000002700000000,
+      "file_size": 6,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 10,
+      "timestamp_ns": 1700000002920000000,
+      "file_size": 7,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 11,
+      "timestamp_ns": 1700000003140000000,
+      "file_size": 8,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 12,
+      "timestamp_ns": 1700000003360000000,
+      "file_size": 9,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 13,
+      "timestamp_ns": 1700000004580000000,
+      "file_size": 13,
+      "size_delta": 4,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 14,
+      "timestamp_ns": 1700000005180000000,
+      "file_size": 12,
+      "size_delta": -1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 15,
+      "timestamp_ns": 1700000005880000000,
+      "file_size": 13,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 16,
+      "timestamp_ns": 1700000006170000000,
+      "file_size": 14,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 17,
+      "timestamp_ns": 1700000006460000000,
+      "file_size": 15,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 18,
+      "timestamp_ns": 1700000006750000000,
+      "file_size": 16,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 19,
+      "timestamp_ns": 1700000008540000000,
+      "file_size": 15,
+      "size_delta": -1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 20,
+      "timestamp_ns": 1700000008740000000,
+      "file_size": 14,
+      "size_delta": -1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 21,
+      "timestamp_ns": 1700000008940000000,
+      "file_size": 13,
+      "size_delta": -1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 22,
+      "timestamp_ns": 1700000009140000000,
+      "file_size": 14,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 23,
+      "timestamp_ns": 1700000009380000000,
+      "file_size": 15,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 24,
+      "timestamp_ns": 1700000009620000000,
+      "file_size": 16,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 25,
+      "timestamp_ns": 1700000009860000000,
+      "file_size": 17,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 26,
+      "timestamp_ns": 1700000010100000000,
+      "file_size": 18,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 27,
+      "timestamp_ns": 1700000010340000000,
+      "file_size": 19,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 28,
+      "timestamp_ns": 1700000010580000000,
+      "file_size": 20,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    },
+    {
+      "id": 29,
+      "timestamp_ns": 1700000010820000000,
+      "file_size": 21,
+      "size_delta": 1,
+      "file_path": "/tmp/comp.txt"
+    }
+  ],
+  "focus_switches": []
+}

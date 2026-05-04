@@ -149,6 +149,9 @@ pub(crate) fn is_domain_allowed(document_url: &str) -> bool {
 }
 
 /// Validate a content hash is a 64-char hex string (SHA-256 = 32 bytes).
+///
+/// Note: short-circuit validation is acceptable here because this checks
+/// format of a user-supplied value for lookup, not comparison against a secret.
 pub(crate) fn validate_content_hash(hash: &str) -> Result<(), String> {
     if hash.len() != 64 {
         return Err(format!(
