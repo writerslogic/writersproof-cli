@@ -358,7 +358,7 @@ fn select_file_for_commit() -> Result<PathBuf> {
     let cwd = std::env::current_dir()?;
 
     if let Ok(db) = open_secure_store() {
-        let tracked = db.list_files()?;
+        let tracked = db.list_files().unwrap_or_default();
         let cwd_str = cwd.to_string_lossy();
         let tracked_in_cwd: Vec<PathBuf> = tracked
             .iter()

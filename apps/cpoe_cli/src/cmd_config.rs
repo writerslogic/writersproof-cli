@@ -229,7 +229,11 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                 }
                 cmd.clone()
             } else {
-                let which_output = std::process::Command::new("which")
+                #[cfg(windows)]
+                let which_bin = "where";
+                #[cfg(not(windows))]
+                let which_bin = "which";
+                let which_output = std::process::Command::new(which_bin)
                     .arg(&cmd)
                     .output()
                     .ok()
@@ -419,16 +423,7 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
         }
         crate::cli::AppAction::Remove { name } => {
             let mut registry = AppRegistry::load(data_dir);
-            let found = registry.user_apps().iter().any(|a| {
-                a.bundle_id.eq_ignore_ascii_case(&name)
-                    || a.display_name.eq_ignore_ascii_case(&name)
-            });
-            if !found {
-                bail!("No user-added app matching '{name}'");
-            }
-
-            // Try bundle_id first, then display_name
-            let bid = registry
+            let Some(bid) = registry
                 .user_apps()
                 .iter()
                 .find(|a| {
@@ -436,7 +431,9 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
                         || a.display_name.eq_ignore_ascii_case(&name)
                 })
                 .map(|a| a.bundle_id.clone())
-                .unwrap();
+            else {
+                bail!("No user-added app matching '{name}'");
+            };
 
             print!("Remove '{bid}'? (yes/no): ");
             io::stdout().flush()?;

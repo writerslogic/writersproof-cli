@@ -110,7 +110,7 @@ pub enum Commands {
         /// Disable temporal beacon attestation (caps security level at T2)
         #[arg(long)]
         no_beacons: bool,
-        /// Beacon fetch timeout in seconds (1-120)
+        /// Beacon fetch timeout in seconds (1-300)
         #[arg(long, default_value = "5", value_parser = clap::value_parser!(u64).range(1..=300))]
         beacon_timeout: u64,
     },
