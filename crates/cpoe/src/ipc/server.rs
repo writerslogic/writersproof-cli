@@ -181,7 +181,11 @@ impl IpcServer {
                     .create(&self.pipe_name)?;
                 is_first = false;
 
-                server.connect().await?;
+                if let Err(e) = server.connect().await {
+                    log::error!("IPC: Windows named pipe connect error: {e}");
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
                 let acquired =
                     active_connections.fetch_update(Ordering::AcqRel, Ordering::Relaxed, |n| {
                         if n < MAX_CONCURRENT_CONNECTIONS {

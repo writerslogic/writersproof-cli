@@ -13,19 +13,27 @@ use sha2::{Digest, Sha256};
 /// Export stored events as a human-readable JSON evidence packet.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> FfiResult {
-    // Build the same wire packet as the CBOR export, then serialize to JSON.
-    let cbor_result = ffi_export_evidence(path.clone(), tier, output.clone());
+    // Export CBOR to a temp file, then decode and re-encode as JSON at the final output path.
+    // Using a temp file avoids writing signed CBOR to the user-visible output location.
+    let output_path = std::path::Path::new(&output);
+    let dir = output_path.parent().unwrap_or(std::path::Path::new("."));
+    let tmp_cbor = match tempfile::NamedTempFile::new_in(dir) {
+        Ok(t) => t,
+        Err(e) => return FfiResult::err(format!("Failed to create temp file: {e}")),
+    };
+    let tmp_path = tmp_cbor.path().to_string_lossy().to_string();
+    let cbor_result = ffi_export_evidence(path.clone(), tier, tmp_path.clone());
     if !cbor_result.success {
         return cbor_result;
     }
-    // Read the CBOR file we just wrote, decode, re-encode as JSON
-    let output_path = std::path::Path::new(&output);
-    let data = match std::fs::read(output_path) {
+    // Read the CBOR we just wrote, decode, re-encode as JSON
+    let data = match std::fs::read(&tmp_path) {
         Ok(d) => d,
         Err(e) => {
             return FfiResult::err(format!("Failed to read exported file: {e}"));
         }
     };
+    drop(tmp_cbor); // delete temp CBOR
     let cbor_payload = crate::ffi::helpers::unwrap_cose_or_raw(&data);
     // Decode without validation: we just wrote this file ourselves, and packets
     // with fewer than MIN_CHECKPOINTS are valid for export even if they don't
@@ -145,14 +153,18 @@ fn export_evidence_inner(
         .iter()
         .enumerate()
         .map(|(i, ev)| {
-            let timestamp_ms = if ev.timestamp_ns < 0 {
-                log::warn!(
-                    "Negative timestamp_ns {} at index {i}, clamping to 0",
-                    ev.timestamp_ns
-                );
-                0u64
+            // Clamp to 1ms minimum so CheckpointWire::validate() (which rejects
+            // timestamp == 0) does not fail when the JSON re-decode path runs.
+            let timestamp_ms = if ev.timestamp_ns <= 0 {
+                if ev.timestamp_ns < 0 {
+                    log::warn!(
+                        "Negative timestamp_ns {} at index {i}, clamping to 1ms",
+                        ev.timestamp_ns
+                    );
+                }
+                1u64
             } else {
-                (ev.timestamp_ns / 1_000_000) as u64
+                (ev.timestamp_ns / 1_000_000).max(1) as u64
             };
             let vdf_input_bytes = ev
                 .vdf_input
@@ -571,7 +583,6 @@ fn collect_project_files(
     store: &crate::store::SecureStore,
 ) -> Option<Vec<authorproof_protocol::rfc::wire_types::ProjectFileRef>> {
     let project_root = find_project_root(primary_path);
-    let root_str = project_root.to_string_lossy();
     let primary_str = primary_path.to_string_lossy();
 
     let all_files = match store.list_files() {
@@ -584,7 +595,10 @@ fn collect_project_files(
 
     let siblings: Vec<_> = all_files
         .into_iter()
-        .filter(|(path, _, _)| path != primary_str.as_ref() && path.starts_with(root_str.as_ref()))
+        .filter(|(path, _, _)| {
+            path != primary_str.as_ref()
+                && std::path::Path::new(path).starts_with(&project_root)
+        })
         .collect();
 
     if siblings.is_empty() {

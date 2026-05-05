@@ -101,6 +101,9 @@ impl Chain {
     /// spec-correct `H(document-ref)` for backward compatibility with chains
     /// created before the genesis hash computation was standardized.
     pub fn verify_hash_chain(&self) -> Result<()> {
+        if self.checkpoints.is_empty() {
+            return Err(Error::checkpoint("empty chain"));
+        }
         for (i, cp) in self.checkpoints.iter().enumerate() {
             if cp.compute_hash() != cp.hash {
                 return Err(Error::checkpoint(format!(
@@ -123,7 +126,8 @@ impl Chain {
                 )
                 .map(|h| cp.previous_hash == h)
                 .unwrap_or(false);
-                if !is_spec_genesis {
+                let is_legacy_genesis = cp.previous_hash == [0u8; 32];
+                if !is_spec_genesis && !is_legacy_genesis {
                     return Err(Error::checkpoint(
                         "checkpoint 0: invalid genesis previous_hash",
                     ));
@@ -141,6 +145,11 @@ impl Chain {
     /// in the returned report for checkpoints that lack signatures).
     pub fn verify_detailed(&self) -> VerificationReport {
         let mut report = VerificationReport::new();
+
+        if self.checkpoints.is_empty() {
+            report.fail("empty chain".into());
+            return report;
+        }
 
         for (i, checkpoint) in self.checkpoints.iter().enumerate() {
             if let Err(e) = checkpoint.validate_timestamp() {
@@ -200,7 +209,8 @@ impl Chain {
                 )
                 .map(|h| checkpoint.previous_hash == h)
                 .unwrap_or(false);
-                if !is_spec_genesis {
+                let is_legacy_genesis = checkpoint.previous_hash == [0u8; 32];
+                if !is_spec_genesis && !is_legacy_genesis {
                     report.fail("checkpoint 0: invalid genesis prev-hash".into());
                     return report;
                 }
@@ -292,6 +302,16 @@ impl Chain {
                     ) {
                         report.fail(e.to_string());
                         return report;
+                    }
+
+                    if let Some(vdf) = &checkpoint.vdf {
+                        if vdf.iterations < self.metadata.vdf_params.min_iterations {
+                            report.warnings.push(format!(
+                                "checkpoint {i}: VDF iterations {} below minimum {}",
+                                vdf.iterations,
+                                self.metadata.vdf_params.min_iterations
+                            ));
+                        }
                     }
                 }
             }
@@ -397,14 +417,23 @@ impl Chain {
                             return report;
                         }
                         if let Some(next_cp) = self.checkpoints.get(i + 1) {
-                            if let Some(next_mmr_root) = next_cp.mmr_root {
-                                if proof.root != next_mmr_root {
-                                    report.fail(format!(
-                                        "checkpoint {i}: MMR proof root does not match \
-                                         checkpoint {} mmr_root (rollback detected)",
+                            match next_cp.mmr_root {
+                                Some(next_mmr_root) => {
+                                    if proof.root != next_mmr_root {
+                                        report.fail(format!(
+                                            "checkpoint {i}: MMR proof root does not match \
+                                             checkpoint {} mmr_root (rollback detected)",
+                                            i + 1
+                                        ));
+                                        return report;
+                                    }
+                                }
+                                None => {
+                                    report.warnings.push(format!(
+                                        "checkpoint {i}: MMR inclusion proof present but \
+                                         checkpoint {} has no mmr_root for cross-anchor check",
                                         i + 1
                                     ));
-                                    return report;
                                 }
                             }
                         }

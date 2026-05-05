@@ -367,7 +367,7 @@ pub fn ffi_list_fingerprint_profiles() -> FfiResult {
 /// Return periodic fingerprint snapshots for evolution charting.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
-    match with_manager(|mgr| {
+    with_manager(|mgr| {
         let snapshots = mgr.get_snapshots();
         let result = snapshots
             .iter()
@@ -387,10 +387,8 @@ pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
             })
             .collect();
         Ok(result)
-    }) {
-        Ok(v) => v,
-        Err(_) => Vec::new(),
-    }
+    })
+    .unwrap_or_default()
 }
 
 /// Return raw HT, FT, and IKI arrays from the activity accumulator

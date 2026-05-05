@@ -367,13 +367,13 @@ pub fn ffi_sync_text_attestation(
             {
                 Ok(id) => {
                     log::info!("Text attestation queued for retry: {id} ({err_msg})");
-                    return FfiResult::ok(format!("Queued for retry: {writersproof_id}"));
+                    FfiResult::ok(format!("Queued for retry: {writersproof_id}"))
                 }
                 Err(qe) => {
                     log::warn!("Failed to queue text attestation: {qe}");
-                    return FfiResult::err(format!(
+                    FfiResult::err(format!(
                         "Sync failed ({err_msg}) and queuing failed: {qe}"
-                    ));
+                    ))
                 }
             }
         }

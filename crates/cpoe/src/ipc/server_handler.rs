@@ -188,11 +188,11 @@ pub(super) async fn handle_connection_inner<
                 // both sites together if the prefix changes.
                 Err(e) if e.to_string().starts_with("SequenceDesync:") => {
                     log::warn!(
-                        "IPC: sequence desync on {}: {} (skipping message)",
+                        "IPC: sequence desync on {}: {} (closing session)",
                         transport_label,
                         e
                     );
-                    continue;
+                    break;
                 }
                 Err(e) => {
                     log::error!(

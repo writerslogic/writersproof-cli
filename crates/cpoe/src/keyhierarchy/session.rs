@@ -313,7 +313,7 @@ impl Session {
     /// Signs `SHA256("cpoe-chain-metadata-v1" || checkpoint_count || mmr_root || mmr_leaf_count)`.
     /// This makes checkpoint deletion detectable: changing the count breaks the signature.
     pub fn sign_chain_metadata(
-        &self,
+        &mut self,
         metadata: &mut crate::checkpoint::ChainIntegrityMetadata,
     ) -> Result<(), KeyHierarchyError> {
         if self.ratchet.wiped {
@@ -331,6 +331,15 @@ impl Session {
         let signature = signing_key.sign(&payload).to_bytes();
 
         metadata.metadata_signature = Some(signature.to_vec());
+
+        let next_ratchet = hkdf_expand(
+            self.ratchet.current.as_bytes(),
+            RATCHET_ADVANCE_DOMAIN.as_bytes(),
+            &payload,
+        )?;
+        self.ratchet.current = crate::crypto::ProtectedKey::from_zeroizing(next_ratchet);
+        self.ratchet.ordinal += 1;
+
         Ok(())
     }
 

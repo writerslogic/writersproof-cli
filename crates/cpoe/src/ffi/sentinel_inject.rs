@@ -64,6 +64,7 @@ pub fn reset_inject_state() {
 /// ML analysis (dual-channel HT+FT CNN per QUACK methodology).
 ///
 /// Pass 0 for either if not available; they will be stored as None.
+#[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_inject_keystroke_v3(
     timestamp_ns: i64,
@@ -102,6 +103,7 @@ pub fn ffi_sentinel_inject_keystroke_v3(
 /// `modifier_flags_raw`: bitmask — bit 0=Shift, 1=Control, 2=Option/Alt,
 /// 3=Command/Super, 4=Fn, 5=CapsLock. The Swift host maps
 /// `NSEvent.modifierFlags` to this layout before calling.
+#[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_inject_keystroke_v2(
     timestamp_ns: i64,
@@ -128,6 +130,7 @@ pub fn ffi_sentinel_inject_keystroke_v2(
 }
 
 /// Backward-compatible entry point (no modifier flags).
+#[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_inject_keystroke(
     timestamp_ns: i64,
@@ -152,6 +155,7 @@ pub fn ffi_sentinel_inject_keystroke(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn inject_keystroke_inner(
     timestamp_ns: i64,
     keycode: u16,
@@ -178,6 +182,7 @@ fn inject_keystroke_inner(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn inject_keystroke_inner_v3(
     timestamp_ns: i64,
     keycode: u16,

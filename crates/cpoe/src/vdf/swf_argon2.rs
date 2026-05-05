@@ -242,42 +242,46 @@ pub fn compute_with_algorithm(
     let mut current = input;
 
     let prev_priority = lower_thread_priority();
-    for i in 0..params.iterations {
-        // Salt per draft-condrey-rats-pop §4.2:
-        //   state_0:   salt = H(0x00 || "PoP-salt-v1" || seed)
-        //   state_i:   salt = H(0x01 || "PoP-salt-v1" || I2OSP(i, 4))
-        let salt_hash = if i == 0 {
-            let mut h = Sha256::new();
-            h.update([0x00u8]);
-            h.update(b"PoP-salt-v1");
-            h.update(input);
-            h.finalize()
-        } else {
-            let mut h = Sha256::new();
-            h.update([0x01u8]);
-            h.update(b"PoP-salt-v1");
-            h.update((i as u32).to_be_bytes()); // I2OSP(i, 4)
-            h.finalize()
-        };
-        let salt = salt_hash.as_slice(); // §7.1: full 32-byte SHA-256 output
+    let compute_result = (|| -> Result<(), String> {
+        for i in 0..params.iterations {
+            // Salt per draft-condrey-rats-pop §4.2:
+            //   state_0:   salt = H(0x00 || "PoP-salt-v1" || seed)
+            //   state_i:   salt = H(0x01 || "PoP-salt-v1" || I2OSP(i, 4))
+            let salt_hash = if i == 0 {
+                let mut h = Sha256::new();
+                h.update([0x00u8]);
+                h.update(b"PoP-salt-v1");
+                h.update(input);
+                h.finalize()
+            } else {
+                let mut h = Sha256::new();
+                h.update([0x01u8]);
+                h.update(b"PoP-salt-v1");
+                h.update((i as u32).to_be_bytes()); // I2OSP(i, 4)
+                h.finalize()
+            };
+            let salt = salt_hash.as_slice(); // §7.1: full 32-byte SHA-256 output
 
-        let mut output = [0u8; 32];
-        argon2
-            .hash_password_into(&current, salt, &mut output)
-            .map_err(|e| format!("Argon2id iteration {i}: {e}"))?;
+            let mut output = [0u8; 32];
+            argon2
+                .hash_password_into(&current, salt, &mut output)
+                .map_err(|e| format!("Argon2id iteration {i}: {e}"))?;
 
-        // RFC 6962 leaf: H(0x00 || data)
-        let leaf = {
-            let mut h = Sha256::new();
-            h.update([0x00u8]);
-            h.update(output);
-            h.finalize().into()
-        };
-        leaves.push(leaf);
-        raw_outputs.push(output);
-        current = output;
-    }
+            // RFC 6962 leaf: H(0x00 || data)
+            let leaf = {
+                let mut h = Sha256::new();
+                h.update([0x00u8]);
+                h.update(output);
+                h.finalize().into()
+            };
+            leaves.push(leaf);
+            raw_outputs.push(output);
+            current = output;
+        }
+        Ok(())
+    })();
     restore_thread_priority(prev_priority);
+    compute_result?;
 
     let tree = build_merkle_tree(&leaves, params.iterations);
     let merkle_root = if tree.len() > 1 { tree[1] } else { [0u8; 32] };
@@ -329,6 +333,10 @@ pub fn verify_with_samples(proof: &Argon2SwfProof, sample_count: usize) -> Resul
         proof.proof_algorithm,
     )?;
     if proof.challenge.ct_eq(&expected_challenge).unwrap_u8() == 0 {
+        return Ok(false);
+    }
+
+    if proof.sampled_proofs.len() < sample_count {
         return Ok(false);
     }
 
@@ -605,6 +613,10 @@ fn verify_merkle_proof(
     leaf_value: &[u8; 32],
     sibling_path: &[[u8; 32]],
 ) -> bool {
+    // ceil(log2(MAX_ITERATIONS)) ≈ 24; 64 is a safe upper bound.
+    if sibling_path.len() > 64 {
+        return false;
+    }
     let mut current = *leaf_value;
     let mut idx = leaf_idx;
 

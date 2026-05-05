@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use std::fs;
-use std::io::{self, BufRead, IsTerminal, Write};
+use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
@@ -96,8 +96,10 @@ pub(super) fn build_evidence_packet(ctx: &EvidencePacketContext<'_>) -> Result<s
         _ => unreachable!("tier validated at entry"),
     };
 
-    // §7.5: entangled (21) for enhanced/maximum, standard (20) otherwise
-    let proof_algorithm: u8 = if *spec_content_tier >= 2 { 21 } else { 20 };
+    // §7.5: CLI commits use SHA-256 VDF (algorithm 10); Argon2id/entangled are
+    // selected only by the engine checkpoint chain, which uses SecureEvent fields
+    // not available in the flat store model. Using 20/21 here was a spec lie.
+    let proof_algorithm: u8 = 10;
     let swf_params = cpoe::vdf::params_for_tier(*spec_content_tier);
 
     let mut packet_id = [0u8; 16];
@@ -109,7 +111,8 @@ pub(super) fn build_evidence_packet(ctx: &EvidencePacketContext<'_>) -> Result<s
         .map(|(i, ev)| {
             let elapsed_secs =
                 ev.vdf_iterations as f64 / vdf_params.iterations_per_second.max(1) as f64;
-            let elapsed_dur = Duration::from_secs_f64(elapsed_secs);
+            let elapsed_dur = Duration::try_from_secs_f64(elapsed_secs)
+                .unwrap_or(Duration::ZERO);
             let elapsed_ms = (elapsed_secs * 1000.0) as u64;
 
             let mut cp_id = [0u8; 16];
@@ -117,7 +120,7 @@ pub(super) fn build_evidence_packet(ctx: &EvidencePacketContext<'_>) -> Result<s
 
             serde_json::json!({
                 "ordinal": i as u64,
-                "sequence": (i + 1) as u64,
+                "sequence": i as u64,
                 "checkpoint_id": hex::encode(cp_id),
                 "timestamp": chrono::DateTime::from_timestamp_nanos(ev.timestamp_ns).to_rfc3339(),
                 "timestamp_ms": (ev.timestamp_ns / 1_000_000).max(0) as u64,
@@ -341,9 +344,9 @@ pub(super) fn build_wire_packet_from_events(
                 hat_proof: None,
                 beacon_anchor: None,
                 verifier_nonce: None,
-                lamport_signature: None,
-                lamport_pubkey_fingerprint: None,
-                posme_proof: None,
+                lamport_signature: ev.lamport_signature.clone(),
+                lamport_pubkey_fingerprint: ev.lamport_pubkey_fingerprint.clone(),
+                posme_proof: ev.posme_proof.clone(),
             };
             wire.checkpoint_hash = wire.compute_hash().map_err(|e| anyhow::anyhow!(e))?;
             Ok(wire)
@@ -440,10 +443,30 @@ fn aggregate_semantic_summaries(events: &[cpoe::SecureEvent]) -> serde_json::Val
         return serde_json::Value::Null;
     }
 
-    let total_deletions = delete_backward + delete_forward + delete_word + delete_line;
-    let total = characters + total_deletions + undo + redo + copy + cut + paste
-        + select_all + navigation + find + save + other_shortcut + tab + r#return;
-    let editing_count = total_deletions + undo + redo + cut + paste + select_all;
+    let total_deletions = delete_backward
+        .saturating_add(delete_forward)
+        .saturating_add(delete_word)
+        .saturating_add(delete_line);
+    let total = characters
+        .saturating_add(total_deletions)
+        .saturating_add(undo)
+        .saturating_add(redo)
+        .saturating_add(copy)
+        .saturating_add(cut)
+        .saturating_add(paste)
+        .saturating_add(select_all)
+        .saturating_add(navigation)
+        .saturating_add(find)
+        .saturating_add(save)
+        .saturating_add(other_shortcut)
+        .saturating_add(tab)
+        .saturating_add(r#return);
+    let editing_count = total_deletions
+        .saturating_add(undo)
+        .saturating_add(redo)
+        .saturating_add(cut)
+        .saturating_add(paste)
+        .saturating_add(select_all);
     let editing_ratio = if total > 0 {
         editing_count as f64 / total as f64
     } else {
@@ -490,7 +513,7 @@ fn collect_declaration(
     io::stdout().flush()?;
 
     let mut input = String::new();
-    reader.read_line(&mut input)?;
+    reader.by_ref().take(4096).read_line(&mut input)?;
     let used_ai = crate::util::parse_yes_no(&input) == Some(true);
 
     println!();
@@ -501,7 +524,7 @@ fn collect_declaration(
     io::stdout().flush()?;
 
     input.clear();
-    reader.read_line(&mut input)?;
+    reader.by_ref().take(4096).read_line(&mut input)?;
     let statement = {
         let trimmed = input.trim().to_string();
         if trimmed.is_empty() {
@@ -518,7 +541,7 @@ fn collect_declaration(
         io::stdout().flush()?;
 
         input.clear();
-        reader.read_line(&mut input)?;
+        reader.by_ref().take(4096).read_line(&mut input)?;
         let tool_name = input.trim().to_string();
 
         println!();
@@ -527,7 +550,7 @@ fn collect_declaration(
         io::stdout().flush()?;
 
         input.clear();
-        reader.read_line(&mut input)?;
+        reader.by_ref().take(4096).read_line(&mut input)?;
         let extent_str = input.trim().to_lowercase();
         let extent = match extent_str.as_str() {
             "substantial" => AiExtent::Substantial,

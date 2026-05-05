@@ -14,7 +14,9 @@ const KNOWN_TABLES: &[&str] = &[
     "text_fragments",
     "keystroke_sequences",
     "used_nonces",
-    "baselines",
+    "physical_baselines",
+    "baseline_digests",
+    "document_stats",
     "fingerprints",
 ];
 
@@ -155,6 +157,47 @@ impl SecureStore {
             CREATE INDEX IF NOT EXISTS idx_clipboard_events_timestamp ON clipboard_events(timestamp);"
         )?;
 
+        // Migration v2: covering indexes for the five most-frequent query patterns.
+        //
+        // (1) idx_secure_events_device_id — DSAR export (export_all_events_for_identity):
+        //     WHERE device_id = ? ORDER BY id ASC
+        //     Without this the planner does a full table scan on every legal data request.
+        //
+        // (2) idx_secure_events_ts_delta — get_all_events_summary:
+        //     SELECT timestamp_ns, size_delta ORDER BY timestamp_ns ASC
+        //     The existing idx_secure_events_timestamp covers timestamp_ns but size_delta
+        //     requires a heap fetch for every row.  Adding size_delta makes it covering.
+        //
+        // (3) idx_secure_events_unpruned — prune_payloads re-runs:
+        //     UPDATE … WHERE timestamp_ns < ?
+        //     After the first retention pass most old rows have context_note = NULL.
+        //     A partial index restricted to IS NOT NULL rows means subsequent calls
+        //     visit only the small fraction that still carry payload, not the whole table.
+        //
+        // (4) idx_text_fragments_sync — get_unsynced_fragments / get_pending_sync_count:
+        //     WHERE sync_state IS NULL OR sync_state != 'synced' ORDER BY timestamp ASC
+        //     No index on sync_state; in steady state most rows are 'synced', so the
+        //     planner would reject an index scan as too broad on the other three queries.
+        //     The composite (sync_state, timestamp) makes both the filter and sort cheap.
+        //
+        // (5) idx_clipboard_events_app_ts — clipboard app+time-range queries:
+        //     WHERE app_bundle_id = ? AND timestamp BETWEEN ? AND ?
+        //     idx_clipboard_events_timestamp helps time-only filters; a composite lets
+        //     the planner do an index-only range scan when both predicates are present.
+        self.conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_secure_events_device_id
+                 ON secure_events(device_id, id);
+             CREATE INDEX IF NOT EXISTS idx_secure_events_ts_delta
+                 ON secure_events(timestamp_ns, size_delta);
+             CREATE INDEX IF NOT EXISTS idx_secure_events_unpruned
+                 ON secure_events(timestamp_ns)
+                 WHERE context_note IS NOT NULL;
+             CREATE INDEX IF NOT EXISTS idx_text_fragments_sync
+                 ON text_fragments(sync_state, timestamp);
+             CREATE INDEX IF NOT EXISTS idx_clipboard_events_app_ts
+                 ON clipboard_events(app_bundle_id, timestamp);",
+        )?;
+
         // Migration: add `last_verified_sequence` to pre-existing integrity rows
         if !has_column(&self.conn, "integrity", "last_verified_sequence")? {
             self.conn.execute_batch(
@@ -241,7 +284,6 @@ impl SecureStore {
                     wal_entry_hash              BLOB,
                     cloudkit_record_id          TEXT,
                     sync_state                  TEXT,
-                    FOREIGN KEY(session_id) REFERENCES document_sessions(session_id),
                     CONSTRAINT valid_signature CHECK(source_signature IS NOT NULL)
                 );
                 CREATE TABLE IF NOT EXISTS keystroke_sequences (
@@ -250,8 +292,7 @@ impl SecureStore {
                     sequence_hash           BLOB NOT NULL,
                     keystroke_count         INTEGER,
                     timestamp_start         INTEGER,
-                    timestamp_end           INTEGER,
-                    FOREIGN KEY(session_id) REFERENCES document_sessions(session_id)
+                    timestamp_end           INTEGER
                 );
                 CREATE TABLE IF NOT EXISTS used_nonces (
                     nonce                   BLOB PRIMARY KEY,
@@ -388,7 +429,7 @@ impl SecureStore {
                 }
 
                 // Total event count must match the integrity record.
-                if last_verified_seq + count != event_count {
+                if last_verified_seq.checked_add(count).ok_or_else(|| anyhow!("event count overflow"))? != event_count {
                     return Err(anyhow!("Event count mismatch"));
                 }
 

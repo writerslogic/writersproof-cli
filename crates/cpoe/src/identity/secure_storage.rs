@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use base64::{engine::general_purpose, Engine as _};
 #[cfg(not(target_os = "macos"))]
 use keyring::Entry;
@@ -32,7 +32,8 @@ static FINGERPRINT_KEY_CACHE: Mutex<Option<ProtectedBuf>> = Mutex::new(None);
 /// Mutex instead of OnceLock so the cache can be invalidated after re-generation.
 static MNEMONIC_CACHE: Mutex<Option<Zeroizing<String>>> = Mutex::new(None);
 /// Mutex instead of OnceLock so the cache can be invalidated after delete.
-static IDENTITY_CACHE: Mutex<Option<([u8; 16], String)>> = Mutex::new(None);
+#[allow(clippy::type_complexity)]
+static IDENTITY_CACHE: Mutex<Option<(Zeroizing<[u8; 16]>, Zeroizing<String>)>> = Mutex::new(None);
 #[cfg(all(target_os = "macos", not(test)))]
 static MIGRATION_ONCE: Once = Once::new();
 
@@ -60,7 +61,7 @@ pub trait KeychainBackend: Send + Sync {
 /// State is process-global so writes from one call site are observable by
 /// subsequent loads (matching real keychain semantics).
 pub struct InMemoryBackend {
-    store: Mutex<HashMap<String, Vec<u8>>>,
+    store: Mutex<HashMap<String, Zeroizing<Vec<u8>>>>,
 }
 
 impl InMemoryBackend {
@@ -80,13 +81,13 @@ impl Default for InMemoryBackend {
 impl KeychainBackend for InMemoryBackend {
     fn save(&self, account: &str, data: &[u8]) -> Result<()> {
         let mut guard = self.store.lock_recover();
-        guard.insert(account.to_string(), data.to_vec());
+        guard.insert(account.to_string(), Zeroizing::new(data.to_vec()));
         Ok(())
     }
 
     fn load(&self, account: &str) -> Result<Option<Zeroizing<Vec<u8>>>> {
         let guard = self.store.lock_recover();
-        Ok(guard.get(account).cloned().map(Zeroizing::new))
+        Ok(guard.get(account).map(|v| Zeroizing::new(v.to_vec())))
     }
 
     fn delete(&self, account: &str) -> Result<()> {
@@ -120,10 +121,12 @@ impl KeychainBackend for KeyringBackend {
     fn load(&self, account: &str) -> Result<Option<Zeroizing<Vec<u8>>>> {
         let entry = keyring_entry(account)?;
         match entry.get_password() {
-            Ok(encoded) => {
-                let data = general_purpose::STANDARD
-                    .decode(&encoded)
-                    .map_err(|e| anyhow!("Failed to decode data from keyring: {}", e))?;
+            Ok(mut encoded) => {
+                let data = general_purpose::STANDARD.decode(&encoded).map_err(|e| {
+                    encoded.zeroize();
+                    anyhow!("Failed to decode data from keyring: {}", e)
+                })?;
+                encoded.zeroize();
                 Ok(Some(Zeroizing::new(data)))
             }
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -235,26 +238,25 @@ impl SecureStorage {
 
     /// Store the identity seed in the platform keychain.
     pub fn save_seed(seed: &[u8]) -> Result<()> {
-        Self::save(SEED_ACCOUNT, seed)
+        if seed.len() != 32 {
+            bail!(
+                "seed must be exactly 32 bytes, got {}",
+                seed.len()
+            );
+        }
+        Self::save(SEED_ACCOUNT, seed)?;
+        *SEED_CACHE.lock_recover() = Some(ProtectedBuf::new(seed.to_vec()));
+        Ok(())
     }
 
     /// Load the identity seed from the platform keychain, with caching.
     pub fn load_seed() -> Result<Option<Zeroizing<Vec<u8>>>> {
-        if SEED_CACHE.is_poisoned() {
-            log::warn!("SEED_CACHE mutex poisoned; recovering");
-        }
-        let guard = SEED_CACHE.lock_recover();
+        let mut guard = SEED_CACHE.lock_recover();
         if let Some(ref cached) = *guard {
             return Ok(Some(Zeroizing::new(cached.as_slice().to_vec())));
         }
-        drop(guard);
-
         let res = Self::load(SEED_ACCOUNT)?;
         if let Some(data) = res {
-            if SEED_CACHE.is_poisoned() {
-                log::warn!("SEED_CACHE mutex poisoned; recovering for cache write");
-            }
-            let mut guard = SEED_CACHE.lock_recover();
             *guard = Some(ProtectedBuf::new(data.to_vec()));
             Ok(Some(data))
         } else {
@@ -279,6 +281,12 @@ impl SecureStorage {
 
     /// Store the HMAC key in the platform keychain and update the cache.
     pub fn save_hmac_key(key: &[u8]) -> Result<()> {
+        if key.len() != 32 {
+            bail!(
+                "HMAC key must be exactly 32 bytes, got {}",
+                key.len()
+            );
+        }
         Self::save(HMAC_ACCOUNT, key)?;
         *HMAC_CACHE.lock_recover() = Some(ProtectedBuf::new(key.to_vec()));
         Ok(())
@@ -291,15 +299,13 @@ impl SecureStorage {
 
     /// Load the HMAC key from the platform keychain, with caching.
     pub fn load_hmac_key() -> Result<Option<Zeroizing<Vec<u8>>>> {
-        {
-            let guard = HMAC_CACHE.lock_recover();
-            if let Some(ref cached) = *guard {
-                return Ok(Some(Zeroizing::new(cached.as_slice().to_vec())));
-            }
+        let mut guard = HMAC_CACHE.lock_recover();
+        if let Some(ref cached) = *guard {
+            return Ok(Some(Zeroizing::new(cached.as_slice().to_vec())));
         }
         let res = Self::load(HMAC_ACCOUNT)?;
         if let Some(data) = res {
-            *HMAC_CACHE.lock_recover() = Some(ProtectedBuf::new(data.to_vec()));
+            *guard = Some(ProtectedBuf::new(data.to_vec()));
             Ok(Some(data))
         } else {
             Ok(None)
@@ -308,6 +314,12 @@ impl SecureStorage {
 
     /// Store the Ed25519 signing key seed (32 bytes) in the platform keychain.
     pub fn save_signing_key(seed: &[u8]) -> Result<()> {
+        if seed.len() != 32 {
+            bail!(
+                "signing key must be exactly 32 bytes, got {}",
+                seed.len()
+            );
+        }
         Self::save(SIGNING_KEY_ACCOUNT, seed)
     }
 
@@ -326,17 +338,21 @@ impl SecureStorage {
     /// Load the mnemonic phrase from the platform keychain, with caching.
     /// Returns `Zeroizing<String>` so callers zeroize the mnemonic when done.
     pub fn load_mnemonic() -> Result<Option<Zeroizing<String>>> {
-        {
-            let guard = MNEMONIC_CACHE.lock_recover();
-            if let Some(ref cached) = *guard {
-                return Ok(Some(Zeroizing::new(cached.as_str().to_owned())));
-            }
+        let mut guard = MNEMONIC_CACHE.lock_recover();
+        if let Some(ref cached) = *guard {
+            return Ok(Some(Zeroizing::new(cached.as_str().to_owned())));
         }
         let bytes = Self::load(MNEMONIC_ACCOUNT)?;
         if let Some(b) = bytes {
-            let s = String::from_utf8(b.to_vec())
-                .map_err(|e| anyhow!("Invalid UTF-8 in mnemonic: {}", e))?;
-            *MNEMONIC_CACHE.lock_recover() = Some(Zeroizing::new(s.clone()));
+            let mut raw = Zeroizing::new(b.to_vec());
+            let s = match String::from_utf8(raw.as_slice().to_vec()) {
+                Ok(s) => s,
+                Err(e) => {
+                    raw.zeroize();
+                    return Err(anyhow!("Invalid UTF-8 in mnemonic: {}", e));
+                }
+            };
+            *guard = Some(Zeroizing::new(s.clone()));
             Ok(Some(Zeroizing::new(s)))
         } else {
             Ok(None)
@@ -351,17 +367,23 @@ impl SecureStorage {
     /// Store the device ID and machine ID in the platform keychain.
     pub fn save_device_identity(device_id: &[u8; 16], machine_id: &str) -> Result<()> {
         Self::save(DEVICE_ID_ACCOUNT, device_id)?;
-        Self::save(MACHINE_ID_ACCOUNT, machine_id.as_bytes())?;
+        if let Err(e) = Self::save(MACHINE_ID_ACCOUNT, machine_id.as_bytes()) {
+            // Roll back device_id save to avoid partial identity state.
+            let _ = Self::delete(DEVICE_ID_ACCOUNT);
+            return Err(e);
+        }
+        *IDENTITY_CACHE.lock_recover() = Some((
+            Zeroizing::new(*device_id),
+            Zeroizing::new(machine_id.to_string()),
+        ));
         Ok(())
     }
 
     /// Load the device identity (device_id, machine_id) from the platform keychain.
     pub fn load_device_identity() -> Result<Option<([u8; 16], String)>> {
-        {
-            let guard = IDENTITY_CACHE.lock_recover();
-            if let Some(ref cached) = *guard {
-                return Ok(Some(cached.clone()));
-            }
+        let mut guard = IDENTITY_CACHE.lock_recover();
+        if let Some(ref cached) = *guard {
+            return Ok(Some((*cached.0, (*cached.1).clone())));
         }
         let device_id_bytes = Self::load(DEVICE_ID_ACCOUNT)?;
         let machine_id_bytes = Self::load(MACHINE_ID_ACCOUNT)?;
@@ -384,7 +406,10 @@ impl SecureStorage {
                 }
                 let machine_id = String::from_utf8(mid.to_vec())
                     .map_err(|e| anyhow!("Invalid UTF-8 in machine ID from keyring: {}", e))?;
-                *IDENTITY_CACHE.lock_recover() = Some((device_id, machine_id.clone()));
+                *guard = Some((
+                    Zeroizing::new(device_id),
+                    Zeroizing::new(machine_id.clone()),
+                ));
                 Ok(Some((device_id, machine_id)))
             }
             _ => Ok(None),
@@ -393,29 +418,47 @@ impl SecureStorage {
 
     /// Delete the device identity from the platform keychain.
     pub fn delete_device_identity() -> Result<()> {
+        // Load current values for potential rollback.
+        let prev_did = Self::load(DEVICE_ID_ACCOUNT)?;
+        let prev_mid = Self::load(MACHINE_ID_ACCOUNT)?;
         Self::delete(DEVICE_ID_ACCOUNT)?;
-        Self::delete(MACHINE_ID_ACCOUNT)?;
+        if let Err(e) = Self::delete(MACHINE_ID_ACCOUNT) {
+            // Roll back device_id deletion.
+            if let Some(ref did) = prev_did {
+                let _ = Self::save(DEVICE_ID_ACCOUNT, did);
+            }
+            return Err(e);
+        }
         *IDENTITY_CACHE.lock_recover() = None;
+        // Zeroize restored copies via Zeroizing<Vec<u8>> Drop.
+        drop(prev_did);
+        drop(prev_mid);
         Ok(())
     }
 
     /// Store the fingerprint key in the platform keychain.
     pub fn save_fingerprint_key(key: &[u8]) -> Result<()> {
-        Self::save(FINGERPRINT_KEY_ACCOUNT, key)
+        if key.len() != 32 {
+            bail!(
+                "fingerprint key must be exactly 32 bytes, got {}",
+                key.len()
+            );
+        }
+        Self::save(FINGERPRINT_KEY_ACCOUNT, key)?;
+        *FINGERPRINT_KEY_CACHE.lock_recover() = Some(ProtectedBuf::new(key.to_vec()));
+        Ok(())
     }
 
     /// Load the fingerprint key from the platform keychain, with caching.
     pub fn load_fingerprint_key() -> Result<Option<Zeroizing<Vec<u8>>>> {
-        {
-            let guard = FINGERPRINT_KEY_CACHE.lock_recover();
-            if let Some(ref cached) = *guard {
-                return Ok(Some(Zeroizing::new(cached.as_slice().to_vec())));
-            }
+        let mut guard = FINGERPRINT_KEY_CACHE.lock_recover();
+        if let Some(ref cached) = *guard {
+            return Ok(Some(Zeroizing::new(cached.as_slice().to_vec())));
         }
         let res = Self::load(FINGERPRINT_KEY_ACCOUNT)?;
         if let Some(data) = res {
-            *FINGERPRINT_KEY_CACHE.lock_recover() = Some(ProtectedBuf::new(data.to_vec()));
-            Ok(Some(Zeroizing::new(data.to_vec())))
+            *guard = Some(ProtectedBuf::new(data.to_vec()));
+            Ok(Some(data))
         } else {
             Ok(None)
         }
@@ -625,8 +668,16 @@ fn migrate_macos_keychain() {
         if data_dir.exists() {
             match std::fs::canonicalize(&data_dir) {
                 Ok(resolved) => {
-                    let canonical_home =
-                        std::fs::canonicalize(&home_dir).unwrap_or_else(|_| home_dir.clone());
+                    let canonical_home = match std::fs::canonicalize(&home_dir) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            log::warn!(
+                                "Cannot canonicalize home directory, skipping migration: {}",
+                                e
+                            );
+                            return;
+                        }
+                    };
                     if !resolved.starts_with(&canonical_home) {
                         log::warn!(
                             "Migration path resolves outside home directory, skipping: \
@@ -679,20 +730,27 @@ fn migrate_macos_keychain() {
         for account in accounts {
             if let Ok(entry) = keyring::Entry::new(SERVICE_NAME, account) {
                 if let Ok(mut encoded) = entry.get_password() {
-                    if let Ok(data) = general_purpose::STANDARD.decode(&encoded) {
-                        encoded.zeroize();
-                        let data = Zeroizing::new(data);
-                        match save_macos(account, &data) {
-                            Ok(()) => {
-                                let _ = entry.delete_password();
-                            }
-                            Err(e) => {
-                                log::warn!("Keychain migration failed for {account}: {e}");
-                                any_failed = true;
+                    match general_purpose::STANDARD.decode(&encoded) {
+                        Ok(data) => {
+                            encoded.zeroize();
+                            let data = Zeroizing::new(data);
+                            match save_macos(account, &data) {
+                                Ok(()) => {
+                                    let _ = entry.delete_password();
+                                }
+                                Err(e) => {
+                                    log::warn!("Keychain migration failed for {account}: {e}");
+                                    any_failed = true;
+                                }
                             }
                         }
-                    } else {
-                        encoded.zeroize();
+                        Err(e) => {
+                            encoded.zeroize();
+                            log::warn!(
+                                "Keychain migration: base64 decode failed for {account}: {e}"
+                            );
+                            any_failed = true;
+                        }
                     }
                 }
             }

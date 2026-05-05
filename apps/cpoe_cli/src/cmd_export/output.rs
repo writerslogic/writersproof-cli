@@ -46,6 +46,13 @@ pub(super) fn write_atomic(out_path: &Path, data: &[u8]) -> Result<()> {
     tmp.as_file().sync_all().context("fsync evidence data")?;
     tmp.persist(out_path)
         .context("atomic rename to final path")?;
+    // Flush the parent directory entry so the rename survives a crash (Unix only).
+    #[cfg(unix)]
+    {
+        if let Ok(dir_file) = std::fs::File::open(dir) {
+            let _ = dir_file.sync_all();
+        }
+    }
     Ok(())
 }
 
@@ -507,7 +514,8 @@ pub(super) fn build_war_report(
     let avg_forensic: f64 = if events.is_empty() {
         0.0
     } else {
-        events.iter().map(|e| e.forensic_score).sum::<f64>() / events.len() as f64
+        let s = events.iter().map(|e| e.forensic_score).sum::<f64>() / events.len() as f64;
+        if s.is_finite() { s } else { 0.0 }
     };
     let score = (avg_forensic * 100.0).clamp(0.0, 100.0) as u32;
     let verdict = Verdict::from_score(score);

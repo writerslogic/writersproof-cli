@@ -3,7 +3,7 @@
 //! Encrypted channel wrapper for inter-component communication
 
 use chacha20poly1305::{
-    aead::{rand_core::RngCore, Aead, KeyInit, OsRng},
+    aead::{rand_core::RngCore, Aead, KeyInit, OsRng, Payload},
     ChaCha20Poly1305, Key, Nonce,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -157,7 +157,7 @@ impl<T: serde::Serialize> SecureSender<T> {
 
         let ciphertext = self
             .cipher
-            .encrypt(nonce, plaintext.as_ref())
+            .encrypt(nonce, Payload { msg: plaintext.as_ref(), aad: &nonce_bytes })
             .map_err(|_| SecureChannelSendError::Encryption)?;
 
         self.tx
@@ -188,11 +188,18 @@ impl<T: serde::de::DeserializeOwned> SecureReceiver<T> {
     /// Block until a message arrives, then decrypt and deserialize it.
     pub fn recv(&self) -> Result<T, SecureChannelRecvError> {
         let msg = self.rx.recv().map_err(SecureChannelRecvError::from)?;
-        let nonce = Nonce::from_slice(&msg.nonce);
+
+        // ChaCha20-Poly1305 appends a 16-byte auth tag; check before allocating.
+        if msg.ciphertext.len() > MAX_SECURE_CHANNEL_PAYLOAD + 16 {
+            return Err(SecureChannelRecvError::PayloadTooLarge);
+        }
+
+        let nonce_bytes = msg.nonce;
+        let nonce = Nonce::from_slice(&nonce_bytes);
 
         let mut plaintext = self
             .cipher
-            .decrypt(nonce, msg.ciphertext.as_ref())
+            .decrypt(nonce, Payload { msg: msg.ciphertext.as_ref(), aad: &nonce_bytes })
             .map_err(|_| {
                 log::warn!(
                     "secure channel: AEAD decryption failed (possible tampering or key mismatch)"

@@ -698,6 +698,7 @@ pub fn ffi_get_pending_sync_count() -> i64 {
 ///
 /// Verifies the Ed25519 signature over the domain-tagged payload before
 /// storing, preventing injection of forged fragments via compromised sync.
+#[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_apply_remote_fragment(
     fragment_hash_hex: String,
@@ -817,6 +818,7 @@ pub fn ffi_apply_remote_fragment(
 ///
 /// `strategy`: "keep_local", "keep_remote", or "keep_newest".
 /// Remote fragment fields are required for "keep_remote"/"keep_newest".
+#[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_resolve_sync_conflict(
     fragment_id: i64,

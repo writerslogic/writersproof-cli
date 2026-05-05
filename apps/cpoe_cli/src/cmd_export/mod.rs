@@ -178,9 +178,10 @@ pub(crate) async fn cmd_export(
     )?;
 
     let total_iterations: u64 = events.iter().map(|e| e.vdf_iterations).sum();
-    let total_vdf_time = Duration::from_secs_f64(
+    let total_vdf_time = Duration::try_from_secs_f64(
         total_iterations as f64 / vdf_params.iterations_per_second.max(1) as f64,
-    );
+    )
+    .unwrap_or(Duration::ZERO);
 
     let spec_content_tier = content_tier_from_cli(&tier_lower);
     let spec_profile_uri = profile_uri_from_cli(&tier_lower);

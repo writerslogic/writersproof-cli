@@ -43,8 +43,11 @@ struct EventStats {
     doc_size: i64,
 }
 
-fn compute_event_stats(events: &[crate::store::SecureEvent], ips: u64) -> EventStats {
-    let last = &events[events.len() - 1];
+fn compute_event_stats(
+    events: &[crate::store::SecureEvent],
+    ips: u64,
+) -> Option<EventStats> {
+    let last = events.last()?;
     let doc_hash = hex::encode(last.content_hash);
     let doc_size = last.file_size;
 
@@ -92,9 +95,14 @@ fn compute_event_stats(events: &[crate::store::SecureEvent], ips: u64) -> EventS
         0.0
     };
 
+    // .max(0) ensures each delta is non-negative before widening to i64, so the
+    // sum is guaranteed non-negative. The 1.15x multiplier estimates actual keystrokes
+    // (accounting for corrections). .clamp() prevents overflow on the f64->u64 cast.
     let size_delta_chars: i64 = events.iter().map(|e| e.size_delta.max(0) as i64).sum();
-    let keystroke_estimate =
-        ((size_delta_chars as f64 * 1.15).ceil() as u64).max(events.len() as u64);
+    let keystroke_estimate = ((size_delta_chars as f64 * 1.15)
+        .ceil()
+        .clamp(0.0, u64::MAX as f64) as u64)
+        .max(events.len() as u64);
 
     let paste_chars: i64 = events
         .iter()
@@ -107,7 +115,7 @@ fn compute_event_stats(events: &[crate::store::SecureEvent], ips: u64) -> EventS
         None
     };
 
-    EventStats {
+    Some(EventStats {
         avg_forensic,
         total_iterations,
         total_secs,
@@ -120,7 +128,7 @@ fn compute_event_stats(events: &[crate::store::SecureEvent], ips: u64) -> EventS
         paste_ratio_pct,
         doc_hash,
         doc_size,
-    }
+    })
 }
 
 fn build_checkpoints(events: &[crate::store::SecureEvent], ips: u64) -> Vec<ReportCheckpoint> {
@@ -266,7 +274,8 @@ fn load_signing_key_and_seed() -> (Option<ed25519_dalek::SigningKey>, String, St
 
             use hkdf::Hkdf;
             use sha2::Sha256;
-            let hk = Hkdf::<Sha256>::new(None, signing_key.as_bytes());
+            // Explicit salt for domain separation; signing_key has ZeroizeOnDrop.
+            let hk = Hkdf::<Sha256>::new(Some(b"cpoe-guilloche-v1"), signing_key.as_bytes());
             let mut seed = [0u8; 32];
             let seed_hex = if hk.expand(b"cpoe-guilloche-seed-v1", &mut seed).is_err() {
                 log::error!("HKDF expand failed for guilloche seed");
@@ -288,6 +297,7 @@ fn load_signing_key_and_seed() -> (Option<ed25519_dalek::SigningKey>, String, St
     (loaded_key, key_fp, guilloche_seed_hex)
 }
 
+#[allow(clippy::type_complexity)]
 fn get_forensics_cached(
     file_path_str: &str,
     events: &[crate::store::SecureEvent],
@@ -319,7 +329,11 @@ fn get_forensics_cached(
             let r = Arc::new(r_raw);
             const MAX_FORENSIC_CACHE: usize = 10;
             if forensic_cache().len() >= MAX_FORENSIC_CACHE {
-                forensic_cache().clear();
+                if let Some(entry) = forensic_cache().iter().next() {
+                    let evict_key = entry.key().clone();
+                    drop(entry);
+                    forensic_cache().remove(&evict_key);
+                }
             }
             forensic_cache().insert(
                 cache_key,
@@ -341,8 +355,8 @@ fn build_forensic_breakdown(
 ) -> ForensicBreakdown {
     let c = &metrics.cadence;
     let mean_iki = finite_or(c.mean_iki_ns / 1_000_000.0, 0.0);
-    let cv = if mean_iki > 0.0 && c.std_dev_iki_ns.is_finite() {
-        c.std_dev_iki_ns / c.mean_iki_ns
+    let cv = if mean_iki > 0.0 && c.std_dev_iki_ns.is_finite() && c.mean_iki_ns.is_finite() {
+        finite_or(c.std_dev_iki_ns / c.mean_iki_ns, 0.0)
     } else {
         0.0
     };
@@ -376,7 +390,7 @@ fn populate_behavioral_fields(
     keystroke_estimate: u64,
 ) {
     let c = &metrics.cadence;
-    if c.mean_iki_ns > 0.0 && c.mean_iki_ns.is_finite() {
+    if c.mean_iki_ns > 0.0 && c.mean_iki_ns.is_finite() && c.std_dev_iki_ns.is_finite() {
         let cv = c.std_dev_iki_ns / c.mean_iki_ns;
         process.iki_cv = if cv.is_finite() { Some(cv) } else { None };
         if c.percentiles[PERCENTILE_IDX_MEDIAN] > 0.0
@@ -592,6 +606,7 @@ fn make_dimension(
         name: name.to_string(),
         score,
         lr: compute_likelihood_ratio(score),
+        // log10() may return -inf for LR=0 or NaN for negative; .max(-2.0) clamps both.
         log_lr: compute_likelihood_ratio(score).log10().max(-2.0),
         confidence,
         key_discriminator: key_discriminator.clone(),
@@ -683,8 +698,12 @@ fn build_dimensions(
 
     // 5. Behavioral Signature
     let behavioral_score: u32 = {
-        let cv = if metrics.cadence.mean_iki_ns > 0.0 && metrics.cadence.std_dev_iki_ns > 0.0 {
-            metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns
+        let cv = if metrics.cadence.mean_iki_ns > 0.0
+            && metrics.cadence.std_dev_iki_ns > 0.0
+            && metrics.cadence.std_dev_iki_ns.is_finite()
+            && metrics.cadence.mean_iki_ns.is_finite()
+        {
+            finite_or(metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns, 0.5)
         } else {
             finite_or(metrics.cadence.burst_speed_cv, 0.5)
         };
@@ -852,6 +871,10 @@ fn compute_provenance(
 ///
 /// Returns `(WarReport, guilloche_seed_hex)` on success.
 pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String), String> {
+    const MAX_PATH_LEN: usize = 4096;
+    if path.len() > MAX_PATH_LEN {
+        return Err(format!("Path exceeds maximum length of {} bytes", MAX_PATH_LEN));
+    }
     let (file_path_str, store, events) = crate::ffi::helpers::load_events_for_path(path)?;
     let file_path = std::path::PathBuf::from(&file_path_str);
 
@@ -873,7 +896,8 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
     });
     let ips = config.vdf.iterations_per_second.max(1);
 
-    let stats = compute_event_stats(&events, ips);
+    let stats = compute_event_stats(&events, ips)
+        .ok_or_else(|| "No events found for this file".to_string())?;
     let base_score = (stats.avg_forensic * 100.0).clamp(0.0, 100.0) as u32;
     let base_verdict = Verdict::from_score(base_score);
     let base_lr = compute_likelihood_ratio(base_score);
@@ -886,7 +910,10 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     let (loaded_key, key_fp, guilloche_seed_hex) = load_signing_key_and_seed();
 
-    let last = &events[events.len() - 1];
+    // Safe: events.is_empty() already returned Err above.
+    let last = events.last().expect("events non-empty checked above");
+    // Intentional: device_id binds the evidence chain to a specific machine for
+    // hardware attestation verification. It is a non-secret opaque identifier.
     let device_id = last.machine_id.clone();
     let device_attestation = if hardware_backed {
         format!("{} | TPM-bound Ed25519 key | {}", device_id, tier_label)
@@ -954,7 +981,10 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         .map(|s| ActivityContext {
             period_type: "writing_session".into(),
             start: s.start,
-            end: s.start + chrono::Duration::seconds((s.duration_min * 60.0) as i64),
+            end: s.start
+                + chrono::Duration::seconds(
+                    (s.duration_min.clamp(0.0, 525_960.0) * 60.0) as i64,
+                ),
             duration_min: s.duration_min,
             note: Some(s.summary.clone()),
         })
@@ -1227,7 +1257,7 @@ pub(crate) fn detect_sessions_from_events(
     }
 
     use crate::forensics::types::DEFAULT_SESSION_GAP_SEC;
-    let gap_ns: i64 = (DEFAULT_SESSION_GAP_SEC * 1_000_000_000.0) as i64;
+    let gap_ns: i64 = (DEFAULT_SESSION_GAP_SEC * 1_000_000_000.0).clamp(0.0, i64::MAX as f64) as i64;
     let mut sessions = Vec::new();
     let mut session_start = 0usize;
 
@@ -1343,14 +1373,20 @@ fn build_trust_vector(report: &WarReport, tier_num: u8) -> TrustworthinessVector
 ///
 /// Uses domain-separated SHA-256 hashing and signs h3 with Ed25519 using
 /// the `cpoe-war-seal-v1` DST to match `Block::sign()`.
-fn compute_report_seal(report: &WarReport, signing_key: &ed25519_dalek::SigningKey) -> SealClaims {
+fn compute_report_seal(
+    report: &WarReport,
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Option<SealClaims> {
     use sha2::{Digest, Sha256};
 
     let pub_key = signing_key.verifying_key();
-    let doc_bytes = hex::decode(&report.document_hash).unwrap_or_else(|e| {
-        log::warn!("Invalid document_hash hex in report seal: {e}");
-        Vec::new()
-    });
+    let doc_bytes = match hex::decode(&report.document_hash) {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("Invalid document_hash hex in report seal: {e}");
+            return None;
+        }
+    };
     let chain_hash: [u8; 32] = report
         .checkpoints
         .iter()
@@ -1389,13 +1425,13 @@ fn compute_report_seal(report: &WarReport, signing_key: &ed25519_dalek::SigningK
     sig_input.extend_from_slice(&h3);
     let sig = ed25519_dalek::Signer::sign(signing_key, &sig_input);
 
-    SealClaims {
+    Some(SealClaims {
         h1,
         h2,
         h3,
         signature: sig.to_bytes(),
         public_key: pub_key.to_bytes(),
-    }
+    })
 }
 
 /// Collect anomaly warnings from a report.
@@ -1425,7 +1461,7 @@ fn build_vc_json(
 
     let (_, tier_num, _) = crate::ffi::helpers::detect_attestation_tier_info();
     let tv = build_trust_vector(report, tier_num);
-    let seal = compute_report_seal(report, &signing_key);
+    let seal = compute_report_seal(report, signing_key);
     let warnings = collect_warnings(report);
 
     let chain_duration = if report.total_duration_min > 0.0 {
@@ -1434,15 +1470,20 @@ fn build_vc_json(
         None
     };
 
+    let evidence_ref = match hex::decode(&report.document_hash) {
+        Ok(b) => Some(b),
+        Err(e) => {
+            log::warn!("Invalid document_hash hex in EAR evidence ref: {e}");
+            None
+        }
+    };
+
     let appraisal = EarAppraisal {
         ear_status: score_to_ar4si(report.score),
         ear_trustworthiness_vector: Some(tv),
         ear_appraisal_policy_id: Some("urn:writerslogic:policy:pop-standard:1.0".to_string()),
-        pop_seal: Some(seal),
-        pop_evidence_ref: Some(hex::decode(&report.document_hash).unwrap_or_else(|e| {
-            log::warn!("Invalid document_hash hex in EAR evidence ref: {e}");
-            Vec::new()
-        })),
+        pop_seal: seal,
+        pop_evidence_ref: evidence_ref,
         pop_entropy_report: None,
         pop_forgery_cost: None,
         pop_forensic_summary: None,

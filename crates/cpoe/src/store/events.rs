@@ -236,7 +236,7 @@ impl SecureStore {
 
     /// Deserialize a row into a `SecureEvent` and its stored HMAC bytes.
     /// The SELECT must include `hmac` at column index 10 (after `event_hash`).
-    fn row_to_event_with_hmac(row: &rusqlite::Row<'_>) -> rusqlite::Result<(SecureEvent, Vec<u8>)> {
+    pub(crate) fn row_to_event_with_hmac(row: &rusqlite::Row<'_>) -> rusqlite::Result<(SecureEvent, Vec<u8>)> {
         let stored_hmac: Vec<u8> = row.get(10)?;
         let event = Self::row_to_event(row)?;
         Ok((event, stored_hmac))
@@ -358,6 +358,10 @@ impl SecureStore {
     }
 
     /// Return all event timestamps after `start_ts`, ascending.
+    ///
+    /// **HMAC note**: This query returns raw column values without HMAC verification.
+    /// Callers must treat timestamps as untrusted for forensic purposes; use
+    /// `get_all_events_grouped` (which verifies HMACs) for integrity-sensitive paths.
     pub fn get_all_event_timestamps(&self, start_ts: i64) -> anyhow::Result<Vec<i64>> {
         let mut stmt = self.conn.prepare(
             "SELECT timestamp_ns FROM secure_events WHERE timestamp_ns >= ? ORDER BY timestamp_ns ASC"
@@ -395,6 +399,10 @@ impl SecureStore {
     }
 
     /// Return (timestamp, size_delta) pairs for all events, ascending.
+    ///
+    /// **HMAC note**: Returns raw column values without HMAC verification. Intended
+    /// for activity charting and progress UI where tamper detection is not required.
+    /// Use `get_all_events_grouped` for integrity-sensitive reads.
     pub fn get_all_events_summary(&self) -> anyhow::Result<Vec<(i64, i32)>> {
         let mut stmt = self.conn.prepare(
             "SELECT timestamp_ns, size_delta FROM secure_events ORDER BY timestamp_ns ASC",
@@ -514,6 +522,12 @@ impl SecureStore {
     }
 
     /// Update the most recent event for a file path with hardware co-signature data.
+    ///
+    /// **HMAC note**: The `hw_cosign_*` fields are written after the event's HMAC is
+    /// computed and are therefore not covered by the EventData HMAC chain. Integrity
+    /// of these fields is provided by `hw_cosign_signature` itself (a hardware key
+    /// signature over the co-sign payload); tampering with the other `hw_cosign_*`
+    /// columns would produce a verification failure during WAR report generation.
     #[allow(clippy::too_many_arguments)]
     pub fn update_hw_cosign(
         &self,
