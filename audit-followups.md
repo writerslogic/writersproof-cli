@@ -20,3 +20,10 @@ Out-of-scope items discovered during audit. Not fixed; tracked here for future w
 - File: `apps/cpoe_cli/src/cmd_daemon.rs:180-215`
 - Inherent POSIX limitation. Mitigation documented in-code (comment references H-012).
 - Action: No fix possible without OS-specific APIs (pidfd on Linux, proc_info on macOS).
+
+## Batch 2 (cmd_export/keystroke.rs, mod.rs, output.rs, packet.rs, cmd_fingerprint.rs)
+
+**FOLLOWUP-004** — `keystroke.rs`: `eprintln!` diagnostic messages not gated by `OutputMode`; appear even in `--quiet` mode.
+- File: `apps/cpoe_cli/src/cmd_export/keystroke.rs:25-116`
+- Root cause: `load_keystroke_evidence` / `find_matching_session` have no access to `OutputMode`.
+- Action: Add `quiet: bool` parameter to `load_keystroke_evidence` and `find_matching_session`, pass from `cmd_export`.

@@ -189,7 +189,7 @@ pub(crate) fn cmd_fingerprint(action: FingerprintAction, out: &OutputMode) -> Re
                     let is_not_found = e
                         .downcast_ref::<std::io::Error>()
                         .is_some_and(|io_err| io_err.kind() == std::io::ErrorKind::NotFound)
-                        || e.to_string().contains("not found");
+                        || e.to_string().contains("Profile not found");
                     if is_not_found {
                         return Err(anyhow!("Profile not found: {}", profile_id));
                     }

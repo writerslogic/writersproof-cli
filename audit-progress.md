@@ -1,5 +1,5 @@
 # Audit Progress
-Total: 522 files | Completed: 5 | In Progress: 0 | Remaining: 517
+Total: 522 files | Completed: 10 | In Progress: 0 | Remaining: 512
 
 ## Legend
 - [ ] = pending
@@ -13,11 +13,11 @@ Total: 522 files | Completed: 5 | In Progress: 0 | Remaining: 517
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_commit.rs
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_config.rs
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_daemon.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/keystroke.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/mod.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/output.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/packet.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_fingerprint.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/keystroke.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/mod.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/output.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/packet.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_fingerprint.rs
 [ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_identity.rs
 [ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_init.rs
 [ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_link.rs
