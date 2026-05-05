@@ -1357,12 +1357,25 @@ pub(super) fn capture_git_context(
         capture_git_context_inner(&file_path_owned, &git_root_owned)
     });
 
-    match handle.join() {
-        Ok(result) => result,
-        Err(_) => {
-            log::warn!("Git context capture thread panicked");
-            None
+    // Bounded wait: abandon the thread after GIT_COMMAND_TIMEOUT if it hasn't
+    // returned. The orphaned thread will eventually finish or be reclaimed on
+    // process exit; we just stop waiting for it.
+    let deadline = std::time::Instant::now() + GIT_COMMAND_TIMEOUT;
+    loop {
+        if handle.is_finished() {
+            return match handle.join() {
+                Ok(result) => result,
+                Err(_) => {
+                    log::warn!("Git context capture thread panicked");
+                    None
+                }
+            };
         }
+        if std::time::Instant::now() >= deadline {
+            log::warn!("Git context capture timed out, abandoning thread");
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
 

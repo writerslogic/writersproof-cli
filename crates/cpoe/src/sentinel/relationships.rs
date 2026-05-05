@@ -3,7 +3,9 @@
 //! File relationship detection: identifies co-edited document pairs based on
 //! focus switch patterns across active sessions.
 
-use super::types::{DocumentSession, FocusSwitchRecord};
+use super::types::DocumentSession;
+#[cfg(test)]
+use super::types::FocusSwitchRecord;
 use std::collections::HashMap;
 use std::time::Duration;
 

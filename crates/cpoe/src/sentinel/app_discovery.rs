@@ -110,7 +110,7 @@ fn platform_probe(bundle_id: &str) -> ProbeResult {
     }
 
     // Step 3: Check for iCloud Mobile Documents.
-    let munged = bundle_id.replace('.', "~").replace('-', "~");
+    let munged = bundle_id.replace(['.', '-'], "~");
     let mobile_docs = home.join("Library/Mobile Documents").join(&munged);
     if mobile_docs.is_dir() {
         let rel = format!("Library/Mobile Documents/{munged}");

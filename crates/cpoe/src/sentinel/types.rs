@@ -1221,7 +1221,7 @@ pub fn infer_document_path_from_title_with_bundle(
     }
 
     let is_title_inferred = bundle_id
-        .map(|id| super::app_registry::needs_title_inference(id))
+        .map(super::app_registry::needs_title_inference)
         .unwrap_or(false);
 
     // Try standard separator-based extraction first.

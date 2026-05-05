@@ -993,17 +993,9 @@ impl Default for DigraphTiming {
 }
 
 /// Top-N digraph (consecutive zone pair) IKI timing profile.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DigraphProfile {
     pub digraph_timings: HashMap<(u8, u8), DigraphTiming>,
-}
-
-impl Default for DigraphProfile {
-    fn default() -> Self {
-        Self {
-            digraph_timings: HashMap::new(),
-        }
-    }
 }
 
 impl DigraphProfile {
@@ -1105,7 +1097,7 @@ impl WeightedDistribution for DigraphProfile {
             let entry = self
                 .digraph_timings
                 .entry(*key)
-                .or_insert_with(DigraphTiming::default);
+                .or_default();
             let weighted_self = entry.count as f64 * self_weight;
             let weighted_other = other_timing.count as f64 * other_weight;
             let total = weighted_self + weighted_other;
