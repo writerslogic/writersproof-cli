@@ -521,6 +521,32 @@ pub fn ffi_hash_file(path: String) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Detect pairs of documents that are frequently co-edited (focus switches
+/// back and forth within a 5-minute window). Returns pairs with at least
+/// `min_switches` co-edit cycles, sorted by frequency descending.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_detect_co_edited_files(min_switches: u32) -> Vec<crate::ffi::types::FfiCoEditedPair> {
+    let sentinel = match crate::ffi::sentinel::get_sentinel() {
+        Some(s) => s,
+        None => return vec![],
+    };
+    let sessions_map: std::collections::HashMap<String, _> = sentinel
+        .sessions()
+        .into_iter()
+        .map(|s| (s.path.clone(), s))
+        .collect();
+    let min = if min_switches == 0 { 3 } else { min_switches };
+    crate::sentinel::detect_co_edited_files(&sessions_map, min)
+        .into_iter()
+        .map(|pair| crate::ffi::types::FfiCoEditedPair {
+            path_a: pair.path_a,
+            path_b: pair.path_b,
+            switch_count: pair.switch_count,
+            avg_gap_ms: pair.avg_gap_ms,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

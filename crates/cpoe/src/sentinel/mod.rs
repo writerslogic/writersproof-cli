@@ -31,6 +31,7 @@ pub mod error;
 pub mod focus;
 pub mod helpers;
 pub mod ipc_handler;
+pub mod relationships;
 pub mod shadow;
 pub mod types;
 
@@ -63,6 +64,7 @@ pub use self::helpers::{
 };
 pub use self::ipc_handler::SentinelIpcHandler;
 pub use self::shadow::ShadowManager;
+pub use self::relationships::{CoEditedPair, detect_co_edited_files};
 pub use self::types::{
     generate_session_id, hash_string, infer_document_path_from_title,
     infer_document_path_from_title_with_bundle, normalize_document_path, parse_url_parts,

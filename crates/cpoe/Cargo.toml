@@ -44,6 +44,7 @@ rusqlite = { version = "0.38.0", features = ["bundled"] }
 # Snapshot version history
 similar = "3.1.0"
 zstd = "0.13"
+flate2 = "1"
 
 # Serialization
 serde = { version = "1.0.217", features = ["derive", "rc"] }

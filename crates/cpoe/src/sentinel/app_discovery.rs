@@ -10,7 +10,7 @@ use super::app_registry::{ProbeConfidence, StoragePattern};
 #[cfg(target_os = "macos")]
 use core_foundation::base::TCFType;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 /// Result of probing an application by bundle ID.
 #[derive(Debug, Clone)]
@@ -562,6 +562,82 @@ fn platform_probe(bundle_id: &str) -> ProbeResult {
 }
 
 // ---------------------------------------------------------------------------
+// Recent document discovery
+// ---------------------------------------------------------------------------
+
+/// Scan common directories for recently modified files matching allowed extensions.
+///
+/// Returns up to 20 results sorted by modification time (most recent first).
+/// Skips symlinks, hidden files, and files that cannot be read.
+pub fn discover_recent_documents(
+    dirs: &[&Path],
+    max_age_hours: u64,
+    allowed_extensions: &[String],
+) -> Vec<PathBuf> {
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(max_age_hours.saturating_mul(3600)))
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    let max_results = 20;
+
+    let mut candidates: Vec<(SystemTime, PathBuf)> = Vec::new();
+
+    for dir in dirs {
+        if !dir.is_dir() {
+            continue;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // Skip hidden files and symlinks.
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|n| n.starts_with('.'))
+            {
+                continue;
+            }
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if !meta.is_file() {
+                continue;
+            }
+            let mtime = match meta.modified() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            if mtime < cutoff {
+                continue;
+            }
+            // Filter by allowed extensions (empty list = allow all).
+            if !allowed_extensions.is_empty() {
+                let ext_match = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|ext| {
+                        allowed_extensions
+                            .iter()
+                            .any(|a| a.eq_ignore_ascii_case(ext))
+                    });
+                if !ext_match {
+                    continue;
+                }
+            }
+            candidates.push((mtime, path));
+        }
+    }
+
+    // Sort most recent first.
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.truncate(max_results);
+    candidates.into_iter().map(|(_, p)| p).collect()
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -651,6 +727,60 @@ mod tests {
             assert!(found.is_some(), "TextEdit should be in /System/Applications");
             assert!(found.unwrap().join("Contents/Info.plist").exists());
         }
+    }
+
+    #[test]
+    fn test_discover_recent_documents_basic() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("essay.md"), b"hello").unwrap();
+        std::fs::write(tmp.path().join("notes.txt"), b"world").unwrap();
+        std::fs::write(tmp.path().join("image.png"), b"img").unwrap();
+
+        let exts = vec!["md".to_string(), "txt".to_string()];
+        let dirs = [tmp.path()];
+        let dir_refs: Vec<&Path> = dirs.iter().map(|d| *d).collect();
+        let results = discover_recent_documents(&dir_refs, 1, &exts);
+
+        assert_eq!(results.len(), 2);
+        // Both should be .md or .txt
+        for r in &results {
+            let ext = r.extension().unwrap().to_str().unwrap();
+            assert!(ext == "md" || ext == "txt");
+        }
+    }
+
+    #[test]
+    fn test_discover_recent_documents_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = [tmp.path()];
+        let dir_refs: Vec<&Path> = dirs.iter().map(|d| *d).collect();
+        let results = discover_recent_documents(&dir_refs, 1, &[]);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_discover_recent_documents_max_20() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..30 {
+            std::fs::write(tmp.path().join(format!("file{i}.txt")), b"x").unwrap();
+        }
+        let dirs = [tmp.path()];
+        let dir_refs: Vec<&Path> = dirs.iter().map(|d| *d).collect();
+        let results = discover_recent_documents(&dir_refs, 1, &[]);
+        assert_eq!(results.len(), 20);
+    }
+
+    #[test]
+    fn test_discover_recent_documents_skips_hidden() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".hidden.md"), b"secret").unwrap();
+        std::fs::write(tmp.path().join("visible.md"), b"public").unwrap();
+
+        let dirs = [tmp.path()];
+        let dir_refs: Vec<&Path> = dirs.iter().map(|d| *d).collect();
+        let results = discover_recent_documents(&dir_refs, 1, &[]);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].file_name().unwrap().to_str().unwrap() == "visible.md");
     }
 
     #[cfg(target_os = "macos")]

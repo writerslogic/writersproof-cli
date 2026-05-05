@@ -370,3 +370,13 @@ pub struct FfiKeystrokeTimingArrays {
     pub iki_ns: Vec<i64>,
     pub sample_count: u64,
 }
+
+/// A pair of documents detected as frequently co-edited.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiCoEditedPair {
+    pub path_a: String,
+    pub path_b: String,
+    pub switch_count: u32,
+    pub avg_gap_ms: f64,
+}

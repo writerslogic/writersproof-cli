@@ -485,6 +485,57 @@ impl fmt::Display for KeystrokeContext {
     }
 }
 
+/// Detected file encoding based on BOM (Byte Order Mark) analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum FileEncoding {
+    /// UTF-8 without BOM (most common).
+    Utf8 = 0,
+    /// UTF-8 with BOM (EF BB BF).
+    Utf8Bom = 1,
+    /// UTF-16 Little Endian (FF FE).
+    Utf16Le = 2,
+    /// UTF-16 Big Endian (FE FF).
+    Utf16Be = 3,
+    /// UTF-32 Little Endian (FF FE 00 00).
+    Utf32Le = 4,
+    /// UTF-32 Big Endian (00 00 FE FF).
+    Utf32Be = 5,
+    /// ASCII (all bytes < 128).
+    Ascii = 6,
+    /// Encoding could not be determined (binary or empty file).
+    Unknown = 7,
+}
+
+impl fmt::Display for FileEncoding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Utf8 => f.write_str("utf-8"),
+            Self::Utf8Bom => f.write_str("utf-8-bom"),
+            Self::Utf16Le => f.write_str("utf-16le"),
+            Self::Utf16Be => f.write_str("utf-16be"),
+            Self::Utf32Le => f.write_str("utf-32le"),
+            Self::Utf32Be => f.write_str("utf-32be"),
+            Self::Ascii => f.write_str("ascii"),
+            Self::Unknown => f.write_str("unknown"),
+        }
+    }
+}
+
+/// Result of a "Save As" detection heuristic.
+///
+/// When a new file event arrives and its content hash matches an active session,
+/// this struct identifies the likely source session.
+#[derive(Debug, Clone)]
+pub struct SaveAsDetection {
+    /// Path of the original (source) session.
+    pub original_path: String,
+    /// Session ID of the original session.
+    pub original_session_id: String,
+    /// Content hash that matched.
+    pub content_hash: String,
+}
+
 /// Classification of paste content origin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
@@ -628,6 +679,12 @@ pub struct DocumentSession {
     pub(crate) semantic_counts: SemanticAccumulator,
     /// Per-device keystroke counts keyed by keyboard device class.
     pub(crate) device_keystroke_counts: HashMap<KeyboardDeviceClass, u64>,
+    /// Detected file encoding at last checkpoint (for encoding transition detection).
+    pub(crate) file_encoding: Option<FileEncoding>,
+    /// Original temporary path if this file was opened from an email attachment
+    /// or download and later saved to a permanent location. Preserved across
+    /// renames so evidence shows the file's origin.
+    pub origin_temp_path: Option<String>,
 }
 
 /// Accumulates keystroke semantic classification counts for a session.
@@ -801,6 +858,8 @@ impl Clone for DocumentSession {
             paste_context: self.paste_context.clone(),
             semantic_counts: self.semantic_counts.clone(),
             device_keystroke_counts: self.device_keystroke_counts.clone(),
+            file_encoding: self.file_encoding,
+            origin_temp_path: self.origin_temp_path.clone(),
         }
     }
 }
@@ -860,6 +919,8 @@ impl DocumentSession {
             paste_context: None,
             semantic_counts: SemanticAccumulator::default(),
             device_keystroke_counts: HashMap::new(),
+            file_encoding: None,
+            origin_temp_path: None,
         }
     }
 
@@ -1254,6 +1315,24 @@ fn looks_like_document_name(s: &str) -> bool {
     }
 
     true
+}
+
+/// Git repository context captured at checkpoint time for version-controlled files.
+///
+/// Provides diff statistics and branch/commit metadata so evidence packets
+/// can correlate authoring activity with VCS state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitContext {
+    /// Current branch name (e.g. "main", "feature/draft-2").
+    pub branch: String,
+    /// SHA-1 hash of the last commit that touched this file.
+    pub last_commit: String,
+    /// Lines added since last commit (from `git diff --stat`).
+    pub insertions: u32,
+    /// Lines removed since last commit (from `git diff --stat`).
+    pub deletions: u32,
+    /// Whether the file has staged changes (`git diff --cached`).
+    pub is_staged: bool,
 }
 
 /// Returns `None` if the path contains traversal components or cannot be resolved.

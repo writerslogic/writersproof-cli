@@ -143,6 +143,38 @@ pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
     }
 }
 
+/// Discover recently modified documents in ~/Documents, ~/Desktop, ~/Downloads.
+///
+/// Scans for files matching the configured `allowed_extensions` that were
+/// modified within `max_age_hours`. Returns up to 20 paths sorted by
+/// modification time (most recent first).
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_discover_recent_documents(max_age_hours: u64) -> Vec<String> {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+
+    let scan_dirs = [
+        home.join("Documents"),
+        home.join("Desktop"),
+        home.join("Downloads"),
+    ];
+    let dir_refs: Vec<&std::path::Path> = scan_dirs.iter().map(|d| d.as_path()).collect();
+
+    let config = crate::config::SentinelConfig::default();
+    let results = crate::sentinel::app_discovery::discover_recent_documents(
+        &dir_refs,
+        max_age_hours,
+        &config.allowed_extensions,
+    );
+
+    results
+        .into_iter()
+        .filter_map(|p| p.to_str().map(String::from))
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // String ↔ enum conversions (FFI boundary uses strings, not enums)
 // ---------------------------------------------------------------------------
