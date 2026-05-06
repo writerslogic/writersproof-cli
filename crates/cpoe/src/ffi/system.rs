@@ -2,148 +2,166 @@
 
 use crate::ffi::helpers::{compute_streak_stats, get_data_dir, open_store};
 use crate::ffi::types::{
-    FfiActivityPoint, FfiDashboardMetrics, FfiLogEntry, FfiResult, FfiStatus, FfiTrackedFile,
+    catch_ffi_panic, FfiActivityPoint, FfiDashboardMetrics, FfiEngineVersion, FfiLogEntry,
+    FfiResult, FfiStatus, FfiTrackedFile,
 };
 use crate::DateTimeNanosExt;
+
+/// Maximum number of tracked files returned via FFI (prevents unbounded allocations).
+const FFI_MAX_TRACKED_FILES: usize = 50_000;
+/// Maximum number of log entries returned for a single file via FFI.
+const FFI_MAX_LOG_ENTRIES: usize = 10_000;
 
 /// Initialize the engine: create data directory, signing key, and event database.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_init() -> FfiResult {
-    log::trace!("ffi_init called");
-    let data_dir = match get_data_dir() {
-        Some(d) => d,
-        None => {
-            return FfiResult::err("Failed to determine data directory".to_string());
-        }
-    };
-
-    if let Err(e) = std::fs::create_dir_all(&data_dir) {
-        return FfiResult::err(format!("Failed to create data directory: {}", e));
-    }
-
-    // AUD-089/AUD-090: Atomic key file creation to prevent TOCTOU race
-    // and world-readable window on crash
-    let key_path = data_dir.join("signing_key");
-    if !key_path.exists() {
-        use ed25519_dalek::SigningKey;
-        let mut seed = [0u8; 32];
-        if let Err(e) = getrandom::getrandom(&mut seed) {
-            return FfiResult::err(format!("Failed to generate random seed: {}", e));
-        }
-        let signing_key = SigningKey::from_bytes(&seed);
-        use zeroize::Zeroize;
-        seed.zeroize();
-        let key_bytes = zeroize::Zeroizing::new(signing_key.to_bytes());
-
-        // Write to temp file first, restrict permissions, then atomic rename
-        let parent = key_path.parent().unwrap_or(std::path::Path::new("."));
-        let mut tmp = match tempfile::NamedTempFile::new_in(parent) {
-            Ok(t) => t,
-            Err(e) => return FfiResult::err(format!("Failed to create temp file: {}", e)),
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        log::trace!("ffi_init called");
+        let data_dir = match get_data_dir() {
+            Some(d) => d,
+            None => {
+                return FfiResult::err("Failed to determine data directory".to_string());
+            }
         };
-        if let Err(e) = std::io::Write::write_all(&mut tmp, key_bytes.as_ref()) {
-            return FfiResult::err(format!("Failed to write signing key: {}", e));
-        }
-        if let Err(e) = tmp.as_file().sync_all() {
-            return FfiResult::err(format!("Failed to sync signing key: {}", e));
-        }
-        if let Err(e) = crate::crypto::restrict_permissions(tmp.path(), 0o600) {
-            return FfiResult::err(format!("Failed to set key file permissions: {}", e));
-        }
-        match tmp.persist_noclobber(&key_path) {
-            Ok(_) => {}
-            Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
-                // Another process created the key first; that's fine.
-                log::info!("Signing key already created by another process");
-            }
-            Err(e) => {
-                return FfiResult::err(format!("Failed to finalize signing key: {}", e.error));
-            }
-        }
-        // H-016: Verify permissions on final path after atomic rename;
-        // some filesystems may not preserve permissions across rename.
-        if let Err(e) = crate::crypto::restrict_permissions(&key_path, 0o600) {
-            return FfiResult::err(format!(
-                "Failed to set key file permissions after rename: {e}"
-            ));
-        }
-    }
 
-    let db_path = data_dir.join("events.db");
-    match crate::ffi::helpers::open_store_at(&db_path) {
-        Ok(_) => FfiResult::ok(format!("Initialized at {}", data_dir.display())),
-        Err(e) => FfiResult::err(format!("Failed to initialize database: {}", e)),
-    }
+        if let Err(e) = std::fs::create_dir_all(&data_dir) {
+            return FfiResult::err(format!("Failed to create data directory: {}", e));
+        }
+
+        // AUD-089/AUD-090: Atomic key file creation to prevent TOCTOU race
+        // and world-readable window on crash
+        let key_path = data_dir.join("signing_key");
+        if !key_path.exists() {
+            use ed25519_dalek::SigningKey;
+            let mut seed = [0u8; 32];
+            if let Err(e) = getrandom::getrandom(&mut seed) {
+                return FfiResult::err(format!("Failed to generate random seed: {}", e));
+            }
+            let signing_key = SigningKey::from_bytes(&seed);
+            use zeroize::Zeroize;
+            seed.zeroize();
+            let key_bytes = zeroize::Zeroizing::new(signing_key.to_bytes());
+
+            // Write to temp file first, restrict permissions, then atomic rename
+            let parent = key_path.parent().unwrap_or(std::path::Path::new("."));
+            let mut tmp = match tempfile::NamedTempFile::new_in(parent) {
+                Ok(t) => t,
+                Err(e) => return FfiResult::err(format!("Failed to create temp file: {}", e)),
+            };
+            if let Err(e) = std::io::Write::write_all(&mut tmp, key_bytes.as_ref()) {
+                return FfiResult::err(format!("Failed to write signing key: {}", e));
+            }
+            if let Err(e) = tmp.as_file().sync_all() {
+                return FfiResult::err(format!("Failed to sync signing key: {}", e));
+            }
+            if let Err(e) = crate::crypto::restrict_permissions(tmp.path(), 0o600) {
+                return FfiResult::err(format!("Failed to set key file permissions: {}", e));
+            }
+            match tmp.persist_noclobber(&key_path) {
+                Ok(_) => {}
+                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    log::info!("Signing key already created by another process");
+                }
+                Err(e) => {
+                    return FfiResult::err(format!("Failed to finalize signing key: {}", e.error));
+                }
+            }
+            if let Err(e) = crate::crypto::restrict_permissions(&key_path, 0o600) {
+                return FfiResult::err(format!(
+                    "Failed to set key file permissions after rename: {e}"
+                ));
+            }
+        }
+
+        let db_path = data_dir.join("events.db");
+        match crate::ffi::helpers::open_store_at(&db_path) {
+            Ok(_) => FfiResult::ok(format!("Initialized at {}", data_dir.display())),
+            Err(e) => FfiResult::err(format!("Failed to initialize database: {}", e)),
+        }
+    })
 }
 
 /// Return the current engine status including tracked file count and SWF calibration.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_status() -> FfiStatus {
-    // SWF calibration is independent of engine init — always report it.
-    // Report 0 if not yet calibrated so the UI shows "Not calibrated".
-    let swf_iters = crate::ffi::forensics::calibrated_params()
-        .map(|p| p.iterations_per_second)
-        .unwrap_or(0);
+    catch_ffi_panic!(FfiStatus {
+        initialized: false,
+        data_dir: String::new(),
+        tracked_file_count: 0,
+        total_checkpoints: 0,
+        swf_iterations_per_second: 0,
+        error_message: Some("engine internal error".to_string()),
+    }, {
+        // SWF calibration is independent of engine init — always report it.
+        // Report 0 if not yet calibrated so the UI shows "Not calibrated".
+        let swf_iters = crate::ffi::forensics::calibrated_params()
+            .map(|p| p.iterations_per_second)
+            .unwrap_or(0);
 
-    let data_dir = match get_data_dir() {
-        Some(d) => d,
-        None => {
+        let data_dir = match get_data_dir() {
+            Some(d) => d,
+            None => {
+                return FfiStatus {
+                    initialized: false,
+                    data_dir: String::new(),
+                    tracked_file_count: 0,
+                    total_checkpoints: 0,
+                    swf_iterations_per_second: swf_iters,
+                    error_message: Some("Data directory not found".to_string()),
+                };
+            }
+        };
+
+        let initialized = data_dir.exists() && data_dir.join("events.db").exists();
+        if !initialized {
             return FfiStatus {
                 initialized: false,
-                data_dir: String::new(),
-                tracked_file_count: 0,
-                total_checkpoints: 0,
-                swf_iterations_per_second: swf_iters,
-                error_message: Some("Data directory not found".to_string()),
-            };
-        }
-    };
-
-    let initialized = data_dir.exists() && data_dir.join("events.db").exists();
-    if !initialized {
-        return FfiStatus {
-            initialized: false,
-            data_dir: data_dir.display().to_string(),
-            tracked_file_count: 0,
-            total_checkpoints: 0,
-            swf_iterations_per_second: swf_iters,
-            error_message: None,
-        };
-    }
-
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiStatus {
-                initialized: true,
                 data_dir: data_dir.display().to_string(),
                 tracked_file_count: 0,
                 total_checkpoints: 0,
                 swf_iterations_per_second: swf_iters,
-                error_message: Some(e),
+                error_message: None,
             };
         }
-    };
 
-    let files = store.list_files().unwrap_or_else(|e| {
-        log::warn!("store list_files failed: {e}");
-        Default::default()
-    });
-    let total_checkpoints: u64 = files.iter().map(|(_, _, count)| *count as u64).sum();
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(e) => {
+                return FfiStatus {
+                    initialized: true,
+                    data_dir: data_dir.display().to_string(),
+                    tracked_file_count: 0,
+                    total_checkpoints: 0,
+                    swf_iterations_per_second: swf_iters,
+                    error_message: Some(e),
+                };
+            }
+        };
 
-    FfiStatus {
-        initialized: true,
-        data_dir: data_dir.display().to_string(),
-        tracked_file_count: files.len() as u32,
-        total_checkpoints,
-        swf_iterations_per_second: swf_iters,
-        error_message: None,
-    }
+        let files = store.list_files().unwrap_or_else(|e| {
+            log::warn!("store list_files failed: {e}");
+            Default::default()
+        });
+        let total_checkpoints: u64 = files
+            .iter()
+            .map(|(_, _, count)| u64::try_from(*count).unwrap_or(0))
+            .sum();
+
+        FfiStatus {
+            initialized: true,
+            data_dir: data_dir.display().to_string(),
+            tracked_file_count: files.len() as u32,
+            total_checkpoints,
+            swf_iterations_per_second: swf_iters,
+            error_message: None,
+        }
+    })
 }
 
 /// List all tracked files with their checkpoint counts and forensic scores.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
+    catch_ffi_panic!(vec![], {
     let store = match open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -294,231 +312,292 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
         }
     }
 
+    if result.len() > FFI_MAX_TRACKED_FILES {
+        log::warn!(
+            "ffi_list_tracked_files: capping result at {FFI_MAX_TRACKED_FILES} (got {})",
+            result.len()
+        );
+        result.truncate(FFI_MAX_TRACKED_FILES);
+    }
     result
+    })
 }
 
 /// Return the checkpoint event log for a specific tracked file.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_log(path: String) -> Vec<FfiLogEntry> {
-    // Virtual paths (ephemeral://, title://, shadow://) are internal identifiers,
-    // not filesystem paths; skip canonicalize-based validation for them.
-    let path = if path.starts_with("ephemeral://")
-        || path.starts_with("title://")
-        || path.starts_with("shadow://")
-    {
-        path
-    } else {
-        match crate::sentinel::helpers::validate_path(&path) {
-            Ok(p) => p.to_string_lossy().to_string(),
-            Err(_) => return vec![],
-        }
-    };
+    catch_ffi_panic!(vec![], {
+        // Virtual paths (ephemeral://, title://, shadow://) are internal identifiers,
+        // not filesystem paths; skip canonicalize-based validation for them.
+        let path = if path.starts_with("ephemeral://")
+            || path.starts_with("title://")
+            || path.starts_with("shadow://")
+        {
+            path
+        } else {
+            match crate::sentinel::helpers::validate_path(&path) {
+                Ok(p) => p.to_string_lossy().to_string(),
+                Err(_) => return vec![],
+            }
+        };
 
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_get_log: failed to open store: {e}");
-            return vec![];
-        }
-    };
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_get_log: failed to open store: {e}");
+                return vec![];
+            }
+        };
 
-    store
-        .get_events_for_file(&path)
-        .unwrap_or_else(|e| {
-            log::warn!("store get_events_for_file failed for {path}: {e}");
-            Default::default()
-        })
-        .into_iter()
-        .enumerate()
-        .map(|(i, ev)| FfiLogEntry {
-            ordinal: i as u64,
-            timestamp_ns: ev.timestamp_ns,
-            content_hash: hex::encode(ev.content_hash),
-            event_hash: hex::encode(ev.event_hash),
-            file_size: ev.file_size,
-            size_delta: ev.size_delta,
-            message: ev.context_note,
-        })
-        .collect()
+        store
+            .get_events_for_file(&path)
+            .unwrap_or_else(|e| {
+                log::warn!("store get_events_for_file failed for {path}: {e}");
+                Default::default()
+            })
+            .into_iter()
+            .enumerate()
+            .map(|(i, ev)| FfiLogEntry {
+                ordinal: i as u64,
+                timestamp_ns: ev.timestamp_ns,
+                content_hash: hex::encode(ev.content_hash),
+                event_hash: hex::encode(ev.event_hash),
+                file_size: ev.file_size,
+                size_delta: ev.size_delta,
+                message: ev.context_note,
+            })
+            .take(FFI_MAX_LOG_ENTRIES)
+            .collect()
+    })
 }
 
 /// Compute aggregate dashboard metrics: files, checkpoints, streaks, activity.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_dashboard_metrics() -> FfiDashboardMetrics {
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_get_dashboard_metrics: failed to open store: {e}");
-            return FfiDashboardMetrics {
-                success: false,
-                total_files: 0,
-                total_checkpoints: 0,
-                total_words_witnessed: 0,
-                current_streak_days: 0,
-                longest_streak_days: 0,
-                active_days_30d: 0,
-                error_message: Some(e),
+    catch_ffi_panic!(
+        FfiDashboardMetrics {
+            success: false,
+            total_files: 0,
+            total_checkpoints: 0,
+            total_words_witnessed: 0,
+            current_streak_days: 0,
+            longest_streak_days: 0,
+            active_days_30d: 0,
+            error_message: Some("engine internal error".to_string()),
+        },
+        {
+            let store = match open_store() {
+                Ok(s) => s,
+                Err(e) => {
+                    log::warn!("ffi_get_dashboard_metrics: failed to open store: {e}");
+                    return FfiDashboardMetrics {
+                        success: false,
+                        total_files: 0,
+                        total_checkpoints: 0,
+                        total_words_witnessed: 0,
+                        current_streak_days: 0,
+                        longest_streak_days: 0,
+                        active_days_30d: 0,
+                        error_message: Some(e),
+                    };
+                }
             };
+
+            let files = store.list_files().unwrap_or_else(|e| {
+                log::warn!("store list_files failed: {e}");
+                Default::default()
+            });
+            let total_checkpoints: u64 = files
+                .iter()
+                .map(|(_, _, c)| u64::try_from(*c).unwrap_or(0))
+                .sum();
+
+            let summary = store.get_all_events_summary().unwrap_or_else(|e| {
+                log::warn!("store get_all_events_summary failed: {e}");
+                Default::default()
+            });
+            let total_chars_added: u64 = summary
+                .iter()
+                .map(|(_, delta)| (*delta).max(0) as u64)
+                .sum();
+            let total_words_witnessed = total_chars_added / 5;
+
+            let ninety_days_ago_ns =
+                (chrono::Utc::now() - chrono::Duration::days(90)).timestamp_nanos_safe();
+            let timestamps = store
+                .get_all_event_timestamps(ninety_days_ago_ns)
+                .unwrap_or_else(|e| {
+                    log::warn!("store get_all_event_timestamps failed: {e}");
+                    Default::default()
+                });
+
+            let today_day = chrono::Utc::now().timestamp() / 86400;
+            let streaks = compute_streak_stats(&timestamps, today_day, 30);
+
+            FfiDashboardMetrics {
+                success: true,
+                total_files: files.len() as u32,
+                total_checkpoints,
+                total_words_witnessed,
+                current_streak_days: streaks.current_streak_days,
+                longest_streak_days: streaks.longest_streak_days,
+                active_days_30d: streaks.active_days_in_window,
+                error_message: None,
+            }
         }
-    };
-
-    let files = store.list_files().unwrap_or_else(|e| {
-        log::warn!("store list_files failed: {e}");
-        Default::default()
-    });
-    let total_checkpoints: u64 = files.iter().map(|(_, _, c)| *c as u64).sum();
-
-    let summary = store.get_all_events_summary().unwrap_or_else(|e| {
-        log::warn!("store get_all_events_summary failed: {e}");
-        Default::default()
-    });
-    let total_chars_added: u64 = summary
-        .iter()
-        .map(|(_, delta)| (*delta).max(0) as u64)
-        .sum();
-    let total_words_witnessed = total_chars_added / 5;
-
-    let ninety_days_ago_ns =
-        (chrono::Utc::now() - chrono::Duration::days(90)).timestamp_nanos_safe();
-    let timestamps = store
-        .get_all_event_timestamps(ninety_days_ago_ns)
-        .unwrap_or_else(|e| {
-            log::warn!("store get_all_event_timestamps failed: {e}");
-            Default::default()
-        });
-
-    let today_day = chrono::Utc::now().timestamp() / 86400;
-    let streaks = compute_streak_stats(&timestamps, today_day, 30);
-
-    FfiDashboardMetrics {
-        success: true,
-        total_files: files.len() as u32,
-        total_checkpoints,
-        total_words_witnessed,
-        current_streak_days: streaks.current_streak_days,
-        longest_streak_days: streaks.longest_streak_days,
-        active_days_30d: streaks.active_days_in_window,
-        error_message: None,
-    }
+    )
 }
 
 /// Return per-day checkpoint counts for the last N days (activity heatmap data).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_activity_data(days: u32) -> Vec<FfiActivityPoint> {
-    let days = days.min(3650);
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_get_activity_data: failed to open store: {e}");
-            return vec![];
+    catch_ffi_panic!(vec![], {
+        if days > 3650 {
+            log::warn!("ffi_get_activity_data: days={days} exceeds 3650, capping");
         }
-    };
+        let days = days.min(3650);
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_get_activity_data: failed to open store: {e}");
+                return vec![];
+            }
+        };
 
-    let start_ns =
-        (chrono::Utc::now() - chrono::Duration::days(days as i64)).timestamp_nanos_safe();
+        let start_ns =
+            (chrono::Utc::now() - chrono::Duration::days(days as i64)).timestamp_nanos_safe();
 
-    let timestamps = store
-        .get_all_event_timestamps(start_ns)
-        .unwrap_or_else(|e| {
-            log::warn!("store get_all_event_timestamps failed: {e}");
-            Default::default()
-        });
+        let timestamps = store
+            .get_all_event_timestamps(start_ns)
+            .unwrap_or_else(|e| {
+                log::warn!("store get_all_event_timestamps failed: {e}");
+                Default::default()
+            });
 
-    let mut day_counts: std::collections::BTreeMap<i64, u32> = std::collections::BTreeMap::new();
-    for ts in timestamps {
-        let day_start = (ts / (86400 * 1_000_000_000)) * 86400;
-        *day_counts.entry(day_start).or_insert(0) += 1;
-    }
+        let mut day_counts: std::collections::BTreeMap<i64, u32> =
+            std::collections::BTreeMap::new();
+        for ts in timestamps {
+            let day_start = (ts / (86400 * 1_000_000_000)) * 86400;
+            *day_counts.entry(day_start).or_insert(0) += 1;
+        }
 
-    day_counts
-        .into_iter()
-        .map(|(day_timestamp, checkpoint_count)| FfiActivityPoint {
-            day_timestamp,
-            checkpoint_count,
-        })
-        .collect()
+        day_counts
+            .into_iter()
+            .map(|(day_timestamp, checkpoint_count)| FfiActivityPoint {
+                day_timestamp,
+                checkpoint_count,
+            })
+            .collect()
+    })
 }
 
+/// # Security
+/// Returns the BIP-39 mnemonic (identity seed phrase) in plaintext.
+/// Only call this in user-initiated flows (Settings → Export Identity).
+/// Never log or transmit the return value.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_identity_mnemonic() -> FfiResult {
-    match crate::identity::secure_storage::SecureStorage::load_mnemonic() {
-        Ok(Some(phrase)) => FfiResult::ok((*phrase).clone()),
-        Ok(None) => FfiResult::err("No identity mnemonic found".to_string()),
-        Err(e) => FfiResult::err(format!("Failed to load mnemonic: {e}")),
-    }
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        match crate::identity::secure_storage::SecureStorage::load_mnemonic() {
+            Ok(Some(phrase)) => FfiResult::ok((*phrase).clone()),
+            Ok(None) => FfiResult::err("No identity mnemonic found".to_string()),
+            Err(e) => FfiResult::err(format!("Failed to load mnemonic: {e}")),
+        }
+    })
 }
 
 /// Enable or disable document snapshots at checkpoints.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_set_snapshots_enabled(enabled: bool) {
-    if let Some(sentinel) = crate::ffi::sentinel::get_sentinel() {
-        sentinel.set_snapshots_enabled(enabled);
-    }
+    catch_ffi_panic!((), {
+        if let Some(sentinel) = crate::ffi::sentinel::get_sentinel() {
+            sentinel.set_snapshots_enabled(enabled);
+        }
+    })
+}
+
+/// Return engine version and FFI contract version for Swift startup validation.
+/// Swift should call this before `ffi_init` and refuse to proceed if
+/// `contract_version` doesn't match the value it was compiled against.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_engine_version() -> FfiEngineVersion {
+    catch_ffi_panic!(
+        FfiEngineVersion {
+            engine_version: String::new(),
+            contract_version: 0,
+            features: vec![],
+            build_profile: String::new(),
+        },
+        {
+            let mut features = vec!["ffi".to_string()];
+            if cfg!(feature = "cpoe_jitter") {
+                features.push("cpoe_jitter".to_string());
+            }
+            if cfg!(feature = "posme") {
+                features.push("posme".to_string());
+            }
+            FfiEngineVersion {
+                engine_version: env!("CARGO_PKG_VERSION").to_string(),
+                contract_version: 1,
+                features,
+                build_profile: if cfg!(debug_assertions) { "debug" } else { "release" }.to_string(),
+            }
+        }
+    )
 }
 
 /// Get the snapshot file path for a document at a given checkpoint ordinal.
 /// Returns empty string if no snapshot exists.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_snapshot_path(file_path: String, checkpoint_ordinal: u64) -> String {
-    if crate::sentinel::helpers::validate_path(&file_path).is_err() {
-        return String::new();
-    }
-    let data_dir = match get_data_dir() {
-        Some(d) => d,
-        None => return String::new(),
-    };
-    let path_hash = {
-        use sha2::Digest;
-        let h = sha2::Sha256::digest(file_path.as_bytes());
-        crate::utils::short_hex_id(&h)
-    };
-    let src = std::path::Path::new(&file_path);
-    let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("txt");
-    let snap_path = data_dir
-        .join("snapshots")
-        .join(&path_hash)
-        .join(format!("{:06}.{}", checkpoint_ordinal, ext));
-    if snap_path.exists() {
-        snap_path.to_string_lossy().to_string()
-    } else {
-        String::new()
-    }
+    catch_ffi_panic!(String::new(), {
+        if crate::sentinel::helpers::validate_path(&file_path).is_err() {
+            return String::new();
+        }
+        let data_dir = match get_data_dir() {
+            Some(d) => d,
+            None => return String::new(),
+        };
+        let path_hash = {
+            use sha2::Digest;
+            let h = sha2::Sha256::digest(file_path.as_bytes());
+            crate::utils::short_hex_id(&h)
+        };
+        let src = std::path::Path::new(&file_path);
+        let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("txt");
+        let snap_path = data_dir
+            .join("snapshots")
+            .join(&path_hash)
+            .join(format!("{:06}.{}", checkpoint_ordinal, ext));
+        if snap_path.exists() {
+            snap_path.to_string_lossy().to_string()
+        } else {
+            String::new()
+        }
+    })
 }
 
 /// Compute the SHA-256 hex digest of a file using streaming reads (64 KB chunks).
-/// Returns an empty string if the file cannot be read or the path is rejected.
+/// Enforces `MAX_FILE_SIZE`. Returns an empty string if the file cannot be read,
+/// exceeds the size limit, or the path is rejected.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_hash_file(path: String) -> String {
-    use sha2::{Digest, Sha256};
-
-    if crate::sentinel::helpers::validate_path(&path).is_err() {
-        log::warn!("ffi_hash_file: path rejected: {path}");
-        return String::new();
-    }
-
-    let mut file = match std::fs::File::open(&path) {
-        Ok(f) => f,
-        Err(e) => {
-            log::warn!("ffi_hash_file: cannot open {path}: {e}");
-            return String::new();
-        }
-    };
-
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 65_536];
-    loop {
-        use std::io::Read;
-        match file.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => hasher.update(&buf[..n]),
+    catch_ffi_panic!(String::new(), {
+        let file_path = match crate::sentinel::helpers::validate_path(&path) {
+            Ok(p) => p,
             Err(e) => {
-                log::warn!("ffi_hash_file: read error for {path}: {e}");
+                log::warn!("ffi_hash_file: path rejected: {e}");
                 return String::new();
             }
+        };
+        match crate::crypto::hash_file(&file_path) {
+            Ok(hash) => hex::encode(hash),
+            Err(e) => {
+                log::warn!("ffi_hash_file: hash failed for {}: {e}", file_path.display());
+                String::new()
+            }
         }
-    }
-
-    hex::encode(hasher.finalize())
+    })
 }
 
 /// Detect pairs of documents that are frequently co-edited (focus switches
@@ -526,25 +605,27 @@ pub fn ffi_hash_file(path: String) -> String {
 /// `min_switches` co-edit cycles, sorted by frequency descending.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_detect_co_edited_files(min_switches: u32) -> Vec<crate::ffi::types::FfiCoEditedPair> {
-    let sentinel = match crate::ffi::sentinel::get_sentinel() {
-        Some(s) => s,
-        None => return vec![],
-    };
-    let sessions_map: std::collections::HashMap<String, _> = sentinel
-        .sessions()
-        .into_iter()
-        .map(|s| (s.path.clone(), s))
-        .collect();
-    let min = if min_switches == 0 { 3 } else { min_switches };
-    crate::sentinel::detect_co_edited_files(&sessions_map, min)
-        .into_iter()
-        .map(|pair| crate::ffi::types::FfiCoEditedPair {
-            path_a: pair.path_a,
-            path_b: pair.path_b,
-            switch_count: pair.switch_count,
-            avg_gap_ms: pair.avg_gap_ms,
-        })
-        .collect()
+    catch_ffi_panic!(vec![], {
+        let sentinel = match crate::ffi::sentinel::get_sentinel() {
+            Some(s) => s,
+            None => return vec![],
+        };
+        let sessions_map: std::collections::HashMap<String, _> = sentinel
+            .sessions()
+            .into_iter()
+            .map(|s| (s.path.clone(), s))
+            .collect();
+        let min = if min_switches == 0 { 3 } else { min_switches };
+        crate::sentinel::detect_co_edited_files(&sessions_map, min)
+            .into_iter()
+            .map(|pair| crate::ffi::types::FfiCoEditedPair {
+                path_a: pair.path_a,
+                path_b: pair.path_b,
+                switch_count: pair.switch_count,
+                avg_gap_ms: pair.avg_gap_ms,
+            })
+            .collect()
+    })
 }
 
 #[cfg(test)]

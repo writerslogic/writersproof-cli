@@ -50,7 +50,7 @@ pub fn hash_file_with_size(path: &Path) -> std::io::Result<([u8; 32], u64)> {
 pub fn hash_file_handle(file: File) -> std::io::Result<([u8; 32], u64)> {
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 8192];
+    let mut buffer = [0u8; 65536];
     let mut total_bytes: u64 = 0;
 
     loop {
@@ -99,7 +99,7 @@ fn update_event_common<U: EventUpdate>(u: &mut U, data: &EventData) {
     u.update_bytes(&data.device_id);
     u.update_bytes(&data.timestamp_ns.to_be_bytes());
     let path_bytes = data.file_path.as_bytes();
-    u.update_bytes(&(path_bytes.len() as u32).to_be_bytes());
+    u.update_bytes(&(path_bytes.len() as u64).to_be_bytes());
     u.update_bytes(path_bytes);
     u.update_bytes(&data.content_hash);
     u.update_bytes(&data.file_size.to_be_bytes());
@@ -145,6 +145,7 @@ pub fn compute_integrity_hmac(
 /// with existing HMAC chains. Changing to HKDF would invalidate all previously stored
 /// event integrity tags.
 pub fn derive_hmac_key(priv_key_seed: &[u8]) -> Zeroizing<Vec<u8>> {
+    debug_assert!(priv_key_seed.len() >= 16, "derive_hmac_key: seed must be ≥16 bytes");
     let mut hasher = Sha256::new();
     hasher.update(b"cpoe-hmac-key-v1");
     hasher.update(priv_key_seed);
@@ -232,7 +233,15 @@ pub fn sign_event_lamport(
 /// Atomically write `data` to `path` via temp-file + fsync + rename.
 /// Uses `tempfile` for an unpredictable temp name to prevent symlink attacks.
 pub fn atomic_write(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let parent = path.parent().unwrap_or(Path::new("."));
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "atomic_write: path must include a parent directory",
+            )
+        })?;
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
     std::io::Write::write_all(&mut tmp, data)?;
     tmp.as_file().sync_all()?;
@@ -257,24 +266,46 @@ pub fn restrict_permissions(path: &Path, mode: u32) -> std::io::Result<()> {
             SetNamedSecurityInfoW, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
             SE_FILE_OBJECT,
         };
-        use windows::Win32::Security::{
-            InitializeSecurityDescriptor, SetSecurityDescriptorDacl, ACL, PACL,
-            PSECURITY_DESCRIPTOR, SECURITY_DESCRIPTOR, SECURITY_DESCRIPTOR_REVISION,
-        };
+        use windows::Win32::Security::{InitializeAcl, ACL, PACL};
 
-        // Convert path to wide string
+        // ACL_REVISION = 2 (Windows SDK constant; not re-exported by the windows crate).
+        const ACL_REVISION: u32 = 2;
+
         let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
 
-        // Set an empty DACL (owner-only access: no entries = deny all except owner)
+        // Build an empty DACL (zero ACEs). An empty DACL explicitly denies all
+        // access; the file owner retains the right to modify the DACL via ownership.
+        // WARNING: Do NOT use Some(PACL(null_mut())) — a NULL DACL grants everyone
+        // full access, the opposite of what is wanted here.
+        let mut acl: Box<ACL> = Box::new(
+            // SAFETY: ACL is a plain-old-data struct; zero-initializing is valid.
+            // InitializeAcl below writes the correct header before first use.
+            unsafe { std::mem::zeroed() },
+        );
+        // SAFETY: `acl` is Box-allocated with correct ACL alignment; size matches.
+        if let Err(e) = unsafe {
+            InitializeAcl(
+                PACL(acl.as_mut() as *mut ACL),
+                std::mem::size_of::<ACL>() as u32,
+                ACL_REVISION,
+            )
+        } {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("InitializeAcl failed: {e}"),
+            ));
+        }
+
+        // SAFETY: `wide` is null-terminated; `acl` was initialized by InitializeAcl above.
         let result = unsafe {
             SetNamedSecurityInfoW(
                 PCWSTR(wide.as_ptr()),
                 SE_FILE_OBJECT,
                 DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-                None,                   // owner (unchanged)
-                None,                   // group (unchanged)
-                Some(std::ptr::null()), // empty DACL = owner-only
-                None,                   // SACL (unchanged)
+                None,                                  // owner: unchanged
+                None,                                  // group: unchanged
+                Some(PACL(acl.as_mut() as *mut ACL)), // empty DACL: 0 ACEs = deny all
+                None,                                  // SACL: unchanged
             )
         };
         if let Err(e) = result {
@@ -572,5 +603,94 @@ mod tests {
     fn hash_file_nonexistent_returns_error() {
         let result = hash_file(Path::new("/tmp/cpop_crypto_nonexistent_file_xyz"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn hash_file_with_size_rejects_oversized() {
+        use std::io::{Seek, SeekFrom, Write};
+        let dir = std::env::temp_dir().join("cpop_size_limit_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("oversized_sparse.bin");
+
+        // Create a sparse file whose metadata reports size > MAX_FILE_SIZE.
+        // No actual disk blocks are allocated.
+        {
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path)
+                .unwrap();
+            f.seek(SeekFrom::Start(crate::MAX_FILE_SIZE + 1)).unwrap();
+            f.write_all(&[0u8]).unwrap();
+        }
+
+        let result = hash_file_with_size(&path);
+        assert!(result.is_err(), "Expected error for file exceeding MAX_FILE_SIZE");
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_dir(&dir).ok();
+    }
+
+    #[test]
+    fn atomic_write_rejects_bare_filename() {
+        let result = atomic_write(Path::new("bare_filename.txt"), b"data");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn sign_event_lamport_roundtrip() {
+        use ed25519_dalek::SigningKey;
+        let signing_key = SigningKey::from_bytes(&[0x42u8; 32]);
+        let mut event =
+            crate::store::SecureEvent::new("/test.txt".to_string(), [0x00; 32], 0, None);
+        event.event_hash = [0xABu8; 32];
+
+        sign_event_lamport(&signing_key, &mut event).expect("sign_event_lamport failed");
+        assert!(event.lamport_signature.is_some());
+        assert!(event.lamport_pubkey_fingerprint.is_some());
+        assert!(!event.lamport_signature.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn sign_event_lamport_deterministic() {
+        use ed25519_dalek::SigningKey;
+        let signing_key = SigningKey::from_bytes(&[0x11u8; 32]);
+
+        let make_event = || {
+            let mut e =
+                crate::store::SecureEvent::new("/f.txt".to_string(), [0x00; 32], 0, None);
+            e.event_hash = [0xCCu8; 32];
+            e
+        };
+
+        let mut e1 = make_event();
+        let mut e2 = make_event();
+        sign_event_lamport(&signing_key, &mut e1).unwrap();
+        sign_event_lamport(&signing_key, &mut e2).unwrap();
+        assert_eq!(e1.lamport_signature, e2.lamport_signature, "same key+hash must produce same sig");
+        assert_eq!(e1.lamport_pubkey_fingerprint, e2.lamport_pubkey_fingerprint);
+    }
+
+    #[test]
+    fn sign_event_lamport_unique_per_event_hash() {
+        use ed25519_dalek::SigningKey;
+        let signing_key = SigningKey::from_bytes(&[0x22u8; 32]);
+
+        let make_event = |hash: [u8; 32]| {
+            let mut e =
+                crate::store::SecureEvent::new("/f.txt".to_string(), [0x00; 32], 0, None);
+            e.event_hash = hash;
+            e
+        };
+
+        let mut e1 = make_event([0xAAu8; 32]);
+        let mut e2 = make_event([0xBBu8; 32]);
+        sign_event_lamport(&signing_key, &mut e1).unwrap();
+        sign_event_lamport(&signing_key, &mut e2).unwrap();
+        assert_ne!(e1.lamport_signature, e2.lamport_signature, "different hashes must yield different sigs");
+        assert_ne!(e1.lamport_pubkey_fingerprint, e2.lamport_pubkey_fingerprint);
     }
 }
