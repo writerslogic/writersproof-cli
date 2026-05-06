@@ -1,5 +1,5 @@
 # Audit Progress
-Total: 522 files | Completed: 10 | In Progress: 0 | Remaining: 512
+Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 
 ## Legend
 - [ ] = pending
@@ -18,50 +18,50 @@ Total: 522 files | Completed: 10 | In Progress: 0 | Remaining: 512
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/output.rs
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_export/packet.rs
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_fingerprint.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_identity.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_init.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_link.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_log.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_presence.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_status.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/checkpoint.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/filesystem.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/mod.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/types.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_verify.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/main.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/handlers.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/jitter.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/mod.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/protocol.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/tests.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/types.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/output.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/smart_defaults.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/spec.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/src/util.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/cli_e2e.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/common/mod.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_application.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_commit_verify.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_error_paths.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_export.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_identity.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_nmh.rs
-[ ] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_track.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_identity.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_init.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_link.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_log.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_presence.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_status.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/checkpoint.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/filesystem.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/mod.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_track/types.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/cmd_verify.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/main.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/handlers.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/jitter.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/mod.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/protocol.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/tests.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/native_messaging_host/types.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/output.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/smart_defaults.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/spec.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/src/util.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/cli_e2e.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/common/mod.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_application.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_commit_verify.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_error_paths.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_export.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_identity.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_nmh.rs
+[x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_track.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/benches/codec_bench.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/examples/simple_attestation.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/baseline.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/builder.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/cert.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/jumbf.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/mod.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/baseline.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/builder.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/cert.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/jumbf.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/mod.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/tests.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/types.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/validation.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/cbor.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/json.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/mod.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/cbor.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/json.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/mod.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/compact_ref.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/crypto.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/error.rs
