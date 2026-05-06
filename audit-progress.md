@@ -49,61 +49,61 @@ Total: 522 files | Completed: 329 | In Progress: 0 | Remaining: 193
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_identity.rs
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_nmh.rs
 [x] /Volumes/A/writerslogic/apps/cpoe_cli/tests/test_track.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/benches/codec_bench.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/examples/simple_attestation.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/benches/codec_bench.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/examples/simple_attestation.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/baseline.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/builder.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/cert.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/jumbf.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/mod.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/tests.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/types.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/validation.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/tests.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/types.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/c2pa/validation.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/cbor.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/json.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/mod.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/compact_ref.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/compact_ref.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/crypto.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/error.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/error.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/evidence.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics_classifier.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/cognitive.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/engine.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/mod.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/transcription.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/word_frequency.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/identity.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/lib.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/method_detection.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/biology.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/checkpoint.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/fixed_point.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/jitter_binding.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/mod.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/packet.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/serde_helpers.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/time_evidence.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/vdf.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/attestation.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/checkpoint.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/components.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/enums.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/hash.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/mod.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/packet.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/serde_helpers.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/tests.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/ear.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/encoding.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/mod.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/profiles/c2pa.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/profiles/mod.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/profiles/vc.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/types.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/wasm.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/cpoe_tests.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/e2e.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/integration_test.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics_classifier.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/cognitive.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/engine.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/mod.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/transcription.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/word_frequency.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/identity.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/lib.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/method_detection.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/biology.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/checkpoint.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/fixed_point.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/jitter_binding.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/mod.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/packet.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/serde_helpers.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/time_evidence.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/vdf.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/attestation.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/checkpoint.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/components.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/enums.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/hash.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/mod.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/packet.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/serde_helpers.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/rfc/wire_types/tests.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/ear.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/encoding.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/mod.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/profiles/c2pa.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/profiles/mod.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/profiles/vc.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/war/types.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/wasm.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/cpoe_tests.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/e2e.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/integration_test.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe-jitter/benches/benchmarks.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/basic_session.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/custom_engine.rs
