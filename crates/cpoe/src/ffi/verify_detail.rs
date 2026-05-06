@@ -2,6 +2,7 @@
 
 use crate::evidence::{CheckpointProof, DocumentInfo, Packet};
 use crate::ffi::helpers::detect_attestation_tier_info;
+use crate::ffi::types::catch_ffi_panic;
 use crate::verify::{full_verify, VerifyOptions};
 use authorproof_protocol::rfc::wire_types::EvidencePacketWire;
 
@@ -42,6 +43,21 @@ pub struct FfiVerifyDetail {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_verify_evidence_detailed(path: String) -> FfiVerifyDetail {
+    catch_ffi_panic!(FfiVerifyDetail {
+        success: false,
+        overall_valid: false,
+        signature_valid: false,
+        chain_integrity: false,
+        checkpoint_count: 0,
+        swf_iterations_per_second: 0,
+        attestation_tier: 0,
+        attestation_tier_label: String::new(),
+        unsigned_checkpoints: vec![],
+        ordinal_gaps: vec![],
+        warnings: vec![],
+        checkpoint_flags: vec![],
+        error_message: Some("engine internal error".to_string()),
+    }, {
     let (_, tier_num, tier_label) = detect_attestation_tier_info();
 
     let err = |msg: String| FfiVerifyDetail {
@@ -178,6 +194,7 @@ pub fn ffi_verify_evidence_detailed(path: String) -> FfiVerifyDetail {
         checkpoint_flags,
         error_message: None,
     }
+    })
 }
 
 /// Convert an RFC wire-format `EvidencePacketWire` into the engine's internal `Packet`

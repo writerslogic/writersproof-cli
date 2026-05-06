@@ -3,11 +3,23 @@
 use base64::Engine;
 
 use crate::ffi::helpers::{detect_attestation_tier_info, get_data_dir};
-use crate::ffi::types::{FfiAttestationInfo, FfiAttestationResponse, FfiDeviceKey, FfiResult};
+use crate::ffi::types::{
+    catch_ffi_panic, FfiAttestationInfo, FfiAttestationResponse, FfiDeviceKey, FfiResult,
+};
 use authorproof_protocol::rfc::wire_types::AttestationTier;
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_attestation_info() -> FfiAttestationInfo {
+    catch_ffi_panic!(FfiAttestationInfo {
+        tier: 0,
+        tier_label: String::new(),
+        provider_type: String::new(),
+        hardware_bound: false,
+        supports_sealing: false,
+        has_monotonic_counter: false,
+        has_secure_clock: false,
+        device_id: String::new(),
+    }, {
     let (_, tier_num, tier_label) = detect_attestation_tier_info();
 
     let provider = crate::tpm::detect_provider();
@@ -22,10 +34,12 @@ pub fn ffi_get_attestation_info() -> FfiAttestationInfo {
         has_secure_clock: caps.secure_clock,
         device_id: provider.device_id(),
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_reseal_identity() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => {
@@ -51,10 +65,12 @@ pub fn ffi_reseal_identity() -> FfiResult {
         Ok(()) => FfiResult::ok("Identity re-sealed under current platform state".to_string()),
         Err(e) => FfiResult::err(format!("Reseal failed: {}", e)),
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_is_hardware_bound() -> bool {
+    catch_ffi_panic!(false, {
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => return false,
@@ -67,6 +83,7 @@ pub fn ffi_is_hardware_bound() -> bool {
 
     store.attestation_tier() == AttestationTier::HardwareBound
         || store.attestation_tier() == AttestationTier::HardwareHardened
+    })
 }
 
 /// Sign a server-issued attestation challenge with the device key.
@@ -76,6 +93,16 @@ pub fn ffi_is_hardware_bound() -> bool {
 /// platform attestation object as payload).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sign_attestation_challenge(challenge_b64: String) -> FfiAttestationResponse {
+    catch_ffi_panic!(FfiAttestationResponse {
+        success: false,
+        signature_b64: String::new(),
+        public_key_b64: String::new(),
+        cose_sign1_b64: String::new(),
+        device_id: String::new(),
+        model: String::new(),
+        os_version: String::new(),
+        error_message: Some("engine internal error".to_string()),
+    }, {
     // Reject oversized challenges before decoding (challenge should be ~32–64 bytes,
     // base64-encoded ≈ 44–88 chars; cap at 4KB to prevent memory DoS).
     const MAX_CHALLENGE_B64_LEN: usize = 4096;
@@ -161,10 +188,16 @@ pub fn ffi_sign_attestation_challenge(challenge_b64: String) -> FfiAttestationRe
         os_version: get_os_version(),
         error_message: None,
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_device_public_key() -> FfiDeviceKey {
+    catch_ffi_panic!(FfiDeviceKey {
+        public_key_b64: String::new(),
+        device_id: String::new(),
+        hardware_bound: false,
+    }, {
     let provider = crate::tpm::detect_provider();
     let caps = provider.capabilities();
     let public_key = provider.public_key();
@@ -174,6 +207,7 @@ pub fn ffi_get_device_public_key() -> FfiDeviceKey {
         device_id: provider.device_id(),
         hardware_bound: caps.hardware_backed && caps.supports_sealing,
     }
+    })
 }
 
 /// Run a shell command in a background thread with a 2-second timeout.

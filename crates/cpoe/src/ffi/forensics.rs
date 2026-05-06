@@ -35,6 +35,19 @@ pub struct FfiSourceSession {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_provenance_metrics(session_id: String) -> FfiProvenanceMetrics {
+    let empty = FfiProvenanceMetrics {
+        success: false,
+        total_fragments: 0,
+        original_composition_pct: 0.0,
+        sourced_unknown_pct: 0.0,
+        sourced_verified_pct: 0.0,
+        chain_depth: 0,
+        source_trustworthiness: 0.0,
+        authenticity_score: 0.0,
+        source_sessions: vec![],
+        error_message: Some("engine internal error".to_string()),
+    };
+    catch_ffi_panic!(empty, {
     let store = match crate::ffi::helpers::open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -94,6 +107,7 @@ pub fn ffi_get_provenance_metrics(session_id: String) -> FfiProvenanceMetrics {
             .collect(),
         error_message: None,
     }
+    })
 }
 
 /// Get provenance metrics for the active sentinel session on a document path.
@@ -101,6 +115,19 @@ pub fn ffi_get_provenance_metrics(session_id: String) -> FfiProvenanceMetrics {
 /// to `ffi_get_provenance_metrics`.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_provenance_metrics_for_document(path: String) -> FfiProvenanceMetrics {
+    let fallback = FfiProvenanceMetrics {
+        success: false,
+        total_fragments: 0,
+        original_composition_pct: 0.0,
+        sourced_unknown_pct: 0.0,
+        sourced_verified_pct: 0.0,
+        chain_depth: 0,
+        source_trustworthiness: 0.0,
+        authenticity_score: 0.0,
+        source_sessions: vec![],
+        error_message: Some("engine internal error".to_string()),
+    };
+    catch_ffi_panic!(fallback, {
     let empty = FfiProvenanceMetrics {
         success: false,
         total_fragments: 0,
@@ -146,6 +173,7 @@ pub fn ffi_get_provenance_metrics_for_document(path: String) -> FfiProvenanceMet
     };
 
     ffi_get_provenance_metrics(session_id)
+    })
 }
 
 static CALIBRATED_PARAMS: Mutex<Option<Parameters>> = Mutex::new(None);
@@ -159,6 +187,15 @@ pub(crate) fn calibrated_params() -> Option<Parameters> {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_compute_process_score(path: String) -> FfiProcessScore {
+    catch_ffi_panic!(FfiProcessScore {
+        success: false,
+        residency: 0.0,
+        sequence: 0.0,
+        behavioral: 0.0,
+        composite: 0.0,
+        meets_threshold: false,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     let (_path, _store, events) = match crate::ffi::helpers::load_events_for_path(&path) {
         Ok(v) => v,
         Err(e) => {
@@ -217,10 +254,16 @@ pub fn ffi_compute_process_score(path: String) -> FfiProcessScore {
         meets_threshold,
         error_message: None,
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_calibrate_swf() -> FfiCalibrationResult {
+    catch_ffi_panic!(FfiCalibrationResult {
+        success: false,
+        iterations_per_second: 0,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     match crate::vdf::calibrate(Duration::from_secs(1)) {
         Ok(params) => {
             // Defense-in-depth: validate even though calibrate() now checks internally.
@@ -258,4 +301,5 @@ pub fn ffi_calibrate_swf() -> FfiCalibrationResult {
             error_message: Some(format!("Calibration failed: {}", e)),
         },
     }
+    })
 }

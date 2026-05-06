@@ -1,5 +1,5 @@
 # Audit Progress
-Total: 522 files | Completed: 109 | In Progress: 0 | Remaining: 413
+Total: 522 files | Completed: 129 | In Progress: 0 | Remaining: 393
 
 ## Legend
 - [ ] = pending
@@ -193,35 +193,35 @@ Total: 522 files | Completed: 109 | In Progress: 0 | Remaining: 413
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/wire_conversion.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/archive.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/attestation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/attestation.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/beacon.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/chain.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/chain.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/collaboration_ffi.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/credentials.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/did_webvh_ffi.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/ephemeral.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/evidence_checkpoint.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/ephemeral.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/evidence_checkpoint.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/evidence_derivative.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/evidence_export.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/evidence.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/evidence_export.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/evidence.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/fingerprint.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/forensics_detail.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/forensics.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/forensics_detail.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/forensics.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/report_types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/report.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_config.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_es.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_inject.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_witnessing.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/snapshot.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/system.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/report.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_config.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_es.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_inject.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel_witnessing.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/sentinel.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/snapshot.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/system.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/text_fragment.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/types.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/user_apps.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/verify_detail.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/verify_detail.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ffi/writersproof_ffi.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity_analysis.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity_collection.rs

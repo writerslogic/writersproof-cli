@@ -7,7 +7,7 @@
 //! directly — the platform stubs in `sentinel/clipboard.rs` are intentional.
 
 use super::helpers::{load_signing_key, open_store};
-use super::types::try_ffi;
+use super::types::{catch_ffi_panic, try_ffi};
 use crate::store::text_fragments::{KeystrokeContext, TextFragment};
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
@@ -213,6 +213,7 @@ pub fn ffi_text_fragment_store(
     keystroke_context: String,
     confidence: f64,
 ) -> FfiTextFragmentStoreResult {
+    catch_ffi_panic!(FfiTextFragmentStoreResult::err("engine internal error"), {
     if text_content.is_empty() {
         return FfiTextFragmentStoreResult::err("Text content is empty");
     }
@@ -274,11 +275,13 @@ pub fn ffi_text_fragment_store(
         Ok(id) => FfiTextFragmentStoreResult::ok(hex::encode(fragment_hash), id),
         Err(e) => FfiTextFragmentStoreResult::err(format!("Failed to store fragment: {e}")),
     }
+    })
 }
 
 /// Look up a text fragment by its hex-encoded SHA-256 hash.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_text_fragment_lookup(fragment_hash_hex: String) -> Option<FfiTextFragment> {
+    catch_ffi_panic!(None, {
     let hash_bytes = match hex::decode(&fragment_hash_hex) {
         Ok(b) if b.len() == 32 => {
             let mut arr = [0u8; 32];
@@ -307,11 +310,13 @@ pub fn ffi_text_fragment_lookup(fragment_hash_hex: String) -> Option<FfiTextFrag
             None
         }
     }
+    })
 }
 
 /// Get all text fragments for a session, ordered by timestamp.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_text_fragment_list_for_session(session_id: String) -> Vec<FfiTextFragment> {
+    catch_ffi_panic!(vec![], {
     let store = match open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -327,6 +332,7 @@ pub fn ffi_text_fragment_list_for_session(session_id: String) -> Vec<FfiTextFrag
             Vec::new()
         }
     }
+    })
 }
 
 /// Record a paste event with full text content for evidence tracking.
@@ -345,6 +351,7 @@ pub fn ffi_sentinel_record_paste(
     window_title: String,
     detection_confidence: f64,
 ) -> FfiPasteRecordResult {
+    catch_ffi_panic!(FfiPasteRecordResult::err("engine internal error"), {
     if char_count < 0 {
         return FfiPasteRecordResult::err("char_count must be non-negative");
     }
@@ -438,6 +445,7 @@ pub fn ffi_sentinel_record_paste(
     }
 
     FfiPasteRecordResult::ok(text_hash_hex, matched_session_id)
+    })
 }
 
 /// Create a tiered authorship attestation for selected text.
@@ -451,6 +459,7 @@ pub fn ffi_attest_text(
     app_bundle_id: String,
     window_title: String,
 ) -> FfiAttestTextResult {
+    catch_ffi_panic!(FfiAttestTextResult::err("engine internal error"), {
     const MAX_ATTEST_TEXT_SIZE: usize = 10 * 1024 * 1024;
     if text_content.len() > MAX_ATTEST_TEXT_SIZE {
         return FfiAttestTextResult::err(format!(
@@ -557,6 +566,7 @@ pub fn ffi_attest_text(
         writersproof_id,
         attestation_text,
     )
+    })
 }
 
 /// Store a text attestation locally from a pre-computed content hash.
@@ -646,12 +656,14 @@ impl super::types::FfiErrResult for FfiSyncResult {
 /// Mark a fragment as pending sync to CloudKit.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_mark_fragment_for_sync(fragment_id: i64) -> FfiSyncResult {
+    catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
     let store = try_ffi!(open_store(), FfiSyncResult);
 
     match store.mark_fragment_for_sync(fragment_id) {
         Ok(()) => FfiSyncResult::ok(),
         Err(e) => FfiSyncResult::err(format!("Failed to mark for sync: {e}")),
     }
+    })
 }
 
 /// Update a fragment's sync state with optional CloudKit record ID.
@@ -661,6 +673,7 @@ pub fn ffi_update_fragment_sync_state(
     state: String,
     cloudkit_record_id: Option<String>,
 ) -> FfiSyncResult {
+    catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
     let store = try_ffi!(open_store(), FfiSyncResult);
 
     const VALID_STATES: &[&str] = &["pending", "syncing", "synced", "failed", "conflict"];
@@ -672,11 +685,13 @@ pub fn ffi_update_fragment_sync_state(
         Ok(()) => FfiSyncResult::ok(),
         Err(e) => FfiSyncResult::err(format!("Failed to update sync state: {e}")),
     }
+    })
 }
 
 /// Get count of fragments pending sync to CloudKit.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_pending_sync_count() -> i64 {
+    catch_ffi_panic!(-1, {
     let store = match open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -692,6 +707,7 @@ pub fn ffi_get_pending_sync_count() -> i64 {
             -1
         }
     }
+    })
 }
 
 /// Apply a remotely synced fragment received from CloudKit.
@@ -713,6 +729,7 @@ pub fn ffi_apply_remote_fragment(
     keystroke_confidence: Option<f64>,
     cloudkit_record_id: Option<String>,
 ) -> FfiTextFragmentStoreResult {
+    catch_ffi_panic!(FfiTextFragmentStoreResult::err("engine internal error"), {
     if timestamp_ms <= 0 {
         return FfiTextFragmentStoreResult::err("timestamp_ms must be positive");
     }
@@ -812,6 +829,7 @@ pub fn ffi_apply_remote_fragment(
         Ok(id) => FfiTextFragmentStoreResult::ok(hex::encode(&fragment_hash), id),
         Err(e) => FfiTextFragmentStoreResult::err(format!("Failed to apply remote fragment: {e}")),
     }
+    })
 }
 
 /// Resolve a sync conflict for a fragment.
@@ -830,6 +848,7 @@ pub fn ffi_resolve_sync_conflict(
     remote_timestamp_ms: Option<i64>,
     remote_cloudkit_record_id: Option<String>,
 ) -> FfiSyncResult {
+    catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
     use crate::store::text_fragments::SyncResolutionStrategy;
 
     let strat = match strategy.as_str() {
@@ -927,6 +946,7 @@ pub fn ffi_resolve_sync_conflict(
         Ok(()) => FfiSyncResult::ok(),
         Err(e) => FfiSyncResult::err(format!("Failed to resolve conflict: {e}")),
     }
+    })
 }
 
 #[cfg(test)]

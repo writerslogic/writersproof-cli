@@ -2,6 +2,7 @@
 
 //! FFI bindings for macOS SwiftUI integration via UniFFI.
 
+pub mod archive;
 pub mod attestation;
 pub mod beacon;
 pub mod chain;
@@ -34,6 +35,7 @@ pub mod writersproof_ffi;
 #[cfg(feature = "did-webvh")]
 pub mod did_webvh_ffi;
 
+pub use archive::*;
 pub use attestation::*;
 pub use beacon::*;
 pub use chain::*;

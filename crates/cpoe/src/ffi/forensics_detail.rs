@@ -112,6 +112,7 @@ impl super::types::FfiErrResult for FfiForensicBreakdown {
 /// rich structured data suitable for native UI display.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
+    catch_ffi_panic!(FfiForensicBreakdown::error("engine internal error".to_string()), {
     let (path, _store, events) = try_ffi!(load_events_for_path(&path), FfiForensicBreakdown);
 
     if events.is_empty() {
@@ -226,4 +227,5 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
             .unwrap_or(0.0),
         error_message: None,
     }
+    })
 }

@@ -1082,6 +1082,11 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 /// Build a WAR report and return structured data suitable for native UI rendering.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_build_war_report(path: String) -> FfiWarReportResult {
+    catch_ffi_panic!(FfiWarReportResult {
+        success: false,
+        report: None,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     match build_war_report_for_path(&path) {
         Ok((report, guilloche_seed_hex)) => FfiWarReportResult {
             success: true,
@@ -1094,11 +1099,17 @@ pub fn ffi_build_war_report(path: String) -> FfiWarReportResult {
             error_message: Some(e),
         },
     }
+    })
 }
 
 /// Build a WAR report and render it as an HTML string.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_render_war_html(path: String) -> FfiHtmlResult {
+    catch_ffi_panic!(FfiHtmlResult {
+        success: false,
+        html: None,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     match build_war_report_for_path(&path) {
         Ok((report, _)) => {
             let html = render_html(&report);
@@ -1114,6 +1125,7 @@ pub fn ffi_render_war_html(path: String) -> FfiHtmlResult {
             error_message: Some(e),
         },
     }
+    })
 }
 
 fn convert_war_report(r: &WarReport, guilloche_seed_hex: &str) -> FfiWarReport {

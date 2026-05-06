@@ -4,8 +4,9 @@
 
 use super::helpers::get_data_dir;
 use super::types::{
-    FfiConsentResult, FfiFingerprintDimension, FfiFingerprintSnapshot, FfiFingerprintStatus,
-    FfiFingerprintSummary, FfiFingerprintVerification, FfiKeystrokeTimingArrays, FfiResult,
+    catch_ffi_panic, FfiConsentResult, FfiFingerprintDimension, FfiFingerprintSnapshot,
+    FfiFingerprintStatus, FfiFingerprintSummary, FfiFingerprintVerification,
+    FfiKeystrokeTimingArrays, FfiResult,
 };
 use crate::fingerprint::comparison;
 use crate::fingerprint::manager::FingerprintManager;
@@ -44,6 +45,13 @@ where
 /// Return fingerprint status: enabled flags and sample counts.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
+    catch_ffi_panic!(FfiFingerprintStatus {
+        style_enabled: false,
+        style_samples: 0,
+        style_consent: false,
+        activity_enabled: false,
+        activity_samples: 0,
+    }, {
     match with_manager(|mgr| {
         let status = mgr.status();
         Ok(FfiFingerprintStatus {
@@ -63,11 +71,19 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
             activity_samples: 0,
         },
     }
+    })
 }
 
 /// Return human-readable fingerprint dimensions with quality score.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
+    catch_ffi_panic!(FfiFingerprintSummary {
+        success: false,
+        dimensions: vec![],
+        quality_score: 0.0,
+        total_samples: 0,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     match with_manager(|mgr| {
         let status = mgr.status();
         let activity = mgr.current_activity_fingerprint();
@@ -192,11 +208,17 @@ pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
             error_message: Some(e),
         },
     }
+    })
 }
 
 /// Grant style consent — calls ConsentManager::grant_consent().
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_grant_style_consent() -> FfiConsentResult {
+    catch_ffi_panic!(FfiConsentResult {
+        success: false,
+        consent_given: false,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     match with_manager(|mgr| {
         mgr.consent_manager
             .grant_consent()
@@ -216,11 +238,13 @@ pub fn ffi_grant_style_consent() -> FfiConsentResult {
             error_message: Some(e),
         },
     }
+    })
 }
 
 /// Revoke style consent — calls FingerprintManager::disable_style().
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_revoke_style_consent() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     match with_manager(|mgr| {
         mgr.disable_style()
             .map_err(|e| format!("Failed to revoke consent: {e}"))?;
@@ -231,11 +255,13 @@ pub fn ffi_revoke_style_consent() -> FfiResult {
         Ok(r) => r,
         Err(e) => FfiResult::err(e),
     }
+    })
 }
 
 /// Reset all fingerprint data (activity + style).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_reset_fingerprint() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     match with_manager(|mgr| {
         mgr.reset_session();
         let profiles = mgr
@@ -250,11 +276,13 @@ pub fn ffi_reset_fingerprint() -> FfiResult {
         Ok(r) => r,
         Err(e) => FfiResult::err(e),
     }
+    })
 }
 
 /// Export fingerprint as JSON for cloud upload.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_fingerprint_json() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     match with_manager(|mgr| {
         let author_fp = mgr.current_author_fingerprint();
         let json = serde_json::to_string_pretty(&author_fp)
@@ -264,6 +292,7 @@ pub fn ffi_export_fingerprint_json() -> FfiResult {
         Ok(r) => r,
         Err(e) => FfiResult::err(e),
     }
+    })
 }
 
 /// Compare current fingerprint against a stored profile.
@@ -271,6 +300,15 @@ pub fn ffi_export_fingerprint_json() -> FfiResult {
 pub fn ffi_verify_fingerprint_match(
     profile_id: String,
 ) -> FfiFingerprintVerification {
+    catch_ffi_panic!(FfiFingerprintVerification {
+        success: false,
+        similarity: 0.0,
+        match_probability: 0.0,
+        verdict: "Error".into(),
+        verdict_description: "engine internal error".to_string(),
+        components: vec![],
+        error_message: Some("engine internal error".to_string()),
+    }, {
     match with_manager(|mgr| {
         debug!("Verifying fingerprint match against profile {}", profile_id);
 
@@ -328,11 +366,13 @@ pub fn ffi_verify_fingerprint_match(
             error_message: Some(e),
         },
     }
+    })
 }
 
 /// List stored fingerprint profiles as a JSON array.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_fingerprint_profiles() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     match with_manager(|mgr| {
         debug!("Listing fingerprint profiles");
         let profiles = mgr
@@ -362,11 +402,13 @@ pub fn ffi_list_fingerprint_profiles() -> FfiResult {
         Ok(r) => r,
         Err(e) => FfiResult::err(e),
     }
+    })
 }
 
 /// Return periodic fingerprint snapshots for evolution charting.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
+    catch_ffi_panic!(vec![], {
     with_manager(|mgr| {
         let snapshots = mgr.get_snapshots();
         let result = snapshots
@@ -389,12 +431,19 @@ pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
         Ok(result)
     })
     .unwrap_or_default()
+    })
 }
 
 /// Return raw HT, FT, and IKI arrays from the activity accumulator
 /// for behavioral ML inference (dual-channel CNN).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_keystroke_timing_arrays() -> FfiKeystrokeTimingArrays {
+    catch_ffi_panic!(FfiKeystrokeTimingArrays {
+        hold_times_ns: Vec::new(),
+        flight_times_ns: Vec::new(),
+        iki_ns: Vec::new(),
+        sample_count: 0,
+    }, {
     use super::sentinel::get_running_sentinel;
     use crate::RwLockRecover;
 
@@ -431,4 +480,5 @@ pub fn ffi_get_keystroke_timing_arrays() -> FfiKeystrokeTimingArrays {
         iki_ns,
         sample_count: count,
     }
+    })
 }

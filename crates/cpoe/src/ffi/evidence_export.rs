@@ -89,7 +89,10 @@ fn build_wire_packet(
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(crate::utils::duration_to_ms)
-        .unwrap_or(0);
+        .unwrap_or_else(|_| {
+            log::warn!("System clock before UNIX epoch; using 0 for export timestamp");
+            0
+        });
 
     let data_dir =
         crate::ffi::helpers::get_data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
@@ -103,7 +106,10 @@ fn build_wire_packet(
             Some(authorproof_protocol::rfc::wire_types::ContentTier::Enhanced)
         }
         "maximum" => Some(authorproof_protocol::rfc::wire_types::ContentTier::Maximum),
-        _ => Some(authorproof_protocol::rfc::wire_types::ContentTier::Core),
+        other => {
+            log::warn!("Unknown export tier {:?}; defaulting to Core", other);
+            Some(authorproof_protocol::rfc::wire_types::ContentTier::Core)
+        }
     };
 
     // Random salt so each export produces unique packet/checkpoint IDs.
@@ -213,17 +219,26 @@ fn build_wire_packet(
     // Attach beacon attestation to the last checkpoint if available.
     if let Some(beacon) = crate::ffi::beacon::load_beacon_attestation(&file_path_str) {
         if let Some(last_cp) = checkpoints.last_mut() {
-            let drand_bytes = hex::decode(&beacon.drand_randomness)
+            match hex::decode(&beacon.drand_randomness)
                 .ok()
                 .and_then(|b| <[u8; 32]>::try_from(b).ok())
-                .unwrap_or([0u8; 32]);
-            last_cp.beacon_anchor = Some(
-                authorproof_protocol::rfc::wire_types::components::BeaconAnchor {
-                    source_url: "https://drand.cloudflare.com".to_string(),
-                    beacon_round: beacon.drand_round,
-                    beacon_value: drand_bytes,
-                },
-            );
+            {
+                Some(drand_bytes) => {
+                    last_cp.beacon_anchor = Some(
+                        authorproof_protocol::rfc::wire_types::components::BeaconAnchor {
+                            source_url: "https://drand.cloudflare.com".to_string(),
+                            beacon_round: beacon.drand_round,
+                            beacon_value: drand_bytes,
+                        },
+                    );
+                }
+                None => {
+                    log::warn!(
+                        "Beacon randomness decode failed for round {}; skipping beacon anchor",
+                        beacon.drand_round
+                    );
+                }
+            }
         }
     }
 
@@ -256,12 +271,23 @@ fn build_wire_packet(
         .and_then(|bytes| std::str::from_utf8(bytes).ok())
         .map(|s| s.chars().count() as u64)
         .unwrap_or(byte_length);
+    const MAX_EMBEDDED_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
     let is_maximum = matches!(
         content_tier,
         Some(authorproof_protocol::rfc::wire_types::ContentTier::Maximum)
     );
     let embedded_content = if is_maximum && content_verified {
-        file_bytes.map(serde_bytes::ByteBuf::from)
+        file_bytes.and_then(|b| {
+            if b.len() > MAX_EMBEDDED_BYTES {
+                log::warn!(
+                    "File too large to embed ({} bytes > {MAX_EMBEDDED_BYTES}); skipping embed",
+                    b.len()
+                );
+                None
+            } else {
+                Some(serde_bytes::ByteBuf::from(b))
+            }
+        })
     } else {
         None
     };
@@ -555,8 +581,7 @@ fn collect_project_files(
 ) -> Option<Vec<authorproof_protocol::rfc::wire_types::ProjectFileRef>> {
     let project_root = find_project_root(primary_path);
     let canonical_root =
-        std::fs::canonicalize(&project_root).unwrap_or(project_root);
-    let primary_str = primary_path.to_string_lossy();
+        std::fs::canonicalize(&project_root).unwrap_or_else(|_| project_root.clone());
 
     let all_files = match store.list_files() {
         Ok(files) => files,
@@ -566,16 +591,20 @@ fn collect_project_files(
         }
     };
 
+    const MAX_SIBLINGS: usize = 50;
+    let canonical_primary =
+        std::fs::canonicalize(primary_path).unwrap_or_else(|_| primary_path.to_path_buf());
     let siblings: Vec<_> = all_files
         .into_iter()
         .filter(|(path, _, _)| {
-            if path == primary_str.as_ref() {
-                return false;
-            }
             let canonical = std::fs::canonicalize(path)
                 .unwrap_or_else(|_| std::path::PathBuf::from(path));
+            if canonical == canonical_primary {
+                return false;
+            }
             canonical.starts_with(&canonical_root)
         })
+        .take(MAX_SIBLINGS)
         .collect();
 
     if siblings.is_empty() {
@@ -586,8 +615,10 @@ fn collect_project_files(
         .iter()
         .map(|(path, _last_ts, event_count)| {
             // Relative path from project root for cleaner display
-            let rel_path = std::path::Path::new(path)
-                .strip_prefix(&project_root)
+            let canonical_path = std::fs::canonicalize(path)
+                .unwrap_or_else(|_| std::path::PathBuf::from(path));
+            let rel_path = canonical_path
+                .strip_prefix(&canonical_root)
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| {
                     std::path::Path::new(path)

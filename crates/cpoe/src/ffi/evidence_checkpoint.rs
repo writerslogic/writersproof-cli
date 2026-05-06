@@ -8,8 +8,9 @@ use super::evidence::device_identity;
 /// Create a manual checkpoint for a file, hashing its current content.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_create_checkpoint(path: String, message: String) -> FfiResult {
+    // Truncate at a char boundary to avoid panicking on multi-byte UTF-8 sequences.
     let message = if message.len() > 4096 {
-        message[..4096].to_string()
+        message.chars().take(4096).collect()
     } else {
         message
     };

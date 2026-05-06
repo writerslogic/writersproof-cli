@@ -6,7 +6,7 @@
 //! but attestation signatures that enter the evidence packet MUST use Rust's
 //! CBOR-based signing payloads so Rust's verifier can check them.
 
-use crate::collaboration::{CollaboratorRole, ContributionSummary};
+use crate::collaboration::CollaboratorRole;
 
 /// Collaborator role as a string for FFI (matches Rust's serde rename_all = "snake_case").
 #[cfg_attr(feature = "ffi", uniffi::export)]

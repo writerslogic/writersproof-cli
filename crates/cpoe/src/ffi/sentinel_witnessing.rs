@@ -3,12 +3,15 @@
 //! FFI functions for witnessing start/stop/status.
 
 use super::sentinel::get_sentinel;
-use crate::ffi::types::{try_ffi, FfiResult, FfiSentinelStatus, FfiWitnessingStatus};
-use crate::RwLockRecover;
+use crate::ffi::types::{
+    catch_ffi_panic, try_ffi, FfiPermissionState, FfiResult, FfiSentinelStatus, FfiWitnessingStatus,
+};
+use crate::{MutexRecover, RwLockRecover};
 
 /// Start witnessing a specific file path.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -34,11 +37,13 @@ pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
         Ok(()) => FfiResult::ok(format!("Now witnessing: {}", validated_path.display())),
         Err((_code, msg)) => FfiResult::err(msg),
     }
+    })
 }
 
 /// Stop witnessing a specific file path.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -58,6 +63,7 @@ pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
         Ok(()) => FfiResult::ok(format!("Stopped witnessing: {}", validated_path.display())),
         Err((_code, msg)) => FfiResult::err(msg),
     }
+    })
 }
 
 fn format_duration(total_secs: i64) -> String {
@@ -78,6 +84,15 @@ fn format_duration(total_secs: i64) -> String {
 /// Get current sentinel status.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_status() -> FfiSentinelStatus {
+    catch_ffi_panic!(FfiSentinelStatus {
+        running: false,
+        tracked_file_count: 0,
+        tracked_files: vec![],
+        uptime_secs: 0,
+        keystroke_count: 0,
+        focus_duration: String::new(),
+        permission_state: FfiPermissionState::Unknown,
+    }, {
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -89,6 +104,7 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
                 uptime_secs: 0,
                 keystroke_count: 0,
                 focus_duration: String::new(),
+                permission_state: FfiPermissionState::Unknown,
             };
         }
     };
@@ -106,6 +122,15 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
         .map(|s| s.total_focus_duration().as_millis() as i64)
         .sum();
 
+    let permission_state = {
+        use crate::sentinel::permission_monitor::PermissionState;
+        match *sentinel.permission_state.lock_recover() {
+            PermissionState::Full => FfiPermissionState::Full,
+            PermissionState::KeystrokeDegraded => FfiPermissionState::KeystrokeDegraded,
+            PermissionState::Revoked => FfiPermissionState::Revoked,
+        }
+    };
+
     FfiSentinelStatus {
         running: sentinel.is_running(),
         tracked_file_count: tracked.len() as u32,
@@ -113,7 +138,25 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
         uptime_secs: summary.duration_secs,
         keystroke_count: summary.keystroke_count,
         focus_duration: format_duration(total_focus_ms / 1000),
+        permission_state,
     }
+    })
+}
+
+/// Return the current permission state for keystroke capture.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_permission_state() -> FfiPermissionState {
+    catch_ffi_panic!(FfiPermissionState::Unknown, {
+    use crate::sentinel::permission_monitor::PermissionState;
+    match get_sentinel() {
+        Some(s) => match *s.permission_state.lock_recover() {
+            PermissionState::Full => FfiPermissionState::Full,
+            PermissionState::KeystrokeDegraded => FfiPermissionState::KeystrokeDegraded,
+            PermissionState::Revoked => FfiPermissionState::Revoked,
+        },
+        None => FfiPermissionState::Unknown,
+    }
+    })
 }
 
 /// Fallback score from cadence when store is unavailable or has insufficient data.
@@ -204,6 +247,7 @@ fn not_tracking(capture_active: bool) -> FfiWitnessingStatus {
 /// Get live witnessing metrics for the first active session.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
+    catch_ffi_panic!(not_tracking(false), {
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -304,4 +348,5 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         total_deletions: session.semantic_counts.total_deletions(),
         undo_count: session.semantic_counts.undo,
     }
+    })
 }

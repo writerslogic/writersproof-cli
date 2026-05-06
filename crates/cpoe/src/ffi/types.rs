@@ -22,6 +22,20 @@ macro_rules! try_ffi {
 }
 pub(crate) use try_ffi;
 
+/// Wrap an FFI function body in `catch_unwind` to convert Rust panics into
+/// error values rather than crashing the Swift process.
+/// Usage: `catch_ffi_panic!(fallback_expr, { /* statements */ })`
+/// where `fallback_expr` is the value returned on panic.
+macro_rules! catch_ffi_panic {
+    ($fallback:expr, { $($body:tt)* }) => {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| { $($body)* })) {
+            Ok(result) => result,
+            Err(_) => $fallback,
+        }
+    };
+}
+pub(crate) use catch_ffi_panic;
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiResult {
@@ -76,6 +90,22 @@ pub mod error_codes {
     pub const NOT_RUNNING: &str = "not_running";
     pub const TIMEOUT: &str = "timeout";
     pub const DATA_DIR: &str = "data_dir";
+}
+
+/// Version and capability information returned by `ffi_engine_version`.
+/// Swift checks `contract_version` against its own constant before calling `ffi_init`.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiEngineVersion {
+    /// Cargo package version string (e.g. "0.9.1").
+    pub engine_version: String,
+    /// Monotonically incrementing integer; bump whenever any FFI signature changes.
+    /// Swift refuses to start if this doesn't match its compiled-in expectation.
+    pub contract_version: u32,
+    /// Compile-time feature flags that are active (e.g. "ffi", "cpoe_jitter").
+    pub features: Vec<String>,
+    /// "debug" or "release".
+    pub build_profile: String,
 }
 
 #[derive(Debug, Clone)]
@@ -233,6 +263,20 @@ pub struct FfiEphemeralStatusResult {
     pub error_message: Option<String>,
 }
 
+/// OS-level permission state for sentinel keystroke capture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
+pub enum FfiPermissionState {
+    /// Both Accessibility and Input Monitoring are granted.
+    Full,
+    /// Accessibility granted but Input Monitoring is not; keystroke capture unavailable.
+    KeystrokeDegraded,
+    /// All required permissions revoked; file-hash monitoring only.
+    Revoked,
+    /// Sentinel not initialized; permission state unknown.
+    Unknown,
+}
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiSentinelStatus {
@@ -242,6 +286,7 @@ pub struct FfiSentinelStatus {
     pub uptime_secs: u64,
     pub keystroke_count: u64,
     pub focus_duration: String,
+    pub permission_state: FfiPermissionState,
 }
 
 #[derive(Debug, Clone)]

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{get_db_path, open_store};
-use crate::ffi::types::{try_ffi, FfiErrResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -58,6 +58,7 @@ impl FfiErrResult for FfiArchiveListResult {
 /// If `age_days` is 0, defaults to 90 days.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_archive_old_events(age_days: u32) -> FfiArchiveResult {
+    catch_ffi_panic!(FfiArchiveResult::ffi_err("engine internal error"), {
     let db_path = try_ffi!(get_db_path().ok_or("Database path not found"), FfiArchiveResult);
     let mut store = try_ffi!(open_store(), FfiArchiveResult);
 
@@ -80,11 +81,13 @@ pub fn ffi_archive_old_events(age_days: u32) -> FfiArchiveResult {
             active_db_size_after: try_ffi!(store.db_size_bytes(), FfiArchiveResult),
         },
     }
+    })
 }
 
 /// List all archive files and report active DB status.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_archives() -> FfiArchiveListResult {
+    catch_ffi_panic!(FfiArchiveListResult::ffi_err("engine internal error"), {
     let db_path = try_ffi!(
         get_db_path().ok_or("Database path not found"),
         FfiArchiveListResult
@@ -117,12 +120,14 @@ pub fn ffi_list_archives() -> FfiArchiveListResult {
         active_db_size_bytes: active_size,
         needs_archival: needs,
     }
+    })
 }
 
 /// Query events for a file path across both active and archive databases.
 /// Returns events within the given nanosecond timestamp range.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_query_events_spanning(path: String, start_ns: i64, end_ns: i64) -> FfiSpanningQueryResult {
+    catch_ffi_panic!(FfiSpanningQueryResult::ffi_err("engine internal error"), {
     let db_path = try_ffi!(
         get_db_path().ok_or("Database path not found"),
         FfiSpanningQueryResult
@@ -145,6 +150,7 @@ pub fn ffi_query_events_spanning(path: String, start_ns: i64, end_ns: i64) -> Ff
         earliest_timestamp_ns: events.first().map(|e| e.timestamp_ns),
         latest_timestamp_ns: events.last().map(|e| e.timestamp_ns),
     }
+    })
 }
 
 #[derive(Debug, Clone)]

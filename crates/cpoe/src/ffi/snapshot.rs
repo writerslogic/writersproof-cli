@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use super::helpers::{get_data_dir, load_signing_key};
-use super::types::FfiResult;
+use super::types::{catch_ffi_panic, FfiResult};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -72,6 +72,12 @@ fn open_snapshot_store() -> Result<crate::snapshot::SnapshotStore, String> {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_save(document_path: String, plaintext: String) -> FfiSnapshotSaveResult {
+    catch_ffi_panic!(FfiSnapshotSaveResult {
+        success: false,
+        snapshot_id: -1,
+        size_warning: None,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     const MAX_SNAPSHOT_SIZE: usize = 50 * 1024 * 1024; // 50 MB
     if plaintext.len() > MAX_SNAPSHOT_SIZE {
         return FfiSnapshotSaveResult {
@@ -129,10 +135,12 @@ pub fn ffi_snapshot_save(document_path: String, plaintext: String) -> FfiSnapsho
             error_message: Some(e),
         },
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_list(document_path: String) -> Vec<FfiSnapshotEntry> {
+    catch_ffi_panic!(vec![], {
     if crate::sentinel::helpers::validate_path(&document_path).is_err() {
         return Vec::new();
     }
@@ -162,10 +170,12 @@ pub fn ffi_snapshot_list(document_path: String) -> Vec<FfiSnapshotEntry> {
             Vec::new()
         }
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_get(snapshot_id: i64) -> FfiSnapshotContent {
+    catch_ffi_panic!(FfiSnapshotContent::err("engine internal error"), {
     let store = match open_snapshot_store() {
         Ok(s) => s,
         Err(e) => return FfiSnapshotContent::err(e),
@@ -174,10 +184,12 @@ pub fn ffi_snapshot_get(snapshot_id: i64) -> FfiSnapshotContent {
         Ok(text) => FfiSnapshotContent::ok(text),
         Err(e) => FfiSnapshotContent::err(e),
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_diff(snapshot_id: i64, current_text: String) -> Vec<FfiDiffOp> {
+    catch_ffi_panic!(vec![], {
     let store = match open_snapshot_store() {
         Ok(s) => s,
         Err(e) => {
@@ -199,10 +211,15 @@ pub fn ffi_snapshot_diff(snapshot_id: i64, current_text: String) -> Vec<FfiDiffO
             text: op.text,
         })
         .collect()
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_mark_draft(snapshot_id: i64, label: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    if label.len() > 256 {
+        return FfiResult::err("Draft label too long (max 256 bytes)");
+    }
     let store = match open_snapshot_store() {
         Ok(s) => s,
         Err(e) => return FfiResult::err(e),
@@ -211,6 +228,7 @@ pub fn ffi_snapshot_mark_draft(snapshot_id: i64, label: String) -> FfiResult {
         Ok(()) => FfiResult::ok("Draft label updated"),
         Err(e) => FfiResult::err(e),
     }
+    })
 }
 
 /// Restore a snapshot. Takes the document_path to verify the snapshot belongs
@@ -222,6 +240,7 @@ pub fn ffi_snapshot_restore(
     snapshot_id: i64,
     current_text: String,
 ) -> FfiSnapshotContent {
+    catch_ffi_panic!(FfiSnapshotContent::err("engine internal error"), {
     if crate::sentinel::helpers::validate_path(&document_path).is_err() {
         return FfiSnapshotContent::err("Invalid document path");
     }
@@ -244,4 +263,5 @@ pub fn ffi_snapshot_restore(
         Ok(restored) => FfiSnapshotContent::ok(restored),
         Err(e) => FfiSnapshotContent::err(e),
     }
+    })
 }

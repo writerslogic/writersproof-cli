@@ -15,7 +15,8 @@
 
 use crate::ffi::helpers::{get_data_dir, open_store};
 use crate::ffi::types::{
-    FfiEphemeralFinalizeResult, FfiEphemeralSessionResult, FfiEphemeralStatusResult, FfiResult,
+    catch_ffi_panic, FfiEphemeralFinalizeResult, FfiEphemeralSessionResult,
+    FfiEphemeralStatusResult, FfiResult,
 };
 use dashmap::DashMap;
 use sha2::{Digest, Sha256};
@@ -131,6 +132,11 @@ fn evict_stale_sessions() {
 /// Start a new ephemeral witnessing session.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_start_ephemeral_session(context_label: String) -> FfiEphemeralSessionResult {
+    catch_ffi_panic!(FfiEphemeralSessionResult {
+        success: false,
+        session_id: String::new(),
+        error_message: Some("engine internal error".to_string()),
+    }, {
     if context_label.len() > MAX_CONTEXT_LABEL_LEN {
         return FfiEphemeralSessionResult {
             success: false,
@@ -188,11 +194,13 @@ pub fn ffi_start_ephemeral_session(context_label: String) -> FfiEphemeralSession
         session_id,
         error_message: None,
     }
+    })
 }
 
 /// Create an in-memory checkpoint of the current content.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     evict_stale_sessions();
 
     let mut entry = match sessions().get_mut(&session_id) {
@@ -294,11 +302,13 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
         error_message: persist_error,
         error_code: None,
     }
+    })
 }
 
 /// Accumulate keystroke timing intervals for jitter analysis.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_inject_jitter(session_id: String, intervals: Vec<u64>) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let mut entry = match sessions().get_mut(&session_id) {
         Some(e) => e,
         None => return FfiResult::err(format!("No ephemeral session: {session_id}")),
@@ -323,6 +333,7 @@ pub fn ffi_ephemeral_inject_jitter(session_id: String, intervals: Vec<u64>) -> F
     FfiResult::ok(format!(
         "Accepted {accepted} intervals, rejected {rejected}"
     ))
+    })
 }
 
 /// Finalize an ephemeral session: build evidence packet → WAR block + compact ref.
@@ -332,6 +343,12 @@ pub fn ffi_ephemeral_finalize(
     content: String,
     statement: String,
 ) -> FfiEphemeralFinalizeResult {
+    catch_ffi_panic!(FfiEphemeralFinalizeResult {
+        success: false,
+        war_block: String::new(),
+        compact_ref: String::new(),
+        error_message: Some("engine internal error".to_string()),
+    }, {
     if content.len() > MAX_CONTENT_SIZE {
         return FfiEphemeralFinalizeResult {
             success: false,
@@ -418,11 +435,19 @@ pub fn ffi_ephemeral_finalize(
             error_message: None,
         }
     }
+    })
 }
 
 /// Get current ephemeral session stats (for the floating indicator).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_status(session_id: String) -> FfiEphemeralStatusResult {
+    catch_ffi_panic!(FfiEphemeralStatusResult {
+        success: false,
+        checkpoint_count: 0,
+        keystroke_count: 0,
+        elapsed_secs: 0.0,
+        error_message: Some("engine internal error".to_string()),
+    }, {
     evict_stale_sessions();
 
     match sessions().get(&session_id) {
@@ -441,6 +466,17 @@ pub fn ffi_ephemeral_status(session_id: String) -> FfiEphemeralStatusResult {
             error_message: Some(format!("No ephemeral session: {session_id}")),
         },
     }
+    })
+}
+
+/// Return `true` if an ephemeral session with the given ID currently exists.
+/// Use this before calling `ffi_ephemeral_finalize` to distinguish "session
+/// already evicted by timeout" from a genuine finalize failure.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_ephemeral_session_exists(session_id: String) -> bool {
+    catch_ffi_panic!(false, {
+    sessions().contains_key(&session_id)
+    })
 }
 
 /// Create a checkpoint from a pre-computed content hash (avoids sending full content).
@@ -454,6 +490,7 @@ pub fn ffi_ephemeral_checkpoint_hash(
     message: String,
     commitment: Option<String>,
 ) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let mut entry = match sessions().get_mut(&session_id) {
         Some(e) => e,
         None => return FfiResult::err(format!("No ephemeral session: {session_id}")),
@@ -563,11 +600,13 @@ pub fn ffi_ephemeral_checkpoint_hash(
         error_message: persist_error,
         error_code: None,
     }
+    })
 }
 
 /// Set the canary seed for an ephemeral session (derived during NMH handshake).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_set_canary_seed(session_id: String, canary_seed_hex: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let mut entry = match sessions().get_mut(&session_id) {
         Some(e) => e,
         None => return FfiResult::err(format!("No ephemeral session: {session_id}")),
@@ -588,6 +627,7 @@ pub fn ffi_ephemeral_set_canary_seed(session_id: String, canary_seed_hex: String
     entry.last_activity = Instant::now();
 
     FfiResult::ok("Canary seed set".to_string())
+    })
 }
 
 /// Build a signed WAR block from ephemeral session data.

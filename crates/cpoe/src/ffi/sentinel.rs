@@ -8,7 +8,7 @@
 
 use crate::config::SentinelConfig;
 use crate::ffi::helpers::{get_data_dir, load_hmac_key};
-use crate::ffi::types::FfiResult;
+use crate::ffi::types::{catch_ffi_panic, FfiResult};
 use crate::sentinel::Sentinel;
 use std::sync::{Arc, Mutex};
 
@@ -53,6 +53,7 @@ fn ffi_runtime() -> Result<Arc<tokio::runtime::Runtime>, String> {
 /// Start the sentinel daemon in-process.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_start() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     log::debug!("ffi_sentinel_start called");
     // Reset injection state from any previous run (SI-008/SI-009).
     super::sentinel_inject::reset_inject_state();
@@ -194,11 +195,13 @@ pub fn ffi_sentinel_start() -> FfiResult {
         }
     }
     FfiResult::ok(msg)
+    })
 }
 
 /// Stop the sentinel daemon.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_stop() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let sentinel = match get_sentinel() {
         Some(s) => s,
         None => {
@@ -237,16 +240,20 @@ pub fn ffi_sentinel_stop() -> FfiResult {
     // Sessions are preserved (unfocused) by stop(); start() re-focuses them.
 
     FfiResult::ok("Sentinel stopped".to_string())
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_is_running() -> bool {
+    catch_ffi_panic!(false, {
     get_sentinel().is_some_and(|s| s.is_running())
+    })
 }
 
 /// Restart keystroke capture after a tap failure (e.g. macOS sleep/wake).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_restart_keystroke_capture() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let sentinel = match get_sentinel() {
         Some(s) => s,
         None => {
@@ -273,6 +280,7 @@ pub fn ffi_sentinel_restart_keystroke_capture() -> FfiResult {
                 .to_string(),
         )
     }
+    })
 }
 
 #[cfg(test)]

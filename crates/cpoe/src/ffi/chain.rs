@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
+use crate::ffi::types::catch_ffi_panic;
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiCheckpointDetail {
@@ -34,6 +36,18 @@ pub struct FfiChainSummary {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_checkpoint_chain(path: String) -> FfiChainSummary {
+    catch_ffi_panic!(FfiChainSummary {
+        success: false,
+        document_path: String::new(),
+        checkpoint_count: 0,
+        first_commit_epoch_ms: None,
+        last_commit_epoch_ms: None,
+        total_elapsed_sec: 0.0,
+        final_content_hash: None,
+        chain_valid: None,
+        checkpoints: vec![],
+        error_message: Some("engine internal error".to_string()),
+    }, {
     let err = |msg: String| FfiChainSummary {
         success: false,
         document_path: path.clone(),
@@ -109,4 +123,5 @@ pub fn ffi_get_checkpoint_chain(path: String) -> FfiChainSummary {
         checkpoints,
         error_message: None,
     }
+    })
 }

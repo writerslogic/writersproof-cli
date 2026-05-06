@@ -79,6 +79,8 @@ pub fn ffi_sentinel_inject_keystroke_v3(
     dwell_time_ns: u64,
     flight_time_ns: u64,
 ) -> bool {
+    use crate::ffi::types::catch_ffi_panic;
+    catch_ffi_panic!(false, {
     inject_keystroke_inner_v3(
         timestamp_ns,
         keycode,
@@ -92,6 +94,7 @@ pub fn ffi_sentinel_inject_keystroke_v3(
         if dwell_time_ns > 0 { Some(dwell_time_ns) } else { None },
         if flight_time_ns > 0 { Some(flight_time_ns) } else { None },
     )
+    })
 }
 
 /// Inject a keystroke with modifier flags and semantic classification.
@@ -116,6 +119,8 @@ pub fn ffi_sentinel_inject_keystroke_v2(
     coalesced_count: u64,
     modifier_flags_raw: u16,
 ) -> bool {
+    use crate::ffi::types::catch_ffi_panic;
+    catch_ffi_panic!(false, {
     inject_keystroke_inner(
         timestamp_ns,
         keycode,
@@ -127,6 +132,7 @@ pub fn ffi_sentinel_inject_keystroke_v2(
         coalesced_count,
         crate::sentinel::types::ModifierFlags(modifier_flags_raw),
     )
+    })
 }
 
 /// Backward-compatible entry point (no modifier flags).
@@ -142,6 +148,8 @@ pub fn ffi_sentinel_inject_keystroke(
     char_value: String,
     coalesced_count: u64,
 ) -> bool {
+    use crate::ffi::types::catch_ffi_panic;
+    catch_ffi_panic!(false, {
     inject_keystroke_inner(
         timestamp_ns,
         keycode,
@@ -153,6 +161,7 @@ pub fn ffi_sentinel_inject_keystroke(
         coalesced_count,
         crate::sentinel::types::ModifierFlags::default(),
     )
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
