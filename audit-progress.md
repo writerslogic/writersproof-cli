@@ -147,40 +147,40 @@ Total: 522 files | Completed: 329 | In Progress: 0 | Remaining: 193
 [x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/streaming.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/verification.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/bin/uniffi-bindgen.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint_mmr.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/bin/uniffi-bindgen.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint_mmr.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_helpers.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_verification.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/collaboration.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/config/defaults.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/config/loading.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/config/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/config/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/config/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/continuation.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/doc_tracker.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/session.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/zone_engine.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/credentials/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/collaboration.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/config/defaults.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/config/loading.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/config/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/config/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/config/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/continuation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/doc_tracker.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/session.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/zone_engine.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/credentials/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/crypto.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto/anti_analysis.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto/lamport.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto/mem.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto/obfuscated.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/builder.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/verification.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/crypto/anti_analysis.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/crypto/lamport.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/crypto/mem.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/crypto/obfuscated.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/declaration/builder.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/declaration/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/declaration/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/declaration/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/declaration/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/declaration/verification.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/error.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/builder/helpers.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/builder/mod.rs
@@ -321,11 +321,11 @@ Total: 522 files | Completed: 329 | In Progress: 0 | Remaining: 193
 [x] /Volumes/A/writerslogic/crates/cpoe/src/platform/broadcaster.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/platform/device.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/platform/events.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/hid.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/keystroke.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/mouse.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/hid.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/keystroke.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/mouse.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/ffi.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/hid_capture.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/hid.rs
