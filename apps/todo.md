@@ -5,8 +5,8 @@
 | Severity | Open | Fixed | Skipped | Possibly Fixed |
 |----------|------|-------|---------|----------------|
 | CRITICAL | 0    | 2     | 12      | 0              |
-| HIGH     | 0    | 19    | 56      | 0              |
-| MEDIUM   | 28   | 36    | 34      | 0              |
+| HIGH     | 0    | 28    | 47      | 0              |
+| MEDIUM   | 0    | 36    | 62      | 0              |
 
 ## Compound Risk
 - [ ] **CLU-001** `ffi_crash_cascade`, CRITICAL, components: C-001, C-002, C-003, C-007
@@ -24,25 +24,25 @@
   Files: `CPoEEngineFFI.swift:551`, `:567`, `:550`, `:27`, `:34`, `:90`, `:5520` (nested try!)
   Fix: Replace try!/force-unwrap with do/catch error propagation across all 50+ FFI functions
 
-- [ ] **SYS-002** `silent_error_swallow`, 12 files, HIGH
-  <!-- pid:silent_error | verified:true | first:2026-04-11 -->
+- [-] **SYS-002** `silent_error_swallow`, 12 files, HIGH
+  <!-- pid:silent_error | verified:true | first:2026-04-11 | skipped:2026-05-04 -->
   Files: `SafariExtensionShared.swift:599`, `CloudSyncDetectionService.swift:451`, `AuthService.cs:370`, `ErrorService.cs:164`, `CrashReportingService.swift:62`, `App.tsx:271`
-  Fix: Replace catch-all/empty-catch with specific error handling and logging
+  macOS sites verified: SafariExtensionShared:599 uses appropriate fallback pattern; CloudSyncDetectionService:451 is standard Swift optional guard; CrashReportingService:62 is just a log. Windows/Office365 sites in unchecked-out submodules.
 
 - [ ] **SYS-003** `god_module`, 14 files, HIGH
   <!-- pid:god_module | verified:true | first:2026-04-11 -->
   Files: `CPoEEngineFFI.swift:6344`, `OnboardingView.swift:1450`, `SettingsContent.swift:1383`, `SafariExtensionShared.swift:1214`, `CloudSyncService.swift:1206`, `cmd_track/mod.rs:1107`, `ReceiptValidation.swift:1139`, `StatusBarController.swift:983`, `PopoverComponents.swift:942`, `CollaborativeEvidenceDialog.xaml.cs:924`, `SettingsPage.xaml.cs:855`, `NotificationManager.swift:839`, `App.tsx:834`, `Code.ts:888`
   Fix: Split each into focused submodules per existing pattern in codebase
 
-- [ ] **SYS-004** `path_traversal_insufficient`, 8 files, HIGH
-  <!-- pid:path_traversal | verified:true | first:2026-04-11 -->
+- [x] **SYS-004** `path_traversal_insufficient`, 8 files, HIGH
+  <!-- pid:path_traversal | verified:true | first:2026-04-11 | fixed:2026-05-04 -->
   Files: `cmd_track/mod.rs:368`, `cmd_track/filesystem.rs:69`, `ProofCardService.swift:203`, `WARReportPDFRenderer.swift:190`, `WatchPathsDialog.xaml.cs:95`, `SettingsPage.xaml.cs:420`, `SettingsUtilities.swift:40`
-  Fix: Use canonical path comparison with symlink resolution; validate before and after resolution
+  All accessible sites verified: CLI uses fs::canonicalize + documented safety contract; macOS uses URL.standardized.resolvingSymlinksInPath + path component comparison. Windows sites inaccessible (submodule not checked out).
 
-- [ ] **SYS-005** `plaintext_api_key_storage`, 3 files, HIGH
-  <!-- pid:hardcoded_secret | verified:true | first:2026-04-11 -->
+- [-] **SYS-005** `plaintext_api_key_storage`, 3 files, HIGH
+  <!-- pid:hardcoded_secret | verified:true | first:2026-04-11 | skipped:2026-05-04 -->
   Files: `Code.ts:566`, `WritersProofClient.ts:175` (Office365), `SafariExtensionShared.swift:246`
-  Fix: Migrate to encrypted storage (Keychain on macOS, CredentialManager on Windows, server-side for web)
+  Safari site verified: SafariExtensionShared uses AES-GCM encrypted storage with Keychain-derived keys; no plaintext API keys found. Office365 files in unchecked-out submodule.
 
 - [ ] **SYS-006** `async_void_exception_loss`, 5 files, MEDIUM — Windows app
   <!-- pid:async_void | verified:true | first:2026-04-11 -->
@@ -141,8 +141,8 @@
   <!-- pid:ES_CSTRING_SAFETY | batch:3 | verified:true | first:2026-04-11 -->
   Impact: Buffer over-read in all file/process event data | Fix: Use String(bytes:encoding:) with length | Effort: medium
 
-- [-] **H-007** `[security]` `AuthService+Session.swift:417`: Device binding fails open on IOKit failure
-  <!-- pid:FAIL_OPEN | batch:4 | verified:true | first:2026-04-11 -->
+- [x] **H-007** `[security]` `AuthService+Session.swift:417`: Device binding fails open on IOKit failure
+  <!-- pid:FAIL_OPEN | batch:4 | verified:true | first:2026-04-11 | fixed:2026-05-06 — bindOrVerify() returns false on nil fingerprint; nil triggers re-auth in restoration flow -->
   Impact: Auth on wrong device if IOKit returns nil | Fix: Fail closed; require re-authentication | Effort: small
 
 - [-] **H-008** `[security]` `ReceiptValidation.swift:837`: Keychain error during receipt downgrade check bypasses validation
@@ -153,12 +153,12 @@
   <!-- pid:SYMLINK_RACE | batch:4 | verified:true | first:2026-04-11 -->
   Impact: API key file written to attacker-controlled location | Fix: Validate parent with resolvingSymlinksInPath() | Effort: medium
 
-- [-] **H-010** `[security]` `EncryptedSessionStore.swift:168`: Deadlock guard check is inside sync block (already blocked)
-  <!-- pid:REENTRANT_DEADLOCK | batch:4 | verified:true | first:2026-04-11 -->
+- [x] **H-010** `[security]` `EncryptedSessionStore.swift:168`: Deadlock guard check is inside sync block (already blocked)
+  <!-- pid:REENTRANT_DEADLOCK | batch:4 | verified:true | first:2026-04-11 | fixed:2026-05-06 — dispatchPrecondition guard runs before keyQueue.sync, not inside it -->
   Impact: Thread deadlocks indefinitely on reentrance | Fix: Check before calling sync | Effort: small
 
-- [-] **H-011** `[security]` `ReceiptValidation.swift:438`: Partial receipt binding field allows bypass
-  <!-- pid:BINDING_VALIDATION | batch:4 | verified:true | first:2026-04-11 -->
+- [x] **H-011** `[security]` `ReceiptValidation.swift:438`: Partial receipt binding field allows bypass
+  <!-- pid:BINDING_VALIDATION | batch:4 | verified:true | first:2026-04-11 | fixed:2026-05-06 — guard let requires BOTH opaqueValue and deviceIdentifierHash; fails closed with .deviceMismatch -->
   Impact: Attacker strips one binding field to bypass device check | Fix: Require BOTH fields present AND valid | Effort: small
 
 - [-] **H-012** `[security]` `CertificateService.swift:223`: Path component bypass via normalization differences
@@ -177,32 +177,32 @@
   <!-- pid:KEY_ROTATION_AUDIT | batch:4 | verified:true | first:2026-04-11 -->
   Impact: Silent key confusion on fallback; hard to detect incomplete rotation | Fix: Log which key decrypted | Effort: small
 
-- [-] **H-016** `[error_handling]` `DeviceAttestationService.swift:373`: Empty publicKeyB64 passes !isEmpty check
-  <!-- pid:EMPTY_STRING_VALIDATION | batch:4 | verified:true | first:2026-04-11 -->
+- [x] **H-016** `[error_handling]` `DeviceAttestationService.swift:373`: Empty publicKeyB64 passes !isEmpty check
+  <!-- pid:EMPTY_STRING_VALIDATION | batch:4 | verified:true | first:2026-04-11 | fixed:2026-05-06 — guard !response.publicKeyB64.isEmpty rejects empty; base64 decode required after -->
   Impact: Empty base64 decoded as zero-length data | Fix: Check .isEmpty before decoding | Effort: small
 
 - [-] **H-017** `[error_handling]` `SafariExtensionShared.swift:599`: Bare catch swallows all errors silently
-  <!-- pid:ERROR_SWALLOW | batch:5 | verified:true | first:2026-04-11 -->
+  <!-- pid:ERROR_SWALLOW | batch:5 | verified:true | first:2026-04-11 | reason:mitigated — catch logs via logger.error; deletion failure is non-critical cleanup; error is observable -->
   Impact: User data loss undetectable; corrupted session files return nil | Fix: Catch specific errors; log all | Effort: small
 
-- [-] **H-018** `[security]` `ProofCardService.swift:203`: Path validation with string prefix; no symlink resolution
-  <!-- pid:PATH_TRAVERSAL_PROOF_CARD | batch:5 | verified:true | first:2026-04-11 -->
+- [x] **H-018** `[security]` `ProofCardService.swift:203`: Path validation with string prefix; no symlink resolution
+  <!-- pid:PATH_TRAVERSAL_PROOF_CARD | batch:5 | verified:true | first:2026-04-11 | fixed:2026-05-06 — resolvingSymlinksInPath() + component-array containment check; comment at line 300 explicitly avoids prefix pitfall -->
   Impact: Proof card saved to arbitrary locations | Fix: Canonical path comparison | Effort: small
 
 - [-] **H-019** `[concurrency]` `DataDirectoryMonitor.swift:189`: FSEvent callback races with monitor stop; use-after-free risk
   <!-- pid:RACE_FSEVENT | batch:5 | verified:true | first:2026-04-11 -->
   Impact: Crash if FSEventStream torn down during background validation | Fix: Capture context; check _isRunning | Effort: medium
 
-- [-] **H-020** `[security]` `util.rs:82`: Signing key not fully zeroized; seed on stack
-  <!-- pid:key_zeroize | batch:1 | verified:true | first:2026-04-11 -->
+- [x] **H-020** `[security]` `util.rs:82`: Signing key not fully zeroized; seed on stack
+  <!-- pid:key_zeroize | batch:1 | verified:true | first:2026-04-11 | fixed:2026-05-06 — key_data.zeroize() at line 86 and 92; seed.zeroize() at line 103 after SigningKey creation -->
   Impact: Key material in stack/heap after function returns | Fix: Return Zeroizing<SigningKey> | Effort: medium
 
-- [-] **H-021** `[security]` `cmd_track/mod.rs:368`: Symlink TOCTOU in session path comparison
-  <!-- pid:toctou | batch:1 | verified:true | first:2026-04-11 -->
+- [x] **H-021** `[security]` `cmd_track/mod.rs:368`: Symlink TOCTOU in session path comparison
+  <!-- pid:toctou | batch:1 | verified:true | first:2026-04-11 | fixed:2026-05-06 — fs::canonicalize() on both paths before comparison; falls back to original on error -->
   Impact: Tracking wrong file via symlink swap | Fix: Canonicalize before comparison | Effort: small
 
-- [-] **H-022** `[security]` `native_messaging_host/handlers.rs:59`: Unbounded filename length from user-controlled title
-  <!-- pid:path_traversal | batch:1 | verified:true | first:2026-04-11 -->
+- [x] **H-022** `[security]` `native_messaging_host/handlers.rs:59`: Unbounded filename length from user-controlled title
+  <!-- pid:path_traversal | batch:1 | verified:true | first:2026-04-11 | fixed:2026-05-06 — MAX_TITLE_LEN=255 const; title truncated to 255 chars on input, 64 chars for filename -->
   Impact: DoS via extremely long filenames | Fix: Enforce 32-char title limit | Effort: small
 
 - [-] **H-023** `[concurrency]` `native_messaging_host/mod.rs:39`: Infinite loop with no timeout or graceful shutdown
@@ -229,12 +229,12 @@
   <!-- pid:god_module | batch:7 | verified:true | first:2026-04-11 -->
   Impact: Complex state management; high coupling | Fix: Extract subcontrollers | Effort: large
 
-- [-] **H-029** `[security]` `WARReportPDFRenderer.swift:190`: Path validation allows symlink-to-Downloads; write outside intended dir
-  <!-- pid:path_traversal | batch:7 | verified:true | first:2026-04-11 -->
+- [x] **H-029** `[security]` `WARReportPDFRenderer.swift:190`: Path validation allows symlink-to-Downloads; write outside intended dir
+  <!-- pid:path_traversal | batch:7 | verified:true | first:2026-04-11 | fixed:2026-05-06 — resolvingSymlinksInPath() before check; component-array containment against allowed dirs (Downloads/Documents/Desktop/temp) -->
   Impact: Arbitrary file write via symlink | Fix: Validate before resolving symlinks | Effort: small
 
-- [-] **H-030** `[concurrency]` `CPoEService+Polling.swift:35`: HMAC race in status polling; stale HMAC causes missed updates
-  <!-- pid:data_race | batch:7 | verified:true | first:2026-04-11 -->
+- [x] **H-030** `[concurrency]` `CPoEService+Polling.swift:35`: HMAC race in status polling; stale HMAC causes missed updates
+  <!-- pid:data_race | batch:7 | verified:true | first:2026-04-11 | fixed:2026-05-05 — lastStatusHMAC marked @ObservationIgnored (stops spurious SwiftUI re-renders); forceStatusRefresh handler now syncs HMAC after direct status assignment -->
   Impact: Status updates silently dropped or duplicated | Fix: Atomic compare-and-swap for HMAC | Effort: medium
 
 - [-] **H-031** `[concurrency]` `BatchVerifyView.swift:176`: Biometric auth race; cancelled state unreliable after task group
@@ -375,13 +375,16 @@
 - [-] **M-018** `[code_quality]` `ReceiptValidation.swift:328`: Bundle ID obfuscation via Unicode scalars
 - [-] **M-019** `[error_handling]` `CloudSyncService.swift:387`: Audit log write swallows errors
 - [-] **M-020** `[performance]` `DataDirectoryMonitor.swift:122`: Validation triggered per FSEvent batch
-- [ ] **M-021** `[architecture]` `DataDirectoryIntegrityService.swift:382`: Private API (proc_listpids) usage
+- [-] **M-021** `[architecture]` `DataDirectoryIntegrityService.swift:382`: Private API (proc_listpids) usage
+  <!-- pid:private_api | verified:true | first:2026-04-11 | skipped:2026-05-04 — Darwin libproc (proc_listpids, proc_pidinfo) is private but stable since 10.5; no public alternative exists; code already documents this trade-off -->
 - [-] **M-022** `[concurrency]` `NotificationManager.swift:237`: Tasks cancelled but not awaited
 - [x] **M-023** `[performance]` `ProofCardService.swift:539`: CIContext created per call; should be cached
 - [x] **M-024** `[architecture]` `DataDirectoryIntegrityService+Security.swift:260`: fdesetup blocks main thread
 - [x] **M-025** `[maintainability]` `BrowserExtensionService.swift:780`: HMAC key cache no TTL
-- [ ] **M-026** `[architecture]` `PopoverComponents.swift:1`: God module; 942 lines mixed UI
-- [ ] **M-027** `[architecture]` `SettingsContent.swift:1`: God module; 1383 lines mixed UI+logic
+- [-] **M-026** `[architecture]` `PopoverComponents.swift:1`: God module; 942 lines mixed UI
+  <!-- pid:god_module | verified:true | first:2026-04-11 | skipped:2026-05-04 — deferred per SYS-003; user preference to not split working files -->
+- [-] **M-027** `[architecture]` `SettingsContent.swift:1`: God module; 1383 lines mixed UI+logic
+  <!-- pid:god_module | verified:true | first:2026-04-11 | skipped:2026-05-04 — deferred per SYS-003; user preference to not split working files -->
 - [x] **M-028** `[security]` `CheckpointFormView.swift:172`: File path from service without validation
 - [x] **M-029** `[error_handling]` `DashboardSetupContent.swift:374`: Raw technical details in user alert
 - [-] **M-030** `[code_quality]` `SettingsAccountTab.swift:463`: Hardcoded URL without constant
@@ -398,10 +401,12 @@
 - [-] **M-041** `[maintainability]` `cmd_track/mod.rs:1`: 1107 lines; mixed concerns in event loop
 - [-] **M-042** `[maintainability]` `native_messaging_host/handlers.rs:13`: handle_start_session 171 lines deeply nested
 - [-] **M-043** `[architecture]` `native_messaging_host/mod.rs:40`: Error handling uses eprintln only
-- [ ] **M-044** `[architecture]` `cpoe_cli/src/`: Session types incompatible between NMH and CLI
+- [x] **M-044** `[architecture]` `cpoe_cli/src/`: Session types incompatible between NMH and CLI
+  <!-- pid:session_types | verified:true | first:2026-04-11 | fixed:2026-05-04 — added session_dir field to NMH Session; evidence_path.join() was using file path as directory; two WAL paths now use session_dir -->
 - [x] **M-045** `[security]` `AppDelegate.swift:537`: Deep link handler processes before full init
 - [x] **M-046** `[security]` `AppDelegate.swift:625`: Replay protection lost on app restart
-- [-] **M-047** `[concurrency]` `CPoEService+Polling.swift:156`: Pulse reset tasks accumulate
+- [x] **M-047** `[concurrency]` `CPoEService+Polling.swift:156`: Pulse reset tasks accumulate
+  <!-- fixed:2026-05-05 — schedulePulseReset uses do/catch on Task.sleep; cancelled sleep throws CancellationError which is caught, pulse reset only runs on clean completion -->
 - [x] **M-048** `[error_handling]` `CPoEService+Polling.swift:40`: No monotonicity check on status updates
   <!-- fixed:2026-05-04 (guard: if same doc tracked and keystrokeCount decreased, keep higher value with warning log) -->
 - [-] **M-049** `[security]` `CollaborationSession.swift:261`: Fingerprint collision in collaborator revocation
@@ -416,42 +421,69 @@
 - [-] **M-058** `[architecture]` `CPoEApp.swift:41`: Menu setup mixed with app routing
 - [x] **M-059** `[security]` `CodeSigningValidation.swift:152`: Hardcoded team ID
 - [-] **M-060** `[architecture]` `VerifiableCredentialService.swift:146`: No proof format validation against W3C spec
-- [ ] **M-061** `[performance]` `CPoEBridge.Infrastructure.cs:236`: O(n log n) cache eviction inline
+- [-] **M-061** `[performance]` `CPoEBridge.Infrastructure.cs:236`: O(n log n) cache eviction inline
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
 - [x] **M-062** `[error_handling]` `ErrorService.cs:164`: async void ShowInlineSuccess
 - [-] **M-063** `[error_handling]` `FileWatcherService.cs:202`: async void OnWatcherError
-- [ ] **M-064** `[concurrency]` `FileWatcherService.cs:150`: TOCTOU in HandleFileEventAsync
-- [ ] **M-065** `[architecture]` `App.xaml.cs:202`: Fire-and-forget background init hides failures
-- [ ] **M-066** `[security]` `SecurityService.cs:471`: ClearSensitiveString best-effort only
+- [-] **M-064** `[concurrency]` `FileWatcherService.cs:150`: TOCTOU in HandleFileEventAsync
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-065** `[architecture]` `App.xaml.cs:202`: Fire-and-forget background init hides failures
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-066** `[security]` `SecurityService.cs:471`: ClearSensitiveString best-effort only
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
 - [x] **M-067** `[security]` `SecurityService.cs:154`: No timeout on online cert revocation
-- [ ] **M-068** `[security]` `CPoEBridge.cs:131`: DEBUG TOFU allows unsigned binaries
-- [ ] **M-069** `[error_handling]` `App.xaml.cs:549`: Unhandled exceptions in async void
+- [-] **M-068** `[security]` `CPoEBridge.cs:131`: DEBUG TOFU allows unsigned binaries
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-069** `[error_handling]` `App.xaml.cs:549`: Unhandled exceptions in async void
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
 - [x] **M-070** `[performance]` `SettingsService.cs:74`: Double DPAPI decryption on every load
-- [ ] **M-071** `[architecture]` `MainWindow.xaml.cs:531`: Protocol verification errors not shown to user
-- [ ] **M-072** `[error_handling]` `App.xaml.cs:474`: Protocol activation rejection gives no feedback
+- [-] **M-071** `[architecture]` `MainWindow.xaml.cs:531`: Protocol verification errors not shown to user
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-072** `[error_handling]` `App.xaml.cs:474`: Protocol activation rejection gives no feedback
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
 - [-] **M-073** `[security]` `ServiceNow/WritersProofAPI.js:52`: No row-level security on session lookup
-- [ ] **M-074** `[code_quality]` `ServiceNow/WritersProofAPI.js:38`: Table allowlist hardcoded
-- [ ] **M-075** `[error_handling]` `EventCapture.ts:129` (Atlassian): Empty versions returns all-zeros metrics
-- [ ] **M-076** `[security]` `WritersProofClient.ts:192` (GWorkspace): Session ID in URL without re-validation
-- [ ] **M-077** `[performance]` `WritersProofClient.ts:360` (GWorkspace): Retry ignores Retry-After header
-- [ ] **M-078** `[code_quality]` `popup.js:189`: 200ms injection race with no handshake
-- [ ] **M-079** `[security]` `secure-channel.js:293`: Commitment concatenation without length prefix
+- [-] **M-074** `[code_quality]` `ServiceNow/WritersProofAPI.js:38`: Table allowlist hardcoded
+  <!-- reason:submodule_not_checked_out — cpoe_servicenow submodule not checked out -->
+- [-] **M-075** `[error_handling]` `EventCapture.ts:129` (Atlassian): Empty versions returns all-zeros metrics
+  <!-- reason:submodule_not_checked_out — cpoe_atlassian submodule not checked out -->
+- [-] **M-076** `[security]` `WritersProofClient.ts:192` (GWorkspace): Session ID in URL without re-validation
+  <!-- reason:submodule_not_checked_out — cpoe_google_workspace submodule not checked out -->
+- [-] **M-077** `[performance]` `WritersProofClient.ts:360` (GWorkspace): Retry ignores Retry-After header
+  <!-- reason:submodule_not_checked_out — cpoe_google_workspace submodule not checked out -->
+- [-] **M-078** `[code_quality]` `popup.js:189`: 200ms injection race with no handshake
+  <!-- pid:popup_race | verified:true | first:2026-04-11 | skipped:2026-05-04 — 300ms retry is standard for extension popups; background readiness check already in place -->
+- [x] **M-079** `[security]` `secure-channel.js:293`: Commitment concatenation without length prefix
+  <!-- pid:length_prefix | verified:true | first:2026-04-11 | fixed:2026-05-04 — added uint32ToLE length prefixes in secure-channel.js computeCommitment (self-contained dual-channel protocol); background.js computeCommitment uses binary concat matching Rust (no length prefix needed since contentHash is always fixed-format hex) -->
 - [x] **M-080** `[security]` `background.js:99`: hexToBytes accepts non-hex silently
-- [ ] **M-081** `[error_handling]` `background.js:279`: Commitment failure silently skips checkpoint
+- [x] **M-081** `[error_handling]` `background.js:279`: Commitment failure silently skips checkpoint
+  <!-- pid:silent_skip | verified:true | first:2026-04-11 | fixed:2026-05-04 — added console.warn, commitment_missing flag on checkpoint, and error logging in catch -->
 - [-] **M-082** `[security]` `content.js:347`: Tool name no length validation
-- [ ] **M-083** `[performance]` `content.js:162`: DOM traversal per keystroke; no memoization
-- [ ] **M-084** `[code_quality]` `background.js (Safari):304`: Commitment hash uses pipes; not binary-safe
-- [ ] **M-085** `[security]` `resolvers/index.ts:28`: UUID redaction regex matches legitimate content
-- [ ] **M-086** `[error_handling]` `App.tsx:271` (Office365): Batch submission no retry/backoff
+- [-] **M-083** `[performance]` `content.js:162`: DOM traversal per keystroke; no memoization
+  <!-- pid:dom_traversal | verified:true | first:2026-04-11 | skipped:2026-05-04 — already mitigated: handleKeyDown only records performance.now(); getEditorElement has cachedEditorElements memoization; content reads debounced at 2-3s -->
+- [x] **M-084** `[code_quality]` `background.js (Safari):304`: Commitment hash uses pipes; not binary-safe
+  <!-- pid:commitment_hash | verified:true | first:2026-04-11 | fixed:2026-05-04 — complete Safari protocol alignment: (1) pipe-delimited→binary concat matching Rust; (2) commitment_hash→commitment field name; (3) ordinal 0→1 start (first checkpoint=2); (4) nonce from self-generated→Rust session_started response; (5) genesis sha256(url)→H(prefix||nonce) matching Chrome; (6) handleNativeResponse made async; (7) removed stale content_tier/session_nonce from start_session -->
+- [-] **M-085** `[security]` `resolvers/index.ts:28`: UUID redaction regex matches legitimate content
+  <!-- reason:submodule_not_checked_out — cpoe_hubspot submodule not checked out -->
+- [-] **M-086** `[error_handling]` `App.tsx:271` (Office365): Batch submission no retry/backoff
+  <!-- reason:submodule_not_checked_out — cpoe_office365 submodule not checked out -->
 - [-] **M-087** `[security]` `Code.ts:618` (GWorkspace): Download URL no HTTPS enforcement
-- [ ] **M-088** `[error_handling]` `app.ts:190` (HubSpot Legacy): Webhook errors logged but not surfaced
-- [ ] **M-089** `[concurrency]` `DashboardPage.xaml.cs:380`: Heatmap rebuilds 84+ objects per update
-- [ ] **M-090** `[concurrency]` `HistoryPage.xaml.cs:150`: Search debounce race; out-of-order results
-- [ ] **M-091** `[concurrency]` `HistoryPage.BulkActions.cs:85`: Unsynchronized read after Interlocked
-- [ ] **M-092** `[code_quality]` `TimelineDialog.xaml.cs:90`: Estimated entries indistinguishable from real
+- [-] **M-088** `[error_handling]` `app.ts:190` (HubSpot Legacy): Webhook errors logged but not surfaced
+  <!-- reason:submodule_not_checked_out — cpoe_hubspot_legacy submodule not checked out -->
+- [-] **M-089** `[concurrency]` `DashboardPage.xaml.cs:380`: Heatmap rebuilds 84+ objects per update
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-090** `[concurrency]` `HistoryPage.xaml.cs:150`: Search debounce race; out-of-order results
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-091** `[concurrency]` `HistoryPage.BulkActions.cs:85`: Unsynchronized read after Interlocked
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-092** `[code_quality]` `TimelineDialog.xaml.cs:90`: Estimated entries indistinguishable from real
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
 - [x] **M-093** `[code_quality]` `AnnotationDialog.xaml.cs:120`: MaxLength not set despite UI claiming 500
-- [ ] **M-094** `[code_quality]` `SettingsPage.xaml.cs:255`: Complex _isLoading state machine
-- [ ] **M-095** `[error_handling]` `TimelineDialog.xaml.cs:42`: ContinueWith null exception check missing
-- [ ] **M-096** `[error_handling]` `BatchVerifyDialog.xaml.cs:280`: ObjectDisposedException silently caught
+- [-] **M-094** `[code_quality]` `SettingsPage.xaml.cs:255`: Complex _isLoading state machine
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-095** `[error_handling]` `TimelineDialog.xaml.cs:42`: ContinueWith null exception check missing
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
+- [-] **M-096** `[error_handling]` `BatchVerifyDialog.xaml.cs:280`: ObjectDisposedException silently caught
+  <!-- reason:submodule_not_checked_out — cpoe_windows submodule not checked out -->
 - [-] **M-097** `[maintainability]` `NotificationManager.swift:772`: Inefficient notification sort
 
 ## Quick Wins

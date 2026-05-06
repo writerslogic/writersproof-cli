@@ -1,5 +1,5 @@
 # Audit Progress
-Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
+Total: 522 files | Completed: 66 | In Progress: 0 | Remaining: 456
 
 ## Legend
 - [ ] = pending
@@ -63,9 +63,9 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/json.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/codec/mod.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/compact_ref.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/crypto.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/crypto.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/error.rs
-[ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/evidence.rs
+[x] /Volumes/A/writerslogic/crates/authorproof-protocol/src/evidence.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics_classifier.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/cognitive.rs
 [ ] /Volumes/A/writerslogic/crates/authorproof-protocol/src/forensics/engine.rs
@@ -150,8 +150,8 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/bin/uniffi-bindgen.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint_mmr.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_verification.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_verification.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/types.rs
@@ -170,7 +170,7 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/types.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/cpoe_jitter_bridge/zone_engine.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/credentials/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/crypto.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto/anti_analysis.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto/lamport.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/crypto/mem.rs
@@ -266,13 +266,13 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/openid4vc.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/orcid.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/presentation_exchange.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/secure_storage.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/secure_storage.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/async_client.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/crypto.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/crypto.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/messages.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/rbac.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/secure_channel.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/secure_channel.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/server_handler.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/server_windows.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/server.rs
@@ -289,7 +289,7 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/verification.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/zones.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/crypto.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/crypto.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/error.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/identity.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/manager.rs
@@ -297,7 +297,7 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/puf.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/recovery.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/session.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/session.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/types.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/verification.rs
@@ -397,12 +397,12 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/clipboard.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/core_session.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/core_setup.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/core.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/core.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/daemon.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/error.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/focus.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/ipc_handler.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/ipc_handler.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/macos_focus.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/permission_monitor.rs
@@ -424,9 +424,9 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/store/archive.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/store/baselines.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/store/document_stats.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/events.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/events.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/store/fingerprints.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/integrity.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/integrity.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/store/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/store/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/store/text_fragments.rs
@@ -436,11 +436,11 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/attestation.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/counter.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/key_management.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/key_management.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/platform.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/sealing.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/signing.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/signing.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/types.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/signer.rs
@@ -484,12 +484,12 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/swf_posme.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/timekeeper.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/pipeline.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/seals.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/verify/pipeline.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/verify/seals.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/verdict.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/operations.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/wal/operations.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/serialization.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/types.rs
@@ -508,7 +508,7 @@ Total: 522 files | Completed: 46 | In Progress: 0 | Remaining: 476
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/vc.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/war/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/war/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/verification.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/verification.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/client.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/queue.rs
