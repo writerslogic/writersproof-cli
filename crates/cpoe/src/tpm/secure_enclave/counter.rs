@@ -50,7 +50,7 @@ pub(super) fn load_counter(state: &mut SecureEnclaveState) -> Result<(), TpmErro
             // to close the rollback window before any caller can act on the value.
             let bytes: [u8; 8] = data[0..8].try_into().expect("slice is exactly 8 bytes");
             state.counter = u64::from_be_bytes(bytes);
-            save_counter(state);
+            save_counter(state).map_err(TpmError::Io)?;
             Ok(())
         }
         Ok(data) => {
@@ -69,7 +69,7 @@ pub(super) fn load_counter(state: &mut SecureEnclaveState) -> Result<(), TpmErro
     }
 }
 
-pub(super) fn save_counter(state: &SecureEnclaveState) {
+pub(super) fn save_counter(state: &SecureEnclaveState) -> std::io::Result<()> {
     if let Some(parent) = state.counter_file.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -95,11 +95,12 @@ pub(super) fn save_counter(state: &SecureEnclaveState) {
         tmp.persist(&state.counter_file).map_err(|e| e.error)?;
         Ok(())
     })();
-    if let Err(e) = write_result {
+    if let Err(ref e) = write_result {
         log::error!(
             "Failed to persist counter to {:?}: {}",
             state.counter_file,
             e
         );
     }
+    write_result
 }

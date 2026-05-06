@@ -124,11 +124,14 @@ impl Provider for LinuxTpmProvider {
         let mut state = self.inner.lock_recover();
         let ak_handle = state.ak_handle.ok_or(TpmError::NotAvailable)?;
 
-        let pcr_list = if pcrs.is_empty() {
+        let mut pcr_list = if pcrs.is_empty() {
             default_pcr_selection().pcrs
         } else {
             pcrs.to_vec()
         };
+        // TPM returns digests in ascending PCR-index order (bitmask layout);
+        // sort the request list so read_pcrs' positional mapping stays correct.
+        pcr_list.sort_unstable();
         let selection = build_pcr_selection(&pcr_list)?;
         let qualifying = if nonce.len() > 64 {
             Sha256::digest(nonce).to_vec()

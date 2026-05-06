@@ -153,7 +153,7 @@ impl Provider for SecureEnclaveProvider {
 
         // Persist counter only after signing succeeds to avoid gaps
         state.counter = next_counter;
-        save_counter(&state);
+        let _ = save_counter(&state);
 
         Ok(Binding {
             version: 1,

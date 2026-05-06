@@ -190,7 +190,7 @@ impl SecureEnclaveProvider {
     pub fn increment_counter(&self) -> u64 {
         let mut state = self.state.lock_recover();
         state.counter += 1;
-        save_counter(&state);
+        let _ = save_counter(&state);
         state.counter
     }
 
