@@ -1,5 +1,5 @@
 # Audit Progress
-Total: 522 files | Completed: 149 | In Progress: 0 | Remaining: 373
+Total: 522 files | Completed: 329 | In Progress: 0 | Remaining: 193
 
 ## Legend
 - [ ] = pending
@@ -143,17 +143,17 @@ Total: 522 files | Completed: 149 | In Progress: 0 | Remaining: 373
 [x] /Volumes/A/writerslogic/crates/cpoe/src/anchors/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/anchors/verification.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/digest.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/baseline/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/baseline/streaming.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/baseline/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/baseline/verification.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/streaming.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/baseline/verification.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/bin/uniffi-bindgen.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint_mmr.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_helpers.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain_verification.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/chain.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/checkpoint/types.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/collaboration.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/config/defaults.rs
@@ -181,15 +181,15 @@ Total: 522 files | Completed: 149 | In Progress: 0 | Remaining: 373
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/tests.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/types.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/declaration/verification.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/error.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/error.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/builder/helpers.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/builder/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/evidence/builder/setters.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/evidence/hw_cosign.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/evidence/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/builder/setters.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/hw_cosign.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/packet.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/evidence/rfc_conversion.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/evidence/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/rfc_conversion.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/evidence/wire_conversion.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/archive.rs
@@ -223,266 +223,266 @@ Total: 522 files | Completed: 149 | In Progress: 0 | Remaining: 373
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/user_apps.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/verify_detail.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ffi/writersproof_ffi.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity_analysis.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity_collection.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/author.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/comparison.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/consent.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/manager.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/storage.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/voice.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/advanced_metrics.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity_analysis.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity_collection.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/activity.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/author.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/comparison.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/consent.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/manager.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/storage.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/fingerprint/voice.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/advanced_metrics.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/analysis.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/assessment.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/cadence.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/cognitive_accumulator.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/comparison.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/correlation.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/cross_modal.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/dictation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/cognitive_accumulator.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/comparison.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/correlation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/cross_modal.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/dictation.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/engine.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/error.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/error.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/event_validation.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/forgery_cost.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/provenance_metrics.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/report.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/forgery_cost.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/provenance_metrics.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/report.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/scoring.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/topology.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/velocity.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/forensics/writing_mode.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/apple.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/bridge.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/did_configuration.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/did_document.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/did_webvh.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/mnemonic.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/openid4vc.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/orcid.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/identity/presentation_exchange.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/forensics/writing_mode.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/apple.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/bridge.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/did_configuration.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/did_document.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/did_webvh.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/mnemonic.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/openid4vc.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/orcid.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/identity/presentation_exchange.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/identity/secure_storage.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/async_client.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/async_client.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/crypto.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/messages.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/messages.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/rbac.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/secure_channel.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/server_handler.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/server_windows.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/server_windows.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/server.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/sync_client.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/ipc/unix_socket.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/codec.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/content.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/ipc/unix_socket.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/codec.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/content.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/engine.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/profile.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/profile.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/session.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/simple.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/jitter/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/simple.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/verification.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/jitter/zones.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/crypto.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/error.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/error.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/identity.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/manager.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/migration.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/puf.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/migration.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/puf.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/recovery.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/session.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/keyhierarchy/verification.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/lib.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/mmr/errors.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/mmr/mmr_tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/mmr/mmr.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/mmr/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/mmr/node.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/mmr/proof.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/mmr/store.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/biological.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/clock.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/entanglement.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/environment.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/puf.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/synthesis.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/physics/transport_calibration.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/broadcaster.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/device.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/events.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/lib.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/mmr/errors.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/mmr/mmr_tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/mmr/mmr.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/mmr/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/mmr/node.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/mmr/proof.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/mmr/store.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/biological.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/clock.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/entanglement.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/environment.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/puf.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/synthesis.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/physics/transport_calibration.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/broadcaster.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/device.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/events.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/hid.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/keystroke.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/mod.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/mouse.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/linux/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/ffi.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/hid_capture.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/hid.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/keystroke.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/mouse_capture.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/permissions.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/synthetic.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/mouse_stego.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/mouse.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/provider.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/stats.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/status.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/synthetic.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/window_text.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/platform/windows.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/presence/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/presence/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/presence/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/presence/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/presence/verifier.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/provenance.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/rats/corim.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/rats/eat.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/rats/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/rats/scitt.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/rats/toip.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/rats/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/css.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/advanced.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/analysis.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/declaration.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/evidence.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/header.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/charts.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/embed.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/forensics_detail.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/page2.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/page3.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/security.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/report/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/research/collector.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/research/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/research/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/research/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/research/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/research/uploader.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/rfc_conversions.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/store.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/security/entropy_validator.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/security/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/security/tampering_detection.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/security/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/app_discovery.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/app_registry.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/behavioral_key.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/ffi.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/hid_capture.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/hid.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/keystroke.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/mouse_capture.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/permissions.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/synthetic.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/macos/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/mouse_stego.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/mouse.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/provider.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/stats.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/status.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/synthetic.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/window_text.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/platform/windows.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/presence/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/presence/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/presence/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/presence/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/presence/verifier.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/provenance.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/rats/corim.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/rats/eat.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/rats/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/rats/scitt.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/rats/toip.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/rats/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/css.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/advanced.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/analysis.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/declaration.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/evidence.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/header.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/html/sections/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/charts.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/embed.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/forensics_detail.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/page2.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout_sections/page3.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/layout.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/pdf/security.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/report/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/research/collector.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/research/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/research/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/research/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/research/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/research/uploader.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/rfc_conversions.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/store.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sealed_identity/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/security/entropy_validator.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/security/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/security/tampering_detection.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/security/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/app_discovery.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/app_registry.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/behavioral_key.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/clipboard.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/core_session.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/core_setup.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/core.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/daemon.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/error.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/focus.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/error.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/focus.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/helpers.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/ipc_handler.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/macos_focus.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/permission_monitor.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/relationships.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/shadow.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/stub_focus.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/windows_focus.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/serde_utils.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/crypto.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/diff.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/store.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/access_log.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/archive_tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/macos_focus.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/permission_monitor.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/relationships.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/shadow.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/stub_focus.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/sentinel/windows_focus.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/serde_utils.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/crypto.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/diff.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/store.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/snapshot/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/access_log.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/archive_tests.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/store/archive.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/store/baselines.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/document_stats.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/document_stats.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/store/events.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/fingerprints.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/fingerprints.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/store/integrity.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/store/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/text_fragments.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/store/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/timing.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/linux.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/attestation.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/counter.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/text_fragments.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/store/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/timing.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/linux.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/attestation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/counter.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/key_management.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/platform.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/sealing.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/platform.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/sealing.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/signing.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/secure_enclave/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/signer.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/software.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/verification.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/commands.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/context.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/provider_sealing.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/provider_signing.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/provider.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/transcription/audio.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/transcription/cross_window.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/transcription/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/evaluation.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/profiles.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/crypto_helpers.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/error_context.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/formatting.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/lock.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/mlock.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/probability.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/stats.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/telemetry.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/time.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/utils/validation.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/aggregation.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/params.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/proof.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/roughtime_client.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/swf_argon2.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/swf_posme.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/vdf/timekeeper.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/commands.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/context.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/provider_sealing.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/provider_signing.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/provider.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/tpm/windows/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/transcription/audio.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/transcription/cross_window.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/transcription/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/evaluation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/profiles.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/trust_policy/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/crypto_helpers.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/error_context.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/formatting.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/lock.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/mlock.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/probability.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/stats.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/telemetry.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/time.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/utils/validation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/aggregation.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/params.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/proof.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/roughtime_client.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/swf_argon2.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/swf_posme.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/timekeeper.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/verify/pipeline.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/verify/seals.rs

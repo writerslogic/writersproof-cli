@@ -105,7 +105,9 @@ impl ErrorContext {
 
         let mut result = line.to_string();
         for (pattern, replacement) in &sensitive_patterns {
-            while let Some(start) = result.find(pattern) {
+            let mut offset = 0;
+            while let Some(pos) = result[offset..].find(pattern) {
+                let start = offset + pos;
                 let prefix = &result[..start];
                 let after_pattern = &result[start + pattern.len()..];
 
@@ -120,6 +122,7 @@ impl ErrorContext {
                 let suffix = &after_pattern[after_pattern.len() - value_chars.len() + end_pos..];
 
                 result = format!("{}{}{}", prefix, replacement, suffix);
+                offset = start + replacement.len(); // advance past replacement to avoid re-matching
             }
         }
         result
