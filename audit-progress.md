@@ -104,35 +104,35 @@ Total: 522 files | Completed: 329 | In Progress: 0 | Remaining: 193
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/cpoe_tests.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/e2e.rs
 [x] /Volumes/A/writerslogic/crates/authorproof-protocol/tests/integration_test.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/benches/benchmarks.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/basic_session.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/custom_engine.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/verify_evidence.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/src/cognitive.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/src/evidence.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/src/lib.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/src/model.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/src/phys.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/src/pure.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/src/traits.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe-jitter/tests/e2e.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/benches/crypto_bench.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/benches/keystroke_bench.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/benches/store_bench.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/examples/transcription_check.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/active_probes.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/benches/benchmarks.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/basic_session.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/custom_engine.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/examples/verify_evidence.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/src/cognitive.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/src/evidence.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/src/lib.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/src/model.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/src/phys.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/src/pure.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/src/traits.rs
+[x] /Volumes/A/writerslogic/crates/cpoe-jitter/tests/e2e.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/benches/crypto_bench.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/benches/keystroke_bench.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/benches/store_bench.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/examples/transcription_check.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/active_probes.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/behavioral_fingerprint.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/content_detector.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/error_topology.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/hurst.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/iki_compression.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/labyrinth.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/language_model.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/lyapunov.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/perplexity.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/pink_noise.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/analysis/snr.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/error_topology.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/hurst.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/iki_compression.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/labyrinth.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/language_model.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/lyapunov.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/perplexity.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/pink_noise.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/snr.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/analysis/stats.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/anchors/http.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/anchors/mod.rs
