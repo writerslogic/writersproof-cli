@@ -13,46 +13,18 @@ use sha2::{Digest, Sha256};
 /// Export stored events as a human-readable JSON evidence packet.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> FfiResult {
-    // Export CBOR to a temp file, then decode and re-encode as JSON at the final output path.
-    // Using a temp file avoids writing signed CBOR to the user-visible output location.
-    let output_path = std::path::Path::new(&output);
-    let dir = output_path.parent().unwrap_or(std::path::Path::new("."));
-    let tmp_cbor = match tempfile::NamedTempFile::new_in(dir) {
-        Ok(t) => t,
-        Err(e) => return FfiResult::err(format!("Failed to create temp file: {e}")),
+    let output_path = match crate::sentinel::helpers::validate_path(&output) {
+        Ok(p) => p,
+        Err(e) => return FfiResult::err(format!("Invalid output path: {e}")),
     };
-    let tmp_path = tmp_cbor.path().to_string_lossy().to_string();
-    let cbor_result = ffi_export_evidence(path.clone(), tier, tmp_path.clone());
-    if !cbor_result.success {
-        return cbor_result;
-    }
-    // Read the CBOR we just wrote, decode, re-encode as JSON
-    let data = match std::fs::read(&tmp_path) {
-        Ok(d) => d,
-        Err(e) => {
-            return FfiResult::err(format!("Failed to read exported file: {e}"));
-        }
+    // Build the packet in memory and serialize directly to JSON — no temp-file round-trip.
+    let (packet, _, _) = match build_wire_packet(path, tier, None, None) {
+        Ok(x) => x,
+        Err(e) => return FfiResult::err(e),
     };
-    drop(tmp_cbor); // delete temp CBOR
-    let cbor_payload = crate::ffi::helpers::unwrap_cose_or_raw(&data);
-    // Decode without validation: we just wrote this file ourselves, and packets
-    // with fewer than MIN_CHECKPOINTS are valid for export even if they don't
-    // meet the full wire-format spec threshold.
-    let wire: EvidencePacketWire = match authorproof_protocol::codec::cbor::decode_tagged(
-        &cbor_payload,
-        authorproof_protocol::codec::CBOR_TAG_CPOE,
-    ) {
-        Ok(w) => w,
-        Err(_) => match authorproof_protocol::codec::cbor::decode(&cbor_payload) {
-            Ok(w) => w,
-            Err(e) => {
-                return FfiResult::err(format!("Evidence packet could not be decoded: {e}"));
-            }
-        },
-    };
-    match serde_json::to_string_pretty(&wire) {
+    match serde_json::to_string_pretty(&packet) {
         Ok(json) => {
-            if let Err(e) = std::fs::write(output_path, json.as_bytes()) {
+            if let Err(e) = std::fs::write(&output_path, json.as_bytes()) {
                 return FfiResult::err(format!("Failed to write JSON: {e}"));
             }
             FfiResult::ok(format!("Exported JSON to {}", output_path.display()))
@@ -80,49 +52,37 @@ pub fn ffi_export_evidence_range(
     export_evidence_inner(path, tier, output, Some(start_ns), Some(end_ns))
 }
 
-fn export_evidence_inner(
+/// Build an [`EvidencePacketWire`] from stored events, encode to CBOR, and sign.
+///
+/// Returns `(packet, signed_bytes, is_signed)` on success, or an error string.
+fn build_wire_packet(
     path: String,
     tier: String,
-    output: String,
     start_ns: Option<i64>,
     end_ns: Option<i64>,
-) -> FfiResult {
-    let file_path = try_ffi!(
-        crate::sentinel::helpers::validate_path(&path)
-            .map_err(|e| format!("Invalid source path: {e}")),
-        FfiResult
-    );
-    let output_path = try_ffi!(
-        crate::sentinel::helpers::validate_path(&output)
-            .map_err(|e| format!("Invalid output path: {e}")),
-        FfiResult
-    );
+) -> Result<(EvidencePacketWire, Vec<u8>, bool), String> {
+    let file_path = crate::sentinel::helpers::validate_path(&path)
+        .map_err(|e| format!("Invalid source path: {e}"))?;
 
     if !file_path.exists() {
-        return FfiResult::err(format!("File not found: {}", file_path.display()));
+        return Err(format!("File not found: {}", file_path.display()));
     }
 
-    let store = try_ffi!(open_store(), FfiResult);
+    let store = open_store()?;
 
     let file_path_str = file_path.to_string_lossy().into_owned();
     let events = if let (Some(start), Some(end)) = (start_ns, end_ns) {
-        try_ffi!(
-            store
-                .get_events_for_file_in_range(&file_path_str, start, end)
-                .map_err(|e| format!("Failed to load events: {e}")),
-            FfiResult
-        )
+        store
+            .get_events_for_file_in_range(&file_path_str, start, end)
+            .map_err(|e| format!("Failed to load events: {e}"))?
     } else {
-        try_ffi!(
-            store
-                .get_events_for_file(&file_path_str)
-                .map_err(|e| format!("Failed to load events: {e}")),
-            FfiResult
-        )
+        store
+            .get_events_for_file(&file_path_str)
+            .map_err(|e| format!("Failed to load events: {e}"))?
     };
 
     if events.is_empty() {
-        return FfiResult::err("No events found for this file".to_string());
+        return Err("No events found for this file".to_string());
     }
 
     let latest = &events[events.len() - 1];
@@ -149,7 +109,7 @@ fn export_evidence_inner(
     // Random salt so each export produces unique packet/checkpoint IDs.
     let export_nonce = rand::random::<[u8; 8]>();
 
-    let checkpoints: Vec<CheckpointWire> = match events
+    let mut checkpoints: Vec<CheckpointWire> = events
         .iter()
         .enumerate()
         .map(|(i, ev)| {
@@ -248,37 +208,27 @@ fn export_evidence_inner(
             })
         })
         .collect::<Result<Vec<_>, String>>()
-    {
-        Ok(mut c) => {
-            // Attach beacon attestation to the last checkpoint if available.
-            if let Some(beacon) = crate::ffi::beacon::load_beacon_attestation(&file_path_str) {
-                if let Some(last_cp) = c.last_mut() {
-                    let drand_bytes = hex::decode(&beacon.drand_randomness)
-                        .ok()
-                        .and_then(|b| <[u8; 32]>::try_from(b).ok())
-                        .unwrap_or([0u8; 32]);
-                    last_cp.beacon_anchor = Some(
-                        authorproof_protocol::rfc::wire_types::components::BeaconAnchor {
-                            source_url: "https://drand.cloudflare.com".to_string(),
-                            beacon_round: beacon.drand_round,
-                            beacon_value: drand_bytes,
-                        },
-                    );
-                }
-            }
-            c
-        }
-        Err(e) => {
-            return FfiResult::err(format!("Invalid hash in event data: {e}"));
-        }
-    };
+        .map_err(|e| format!("Invalid hash in event data: {e}"))?;
 
-    let doc_content_hash = match HashValue::try_sha256(latest.content_hash.to_vec()) {
-        Ok(h) => h,
-        Err(e) => {
-            return FfiResult::err(format!("Invalid document content hash: {e}"));
+    // Attach beacon attestation to the last checkpoint if available.
+    if let Some(beacon) = crate::ffi::beacon::load_beacon_attestation(&file_path_str) {
+        if let Some(last_cp) = checkpoints.last_mut() {
+            let drand_bytes = hex::decode(&beacon.drand_randomness)
+                .ok()
+                .and_then(|b| <[u8; 32]>::try_from(b).ok())
+                .unwrap_or([0u8; 32]);
+            last_cp.beacon_anchor = Some(
+                authorproof_protocol::rfc::wire_types::components::BeaconAnchor {
+                    source_url: "https://drand.cloudflare.com".to_string(),
+                    beacon_round: beacon.drand_round,
+                    beacon_value: drand_bytes,
+                },
+            );
         }
-    };
+    }
+
+    let doc_content_hash = HashValue::try_sha256(latest.content_hash.to_vec())
+        .map_err(|e| format!("Invalid document content hash: {e}"))?;
 
     let packet_id = {
         let mut h = Sha256::new();
@@ -375,52 +325,70 @@ fn export_evidence_inner(
         project_files: collect_project_files(&file_path, &store),
     };
 
-    match wire_packet.encode_cbor() {
-        Ok(encoded) => {
-            // Sign the CBOR payload with COSE_Sign1 using the device signing key.
-            // This prevents tampering, replay, and evidence reuse; any modification
-            // to the packet content invalidates the signature.
-            let mut is_signed = false;
-            let signed_bytes = match signing_key {
-                Some(ref sk) => {
-                    match authorproof_protocol::crypto::sign_evidence_cose(&encoded, sk) {
-                        Ok(cose) => {
-                            is_signed = true;
-                            cose
-                        }
-                        Err(e) => {
-                            log::warn!("COSE signing failed, exporting unsigned: {e}");
-                            encoded
-                        }
-                    }
-                }
-                None => {
-                    log::warn!("Signing key unavailable, exporting unsigned");
-                    encoded
-                }
-            };
+    let encoded = wire_packet
+        .encode_cbor()
+        .map_err(|e| format!("Failed to encode CBOR packet: {e}"))?;
 
-            let parent = output_path.parent().unwrap_or(std::path::Path::new("."));
-            let write_result = (|| -> std::io::Result<()> {
-                let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-                std::io::Write::write_all(&mut tmp, &signed_bytes)?;
-                tmp.as_file().sync_all()?;
-                tmp.persist(&output_path).map_err(|e| e.error)?;
-                Ok(())
-            })();
-            match write_result {
-                Ok(()) => {
-                    let label = if is_signed {
-                        "signed CBOR"
-                    } else {
-                        "unsigned CBOR (signing unavailable)"
-                    };
-                    FfiResult::ok(format!("Exported {} to {}", label, output_path.display()))
-                }
-                Err(e) => FfiResult::err(format!("Failed to write output: {}", e)),
+    // Sign the CBOR payload with COSE_Sign1 using the device signing key.
+    // This prevents tampering, replay, and evidence reuse; any modification
+    // to the packet content invalidates the signature.
+    let mut is_signed = false;
+    let signed_bytes = match signing_key {
+        Some(ref sk) => match authorproof_protocol::crypto::sign_evidence_cose(&encoded, sk) {
+            Ok(cose) => {
+                is_signed = true;
+                cose
             }
+            Err(e) => {
+                log::warn!("COSE signing failed, exporting unsigned: {e}");
+                encoded
+            }
+        },
+        None => {
+            log::warn!("Signing key unavailable, exporting unsigned");
+            encoded
         }
-        Err(e) => FfiResult::err(format!("Failed to encode CBOR packet: {}", e)),
+    };
+
+    Ok((wire_packet, signed_bytes, is_signed))
+}
+
+fn export_evidence_inner(
+    path: String,
+    tier: String,
+    output: String,
+    start_ns: Option<i64>,
+    end_ns: Option<i64>,
+) -> FfiResult {
+    let output_path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&output)
+            .map_err(|e| format!("Invalid output path: {e}")),
+        FfiResult
+    );
+
+    let (_, signed_bytes, is_signed) = match build_wire_packet(path, tier, start_ns, end_ns) {
+        Ok(x) => x,
+        Err(e) => return FfiResult::err(e),
+    };
+
+    let parent = output_path.parent().unwrap_or(std::path::Path::new("."));
+    let write_result = (|| -> std::io::Result<()> {
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+        std::io::Write::write_all(&mut tmp, &signed_bytes)?;
+        tmp.as_file().sync_all()?;
+        tmp.persist(&output_path).map_err(|e| e.error)?;
+        Ok(())
+    })();
+    match write_result {
+        Ok(()) => {
+            let label = if is_signed {
+                "signed CBOR"
+            } else {
+                "unsigned CBOR (signing unavailable)"
+            };
+            FfiResult::ok(format!("Exported {} to {}", label, output_path.display()))
+        }
+        Err(e) => FfiResult::err(format!("Failed to write output: {}", e)),
     }
 }
 
@@ -566,6 +534,9 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         if let Err(e) = tmp.write_all(&content) {
             return FfiResult::err(format!("Failed to write document: {e}"));
         }
+        if let Err(e) = tmp.as_file().sync_all() {
+            return FfiResult::err(format!("Failed to sync document to disk: {e}"));
+        }
         if let Err(e) = tmp.persist(&out) {
             return FfiResult::err(format!("Failed to finalize document: {e}"));
         }
@@ -583,6 +554,8 @@ fn collect_project_files(
     store: &crate::store::SecureStore,
 ) -> Option<Vec<authorproof_protocol::rfc::wire_types::ProjectFileRef>> {
     let project_root = find_project_root(primary_path);
+    let canonical_root =
+        std::fs::canonicalize(&project_root).unwrap_or(project_root);
     let primary_str = primary_path.to_string_lossy();
 
     let all_files = match store.list_files() {
@@ -596,8 +569,12 @@ fn collect_project_files(
     let siblings: Vec<_> = all_files
         .into_iter()
         .filter(|(path, _, _)| {
-            path != primary_str.as_ref()
-                && std::path::Path::new(path).starts_with(&project_root)
+            if path == primary_str.as_ref() {
+                return false;
+            }
+            let canonical = std::fs::canonicalize(path)
+                .unwrap_or_else(|_| std::path::PathBuf::from(path));
+            canonical.starts_with(&canonical_root)
         })
         .collect();
 
