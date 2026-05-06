@@ -3,7 +3,7 @@
 //! FFI bindings for ISO mDoc-style authorship credentials.
 
 use super::helpers::{load_signing_key, open_store};
-use super::types::try_ffi;
+use super::types::{catch_ffi_panic, try_ffi};
 use crate::credentials::AuthorshipCredential;
 
 // ---------------------------------------------------------------------------
@@ -164,6 +164,7 @@ pub fn ffi_create_authorship_credential(
     process_verdict: String,
     confidence: f64,
 ) -> FfiCredentialResult {
+    catch_ffi_panic!(FfiCredentialResult::ffi_err("engine internal error"), {
     if session_id.is_empty() {
         return FfiCredentialResult::err("Session ID is required");
     }
@@ -201,11 +202,13 @@ pub fn ffi_create_authorship_credential(
         Ok(cbor) => FfiCredentialResult::ok(hex::encode(cbor), doc_hash_hex),
         Err(e) => FfiCredentialResult::err(format!("Failed to encode credential: {e}")),
     }
+    })
 }
 
 /// Sign a credential with the device signing key.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sign_credential(credential_cbor_hex: String) -> FfiSignedCredentialResult {
+    catch_ffi_panic!(FfiSignedCredentialResult::ffi_err("engine internal error"), {
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,
         Err(e) => return FfiSignedCredentialResult::err(format!("Invalid hex: {e}")),
@@ -225,6 +228,7 @@ pub fn ffi_sign_credential(credential_cbor_hex: String) -> FfiSignedCredentialRe
         Ok(signed) => FfiSignedCredentialResult::ok(hex::encode(signed)),
         Err(e) => FfiSignedCredentialResult::err(format!("Signing failed: {e}")),
     }
+    })
 }
 
 /// Verify a signed credential's COSE_Sign1 envelope.
@@ -233,6 +237,7 @@ pub fn ffi_verify_credential(
     signed_cbor_hex: String,
     public_key_hex: String,
 ) -> FfiVerificationResult {
+    catch_ffi_panic!(FfiVerificationResult::ffi_err("engine internal error"), {
     let signed_bytes = match hex::decode(&signed_cbor_hex) {
         Ok(b) => b,
         Err(e) => return FfiVerificationResult::err(format!("Invalid signed hex: {e}")),
@@ -259,11 +264,13 @@ pub fn ffi_verify_credential(
         ),
         Err(e) => FfiVerificationResult::err(format!("Verification failed: {e}")),
     }
+    })
 }
 
 /// Get credential status (valid/expired) from CBOR bytes.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_credential_status(credential_cbor_hex: String) -> FfiCredentialStatusResult {
+    catch_ffi_panic!(FfiCredentialStatusResult::ffi_err("engine internal error"), {
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,
         Err(e) => return FfiCredentialStatusResult::err(format!("Invalid hex: {e}")),
@@ -280,4 +287,5 @@ pub fn ffi_get_credential_status(credential_cbor_hex: String) -> FfiCredentialSt
         credential.validity.expires_at,
         credential.validity.issuer,
     )
+    })
 }

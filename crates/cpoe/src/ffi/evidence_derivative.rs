@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::open_store;
-use crate::ffi::types::{try_ffi, FfiResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 
 use super::evidence::device_identity;
 
@@ -12,6 +12,7 @@ use super::evidence::device_identity;
 /// to prove temporal ordering.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_link_derivative(source_path: String, export_path: String, message: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let source = try_ffi!(
         crate::sentinel::helpers::validate_path(&source_path)
             .map_err(|e| format!("Invalid source path: {e}")),
@@ -146,6 +147,7 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
         )),
         Err(e) => FfiResult::err(format!("Failed to save link event: {e}")),
     }
+    })
 }
 
 /// Export a C2PA sidecar manifest (.c2pa) for an evidence packet.
@@ -159,6 +161,7 @@ pub fn ffi_export_c2pa_manifest(
     document_path: String,
     output_path: String,
 ) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let evidence_file = try_ffi!(
         crate::sentinel::helpers::validate_path(&evidence_path)
             .map_err(|e| format!("Invalid evidence path: {e}")),
@@ -275,6 +278,7 @@ pub fn ffi_export_c2pa_manifest(
         }
         Err(e) => FfiResult::err(format!("Failed to create temp file for C2PA manifest: {e}")),
     }
+    })
 }
 
 /// Detect MIME type from file extension per IANA media type registry.

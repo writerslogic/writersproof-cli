@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::ffi::helpers::load_signing_key;
-use crate::ffi::types::{try_ffi, FfiResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 use crate::identity::did_webvh::WebVHIdentity;
 
 const FFI_TIMEOUT_SECS: u64 = 30;
@@ -30,6 +30,7 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 /// string in `message` on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_create_webvh_identity(address: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     if address.len() > 2048 {
         return FfiResult::err("Address too long");
     }
@@ -65,6 +66,7 @@ pub fn ffi_create_webvh_identity(address: String) -> FfiResult {
     }
 
     FfiResult::ok(identity.did().to_string())
+    })
 }
 
 /// Return the current did:webvh DID string.
@@ -73,6 +75,7 @@ pub fn ffi_create_webvh_identity(address: String) -> FfiResult {
 /// if no did:webvh identity has been created.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_webvh_did() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     match WebVHIdentity::load() {
         Ok(identity) => FfiResult::ok(identity.did().to_string()),
         Err(e) => {
@@ -80,6 +83,7 @@ pub fn ffi_get_webvh_did() -> FfiResult {
             FfiResult::err("No did:webvh identity configured")
         }
     }
+    })
 }
 
 /// Return the active author DID, preferring did:webvh over did:key.
@@ -88,6 +92,7 @@ pub fn ffi_get_webvh_did() -> FfiResult {
 /// back to did:key derived from the signing key on disk.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_active_did() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     match crate::identity::did_webvh::load_active_did() {
         Ok(did) => FfiResult::ok(did),
         Err(e) => {
@@ -95,6 +100,7 @@ pub fn ffi_get_active_did() -> FfiResult {
             FfiResult::err("Failed to resolve active DID")
         }
     }
+    })
 }
 
 /// Deactivate the did:webvh identity.
@@ -103,6 +109,7 @@ pub fn ffi_get_active_did() -> FfiResult {
 /// did:webvh state, and saves the updated (deactivated) state to disk.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_deactivate_webvh_identity() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let signing_key = match load_signing_key() {
         Ok(k) => k,
         Err(e) => {
@@ -143,6 +150,7 @@ pub fn ffi_deactivate_webvh_identity() -> FfiResult {
     }
 
     FfiResult::ok("did:webvh identity deactivated".to_string())
+    })
 }
 
 #[cfg(test)]

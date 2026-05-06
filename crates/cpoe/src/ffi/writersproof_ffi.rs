@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{load_api_key, load_did, load_events_for_path, load_signing_key, open_store};
-use crate::ffi::types::{try_ffi, FfiResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 
 /// Anchor a document's latest checkpoint to the WritersProof transparency log.
 ///
@@ -13,6 +13,7 @@ use crate::ffi::types::{try_ffi, FfiResult};
 /// `ffiAnchorToWritersProof` (capital P) matching the Swift call site.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     if document_path.len() > 4096 {
         return FfiResult::err("Document path too long".to_string());
     }
@@ -106,6 +107,7 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
             resp.anchor_id, resp.log_index
         )),
     }
+    })
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
@@ -115,6 +117,7 @@ pub fn ffi_publish_evidence(
     ai_declaration: Option<String>,
 ) -> crate::ffi::types::FfiPublishResult {
     use crate::ffi::types::{FfiErrResult, FfiPublishResult};
+    catch_ffi_panic!(FfiPublishResult::ffi_err("engine internal error"), {
 
     const MAX_ATTESTATION_LEN: usize = 1_000_000;
     if attestation.is_empty() {
@@ -264,6 +267,7 @@ pub fn ffi_publish_evidence(
             error_message: None,
         },
     }
+    })
 }
 
 /// Sync a text attestation to the WritersProof API for public verification.
@@ -279,6 +283,7 @@ pub fn ffi_sync_text_attestation(
     attested_at: String,
     app_bundle_id: String,
 ) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     if content_hash.len() != 64 || !content_hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return FfiResult::err("content_hash must be 64 hex characters".to_string());
     }
@@ -448,6 +453,7 @@ pub fn ffi_sync_text_attestation(
             FfiResult::ok(format!("Synced: {writersproof_id}"))
         }
     }
+    })
 }
 
 /// Drain all queued text attestations, submitting them to the WritersProof API.
@@ -456,6 +462,7 @@ pub fn ffi_sync_text_attestation(
 /// Returns the number of successful submissions.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_drain_text_attestation_queue() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let api_key = match load_api_key() {
         Ok(k) if k.is_empty() => {
             return FfiResult::err("Not authenticated".to_string());
@@ -520,4 +527,5 @@ pub fn ffi_drain_text_attestation_queue() -> FfiResult {
             FfiResult::ok(parts.join(", "))
         }
     }
+    })
 }

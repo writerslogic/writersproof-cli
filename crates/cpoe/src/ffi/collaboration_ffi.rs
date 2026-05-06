@@ -7,6 +7,7 @@
 //! CBOR-based signing payloads so Rust's verifier can check them.
 
 use crate::collaboration::CollaboratorRole;
+use crate::ffi::types::catch_ffi_panic;
 
 /// Collaborator role as a string for FFI (matches Rust's serde rename_all = "snake_case").
 #[cfg_attr(feature = "ffi", uniffi::export)]
@@ -35,6 +36,7 @@ pub fn ffi_collaboration_signing_payload(
     identifier: Option<String>,
     checkpoint_ranges: Vec<FfiCheckpointRange>,
 ) -> Vec<u8> {
+    catch_ffi_panic!(Vec::new(), {
     let role_enum: CollaboratorRole = match role.as_str() {
         "primary_author" => CollaboratorRole::PrimaryAuthor,
         "co_author" => CollaboratorRole::CoAuthor,
@@ -67,6 +69,7 @@ pub fn ffi_collaboration_signing_payload(
     };
 
     collaborator.signing_payload()
+    })
 }
 
 /// Verify a collaborator's Ed25519 attestation signature using the Rust verifier.
@@ -80,6 +83,7 @@ pub fn ffi_collaboration_verify_attestation(
     checkpoint_ranges: Vec<FfiCheckpointRange>,
     signature_hex: String,
 ) -> bool {
+    catch_ffi_panic!(false, {
     let role_enum: CollaboratorRole = match role.as_str() {
         "primary_author" => CollaboratorRole::PrimaryAuthor,
         "co_author" => CollaboratorRole::CoAuthor,
@@ -109,6 +113,7 @@ pub fn ffi_collaboration_verify_attestation(
     };
 
     collaborator.verify_attestation().is_ok()
+    })
 }
 
 /// Checkpoint range for FFI (uniffi can't handle tuples directly).

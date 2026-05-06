@@ -3,7 +3,7 @@
 //! FFI functions for the user writing-app registry: probe, add, remove, list.
 
 use super::helpers::get_data_dir;
-use super::types::FfiResult;
+use super::types::{catch_ffi_panic, FfiResult};
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -48,6 +48,15 @@ pub struct FfiUserAppListResult {
 /// Does not persist anything.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_probe_app(bundle_id: String) -> FfiProbeResult {
+    catch_ffi_panic!(FfiProbeResult {
+        success: false,
+        display_name: String::new(),
+        storage: String::new(),
+        container_paths: Vec::new(),
+        needs_title_inference: false,
+        confidence: String::new(),
+        error_message: Some("engine internal error".to_string()),
+    }, {
     let result = crate::sentinel::app_discovery::probe_app(&bundle_id);
     FfiProbeResult {
         success: true,
@@ -58,6 +67,7 @@ pub fn ffi_probe_app(bundle_id: String) -> FfiProbeResult {
         confidence: confidence_to_str(result.confidence),
         error_message: None,
     }
+    })
 }
 
 /// Add a user app to the registry. Persists immediately.
@@ -70,6 +80,7 @@ pub fn ffi_add_user_writing_app(
     needs_title_inference: bool,
     confidence: String,
 ) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => return FfiResult::err("Cannot determine data directory"),
@@ -93,11 +104,13 @@ pub fn ffi_add_user_writing_app(
         Ok(()) => FfiResult::ok("App added"),
         Err(e) => FfiResult::err(format!("{e}")),
     }
+    })
 }
 
 /// Remove a user app by bundle ID. Persists immediately.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_remove_user_writing_app(bundle_id: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => return FfiResult::err("Cannot determine data directory"),
@@ -108,11 +121,17 @@ pub fn ffi_remove_user_writing_app(bundle_id: String) -> FfiResult {
         Ok(false) => FfiResult::err(format!("No user app with bundle ID '{bundle_id}'")),
         Err(e) => FfiResult::err(format!("{e}")),
     }
+    })
 }
 
 /// List all user-added apps (does not include built-in).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
+    catch_ffi_panic!(FfiUserAppListResult {
+        success: false,
+        apps: Vec::new(),
+        error_message: Some("engine internal error".to_string()),
+    }, {
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => {
@@ -141,6 +160,7 @@ pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
         apps,
         error_message: None,
     }
+    })
 }
 
 /// Discover recently modified documents in ~/Documents, ~/Desktop, ~/Downloads.
@@ -150,6 +170,7 @@ pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
 /// modification time (most recent first).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_discover_recent_documents(max_age_hours: u64) -> Vec<String> {
+    catch_ffi_panic!(Vec::new(), {
     let home = match dirs::home_dir() {
         Some(h) => h,
         None => return Vec::new(),
@@ -173,6 +194,7 @@ pub fn ffi_discover_recent_documents(max_age_hours: u64) -> Vec<String> {
         .into_iter()
         .filter_map(|p| p.to_str().map(String::from))
         .collect()
+    })
 }
 
 // ---------------------------------------------------------------------------
