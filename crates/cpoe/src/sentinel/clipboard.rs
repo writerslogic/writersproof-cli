@@ -22,9 +22,8 @@
 
 use crate::error::Error;
 use crate::sentinel::types::DocumentSession;
-use crate::store::SecureStore;
 use crate::utils::crypto_helpers;
-use crate::RwLockRecover;
+use crate::{MutexRecover, RwLockRecover};
 use chrono::Utc;
 use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder};
 use ed25519_dalek::{Signer, SigningKey};
@@ -225,7 +224,7 @@ impl ClipboardMonitor {
     pub async fn monitor_loop(
         self: Arc<Self>,
         sessions: Arc<RwLock<HashMap<String, DocumentSession>>>,
-        store: Arc<SecureStore>,
+        cached_store: Arc<std::sync::Mutex<Option<crate::store::SecureStore>>>,
         signing_key: Arc<RwLock<super::behavioral_key::BehavioralKey>>,
         cancel: CancellationToken,
     ) -> std::result::Result<(), ClipboardError> {
@@ -234,7 +233,7 @@ impl ClipboardMonitor {
                 Ok(Some(mut copy_event)) => {
                     // Try to attach evidence if text matches a session fragment
                     match self
-                        .try_attach_evidence(&copy_event, &sessions, &store, &signing_key)
+                        .try_attach_evidence(&copy_event, &sessions, &cached_store, &signing_key)
                         .await
                     {
                         Ok(signed) => {
@@ -358,7 +357,7 @@ impl ClipboardMonitor {
         &self,
         copy_event: &CopyEvent,
         sessions: &Arc<RwLock<HashMap<String, DocumentSession>>>,
-        store: &Arc<SecureStore>,
+        cached_store: &Arc<std::sync::Mutex<Option<crate::store::SecureStore>>>,
         signing_key: &Arc<RwLock<super::behavioral_key::BehavioralKey>>,
     ) -> std::result::Result<Option<Vec<u8>>, ClipboardError> {
         let text_hex = hex::encode(copy_event.text_hash);
@@ -374,15 +373,18 @@ impl ClipboardMonitor {
         };
 
         for session_id in &focused_ids {
-            if let Ok(true) = self
-                .fragment_matches_hash(store, session_id, &copy_event.text_hash)
-                .await
-            {
+            // Lock store briefly for the lookup, then drop before any await.
+            let matches = {
+                let guard = cached_store.lock_recover();
+                match guard.as_ref() {
+                    Some(store) => self.fragment_matches_hash(store, session_id, &copy_event.text_hash)?,
+                    None => false,
+                }
+            };
+
+            if matches {
                 log::debug!("Text matched fragment in session {}", session_id);
 
-                // Sign clipboard evidence with COSE_Sign1 when key is available.
-                // Payload binds text_hash + app_bundle_id + timestamp to prevent
-                // attribution tampering by a user-adversary.
                 let signed_evidence = {
                     let guard = signing_key.read_recover();
                     guard.key().and_then(|sk| {
@@ -404,13 +406,18 @@ impl ClipboardMonitor {
                     })
                 };
 
-                self.persist_clipboard_event(
-                    store,
-                    copy_event,
-                    &copy_event.text_hash,
-                    signed_evidence.as_deref(),
-                )
-                .await?;
+                // Lock store again briefly for the persist.
+                {
+                    let guard = cached_store.lock_recover();
+                    if let Some(store) = guard.as_ref() {
+                        self.persist_clipboard_event(
+                            store,
+                            copy_event,
+                            &copy_event.text_hash,
+                            signed_evidence.as_deref(),
+                        )?;
+                    }
+                }
                 return Ok(signed_evidence);
             }
         }
@@ -420,15 +427,15 @@ impl ClipboardMonitor {
     }
 
     /// Check if text hash matches a fragment in the given session.
-    async fn fragment_matches_hash(
+    fn fragment_matches_hash(
         &self,
-        store: &Arc<SecureStore>,
+        store: &crate::store::SecureStore,
         session_id: &str,
         text_hash: &[u8; 32],
     ) -> std::result::Result<bool, ClipboardError> {
         match store.lookup_fragment_by_hash(text_hash) {
             Ok(Some(f)) if f.session_id == session_id => Ok(true),
-            Ok(Some(_)) => Ok(false), // exists in different session
+            Ok(Some(_)) => Ok(false),
             Ok(None) => Ok(false),
             Err(e) => Err(ClipboardError::Other(format!(
                 "Fragment lookup failed: {}",
@@ -438,9 +445,9 @@ impl ClipboardMonitor {
     }
 
     /// Persist clipboard event to database.
-    async fn persist_clipboard_event(
+    fn persist_clipboard_event(
         &self,
-        store: &Arc<SecureStore>,
+        store: &crate::store::SecureStore,
         copy_event: &CopyEvent,
         fragment_hash: &[u8; 32],
         signed_evidence: Option<&[u8]>,
@@ -463,28 +470,16 @@ impl ClipboardMonitor {
         Ok(())
     }
 
-    /// Read current pasteboard change count and text content.
-    ///
-    /// Platform-specific implementation:
-    /// - macOS: NSPasteboard.generalPasteboard().changeCount() + stringForType()
-    /// - Linux/Windows: Stubbed (returns error for now)
     async fn read_pasteboard(&self) -> std::result::Result<(i32, String), ClipboardError> {
-        log::trace!("Reading pasteboard");
-        Ok((0, String::new()))
+        super::platform_clipboard_read().await
     }
 
-    /// Get focused app bundle ID.
-    ///
-    /// Platform-specific. Returns monitored app ID if focused.
-    /// Stub: returns error until platform implementation is wired.
     async fn get_focused_app_bundle_id(&self) -> std::result::Result<String, ClipboardError> {
-        Err(ClipboardError::NoMonitoredAppInFocus)
+        super::platform_clipboard_bundle_id().await
     }
 
-    /// Get focused window title.
-    /// Stub: returns error until platform implementation is wired.
     async fn get_focused_window_title(&self) -> std::result::Result<String, ClipboardError> {
-        Err(ClipboardError::NoMonitoredAppInFocus)
+        super::platform_clipboard_window_title().await
     }
 
     /// Check if a bundle ID is in the trusted monitored apps list.

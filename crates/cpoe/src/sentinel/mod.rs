@@ -22,6 +22,7 @@ pub mod app_registry;
 pub use app_discovery::ProbeResult;
 pub use app_registry::{AppRegistry, ProbeConfidence, UserWritingApp};
 pub mod behavioral_key;
+pub mod permission_monitor;
 pub mod clipboard;
 pub mod core;
 pub mod core_session;
@@ -131,4 +132,141 @@ pub fn hid_key_down_count() -> u64 {
 #[cfg(not(target_os = "macos"))]
 pub fn hid_key_down_count() -> u64 {
     0
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard platform helpers (macOS NSPasteboard, called from ClipboardMonitor)
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "macos")]
+pub(crate) async fn platform_clipboard_read(
+) -> std::result::Result<(i32, String), self::clipboard::ClipboardError> {
+    tokio::task::spawn_blocking(|| {
+        use objc::runtime::Object;
+        use std::ffi::CStr;
+        use std::os::raw::c_char;
+        unsafe {
+            let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+            let pasteboard: *mut Object = msg_send![class!(NSPasteboard), generalPasteboard];
+            if pasteboard.is_null() {
+                let _: () = msg_send![pool, drain];
+                return Err(self::clipboard::ClipboardError::PasteboardAccessDenied);
+            }
+            let change_count: i64 = msg_send![pasteboard, changeCount];
+            let ptype_bytes = b"public.utf8-plain-text\0";
+            let ptype_cstr = CStr::from_bytes_with_nul(ptype_bytes).unwrap();
+            let ptype_nsstr: *mut Object = msg_send![
+                class!(NSString),
+                stringWithUTF8String: ptype_cstr.as_ptr() as *const c_char
+            ];
+            let ns_text: *mut Object = msg_send![pasteboard, stringForType: ptype_nsstr];
+            let text = if ns_text.is_null() {
+                String::new()
+            } else {
+                let ptr: *const c_char = msg_send![ns_text, UTF8String];
+                if ptr.is_null() {
+                    String::new()
+                } else {
+                    CStr::from_ptr(ptr).to_string_lossy().into_owned()
+                }
+            };
+            let _: () = msg_send![pool, drain];
+            Ok((change_count as i32, text))
+        }
+    })
+    .await
+    .map_err(|e| self::clipboard::ClipboardError::Other(format!("Pasteboard task failed: {e}")))?
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) async fn platform_clipboard_read(
+) -> std::result::Result<(i32, String), self::clipboard::ClipboardError> {
+    Ok((0, String::new()))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) async fn platform_clipboard_bundle_id(
+) -> std::result::Result<String, self::clipboard::ClipboardError> {
+    tokio::task::spawn_blocking(|| {
+        use objc::runtime::Object;
+        use std::ffi::CStr;
+        use std::os::raw::c_char;
+        unsafe {
+            let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+            let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+            let active_app: *mut Object = msg_send![workspace, frontmostApplication];
+            if active_app.is_null() {
+                let _: () = msg_send![pool, drain];
+                return Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus);
+            }
+            let bundle_id: *mut Object = msg_send![active_app, bundleIdentifier];
+            let result = if bundle_id.is_null() {
+                Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus)
+            } else {
+                let ptr: *const c_char = msg_send![bundle_id, UTF8String];
+                if ptr.is_null() {
+                    Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus)
+                } else {
+                    let s = CStr::from_ptr(ptr).to_string_lossy().into_owned();
+                    if s.is_empty() {
+                        Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus)
+                    } else {
+                        Ok(s)
+                    }
+                }
+            };
+            let _: () = msg_send![pool, drain];
+            result
+        }
+    })
+    .await
+    .map_err(|e| self::clipboard::ClipboardError::Other(format!("Bundle ID task failed: {e}")))?
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) async fn platform_clipboard_bundle_id(
+) -> std::result::Result<String, self::clipboard::ClipboardError> {
+    Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) async fn platform_clipboard_window_title(
+) -> std::result::Result<String, self::clipboard::ClipboardError> {
+    tokio::task::spawn_blocking(|| {
+        use objc::runtime::Object;
+        use std::ffi::CStr;
+        use std::os::raw::c_char;
+        unsafe {
+            let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+            let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+            let active_app: *mut Object = msg_send![workspace, frontmostApplication];
+            if active_app.is_null() {
+                let _: () = msg_send![pool, drain];
+                return Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus);
+            }
+            let name: *mut Object = msg_send![active_app, localizedName];
+            let result = if name.is_null() {
+                Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus)
+            } else {
+                let ptr: *const c_char = msg_send![name, UTF8String];
+                if ptr.is_null() {
+                    Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus)
+                } else {
+                    Ok(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+                }
+            };
+            let _: () = msg_send![pool, drain];
+            result
+        }
+    })
+    .await
+    .map_err(|e| {
+        self::clipboard::ClipboardError::Other(format!("Window title task failed: {e}"))
+    })?
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) async fn platform_clipboard_window_title(
+) -> std::result::Result<String, self::clipboard::ClipboardError> {
+    Err(self::clipboard::ClipboardError::NoMonitoredAppInFocus)
 }

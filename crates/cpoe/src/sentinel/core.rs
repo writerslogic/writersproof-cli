@@ -145,11 +145,22 @@ pub struct Sentinel {
     /// Platform-specific hardware and OS feature provider.
     pub(crate) platform: Arc<dyn crate::platform::PlatformProvider>,
     /// Unified app registry (built-in + user-added writing apps).
+    #[allow(dead_code)]
     pub(crate) app_registry: Arc<RwLock<super::app_registry::AppRegistry>>,
     /// Cached SQLite event store; lazily opened when the signing key is first
     /// available, invalidated on key change. Eliminates per-checkpoint connection
     /// churn (WAL init, HMAC key derivation, integrity verification on every open).
     pub(crate) cached_store: Arc<Mutex<Option<crate::store::SecureStore>>>,
+    /// Current OS permission state for keystroke capture; updated every 30 s.
+    pub(crate) permission_state:
+        Arc<Mutex<super::permission_monitor::PermissionState>>,
+    /// Sender half of the keystroke async channel kept alive so new bridge
+    /// threads spawned by `restart_keystroke_capture` write to the same
+    /// receiver that the event loop already holds.
+    pub(super) keystroke_event_tx:
+        Arc<Mutex<Option<mpsc::Sender<crate::platform::KeystrokeEvent>>>>,
+    /// Cancellation token for the clipboard monitor task; set in start(), cancelled in stop().
+    clipboard_cancel: Arc<Mutex<Option<tokio_util::sync::CancellationToken>>>,
 }
 
 impl Sentinel {
@@ -171,7 +182,7 @@ impl Sentinel {
             .map_err(|e| SentinelError::Io(std::io::Error::other(e.to_string())))?;
 
         let shadow = ShadowManager::new(&config.shadow_dir)?;
-        let (session_events_tx, _) = broadcast::channel(100);
+        let (session_events_tx, _) = broadcast::channel(256);
 
         let mut mouse_stego_seed = [0u8; 32];
         use rand::RngCore;
@@ -227,6 +238,11 @@ impl Sentinel {
             platform,
             app_registry: Arc::new(RwLock::new(app_registry)),
             cached_store: Arc::new(Mutex::new(None)),
+            permission_state: Arc::new(Mutex::new(
+                super::permission_monitor::PermissionState::default(),
+            )),
+            keystroke_event_tx: Arc::new(Mutex::new(None)),
+            clipboard_cancel: Arc::new(Mutex::new(None)),
         };
         mouse_stego_seed.zeroize();
         Ok(sentinel)
@@ -484,6 +500,9 @@ impl Sentinel {
 
         let writersproof_client_for_loop = Arc::clone(&self.writersproof_client);
         let cached_store_for_loop = Arc::clone(&self.cached_store);
+        let permission_state_for_loop = Arc::clone(&self.permission_state);
+        let keystroke_event_tx_for_loop = Arc::clone(&self.keystroke_event_tx);
+        let platform_for_loop = Arc::clone(&self.platform);
         let mut session_events_rx = self.session_events_tx.subscribe();
 
         let event_loop_handle_ref = Arc::clone(&self.event_loop_handle);
@@ -491,6 +510,7 @@ impl Sentinel {
             let mut idle_check_interval = interval(Duration::from_secs(idle_check_interval_secs));
             let mut checkpoint_interval = interval(Duration::from_secs(checkpoint_interval_secs));
             let mut challenge_interval = interval(Duration::from_secs(30)); // 30s cycle for real-time hash attestation
+            let mut permission_check_interval = interval(Duration::from_secs(30));
             let mut last_keystroke_time = std::time::Instant::now();
             let mut last_keydown_ts_ns: i64 = 0;
             let mut last_mouse_ts_ns: i64 = 0;
@@ -783,8 +803,10 @@ impl Sentinel {
                     }
 
                     Some(event) = focus_rx.recv() => {
-                        // Process every focus event immediately. The 100ms polling
-                        // interval provides natural throttling; no debounce needed.
+                        // Process every focus event immediately. Debounce for
+                        // Mission Control/Stage Manager/full-screen transitions
+                        // is handled in PollingSentinelFocusTracker before events
+                        // reach this channel.
                         handle_focus_event_sync(
                             event,
                             &sessions,
@@ -1261,6 +1283,91 @@ impl Sentinel {
                             }
                         }
                     }
+
+                    _ = permission_check_interval.tick() => {
+                        let current =
+                            super::permission_monitor::PermissionState::current();
+                        let prev = *permission_state_for_loop.lock_recover();
+                        if current != prev {
+                            *permission_state_for_loop.lock_recover() = current;
+                            if !current.keystroke_capture_allowed()
+                                && prev.keystroke_capture_allowed()
+                            {
+                                log::warn!(
+                                    "Permission revoked ({} → {}); stopping keystroke capture",
+                                    prev.as_str(),
+                                    current.as_str()
+                                );
+                                *tap_check_capture.lock_recover() = None;
+                                tap_check_active.store(false, Ordering::SeqCst);
+                            } else if current.keystroke_capture_allowed()
+                                && !prev.keystroke_capture_allowed()
+                            {
+                                log::info!(
+                                    "Permission restored ({} → {}); restarting keystroke capture",
+                                    prev.as_str(),
+                                    current.as_str()
+                                );
+                                let tx_opt =
+                                    keystroke_event_tx_for_loop.lock_recover().clone();
+                                if let Some(tx) = tx_opt {
+                                    match platform_for_loop.create_keystroke_capture() {
+                                        Ok(mut cap) => match cap.start() {
+                                            Ok(sync_rx) => {
+                                                *tap_check_capture.lock_recover() =
+                                                    Some(cap);
+                                                tap_check_active
+                                                    .store(true, Ordering::SeqCst);
+                                                let r = Arc::clone(&running);
+                                                let a = Arc::clone(&tap_check_active);
+                                                let h = std::thread::Builder::new()
+                                                    .name("cpoe-keystroke-resume".into())
+                                                    .spawn(move || {
+                                                        while r.load(Ordering::SeqCst)
+                                                            && a.load(Ordering::SeqCst)
+                                                        {
+                                                            match sync_rx.recv_timeout(
+                                                                std::time::Duration::from_millis(100),
+                                                            ) {
+                                                                Ok(ev) => {
+                                                                    if tx.try_send(ev).is_err() {
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                                                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                                                            }
+                                                        }
+                                                    });
+                                                match h {
+                                                    Ok(handle) => {
+                                                        let mut ts =
+                                                            bridge_health_threads
+                                                                .lock_recover();
+                                                        ts.retain(|t| !t.is_finished());
+                                                        ts.push(handle);
+                                                        bridge_healthy_flag
+                                                            .store(true, Ordering::SeqCst);
+                                                    }
+                                                    Err(e) => log::error!(
+                                                        "Failed to spawn keystroke-resume \
+                                                         bridge: {e}"
+                                                    ),
+                                                }
+                                            }
+                                            Err(e) => log::warn!(
+                                                "Keystroke restart failed after permission \
+                                                 grant: {e}"
+                                            ),
+                                        },
+                                        Err(e) => log::warn!(
+                                            "Keystroke unavailable after permission grant: {e}"
+                                        ),
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if !running.load(Ordering::SeqCst) {
@@ -1278,6 +1385,29 @@ impl Sentinel {
 
         // Store the event loop handle so it can be aborted on Drop
         *event_loop_handle_ref.lock_recover() = Some(handle);
+
+        // Spawn clipboard monitor with its own cancellation token.
+        let clipboard_cancel = tokio_util::sync::CancellationToken::new();
+        *self.clipboard_cancel.lock_recover() = Some(clipboard_cancel.clone());
+        match super::clipboard::ClipboardMonitor::new() {
+            Ok(monitor) => {
+                let monitor = Arc::new(monitor);
+                let cb_sessions = Arc::clone(&self.sessions);
+                let cb_store = Arc::clone(&self.cached_store);
+                let cb_key = Arc::clone(&self.signing_key);
+                tokio::spawn(async move {
+                    if let Err(e) = monitor
+                        .monitor_loop(cb_sessions, cb_store, cb_key, clipboard_cancel)
+                        .await
+                    {
+                        log::warn!("Clipboard monitor exited: {e}");
+                    }
+                });
+            }
+            Err(e) => {
+                log::warn!("Clipboard monitor init failed: {e}");
+            }
+        }
 
         Ok(())
     }
@@ -1346,6 +1476,11 @@ impl Sentinel {
         let tx = self.shutdown_tx.lock_recover().take();
         if let Some(tx) = tx {
             let _ = tx.send(()).await;
+        }
+
+        // Cancel the clipboard monitor task.
+        if let Some(cancel) = self.clipboard_cancel.lock_recover().take() {
+            cancel.cancel();
         }
 
         // Give the event loop a short window to exit gracefully, then force-abort.
@@ -1512,16 +1647,79 @@ impl Sentinel {
         self.bridge_healthy.load(Ordering::SeqCst)
     }
 
-    /// Restart keystroke capture after a tap failure (e.g. after macOS sleep/wake).
-    /// This is a no-op convenience method; callers should use the FFI stop/start
-    /// cycle instead, which fully restarts the event loop and bridge threads.
-    /// Returns true if capture appears active after the check.
+    /// Restart keystroke capture without stopping the event loop.
+    ///
+    /// Stops the existing capture (if any), starts a fresh one, and spawns a
+    /// new bridge thread that forwards events to the same async channel the
+    /// event loop already holds, keeping the receiver alive via the stored
+    /// `keystroke_event_tx` clone.  Returns `true` when capture is active on
+    /// return.
     pub fn restart_keystroke_capture(&self) -> bool {
-        // A stop+start cycle is the only reliable way to restart capture
-        // because the bridge thread holding the old receiver cannot be
-        // reconnected to a new capture. The FFI layer handles this via
-        // ffi_sentinel_stop() + ffi_sentinel_start().
-        self.is_keystroke_capture_active()
+        let tx = match self.keystroke_event_tx.lock_recover().as_ref().cloned() {
+            Some(t) => t,
+            None => return self.is_keystroke_capture_active(),
+        };
+
+        {
+            let mut cap = self.keystroke_capture.lock_recover();
+            *cap = None;
+        }
+        self.keystroke_capture_active.store(false, Ordering::SeqCst);
+
+        match self.platform.create_keystroke_capture() {
+            Ok(mut cap) => match cap.start() {
+                Ok(sync_rx) => {
+                    *self.keystroke_capture.lock_recover() = Some(cap);
+                    self.keystroke_capture_active.store(true, Ordering::SeqCst);
+                    let running = Arc::clone(&self.running);
+                    let active = Arc::clone(&self.keystroke_capture_active);
+                    let h = std::thread::Builder::new()
+                        .name("cpoe-keystroke-restart".into())
+                        .spawn(move || {
+                            while running.load(Ordering::SeqCst)
+                                && active.load(Ordering::SeqCst)
+                            {
+                                match sync_rx.recv_timeout(
+                                    std::time::Duration::from_millis(100),
+                                ) {
+                                    Ok(ev) => {
+                                        if tx.try_send(ev).is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                        continue
+                                    }
+                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                        break
+                                    }
+                                }
+                            }
+                        });
+                    match h {
+                        Ok(handle) => {
+                            let mut threads = self.bridge_threads.lock_recover();
+                            threads.retain(|t| !t.is_finished());
+                            threads.push(handle);
+                            self.bridge_healthy.store(true, Ordering::SeqCst);
+                            true
+                        }
+                        Err(e) => {
+                            log::error!("Failed to spawn keystroke-restart bridge: {e}");
+                            false
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Keystroke capture restart failed: {e}");
+                    false
+                }
+            },
+            Err(e) => {
+                log::warn!("Keystroke capture unavailable for restart: {e}");
+                false
+            }
+        }
     }
 
     /// Record a paste event from the host app.
