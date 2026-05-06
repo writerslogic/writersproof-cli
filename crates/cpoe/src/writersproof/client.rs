@@ -35,7 +35,7 @@ impl WritersProofClient {
         if !url.starts_with("https://") {
             return Err(Error::crypto(format!(
                 "WritersProof base_url must use HTTPS: {}",
-                &url[..url.len().min(40)]
+                &url[..(0..=url.len().min(40)).rev().find(|&i| url.is_char_boundary(i)).unwrap_or(0)]
             )));
         }
         Ok(Self {
@@ -170,7 +170,7 @@ impl WritersProofClient {
         {
             return Err(Error::crypto(format!(
                 "invalid certificate ID: must be alphanumeric/dash/underscore, got: {}",
-                &id[..id.len().min(32)]
+                &id[..(0..=id.len().min(32)).rev().find(|&i| id.is_char_boundary(i)).unwrap_or(0)]
             )));
         }
         let url = format!("{}/v1/certificates/{}", self.base_url, id);
@@ -677,7 +677,7 @@ impl WritersProofClient {
         {
             return Err(Error::crypto(format!(
                 "invalid credential ID: must be alphanumeric/dash/underscore, got: {}",
-                &credential_id[..credential_id.len().min(32)]
+                &credential_id[..(0..=credential_id.len().min(32)).rev().find(|&i| credential_id.is_char_boundary(i)).unwrap_or(0)]
             )));
         }
 
@@ -713,7 +713,7 @@ impl WritersProofClient {
         {
             return Err(Error::crypto(format!(
                 "invalid credential ID: must be alphanumeric/dash/underscore, got: {}",
-                &credential_id[..credential_id.len().min(32)]
+                &credential_id[..(0..=credential_id.len().min(32)).rev().find(|&i| credential_id.is_char_boundary(i)).unwrap_or(0)]
             )));
         }
 

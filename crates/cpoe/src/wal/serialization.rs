@@ -140,5 +140,8 @@ pub(super) fn now_nanos() -> i64 {
     let dur = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0));
-    i64::try_from(dur.as_nanos()).unwrap_or(i64::MAX)
+    i64::try_from(dur.as_nanos()).unwrap_or_else(|_| {
+        log::error!("WAL timestamp overflow: system clock beyond year 2262, using i64::MAX");
+        i64::MAX
+    })
 }

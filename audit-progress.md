@@ -483,36 +483,36 @@ Total: 522 files | Completed: 329 | In Progress: 0 | Remaining: 193
 [x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/swf_argon2.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/swf_posme.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/vdf/timekeeper.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/verify/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/verify/pipeline.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/verify/seals.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/verify/verdict.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/verify/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/verify/verdict.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/wal/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/wal/operations.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/serialization.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/wal/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/appraisal.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/common.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/compat.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/ear.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/encoding.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/c2pa.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/cawg.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/eu_ai_act.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/jpeg_trust.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/standards.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/vc.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/war/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/wal/serialization.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/wal/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/wal/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/appraisal.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/common.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/compat.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/ear.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/encoding.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/c2pa.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/cawg.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/eu_ai_act.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/jpeg_trust.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/standards.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/profiles/vc.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/war/types.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/war/verification.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/client.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/mod.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/queue.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/types.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/client.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/mod.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/queue.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/types.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/tests/c2pa_conformance.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/tests/demo_flow_integration.rs
 [ ] /Volumes/A/writerslogic/crates/cpoe/tests/integration_tests.rs
