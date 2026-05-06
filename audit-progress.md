@@ -513,21 +513,21 @@ Total: 522 files | Completed: 329 | In Progress: 0 | Remaining: 193
 [x] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/mod.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/queue.rs
 [x] /Volumes/A/writerslogic/crates/cpoe/src/writersproof/types.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/tests/c2pa_conformance.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/tests/demo_flow_integration.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/tests/integration_tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/tests/refactor_tests.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/tests/sentinel_integration.rs
-[ ] /Volumes/A/writerslogic/crates/cpoe/tests/standards_conformance.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/block.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/error.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/hash.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/init.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/lib.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/merkle.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/params.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/proof.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/prover.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/step.rs
-[ ] /Volumes/A/writerslogic/crates/posme/src/verifier.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/tests/c2pa_conformance.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/tests/demo_flow_integration.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/tests/integration_tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/tests/refactor_tests.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/tests/sentinel_integration.rs
+[x] /Volumes/A/writerslogic/crates/cpoe/tests/standards_conformance.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/block.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/error.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/hash.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/init.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/lib.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/merkle.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/params.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/proof.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/prover.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/step.rs
+[x] /Volumes/A/writerslogic/crates/posme/src/verifier.rs
 
