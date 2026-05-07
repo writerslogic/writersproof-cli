@@ -98,7 +98,7 @@ fn check_debugger_attached() -> Result<()> {
     let p_flag = i32::from_ne_bytes(info[32..36].try_into().unwrap_or([0; 4]));
     if p_flag & P_TRACED != 0 {
         return Err(Error::crypto(
-            "signing refused: debugger attached (P_TRACED set)".into(),
+            "signing refused: debugger attached (P_TRACED set)",
         ));
     }
 
@@ -109,7 +109,7 @@ fn check_debugger_attached() -> Result<()> {
 fn check_injected_libraries() -> Result<()> {
     if std::env::var("DYLD_INSERT_LIBRARIES").is_ok() {
         return Err(Error::crypto(
-            "signing refused: DYLD_INSERT_LIBRARIES is set (injected library detected)".into(),
+            "signing refused: DYLD_INSERT_LIBRARIES is set (injected library detected)",
         ));
     }
     Ok(())

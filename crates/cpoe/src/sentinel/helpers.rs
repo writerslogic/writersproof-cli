@@ -121,7 +121,21 @@ pub fn handle_focus_event_sync(
                     return;
                 }
             } else {
-                event.path.clone()
+                // S16: For title-inferred paths shared by multiple windows of the same
+                // app (e.g. two Obsidian windows), append the CGWindowID so each window
+                // gets a distinct session key. File-based paths (starting with '/') are
+                // never modified — only virtual title:// keys are affected.
+                let raw_path = event.path.clone();
+                let needs_title_inf =
+                    super::app_registry::needs_title_inference(&event.app_bundle_id);
+                if needs_title_inf
+                    && raw_path.starts_with("title://")
+                    && event.window_id.is_some()
+                {
+                    format!("{}#w{}", raw_path, event.window_id.unwrap())
+                } else {
+                    raw_path
+                }
             };
 
             super::trace!("[FOCUS] doc_path={:?}", doc_path);
@@ -313,6 +327,15 @@ pub fn focus_document_sync(
             if is_temporary_path(&session.path) {
                 session.origin_temp_path = Some(session.path.clone());
             }
+
+            session.evidence_confidence =
+                if path.starts_with("title://") || path.starts_with("shadow://") {
+                    super::types::EvidenceConfidence::Partial
+                } else if super::app_registry::lookup(&event.app_bundle_id).is_none() {
+                    super::types::EvidenceConfidence::Heuristic
+                } else {
+                    super::types::EvidenceConfidence::Full
+                };
 
             if let Some(ref hash) = pre_hash {
                 session.initial_hash = Some(hash.clone());

@@ -53,6 +53,18 @@ pub(crate) enum Request {
         document_title: String,
         #[serde(default)]
         protocol_version: Option<u32>,
+        /// Editor type detected by the browser extension (e.g., "google-docs", "notion").
+        #[serde(default)]
+        editor_type: Option<String>,
+    },
+    /// Resume a session after browser restart. Semantically identical to
+    /// StartSession but signals that the browser expects continuity with a
+    /// prior session indexed under the same URL.
+    ResumeSession {
+        document_url: String,
+        document_title: String,
+        #[serde(default)]
+        editor_type: Option<String>,
     },
     Checkpoint {
         content_hash: String,
@@ -187,6 +199,7 @@ pub(crate) struct Session {
     pub(crate) session_nonce: [u8; 16],
     pub(crate) last_char_count: u64,
     pub(crate) last_checkpoint_ts: u64,
+    pub(crate) started_at_ns: u64,
     /// Token bucket in milli-batches (1 batch = 1000 units; refill at 10 batches/sec = 10 units/ms).
     pub(crate) bucket_millitokens: u64,
     pub(crate) last_refill: std::time::Instant,
@@ -194,6 +207,10 @@ pub(crate) struct Session {
     pub(crate) jitter_hash: [u8; 32],
     /// Device Ed25519 signing key for checkpoint signatures. ZeroizeOnDrop via ed25519-dalek.
     pub(crate) signing_key: Option<SigningKey>,
+    /// Web editor type detected by the browser extension (e.g., "google-docs", "notion").
+    pub(crate) editor_type: Option<String>,
+    /// Session ID of the most recent prior session for the same URL, if within MAX_AGE_NS.
+    pub(crate) prior_session_id: Option<String>,
 }
 
 impl Drop for Session {

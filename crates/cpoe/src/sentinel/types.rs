@@ -24,6 +24,9 @@ pub struct FocusEvent {
     pub app_name: String,
     pub window_title: ObfuscatedString,
     pub timestamp: SystemTime,
+    /// CGWindowID of the focused window, used as a tiebreaker when two windows
+    /// of the same app share a title-inferred session key.
+    pub window_id: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -731,6 +734,20 @@ pub struct DocumentSession {
     pub(crate) scrivener_project_map: Option<ScrivenerProjectMap>,
     /// Unix nanoseconds of the most recently detected export event for this session.
     pub(crate) last_export_detected_ns: Option<i64>,
+    /// Confidence in the evidence path and storage metadata for this session.
+    pub evidence_confidence: EvidenceConfidence,
+}
+
+/// Confidence in the evidence path and storage metadata for a document session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceConfidence {
+    /// AX-confirmed document path; all storage checks passed.
+    Full,
+    /// AX failed; path derived from title inference or CGWindowList.
+    Partial,
+    /// Unknown app matched via track_unknown_apps; no storage metadata.
+    Heuristic,
 }
 
 /// Accumulates keystroke semantic classification counts for a session.
@@ -909,6 +926,7 @@ impl Clone for DocumentSession {
             segment_counts: self.segment_counts.clone(),
             scrivener_project_map: self.scrivener_project_map.clone(),
             last_export_detected_ns: self.last_export_detected_ns,
+            evidence_confidence: self.evidence_confidence,
         }
     }
 }
@@ -973,6 +991,7 @@ impl DocumentSession {
             segment_counts: HashMap::new(),
             scrivener_project_map: None,
             last_export_detected_ns: None,
+            evidence_confidence: EvidenceConfidence::Full,
         }
     }
 
@@ -1275,6 +1294,53 @@ pub fn infer_document_path_from_title_with_bundle(
     let is_title_inferred = bundle_id
         .map(super::app_registry::needs_title_inference)
         .unwrap_or(false);
+
+    let title_parser = bundle_id
+        .and_then(|b| super::app_registry::lookup(b))
+        .map(|a| a.title_parser)
+        .unwrap_or(super::app_registry::TitleParserVariant::Generic);
+
+    // App-specific parsers for apps with known stable title formats.
+    match title_parser {
+        super::app_registry::TitleParserVariant::BBEdit => {
+            // "filename — /full/path/to/file" — the right segment is the absolute path.
+            const EM_DASH_SEP: &str = " \u{2014} ";
+            if let Some(idx) = title.find(EM_DASH_SEP) {
+                let right = title[idx + EM_DASH_SEP.len()..].trim();
+                if looks_like_file_path(right) {
+                    return Some(right.to_string());
+                }
+            }
+        }
+        super::app_registry::TitleParserVariant::Obsidian => {
+            // "Note Title - Vault Name" — left is the note, right is vault (not a path).
+            for sep in &[" - ", " \u{2014} "] {
+                if let Some(idx) = title.find(sep) {
+                    let left = title[..idx].trim();
+                    if looks_like_document_name(left) {
+                        return Some(left.to_string());
+                    }
+                }
+            }
+        }
+        super::app_registry::TitleParserVariant::VSCode
+        | super::app_registry::TitleParserVariant::Nova => {
+            // VS Code: "filename - folder - Visual Studio Code" → first segment.
+            // Nova: "filename · Nova" → split on " · ", take left.
+            let separators: &[&str] = &[" \u{00B7} ", " - ", " \u{2014} "];
+            for sep in separators {
+                if let Some(idx) = title.find(sep) {
+                    let left = title[..idx].trim();
+                    if looks_like_file_path(left)
+                        || (is_title_inferred && looks_like_document_name(left))
+                    {
+                        return Some(left.to_string());
+                    }
+                }
+            }
+        }
+        super::app_registry::TitleParserVariant::Generic => {}
+    }
 
     // Try standard separator-based extraction first.
     let separators = [" \u{2014} ", " - ", " | "];

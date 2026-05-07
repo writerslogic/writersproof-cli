@@ -83,7 +83,7 @@ fn platform_probe(bundle_id: &str) -> ProbeResult {
         if let Some(name) = read_bundle_display_name(path) {
             result.display_name = name;
         }
-        if is_electron_app(path) {
+        if is_electron_app(path) || is_ios_app_on_mac(path) {
             result.needs_title_inference = true;
         }
     }
@@ -132,6 +132,14 @@ fn platform_probe(bundle_id: &str) -> ProbeResult {
             result.needs_title_inference = false;
         }
         result.confidence = ProbeConfidence::High;
+    }
+
+    // Step 6: Check Info.plist for writing-relevant document type UTIs.
+    // Upgrades confidence from Low to Medium when writing UTIs are found.
+    if let Some(ref bp) = bundle_path {
+        if has_writing_uti_in_plist(bp) && result.confidence != ProbeConfidence::High {
+            result.confidence = ProbeConfidence::Medium;
+        }
     }
 
     result
@@ -197,7 +205,7 @@ fn scan_dir_for_bundle_id(dir: &Path, bundle_id: &str) -> Option<PathBuf> {
         if path.extension().and_then(|e| e.to_str()) != Some("app") {
             continue;
         }
-        let plist = path.join("Contents/Info.plist");
+        let plist = bundle_plist_path(&path);
         if let Some(bid) = read_plist_string(&plist, "CFBundleIdentifier") {
             if bid.eq_ignore_ascii_case(bundle_id) {
                 return Some(path);
@@ -207,10 +215,33 @@ fn scan_dir_for_bundle_id(dir: &Path, bundle_id: &str) -> Option<PathBuf> {
     None
 }
 
+/// Return the Info.plist path for a bundle, handling both macOS-style
+/// (`Contents/Info.plist`) and iOS-on-Mac-style (`WrappedBundle/Info.plist`).
+#[cfg(target_os = "macos")]
+fn bundle_plist_path(bundle_path: &Path) -> PathBuf {
+    let contents_plist = bundle_path.join("Contents/Info.plist");
+    if contents_plist.is_file() {
+        return contents_plist;
+    }
+    let wrapped_plist = bundle_path.join("WrappedBundle/Info.plist");
+    if wrapped_plist.is_file() {
+        return wrapped_plist;
+    }
+    contents_plist
+}
+
+/// Return true if this is an iPhone/iPad app running natively on an Apple
+/// Silicon Mac (not a Catalyst app, which has a normal Contents/ structure).
+#[cfg(target_os = "macos")]
+fn is_ios_app_on_mac(bundle_path: &Path) -> bool {
+    bundle_path.join("WrappedBundle/Info.plist").is_file()
+        && !bundle_path.join("Contents/Info.plist").is_file()
+}
+
 /// Read the display name from an app bundle's Info.plist.
 #[cfg(target_os = "macos")]
 fn read_bundle_display_name(bundle_path: &Path) -> Option<String> {
-    let plist = bundle_path.join("Contents/Info.plist");
+    let plist = bundle_plist_path(bundle_path);
     read_plist_string(&plist, "CFBundleDisplayName")
         .or_else(|| read_plist_string(&plist, "CFBundleName"))
 }
@@ -221,6 +252,27 @@ fn is_electron_app(bundle_path: &Path) -> bool {
     bundle_path
         .join("Contents/Frameworks/Electron Framework.framework")
         .is_dir()
+}
+
+/// Return true if the app bundle's Info.plist declares writing-relevant document UTIs.
+///
+/// Used as a lightweight signal to upgrade probe confidence from Low to Medium
+/// when no other heuristics matched (app not running, no container/iCloud directories).
+#[cfg(target_os = "macos")]
+fn has_writing_uti_in_plist(bundle_path: &Path) -> bool {
+    let plist_path = bundle_plist_path(bundle_path);
+    let contents = match std::fs::read_to_string(&plist_path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    const WRITING_INDICATORS: &[&str] = &[
+        "public.rtf",
+        "net.daringfireball.markdown",
+        "public.plain-text",
+        "org.openxmlformats.wordprocessingml.document",
+        "NSStringPboardType",
+    ];
+    WRITING_INDICATORS.iter().any(|indicator| contents.contains(indicator))
 }
 
 /// Scan ~/Library/Group Containers/ for directories associated with this app.
@@ -241,7 +293,7 @@ fn read_app_group_ids(bundle_path: &Path) -> Vec<String> {
     };
 
     // Read the actual bundle ID from Info.plist for matching accuracy.
-    let plist = bundle_path.join("Contents/Info.plist");
+    let plist = bundle_plist_path(bundle_path);
     let bid = read_plist_string(&plist, "CFBundleIdentifier")
         .unwrap_or_default()
         .to_ascii_lowercase();

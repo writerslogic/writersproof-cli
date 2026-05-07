@@ -53,6 +53,9 @@
   let timerResolution = 0;
   let cachedEditorElements = null;
   let cachedSiteId = undefined; // undefined = not yet detected
+  let detectedWritingTools = { category: "none", host: "" };
+  let writingToolsInterval = null;
+  let titleObserver = null;
 
   function storageKey() {
     return `witnessing_${window.location.origin}${window.location.pathname}`;
@@ -71,6 +74,7 @@
     "stackedit.io", "hackmd.io", "hemingwayapp.com", "quillbot.com",
     "prosemirror.net", "pad.riseup.net", "write.as",
     "wordpress.com", "ghost.io", "substack.com",
+    "www.wattpad.com", "archiveofourown.org", "www.languagetool.org", "app.gitbook.com", "www.fictionpress.com",
   ];
 
   let customDomainsList = [];
@@ -336,6 +340,8 @@
           contentHash,
           charCount,
           delta: charCount - previousCount,
+          toolCategory: detectedWritingTools.category,
+          toolHost: detectedWritingTools.host,
         };
 
         if (contentTier === "maximum") {
@@ -426,12 +432,51 @@
     }
   }
 
+  function detectWritingTools() {
+    if (document.querySelector("grammarly-extension") || document.querySelector("#grammarly-btn")) {
+      detectedWritingTools = { category: "grammar", host: "app.grammarly.com" };
+      return;
+    }
+    if (document.querySelector(".lt-marker") || document.querySelector("[data-lt-active]")) {
+      detectedWritingTools = { category: "grammar", host: "languagetool.org" };
+      return;
+    }
+    if (document.querySelector("iframe[src*='prowritingaid']") || document.querySelector("[data-pwa-hint]")) {
+      detectedWritingTools = { category: "grammar", host: "prowritingaid.com" };
+      return;
+    }
+    if (window.location.hostname === "hemingwayapp.com") {
+      detectedWritingTools = { category: "writing", host: "hemingwayapp.com" };
+      return;
+    }
+    detectedWritingTools = { category: "none", host: "" };
+  }
+
+  function installTitleObserver() {
+    if (titleObserver) return;
+    const titleEl = document.querySelector("title");
+    if (!titleEl) return;
+    let lastTitle = document.title;
+    titleObserver = new MutationObserver(() => {
+      const newTitle = document.title;
+      if (!isWitnessing || newTitle === lastTitle) return;
+      lastTitle = newTitle;
+      if (detectSite() && newTitle.length > 0) {
+        stopWitnessing();
+        setTimeout(startWitnessing, 600);
+      }
+    });
+    titleObserver.observe(titleEl, { childList: true, characterData: true, subtree: true });
+  }
+
   function startWitnessing() {
     if (isWitnessing) return;
 
     calibrateTimer();
     isWitnessing = true;
     invalidateEditorCache();
+    detectWritingTools();
+    writingToolsInterval = setInterval(detectWritingTools, 10_000);
 
     chrome.storage.local.set({ [storageKey()]: true });
 
@@ -443,7 +488,10 @@
       url: window.location.href,
       title: getDocumentTitle(),
       timerResolution,
+      editorType: detectSite(),
     });
+
+    installTitleObserver();
   }
 
   function stopWitnessing() {
@@ -457,6 +505,9 @@
     document.removeEventListener("keydown", handleKeyDown);
     jitterIndex = 0;
     pendingMutationCount = 0;
+
+    if (writingToolsInterval) { clearInterval(writingToolsInterval); writingToolsInterval = null; }
+    if (titleObserver) { titleObserver.disconnect(); titleObserver = null; }
 
     chrome.runtime.sendMessage({ action: "stop_witnessing" });
   }

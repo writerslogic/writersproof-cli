@@ -60,6 +60,11 @@ let checkpointOrdinal = COMMITMENT_CHAIN_INITIAL_ORDINAL;
 let devicePublicKey = null;
 let secureChannel = null;
 
+// Pending native resume — persisted across service-worker restarts so that a
+// dormant session can be re-attached when the worker wakes up.
+// Keys: url, title, editorType, startedAt (epoch ms), session_id (set on session_started)
+let _pendingResumeUrl = null;
+
 function detectNativeHost() {
   operatingMode = "detecting";
   try {
@@ -239,6 +244,7 @@ function handleNativeMessage(message) {
       }
       updateBadge("", "#2ecc71");
       initiateSecureChannel();
+      resumeNativeSessionIfPending();
       break;
 
     case "hello_accept":
@@ -291,6 +297,13 @@ function handleNativeMessage(message) {
           .then((genesis) => { prevCommitment = genesis; })
           .catch(() => { prevCommitment = null; });
       }
+      if (message.session_id && _pendingResumeUrl) {
+        chrome.storage.local.get(["_nativePendingResume"], (r) => {
+          if (r._nativePendingResume) {
+            chrome.storage.local.set({ _nativePendingResume: { ...r._nativePendingResume, session_id: message.session_id } });
+          }
+        });
+      }
       updateBadge("\u2713", "#2ecc71");
       broadcastToPopup({ type: "session_update", session_id: message.session_id, session_nonce: message.session_nonce, device_public_key: message.device_public_key, checkpoint_count: message.checkpoint_count });
       break;
@@ -317,6 +330,8 @@ function handleNativeMessage(message) {
       genesisReady = null;
       checkpointOrdinal = COMMITMENT_CHAIN_INITIAL_ORDINAL;
       devicePublicKey = null;
+      _pendingResumeUrl = null;
+      chrome.storage.local.remove(["_nativePendingResume"]);
       updateBadge("", "#95a5a6");
       stopCheckpointTimer();
       broadcastToPopup({ type: "session_update", active: false });
@@ -330,11 +345,25 @@ function handleNativeMessage(message) {
       break;
 
     case "error":
-      broadcastToPopup({
-        type: "error",
-        message: sanitizeErrorMessage(message.message),
-        code: message.code,
-      });
+      if (message.code === "SESSION_EXPIRED" && activeTabId) {
+        chrome.tabs.get(activeTabId, (tab) => {
+          if (tab?.url && isAllowedOrigin(tab.url)) {
+            sendNativeMessage({ type: "stop_session" });
+            sendNativeMessage({
+              type: "start_session",
+              document_url: tab.url,
+              document_title: tab.title || "",
+              editor_type: null,
+            });
+          }
+        });
+      } else {
+        broadcastToPopup({
+          type: "error",
+          message: sanitizeErrorMessage(message.message),
+          code: message.code,
+        });
+      }
       break;
 
     default:
@@ -362,6 +391,11 @@ const ALLOWED_ORIGINS = [
   /^https:\/\/[^/]*\.?wordpress\.com\//,
   /^https:\/\/[^/]*\.?ghost\.io\//,
   /^https:\/\/[^/]*\.?substack\.com\//,
+  /^https:\/\/(www\.)?wattpad\.com\//,
+  /^https:\/\/archiveofourown\.org\//,
+  /^https:\/\/(www\.)?languagetool\.org\//,
+  /^https:\/\/app\.gitbook\.com\//,
+  /^https:\/\/(www\.)?fictionpress\.com\//,
 ];
 
 let customDomainList = [];
@@ -483,12 +517,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
         connectToNativeHost();
+        const startTitle = typeof message.title === "string" ? message.title : "";
+        const startEditorType = (typeof message.editorType === "string" && message.editorType) ? message.editorType : null;
         sendNativeMessage({
           type: "start_session",
           document_url: url,
-          document_title: typeof message.title === "string" ? message.title : "",
+          document_title: startTitle,
           timer_resolution_ms: typeof message.timerResolution === "number" ? message.timerResolution : 0,
+          editor_type: startEditorType,
         });
+        _pendingResumeUrl = url;
+        chrome.storage.local.set({ _nativePendingResume: { url, title: startTitle, editorType: startEditorType, startedAt: Date.now() } });
         activeTabId = sender.tab?.id;
         startCheckpointTimer();
         sendResponse({ ok: true, mode: "native" });
@@ -615,6 +654,25 @@ function sanitizeErrorMessage(raw) {
   return cleaned || "Unknown error";
 }
 
+function resumeNativeSessionIfPending() {
+  if (_pendingResumeUrl) return;
+  chrome.storage.local.get(["_nativePendingResume"], (r) => {
+    const pr = r._nativePendingResume;
+    if (!pr || !pr.url || !isAllowedOrigin(pr.url)) return;
+    if (Date.now() - (pr.startedAt || 0) > 24 * 60 * 60 * 1000) {
+      chrome.storage.local.remove(["_nativePendingResume"]);
+      return;
+    }
+    _pendingResumeUrl = pr.url;
+    sendNativeMessage({
+      type: "resume_session",
+      document_url: pr.url,
+      document_title: pr.title || "",
+      editor_type: pr.editorType || null,
+    });
+  });
+}
+
 // Pre-allocated lookup table for hex encoding
 const HEX = [];
 for (let i = 0; i < 256; i++) HEX[i] = i.toString(16).padStart(2, "0");
@@ -689,7 +747,8 @@ async function handleStandaloneActionInner(message, sender, sendResponse) {
       {
         const result = await standaloneStartSession(
           message.url || sender.tab?.url || "",
-          message.title || ""
+          message.title || "",
+          (typeof message.editorType === "string" && message.editorType) ? message.editorType : null
         );
         standaloneSessionId = result.session_id;
         activeTabId = sender.tab?.id;
@@ -822,6 +881,8 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (tabId === activeTabId) {
     if (operatingMode === "native") {
       sendNativeMessage({ type: "stop_session" });
+      _pendingResumeUrl = null;
+      chrome.storage.local.remove(["_nativePendingResume"]);
     } else if (standaloneSessionId) {
       await standaloneStopSession(standaloneSessionId);
     }

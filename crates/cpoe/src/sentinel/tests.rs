@@ -277,6 +277,7 @@ fn make_focus_event(
         app_name: app_name.to_string(),
         window_title: ObfuscatedString::new("Test Window"),
         timestamp: std::time::SystemTime::now(),
+        window_id: None,
     }
 }
 

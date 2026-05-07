@@ -54,6 +54,32 @@ pub enum StoragePattern {
     BundleBased,
 }
 
+/// Variant of title-format parser to use for a specific app.
+///
+/// Each variant encodes app-specific knowledge about how the app formats its
+/// window title so the sentinel can extract the document name or path without
+/// falling through to the generic separator loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TitleParserVariant {
+    /// Generic separator-based extraction (default).
+    Generic,
+    /// BBEdit: `"filename — /full/path/to/file"` — the right segment is the absolute path.
+    BBEdit,
+    /// Obsidian: `"Note Title - Vault Name"` — left is the note, right is vault (not a path).
+    Obsidian,
+    /// VS Code / VS Code Insiders: `"filename - folder - Visual Studio Code"` — first segment only.
+    VSCode,
+    /// Nova: `"filename · Nova"` — split on `" · "`, take left.
+    Nova,
+}
+
+impl Default for TitleParserVariant {
+    fn default() -> Self {
+        Self::Generic
+    }
+}
+
 /// Confidence level from auto-discovery probing.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -81,6 +107,17 @@ pub struct WritingApp {
     /// When `true`, the sentinel will accept bare document names from the
     /// window title even without a recognised file extension.
     pub needs_title_inference: bool,
+    /// Override the default debounce interval (in milliseconds) for this app.
+    ///
+    /// `None` means use the global sentinel default. `DatabaseBacked` apps
+    /// benefit from a shorter debounce (≈50 ms) because their storage events
+    /// fire at high frequency; `BundleBased` apps need a longer window (≈300 ms)
+    /// to avoid triggering on intermediate compile/save operations.
+    pub default_debounce_ms: Option<u64>,
+    /// Which title-format parser to use when inferring the document path from
+    /// the window title. `Generic` covers the common `"name - App"` pattern;
+    /// app-specific variants handle known stable formats.
+    pub title_parser: TitleParserVariant,
 }
 
 /// A user-added writing application, persisted to `user_apps.json`.
@@ -91,6 +128,10 @@ pub struct UserWritingApp {
     pub storage: StoragePattern,
     pub container_paths: Vec<String>,
     pub needs_title_inference: bool,
+    #[serde(default)]
+    pub default_debounce_ms: Option<u64>,
+    #[serde(default)]
+    pub title_parser: TitleParserVariant,
     /// When this entry was added (Unix timestamp in JSON).
     #[serde(with = "system_time_serde")]
     pub added_at: SystemTime,
@@ -108,6 +149,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     WritingApp {
         bundle_id: "com.microsoft.onenote.mac",
@@ -117,6 +160,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.microsoft.onenote.mac/Data/Library/Application Support",
         ],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Apple iWork ────────────────────────────────────────────────────────
     WritingApp {
@@ -125,6 +170,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::CloudLibrary,
         container_paths: &["Library/Mobile Documents/com~apple~Pages/Documents"],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Ulysses ────────────────────────────────────────────────────────────
     WritingApp {
@@ -136,6 +183,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.ulyssesapp.mac/Data/Library/Application Support/Ulysses",
         ],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Bear ────────────────────────────────────────────────────────────────
     WritingApp {
@@ -146,6 +195,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/9K33E3U3T4.com.shinyfrog.bear/Application Data",
         ],
         needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
     },
     // ── iA Writer ──────────────────────────────────────────────────────────
     WritingApp {
@@ -154,6 +205,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/pro~writer~mac/Documents"],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Scrivener ──────────────────────────────────────────────────────────
     WritingApp {
@@ -162,6 +215,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::BundleBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: Some(300),
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Vellum ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -170,6 +225,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::BundleBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: Some(300),
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Affinity Publisher ─────────────────────────────────────────────────
     WritingApp {
@@ -178,6 +235,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     WritingApp {
         bundle_id: "com.seriflabs.affinitypublisher2",
@@ -185,22 +244,21 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Drafts ─────────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.agiletortoise.Drafts-OSX",
         display_name: "Drafts",
         storage: StoragePattern::ContainerBased,
-        container_paths: &["Library/Group Containers/com.agiletortoise.Drafts-Shared"],
+        container_paths: &[
+            "Library/Group Containers/com.agiletortoise.Drafts-Shared",
+            "Library/Mobile Documents/iCloud~com~agiletortoise~Drafts5/Documents",
+        ],
         needs_title_inference: true,
-    },
-    // ── Day One ────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.bloombuilt.dayone-mac",
-        display_name: "Day One",
-        storage: StoragePattern::DatabaseBacked,
-        container_paths: &["Library/Group Containers/5U8NS4GX82.com.dayoneapp.dayone"],
-        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
     WritingApp {
@@ -211,6 +269,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.luki.paper.mac/Data/Library/Application Support/Craft",
         ],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Highland 2 ─────────────────────────────────────────────────────────
     WritingApp {
@@ -219,6 +279,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Final Draft ────────────────────────────────────────────────────────
     WritingApp {
@@ -227,6 +289,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     WritingApp {
         bundle_id: "com.finaldraft.mac.fd11",
@@ -234,6 +298,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Fade In ────────────────────────────────────────────────────────────
     WritingApp {
@@ -242,6 +308,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Hemingway Editor ───────────────────────────────────────────────────
     WritingApp {
@@ -250,6 +318,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true, // Electron; exposes limited AX info
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     WritingApp {
         bundle_id: "com.typora.Typora",
@@ -257,6 +327,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── MarkText ───────────────────────────────────────────────────────────
     WritingApp {
@@ -265,6 +337,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Obsidian ────────────────────────────────────────────────────────────
     WritingApp {
@@ -273,6 +347,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Obsidian,
     },
     // ── Typora ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -281,6 +357,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Zettlr ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -289,6 +367,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Logseq ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -297,6 +377,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Notion ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -305,6 +387,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
     },
     WritingApp {
         bundle_id: "com.notion.Notion",
@@ -312,6 +396,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Figma ──────────────────────────────────────────────────────────────
     WritingApp {
@@ -320,6 +406,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Cursor ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -328,6 +416,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── VS Code ────────────────────────────────────────────────────────────
     WritingApp {
@@ -336,6 +426,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
     },
     WritingApp {
         bundle_id: "com.microsoft.VSCodeInsiders",
@@ -343,6 +435,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
     },
     // ── Noteship ───────────────────────────────────────────────────────────
     WritingApp {
@@ -351,6 +445,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Notebooks ──────────────────────────────────────────────────────────
     WritingApp {
@@ -359,6 +455,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~alfonsschmid~Notebooks/Documents"],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Mellel ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -367,6 +465,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Nisus Writer ───────────────────────────────────────────────────────
     WritingApp {
@@ -375,6 +475,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── TextEdit (built-in) ────────────────────────────────────────────────
     WritingApp {
@@ -383,6 +485,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── BBEdit ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -391,6 +495,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::BBEdit,
     },
     // ── Ghostwriter ────────────────────────────────────────────────────────
     WritingApp {
@@ -399,6 +505,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Manuskript ─────────────────────────────────────────────────────────
     WritingApp {
@@ -407,6 +515,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── LibreOffice Writer ─────────────────────────────────────────────────
     WritingApp {
@@ -415,6 +525,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Marked 2 (preview app; writers use it with other editors) ──────────
     WritingApp {
@@ -423,6 +535,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Taskpaper ──────────────────────────────────────────────────────────
     WritingApp {
@@ -431,6 +545,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── FoldingText ────────────────────────────────────────────────────────
     WritingApp {
@@ -439,6 +555,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Byword ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -447,6 +565,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~metaclassy~byword/Documents"],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Markdown Editor ────────────────────────────────────────────────────
     WritingApp {
@@ -455,6 +575,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Coppice ────────────────────────────────────────────────────────────
     WritingApp {
@@ -463,6 +585,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Bike Outliner ──────────────────────────────────────────────────────
     WritingApp {
@@ -471,6 +595,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── OmniOutliner ───────────────────────────────────────────────────────
     WritingApp {
@@ -479,6 +605,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Celtx (web, but has a desktop wrapper) ─────────────────────────────
     WritingApp {
@@ -487,6 +615,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Apple Notes ────────────────────────────────────────────────────────
     WritingApp {
@@ -498,6 +628,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.apple.Notes/Data/Library/Notes",
         ],
         needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Sublime Text ───────────────────────────────────────────────────────
     WritingApp {
@@ -506,6 +638,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     WritingApp {
         bundle_id: "com.sublimetext.3",
@@ -513,6 +647,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Nova ───────────────────────────────────────────────────────────────
     WritingApp {
@@ -521,6 +657,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Nova,
     },
     // ── Storyist ───────────────────────────────────────────────────────────
     WritingApp {
@@ -529,6 +667,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── WriteRoom ──────────────────────────────────────────────────────────
     WritingApp {
@@ -537,6 +677,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── OmmWriter ──────────────────────────────────────────────────────────
     WritingApp {
@@ -545,6 +687,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true, // limited AX support
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Warp (modern terminal — vim/emacs authors) ─────────────────────────
     WritingApp {
@@ -553,6 +697,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true, // title shows cwd / running command
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Adobe InDesign ─────────────────────────────────────────────────────
     WritingApp {
@@ -561,6 +707,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Keynote ────────────────────────────────────────────────────────────
     WritingApp {
@@ -569,6 +717,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::CloudLibrary,
         container_paths: &["Library/Mobile Documents/com~apple~Keynote/Documents"],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── PowerPoint ─────────────────────────────────────────────────────────
     WritingApp {
@@ -577,6 +727,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Apple Mail ─────────────────────────────────────────────────────────
     WritingApp {
@@ -585,6 +737,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true, // compose windows only expose subject
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Microsoft Outlook ──────────────────────────────────────────────────
     WritingApp {
@@ -593,6 +747,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &["Library/Group Containers/UBF8T346G9.Office/Outlook"],
         needs_title_inference: true, // compose windows only expose subject
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── TeXShop ────────────────────────────────────────────────────────────
     WritingApp {
@@ -601,6 +757,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Texpad ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -609,6 +767,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
     WritingApp {
@@ -619,6 +779,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/group.com.lukilabs.lukiapp",
         ],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── Day One ────────────────────────────────────────────────────────────
     WritingApp {
@@ -629,6 +791,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/5U8NS4GX82.com.bloombuilt.dayone",
         ],
         needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
     },
     // ── MacDown ────────────────────────────────────────────────────────────
     WritingApp {
@@ -637,16 +801,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
-    },
-    // ── Drafts ─────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.agiletortoise.Drafts-OSX",
-        display_name: "Drafts",
-        storage: StoragePattern::CloudLibrary,
-        container_paths: &[
-            "Library/Mobile Documents/iCloud~com~agiletortoise~Drafts5/Documents",
-        ],
-        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── GoodNotes ──────────────────────────────────────────────────────────
     WritingApp {
@@ -657,6 +813,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/iCloud~com~goodnotesapp~x/Documents",
         ],
         needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── CotEditor ──────────────────────────────────────────────────────────
     WritingApp {
@@ -665,6 +823,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
     // ── MacVim ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -673,6 +833,8 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
     },
 ];
 

@@ -42,6 +42,41 @@ pub struct PollingSentinelFocusTracker<P: WindowProvider + ?Sized> {
     poll_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
+/// Returns true when Stage Manager (WindowManager process) is active on macOS.
+/// Cached for 5 seconds to avoid repeated process table scans.
+#[cfg(target_os = "macos")]
+fn is_stage_manager_active() -> bool {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static CACHED: AtomicBool = AtomicBool::new(false);
+    static LAST_CHECK_SECS: AtomicU64 = AtomicU64::new(0);
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let last = LAST_CHECK_SECS.load(Ordering::Relaxed);
+
+    if now.saturating_sub(last) < 5 {
+        return CACHED.load(Ordering::Relaxed);
+    }
+    LAST_CHECK_SECS.store(now, Ordering::Relaxed);
+
+    let active = std::process::Command::new("pgrep")
+        .args(["-x", "WindowManager"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    CACHED.store(active, Ordering::Relaxed);
+    active
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_stage_manager_active() -> bool {
+    false
+}
+
 impl<P: WindowProvider + ?Sized> PollingSentinelFocusTracker<P> {
     pub fn new(provider: Arc<P>, config: Arc<SentinelConfig>) -> Self {
         let (focus_tx, focus_rx) = mpsc::channel(100);
@@ -107,6 +142,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                             app_name: info.application.clone(),
                             window_title: info.title.clone(),
                             timestamp: SystemTime::now(),
+                            window_id: info.window_number,
                         })
                         .await
                         .is_err()
@@ -146,8 +182,15 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         pending_loss = Some((last_app.clone(), Instant::now()));
                     }
                     // Check if pending loss has expired past the debounce window.
+                    // Stage Manager switches windows rapidly; use a shorter debounce
+                    // to avoid merging distinct window-switch events.
+                    let effective_debounce = if is_stage_manager_active() {
+                        Duration::from_millis(30)
+                    } else {
+                        debounce_dur
+                    };
                     if let Some((ref lost_app, started)) = pending_loss {
-                        if started.elapsed() >= debounce_dur {
+                        if started.elapsed() >= effective_debounce {
                             send_or_break!(FocusEvent {
                                 event_type: FocusEventType::FocusLost,
                                 path: String::new(),
@@ -156,6 +199,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 app_name: String::new(),
                                 window_title: ObfuscatedString::default(),
                                 timestamp: SystemTime::now(),
+                                window_id: None,
                             });
                             last_app.clear();
                             last_path = None;
@@ -194,6 +238,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     app_name: info.application.clone(),
                                     window_title: ObfuscatedString::default(),
                                     timestamp: SystemTime::now(),
+                                    window_id: None,
                                 });
                             }
                             send_or_break!(FocusEvent {
@@ -204,6 +249,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 app_name: info.application.clone(),
                                 window_title: info.title.clone(),
                                 timestamp: SystemTime::now(),
+                                window_id: info.window_number,
                             });
                             last_path = info.path.clone();
                         }
@@ -222,6 +268,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     app_name: info.application.clone(),
                                     window_title: ObfuscatedString::default(),
                                     timestamp: SystemTime::now(),
+                                    window_id: None,
                                 });
                             }
                             send_or_break!(FocusEvent {
@@ -232,6 +279,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 app_name: info.application.clone(),
                                 window_title: info.title.clone(),
                                 timestamp: SystemTime::now(),
+                                window_id: info.window_number,
                             });
                             last_path = info.path.clone();
                         }
@@ -243,8 +291,13 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         pending_loss = Some((last_app.clone(), Instant::now()));
                     }
 
+                    let effective_debounce = if is_stage_manager_active() {
+                        Duration::from_millis(30)
+                    } else {
+                        debounce_dur
+                    };
                     if let Some((ref lost_app, started)) = pending_loss {
-                        if started.elapsed() >= debounce_dur {
+                        if started.elapsed() >= effective_debounce {
                             // Confirmed real focus change — emit FocusLost for old app.
                             if !lost_app.is_empty() {
                                 send_or_break!(FocusEvent {
@@ -255,6 +308,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     app_name: String::new(),
                                     window_title: ObfuscatedString::default(),
                                     timestamp: SystemTime::now(),
+                                    window_id: None,
                                 });
                             }
                             pending_loss = None;
@@ -269,6 +323,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     app_name: info.application.clone(),
                                     window_title: info.title.clone(),
                                     timestamp: SystemTime::now(),
+                                    window_id: info.window_number,
                                 });
                                 last_path = info.path.clone();
                             } else {

@@ -12,6 +12,7 @@
 mod handlers;
 mod jitter;
 mod protocol;
+pub(crate) mod session_index;
 mod tests;
 pub(crate) mod types;
 
@@ -78,6 +79,7 @@ fn main() {
                 document_url,
                 document_title,
                 protocol_version,
+                editor_type,
             } => {
                 if let Some(v) = protocol_version {
                     if v != PROTOCOL_VERSION {
@@ -86,8 +88,13 @@ fn main() {
                         ); // intentional
                     }
                 }
-                handle_start_session(document_url, document_title)
+                handle_start_session(document_url, document_title, editor_type)
             }
+            Request::ResumeSession {
+                document_url,
+                document_title,
+                editor_type,
+            } => handle_start_session(document_url, document_title, editor_type),
             Request::Checkpoint {
                 content_hash,
                 char_count,
@@ -258,8 +265,14 @@ fn decrypt_and_dispatch(payload_b64: &str) -> anyhow::Result<Response> {
         Request::StartSession {
             document_url,
             document_title,
+            editor_type,
             ..
-        } => handle_start_session(document_url, document_title),
+        } => handle_start_session(document_url, document_title, editor_type),
+        Request::ResumeSession {
+            document_url,
+            document_title,
+            editor_type,
+        } => handle_start_session(document_url, document_title, editor_type),
         Request::Checkpoint {
             content_hash,
             char_count,

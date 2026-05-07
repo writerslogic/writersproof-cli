@@ -10,6 +10,7 @@ use super::jitter::{
     compute_jitter_stats, JITTER_REFILL_PER_MS, JITTER_TOKEN_COST, JITTER_TOKEN_MAX, MAX_BATCH_SIZE,
 };
 use super::protocol::{is_domain_allowed, now_nanos, validate_content_hash};
+use super::session_index;
 use super::types::{session, Response, Session};
 
 /// Maximum document title length accepted from the browser extension.
@@ -20,7 +21,11 @@ const MAX_TITLE_LEN: usize = 255;
 /// 8192 bytes covers all practical URLs while bounding memory allocation.
 const MAX_URL_LEN: usize = 8192;
 
-pub(crate) fn handle_start_session(document_url: String, document_title: String) -> Response {
+pub(crate) fn handle_start_session(
+    document_url: String,
+    document_title: String,
+    editor_type: Option<String>,
+) -> Response {
     // Reject oversized URLs before any further allocation.
     if document_url.len() > MAX_URL_LEN {
         return Response::Error {
@@ -103,6 +108,23 @@ pub(crate) fn handle_start_session(document_url: String, document_title: String)
         .collect();
     let evidence_path = session_dir.join(format!("{safe_title}_{session_id}.cpoe"));
 
+    // Sanitize editor_type: only alphanumeric and '-', max 32 chars.
+    let safe_editor_type: Option<String> = editor_type.as_deref().and_then(|et| {
+        let s: String = et.chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .take(32)
+            .collect();
+        if s.is_empty() { None } else { Some(s) }
+    });
+
+    // Look up any recent prior session for this URL to chain evidence files.
+    let lookup_now_ns = now_nanos();
+    let prior_session_id: Option<String> = {
+        let index = session_index::load(&session_dir);
+        session_index::lookup_recent(&index, &document_url, lookup_now_ns)
+            .map(|r| r.session_id.clone())
+    };
+
     // Escape HTML comment delimiters to prevent evidence format corruption.
     let safe_title_html = document_title
         .replace("--", "\u{2014}")
@@ -123,7 +145,14 @@ pub(crate) fn handle_start_session(document_url: String, document_title: String)
         if let Err(e) = cpoe::restrict_permissions(tmp.path(), 0o600) {
             eprintln!("Warning: chmod temp evidence file: {e}");
         }
-        if let Err(e) = tmp.write_all(format!("<!-- {safe_title_html} -->\n").as_bytes()) {
+        let mut header = format!("<!-- {safe_title_html} -->\n");
+        if let Some(ref et) = safe_editor_type {
+            header.push_str(&format!("<!-- editor_type: {et} -->\n"));
+        }
+        if let Some(ref prior_id) = prior_session_id {
+            header.push_str(&format!("<!-- continues_from: {prior_id} -->\n"));
+        }
+        if let Err(e) = tmp.write_all(header.as_bytes()) {
             return Response::Error {
                 message: format!("write evidence file: {e}"),
                 code: "IO_ERROR".into(),
@@ -207,10 +236,13 @@ pub(crate) fn handle_start_session(document_url: String, document_title: String)
         session_nonce,
         last_char_count: 0,
         last_checkpoint_ts: now_ns,
+        started_at_ns: now_ns,
         bucket_millitokens: JITTER_TOKEN_MAX,
         last_refill: Instant::now(),
         jitter_hash: [0u8; 32],
         signing_key,
+        editor_type: safe_editor_type,
+        prior_session_id,
     });
 
     Response::SessionStarted {
@@ -253,6 +285,28 @@ pub(crate) fn handle_checkpoint(
     };
 
     let now_ns = now_nanos();
+
+    // Server-side checkpoint rate guard: the browser enforces a 10s minimum
+    // interval, so 5s here catches only floods from compromised pages or bugs.
+    const MIN_CHECKPOINT_INTERVAL_NS: u64 = 5_000_000_000;
+    if session.checkpoint_count > 1
+        && now_ns.saturating_sub(session.last_checkpoint_ts) < MIN_CHECKPOINT_INTERVAL_NS
+    {
+        return Response::Error {
+            message: "Checkpoint rate limit exceeded (min 5s between checkpoints)".into(),
+            code: "RATE_LIMITED".into(),
+        };
+    }
+
+    // Cap session lifetime at 24h to bound evidence file size. The browser
+    // extension should stop and restart a session on this error.
+    const MAX_SESSION_AGE_NS: u64 = 24 * 60 * 60 * 1_000_000_000;
+    if now_ns.saturating_sub(session.started_at_ns) >= MAX_SESSION_AGE_NS {
+        return Response::Error {
+            message: "Session has exceeded the maximum duration (24h). Please start a new session.".into(),
+            code: "SESSION_EXPIRED".into(),
+        };
+    }
 
     if session.checkpoint_count > 0 && ordinal.is_none() {
         return Response::Error {
@@ -557,6 +611,15 @@ pub(crate) fn handle_stop_session() -> Response {
         sig_hex
     });
 
+    session_index::upsert_and_save(
+        &session.session_dir,
+        &session.document_url,
+        &session.id,
+        session.last_char_count,
+        session.expected_ordinal.saturating_sub(1),
+        now_nanos(),
+    );
+
     Response::SessionStopped {
         message: format!(
             "Session ended for '{}' with {} checkpoints",
@@ -780,8 +843,8 @@ pub(crate) fn handle_ai_content_copied(
             timestamp
         }
     };
-    let guard = session().lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(ref session) = *guard {
+    let mut guard = session().lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(ref mut session) = *guard {
         // Write to session evidence directory (included in evidence export)
         let wal_path = session.session_dir.join("tool_usage.jsonl");
         const MAX_JSONL_SIZE: u64 = 10 * 1024 * 1024;
@@ -806,6 +869,18 @@ pub(crate) fn handle_ai_content_copied(
             .and_then(|mut f| writeln!(f, "{}", entry))
         {
             eprintln!("Failed to write tool usage: {e}");
+        }
+
+        // Bind the AI-copy event into the running jitter_hash so its
+        // occurrence is covered by every subsequent checkpoint signature.
+        {
+            let mut jh = Sha256::new();
+            jh.update(session.jitter_hash);
+            jh.update(b"ai_content_copied:");
+            jh.update(sanitized_source.as_bytes());
+            jh.update(char_count.to_le_bytes());
+            jh.update(timestamp.to_le_bytes());
+            session.jitter_hash = jh.finalize().into();
         }
 
         // Notify the sentinel for real-time tracking

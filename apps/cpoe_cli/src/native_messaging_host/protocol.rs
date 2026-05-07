@@ -66,6 +66,7 @@ pub(crate) fn request_type_name(req: &Request) -> &'static str {
         Request::AiContentCopied { .. } => "AiContentCopied",
         Request::OpenView { .. } => "OpenView",
         Request::TextAttestation { .. } => "TextAttestation",
+        Request::ResumeSession { .. } => "ResumeSession",
     }
 }
 

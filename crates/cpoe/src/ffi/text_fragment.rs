@@ -393,7 +393,11 @@ pub fn ffi_sentinel_record_paste(
     // Check if this text matches an existing fragment (cross-session provenance).
     let matched_session_id = match store.lookup_fragment_by_hash(&text_hash) {
         Ok(Some(f)) => Some(f.session_id),
-        _ => None,
+        Ok(None) => None,
+        Err(e) => {
+            log::error!("ffi_record_paste: DB lookup failed: {e}");
+            None
+        }
     };
 
     // Store a fragment for this paste event in the current session.
