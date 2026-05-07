@@ -89,26 +89,7 @@ extern "C" {
     pub fn CGPreflightListenEventAccess() -> bool;
     pub fn CGRequestListenEventAccess() -> bool;
 
-    pub fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
-    pub fn AXUIElementCopyAttributeValue(
-        element: *mut std::ffi::c_void,
-        attribute: CFStringRef,
-        value: *mut CFTypeRef,
-    ) -> i32;
-    pub fn AXUIElementCopyAttributeNames(
-        element: *mut std::ffi::c_void,
-        names: *mut CFTypeRef,
-    ) -> i32;
 }
-
-pub const K_AX_ERROR_SUCCESS: i32 = 0;
-
-pub const K_AX_FOCUSED_WINDOW_ATTRIBUTE: &str = "AXFocusedWindow";
-pub const K_AX_DOCUMENT_ATTRIBUTE: &str = "AXDocument";
-pub const K_AX_TITLE_ATTRIBUTE: &str = "AXTitle";
-pub const K_AX_DESCRIPTION_ATTRIBUTE: &str = "AXDescription";
-pub const K_AX_FILENAME_ATTRIBUTE: &str = "AXFilename";
-pub const K_AX_URL_ATTRIBUTE: &str = "AXURL";
 
 // CGEventField constants (values from Apple's CGEventTypes.h)
 pub const K_CG_EVENT_SOURCE_STATE_ID: u32 = 45;

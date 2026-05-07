@@ -58,18 +58,6 @@ pub trait KeystrokeCapture: Send + Sync {
     }
 }
 
-/// Platform-specific focus monitoring.
-pub trait FocusMonitor: Send + Sync {
-    /// Query the currently focused application.
-    fn get_active_focus(&self) -> Result<FocusInfo>;
-    /// Begin polling for focus changes, returning a receiver for events.
-    fn start_monitoring(&mut self) -> Result<mpsc::Receiver<FocusInfo>>;
-    /// Stop focus change polling.
-    fn stop_monitoring(&mut self) -> Result<()>;
-    /// Return true if monitoring is currently active.
-    fn is_monitoring(&self) -> bool;
-}
-
 /// HID device enumeration.
 pub trait HidEnumerator {
     /// List all detected keyboard HID devices.
@@ -118,23 +106,6 @@ pub fn create_keystroke_capture() -> Result<Box<dyn KeystrokeCapture>> {
     Ok(Box::new(linux::LinuxKeystrokeCapture::new()?))
 }
 
-/// Create the platform-appropriate focus monitor implementation.
-#[cfg(target_os = "macos")]
-pub fn create_focus_monitor() -> Result<Box<dyn FocusMonitor>> {
-    Ok(Box::new(macos::MacOSFocusMonitor::new()?))
-}
-
-/// Create the platform-appropriate focus monitor implementation.
-#[cfg(target_os = "windows")]
-pub fn create_focus_monitor() -> Result<Box<dyn FocusMonitor>> {
-    Ok(Box::new(windows::WindowsFocusMonitor::new()?))
-}
-
-/// Create the platform-appropriate focus monitor implementation.
-#[cfg(target_os = "linux")]
-pub fn create_focus_monitor() -> Result<Box<dyn FocusMonitor>> {
-    Ok(Box::new(linux::LinuxFocusMonitor::new()?))
-}
 
 /// Create the platform-appropriate mouse capture implementation.
 #[cfg(target_os = "macos")]
@@ -199,7 +170,7 @@ pub fn has_required_permissions() -> bool {
 #[cfg(target_os = "macos")]
 pub use macos::{
     check_accessibility_permissions, check_input_monitoring_permissions, enumerate_hid_keyboards,
-    get_active_focus as macos_get_active_focus, get_strict_mode, get_synthetic_stats,
+    get_strict_mode, get_synthetic_stats,
     request_accessibility_permissions, request_input_monitoring_permissions, reset_synthetic_stats,
     set_strict_mode, validate_dual_layer, verify_event_source,
     DualLayerValidation as MacOSDualLayerValidation,
@@ -210,5 +181,3 @@ pub use macos::{
 
 #[cfg(target_os = "windows")]
 pub use status::FocusInfo as WindowsFocusInfo;
-#[cfg(target_os = "windows")]
-pub use windows::get_active_focus as windows_get_active_focus;

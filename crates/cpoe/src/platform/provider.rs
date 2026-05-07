@@ -2,7 +2,7 @@
 
 //! Unified trait for platform-specific capabilities.
 
-use super::{FocusMonitor, KeystrokeCapture, MouseCapture, PermissionStatus};
+use super::{KeystrokeCapture, MouseCapture, PermissionStatus};
 use anyhow::Result;
 
 /// Provides access to platform-specific hardware and OS features.
@@ -18,9 +18,6 @@ pub trait PlatformProvider: Send + Sync {
 
     /// Create and return a keystroke capture instance.
     fn create_keystroke_capture(&self) -> Result<Box<dyn KeystrokeCapture>>;
-
-    /// Create and return a focus monitor instance.
-    fn create_focus_monitor(&self) -> Result<Box<dyn FocusMonitor>>;
 
     /// Create and return a mouse capture instance.
     fn create_mouse_capture(&self) -> Result<Box<dyn MouseCapture>>;
@@ -44,10 +41,6 @@ impl PlatformProvider for DefaultPlatformProvider {
 
     fn create_keystroke_capture(&self) -> Result<Box<dyn KeystrokeCapture>> {
         super::create_keystroke_capture()
-    }
-
-    fn create_focus_monitor(&self) -> Result<Box<dyn FocusMonitor>> {
-        super::create_focus_monitor()
     }
 
     fn create_mouse_capture(&self) -> Result<Box<dyn MouseCapture>> {

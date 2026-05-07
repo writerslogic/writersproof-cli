@@ -12,7 +12,6 @@
 //! - Membership in the `input` group
 //! - Appropriate udev rules
 
-mod focus;
 mod hid;
 mod keystroke;
 mod mouse;
@@ -20,7 +19,6 @@ mod mouse;
 #[cfg(test)]
 mod tests;
 
-pub use focus::{get_active_focus, LinuxFocusMonitor};
 pub use hid::LinuxHidEnumerator;
 pub use keystroke::{
     enumerate_keyboards, keycode_to_char, linux_keycode_to_zone, LinuxKeystrokeCapture,

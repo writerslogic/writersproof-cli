@@ -7,7 +7,6 @@
 //! 2. IOKit HID for direct hardware device access
 
 mod ffi;
-mod focus;
 mod hid;
 mod hid_capture;
 mod keystroke;
@@ -23,7 +22,6 @@ pub use super::{
     PermissionStatus, SyntheticStats, TransportType,
 };
 
-pub use focus::{get_active_focus, MacOSFocusMonitor};
 pub use hid::enumerate_hid_keyboards;
 pub use hid_capture::HidInputCapture;
 pub use keystroke::{

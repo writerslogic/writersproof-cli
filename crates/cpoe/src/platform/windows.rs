@@ -6,7 +6,7 @@
 //! and focus tracking via GetForegroundWindow.
 
 use super::{
-    FocusInfo, FocusMonitor, KeystrokeCapture, KeystrokeEvent, MouseCapture, MouseEvent,
+    FocusInfo, KeystrokeCapture, KeystrokeEvent, MouseCapture, MouseEvent,
     MouseIdleStats, MouseStegoParams, PermissionStatus, SyntheticStats,
 };
 use crate::DateTimeNanosExt;
@@ -68,46 +68,6 @@ pub fn has_required_permissions() -> bool {
     true
 }
 
-/// Get information about the currently focused application and document.
-pub fn get_active_focus() -> Result<FocusInfo> {
-    // SAFETY: Win32 GetForegroundWindow, GetWindowThreadProcessId, and GetWindowTextW
-    // are safe to call from any thread. hwnd is checked for null before use.
-    unsafe {
-        let hwnd = GetForegroundWindow();
-        if hwnd.0.is_null() {
-            return Err(anyhow!("No active window"));
-        }
-
-        let mut pid = 0u32;
-        if GetWindowThreadProcessId(hwnd, Some(&mut pid)) == 0 {
-            pid = 0;
-        }
-        let app_path = get_process_path(pid)?;
-        let app_name = std::path::Path::new(&app_path)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-
-        let mut title_buffer = [0u16; 512];
-        let title_len = GetWindowTextW(hwnd, &mut title_buffer);
-        let window_title = if title_len > 0 {
-            Some(String::from_utf16_lossy(
-                &title_buffer[..title_len as usize],
-            ))
-        } else {
-            None
-        };
-
-        Ok(FocusInfo {
-            app_name: app_name.clone(),
-            bundle_id: app_name,
-            pid: pid as i32,
-            doc_path: extract_doc_path_from_title(window_title.as_deref()),
-            doc_title: window_title.clone(),
-            window_title,
-        })
-    }
-}
 
 fn get_process_path(pid: u32) -> Result<String> {
     // SAFETY: OpenProcess with PROCESS_QUERY_LIMITED_INFORMATION is a safe query-only call.
@@ -482,7 +442,7 @@ unsafe extern "system" fn keystroke_capture_hook(
             let event = KeystrokeEvent {
                 timestamp_ns: now,
                 keycode,
-                zone: if zone >= 0 { zone as u8 } else { 0xFF },
+                zone: if zone >= 0 { (zone as u32).min(255) as u8 } else { 0xFF },
                 char_value: None,
                 is_hardware: !is_injected,
                 device_id: None,
@@ -496,80 +456,6 @@ unsafe extern "system" fn keystroke_capture_hook(
     CallNextHookEx(None, code, wparam, lparam)
 }
 
-/// Windows focus monitor implementation.
-pub struct WindowsFocusMonitor {
-    running: Arc<AtomicBool>,
-    sender: Option<mpsc::Sender<FocusInfo>>,
-    thread: Option<std::thread::JoinHandle<()>>,
-}
-
-impl WindowsFocusMonitor {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            running: Arc::new(AtomicBool::new(false)),
-            sender: None,
-            thread: None,
-        })
-    }
-}
-
-impl FocusMonitor for WindowsFocusMonitor {
-    fn get_active_focus(&self) -> Result<FocusInfo> {
-        get_active_focus()
-    }
-
-    fn start_monitoring(&mut self) -> Result<mpsc::Receiver<FocusInfo>> {
-        if self.running.load(Ordering::SeqCst) {
-            return Err(anyhow!("Focus monitoring already running"));
-        }
-
-        let (tx, rx) = mpsc::channel();
-        self.sender = Some(tx.clone());
-
-        let running = Arc::clone(&self.running);
-        running.store(true, Ordering::SeqCst);
-
-        let thread = std::thread::spawn(move || {
-            let mut last_focus: Option<FocusInfo> = None;
-
-            while running.load(Ordering::SeqCst) {
-                if let Ok(focus) = get_active_focus() {
-                    let should_send = match &last_focus {
-                        Some(last) => {
-                            last.pid != focus.pid
-                                || last.doc_path != focus.doc_path
-                                || last.window_title != focus.window_title
-                        }
-                        None => true,
-                    };
-
-                    if should_send {
-                        let _ = tx.send(focus.clone());
-                        last_focus = Some(focus);
-                    }
-                }
-
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-        });
-
-        self.thread = Some(thread);
-        Ok(rx)
-    }
-
-    fn stop_monitoring(&mut self) -> Result<()> {
-        self.running.store(false, Ordering::SeqCst);
-        self.sender = None;
-        if let Some(handle) = self.thread.take() {
-            let _ = handle.join();
-        }
-        Ok(())
-    }
-
-    fn is_monitoring(&self) -> bool {
-        self.running.load(Ordering::SeqCst)
-    }
-}
 
 static MOUSE_GLOBAL_SENDER: Mutex<Option<mpsc::Sender<MouseEvent>>> = Mutex::new(None);
 static MOUSE_GLOBAL_IDLE_STATS: Mutex<Option<Arc<RwLock<MouseIdleStats>>>> = Mutex::new(None);
