@@ -511,6 +511,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           char_count: message.charCount,
           delta: message.delta,
           ordinal,
+          tool_category: message.toolCategory || "none",
+          tool_host: message.toolHost || "",
         };
         checkpointOrdinal++;
         const ready = genesisReady || Promise.resolve();
@@ -523,9 +525,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ ok: true, mode: "native" });
               });
           }
+          console.warn("[CPoE] Checkpoint sent without commitment (genesis failed or session nonce missing)");
           sendNativeMessage(checkpointMsg);
-          sendResponse({ ok: true, mode: "native" });
-        }).catch(() => {
+          sendResponse({ ok: true, mode: "native", commitment_missing: true });
+        }).catch((err) => {
+          console.error("[CPoE] Commitment computation failed:", err?.message || err);
           sendResponse({ ok: false, error: "Commitment failed" });
         });
       }
@@ -636,6 +640,7 @@ async function computeCommitment(prevCommitmentHex, contentHash, ordinal, sessio
   ordinalView.setUint32(4, Math.floor(ordinal / 0x100000000), true);
   const ordinalBytes = new Uint8Array(ordinalBuf);
 
+  // Must match Rust compute_commitment: H(prev || content_hash || ordinal_le || nonce)
   const combined = new Uint8Array(prev.length + contentBytes.length + 8 + nonce.length);
   let offset = 0;
   combined.set(prev, offset); offset += prev.length;
@@ -723,7 +728,9 @@ async function handleStandaloneActionInner(message, sender, sendResponse) {
           standaloneSessionId,
           message.contentHash,
           message.charCount,
-          message.delta
+          message.delta,
+          message.toolCategory,
+          message.toolHost
         );
         if (result.type === "error") {
           sendResponse({ ok: false, error: result.message });
@@ -828,3 +835,186 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     updateBadge(operatingMode === "standalone" ? "S" : "", "#95a5a6");
   }
 });
+
+// ---------------------------------------------------------------------------
+// Text Attestation — right-click context menu
+// ---------------------------------------------------------------------------
+
+const ATTEST_MENU_ID = "writersproof-attest-text";
+const ATTEST_DB_NAME = "writersproof-attestations";
+const ATTEST_STORE_NAME = "text_attestations";
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: ATTEST_MENU_ID,
+    title: "Attest Authorship with WritersProof",
+    contexts: ["selection"],
+  });
+});
+
+/**
+ * NFC-normalize text for attestation: keep only Unicode letters + ASCII
+ * digits, lowercase everything. Must match Rust normalize_for_attestation().
+ */
+function normalizeForAttestation(text) {
+  const nfc = text.normalize("NFC");
+  let result = "";
+  for (const ch of nfc) {
+    const code = ch.codePointAt(0);
+    if (code >= 0x30 && code <= 0x39) {
+      result += ch;
+    } else if (/\p{Letter}/u.test(ch)) {
+      result += ch.toLowerCase();
+    }
+  }
+  return result;
+}
+
+async function attestHashText(text) {
+  const data = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return bytesToHex(new Uint8Array(buf));
+}
+
+async function persistAttestation(record) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(ATTEST_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(ATTEST_STORE_NAME)) {
+        db.createObjectStore(ATTEST_STORE_NAME, { keyPath: "content_hash" });
+      }
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction(ATTEST_STORE_NAME, "readwrite");
+      tx.objectStore(ATTEST_STORE_NAME).put(record);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== ATTEST_MENU_ID) return;
+  const selectedText = info.selectionText;
+  if (!selectedText || !selectedText.trim()) return;
+
+  const normalized = normalizeForAttestation(selectedText);
+  if (!normalized) {
+    notifyTab(tab.id, "No attestable content (letters/digits only).");
+    return;
+  }
+
+  const hash = await attestHashText(normalized);
+  const wpId = hash.slice(0, 8);
+  const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+
+  let tier = "declared";
+  if (operatingMode === "native" && isConnected && activeTabId === tab.id) {
+    tier = "verified";
+  } else if (standaloneSessionId && activeTabId === tab.id) {
+    tier = "corroborated";
+  }
+
+  const tierLabels = { verified: "Verified", corroborated: "Corroborated", declared: "Declared" };
+  const tierDescs = {
+    verified: "Cryptographic authorship attestation with keystroke evidence.",
+    corroborated: "Authorship attestation, sentinel active during authoring.",
+    declared: "Signed author declaration.",
+  };
+
+  const attestationBlock =
+    `WritersProof ${tierLabels[tier]} | ID: ${wpId} | ${timestamp}\n` +
+    `${tierDescs[tier]}\n` +
+    `verify.writersproof.com`;
+
+  // Copy attestation block to clipboard via content script.
+  let clipboardOk = false;
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async (block) => {
+        try {
+          await navigator.clipboard.writeText(block);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      args: [attestationBlock],
+    });
+    clipboardOk = results?.[0]?.result === true;
+  } catch (e) {
+    console.warn("Clipboard write failed:", e);
+  }
+
+  // Persist to IndexedDB so attestation survives browser restart.
+  try {
+    await persistAttestation({
+      content_hash: hash,
+      writersproof_id: wpId,
+      tier,
+      attested_at: timestamp,
+      synced: false,
+      source_url: tab.url || "",
+      source_title: tab.title || "",
+    });
+  } catch (e) {
+    console.warn("Failed to persist attestation:", e);
+  }
+
+  // Sync via native messaging if desktop app connected (it has signing key + auth).
+  let synced = false;
+  if (operatingMode === "native" && isConnected) {
+    sendNativeMessage({
+      type: "text_attestation",
+      content_hash: hash,
+      tier,
+      writersproof_id: wpId,
+      attested_at: timestamp,
+      app_bundle_id: tab.url ? new URL(tab.url).hostname : "",
+    });
+    synced = true;
+  }
+
+  let msg = `Attestation copied (${tierLabels[tier]}).`;
+  if (!synced) {
+    msg += " Install the desktop app to enable online verification.";
+  } else {
+    msg += " Paste after your text.";
+  }
+  if (!clipboardOk) {
+    msg = `Attestation created (${tierLabels[tier]}) but clipboard access was denied.`;
+  }
+  notifyTab(tab.id, msg);
+});
+
+function notifyTab(tabId, message) {
+  if (!tabId) return;
+  chrome.scripting.executeScript({
+    target: { tabId },
+    func: (msg) => {
+      const existing = document.getElementById("writersproof-toast");
+      if (existing) existing.remove();
+      const d = document.createElement("div");
+      d.id = "writersproof-toast";
+      d.textContent = msg;
+      Object.assign(d.style, {
+        position: "fixed", bottom: "20px", right: "20px", zIndex: "2147483647",
+        background: "#1a1a2e", color: "#2dd4bf", padding: "12px 20px",
+        borderRadius: "8px", fontSize: "14px", fontFamily: "system-ui, sans-serif",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.3)", maxWidth: "400px",
+        opacity: "0", transition: "opacity 0.3s",
+      });
+      document.body.appendChild(d);
+      requestAnimationFrame(() => { d.style.opacity = "1"; });
+      setTimeout(() => {
+        d.style.opacity = "0";
+        setTimeout(() => d.remove(), 300);
+      }, 4000);
+    },
+    args: [message],
+  }).catch(() => {});
+}

@@ -12,7 +12,7 @@ param(
     [switch]$Edge,
     [switch]$All,
     [switch]$Both,  # Legacy alias for -All
-    [string]$ExtensionId = "EXTENSION_ID_HERE"
+    [string]$ExtensionId = "imkcofingfnmckconahhemohhnpmbfdp"
 )
 
 $ErrorActionPreference = "Stop"

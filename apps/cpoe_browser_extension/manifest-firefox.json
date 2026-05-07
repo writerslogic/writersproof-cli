@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WritersProof",
-  "version": "1.0.0",
-  "description": "Prove you wrote it. WritersProof captures cryptographic evidence of your writing process in Google Docs, Overleaf, Medium, and more.",
+  "version": "1.0.1",
+  "description": "Prove you wrote it. WritersProof captures cryptographic evidence of your writing process across web-based editors and publishing platforms.",
   "homepage_url": "https://writerslogic.com",
   "permissions": [
     "nativeMessaging",
@@ -66,7 +66,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "cpoe@writerslogic.com",
-      "strict_min_version": "109.0",
+      "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": ["none"]
       }

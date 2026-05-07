@@ -173,7 +173,7 @@ async function standaloneStartSession(url, title) {
   };
 }
 
-async function standaloneCheckpoint(sessionId, contentHash, charCount, delta) {
+async function standaloneCheckpoint(sessionId, contentHash, charCount, delta, toolCategory, toolHost) {
   const d = await openDB();
   const tx = d.transaction([STORE_SESSIONS, STORE_CHECKPOINTS], "readwrite");
   const sessionStore = tx.objectStore(STORE_SESSIONS);
@@ -232,6 +232,8 @@ async function standaloneCheckpoint(sessionId, contentHash, charCount, delta) {
     checkpointHash,
     jitterBinding,
     hmacTag,
+    toolCategory: toolCategory || "none",
+    toolHost: toolHost || "",
   };
 
   cpStore.put(checkpoint);

@@ -525,9 +525,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ ok: true, mode: "native" });
               });
           }
+          console.warn("[CPoE] Checkpoint sent without commitment (genesis failed or session nonce missing)");
           sendNativeMessage(checkpointMsg);
-          sendResponse({ ok: true, mode: "native" });
-        }).catch(() => {
+          sendResponse({ ok: true, mode: "native", commitment_missing: true });
+        }).catch((err) => {
+          console.error("[CPoE] Commitment computation failed:", err?.message || err);
           sendResponse({ ok: false, error: "Commitment failed" });
         });
       }
@@ -638,6 +640,7 @@ async function computeCommitment(prevCommitmentHex, contentHash, ordinal, sessio
   ordinalView.setUint32(4, Math.floor(ordinal / 0x100000000), true);
   const ordinalBytes = new Uint8Array(ordinalBuf);
 
+  // Must match Rust compute_commitment: H(prev || content_hash || ordinal_le || nonce)
   const combined = new Uint8Array(prev.length + contentBytes.length + 8 + nonce.length);
   let offset = 0;
   combined.set(prev, offset); offset += prev.length;

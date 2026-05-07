@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 VERSION=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+VERSION_FF=$(python3 -c "import json; print(json.load(open('manifest-firefox.json'))['version'])")
 DIST_DIR="$SCRIPT_DIR/dist"
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
@@ -63,8 +64,8 @@ cp manifest-firefox.json "$FIREFOX_DIR/manifest.json"
 for f in "${SHARED_FILES[@]}"; do cp "$f" "$FIREFOX_DIR/"; done
 cp icons/icon-16.png icons/icon-32.png icons/icon-48.png icons/icon-128.png "$FIREFOX_DIR/icons/"
 cd "$FIREFOX_DIR"
-zip -r -q "$DIST_DIR/writersproof-firefox-v${VERSION}.zip" .
-echo "  Created: dist/writersproof-firefox-v${VERSION}.zip ($(du -h "$DIST_DIR/writersproof-firefox-v${VERSION}.zip" | cut -f1))"
+zip -r -q "$DIST_DIR/writersproof-firefox-v${VERSION_FF}.zip" .
+echo "  Created: dist/writersproof-firefox-v${VERSION_FF}.zip ($(du -h "$DIST_DIR/writersproof-firefox-v${VERSION_FF}.zip" | cut -f1))"
 cd "$SCRIPT_DIR"
 
 echo ""

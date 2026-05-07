@@ -127,7 +127,7 @@ EOF
 INSTALL_CHROME=false
 INSTALL_FIREFOX=false
 INSTALL_EDGE=false
-EXTENSION_ID="EXTENSION_ID_HERE"
+EXTENSION_ID="imkcofingfnmckconahhemohhnpmbfdp"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

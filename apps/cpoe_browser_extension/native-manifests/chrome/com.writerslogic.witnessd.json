@@ -4,6 +4,6 @@
   "path": "/usr/local/bin/writerslogic-native-messaging-host",
   "type": "stdio",
   "allowed_origins": [
-    "chrome-extension://EXTENSION_ID_HERE/"
+    "chrome-extension://imkcofingfnmckconahhemohhnpmbfdp/"
   ]
 }
