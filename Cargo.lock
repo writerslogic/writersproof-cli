@@ -1165,6 +1165,7 @@ dependencies = [
  "aes-gcm",
  "affinidi-data-integrity",
  "affinidi-secrets-resolver",
+ "aho-corasick",
  "anyhow",
  "argon2",
  "async-trait",
