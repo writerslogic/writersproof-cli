@@ -224,6 +224,10 @@ pub(super) fn extract_public_key(key_ref: SecKeyRef) -> Result<Vec<u8>, TpmError
     // SAFETY: data_ref is non-null (checked above); wrap_under_create_rule takes ownership.
     let data = unsafe { CFData::wrap_under_create_rule(data_ref) };
     let result = data.bytes().to_vec();
+    // On success, error should be null per Apple docs; release defensively if not.
+    if !error.is_null() {
+        unsafe { core_foundation_sys::base::CFRelease(error as CFTypeRef) };
+    }
     // SAFETY: public_key is a non-null CF object we own; release after extracting bytes.
     unsafe { core_foundation_sys::base::CFRelease(public_key as *mut std::ffi::c_void) };
     Ok(result)
