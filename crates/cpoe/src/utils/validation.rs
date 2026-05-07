@@ -47,6 +47,10 @@ impl TimestampValidator {
     /// Create validator with both custom future drift and custom max age.
     pub fn with_drift_and_age(drift_ns: i64, max_age_ns: Option<i64>) -> Self {
         debug_assert!(drift_ns >= 0, "drift_ns must be non-negative");
+        debug_assert!(
+            max_age_ns.map_or(true, |a| a >= 0),
+            "max_age_ns must be non-negative"
+        );
         TimestampValidator {
             max_future_drift_ns: drift_ns,
             max_age_ns,
