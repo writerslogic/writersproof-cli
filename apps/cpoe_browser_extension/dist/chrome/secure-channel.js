@@ -619,7 +619,7 @@ function uint64ToLE(n) {
 
 function leToUint64(bytes) {
   const low =
-    bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | ((bytes[3] << 24) >>> 0);
+    (bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)) >>> 0;
   const high =
     (bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24)) >>> 0;
   return low + high * 0x100000000;

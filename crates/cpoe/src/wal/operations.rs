@@ -677,8 +677,10 @@ impl Wal {
             }
 
             let mut entry_buf = vec![0u8; entry_len as usize];
-            if state.file.read_exact(&mut entry_buf).is_err() {
-                break;
+            match state.file.read_exact(&mut entry_buf) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(WalError::Io(e)),
             }
 
             let entry = match deserialize_entry(&entry_buf) {
