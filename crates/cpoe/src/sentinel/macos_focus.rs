@@ -264,55 +264,14 @@ impl MacOSFocusMonitor {
     /// Query an arbitrary accessibility attribute from the focused window of a given pid.
     fn query_focused_window_attribute(&self, pid: i32, attribute: &str) -> Option<String> {
         unsafe {
-            use core_foundation::base::{CFType, TCFType};
-            use core_foundation::string::CFString;
-
-            #[link(name = "ApplicationServices", kind = "framework")]
-            extern "C" {
-                fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
-                fn AXUIElementCopyAttributeValue(
-                    element: *mut std::ffi::c_void,
-                    attribute: core_foundation::string::CFStringRef,
-                    value: *mut *const std::ffi::c_void,
-                ) -> i32;
-                fn CFRelease(cf: *mut std::ffi::c_void);
-            }
-
-            let app_element = AXUIElementCreateApplication(pid);
-            if app_element.is_null() {
-                return None;
-            }
-
-            let attr_focused = CFString::new("AXFocusedWindow");
-            let mut focused_window: *const std::ffi::c_void = std::ptr::null();
-            let err = AXUIElementCopyAttributeValue(
-                app_element,
-                attr_focused.as_concrete_TypeRef(),
-                &mut focused_window,
-            );
-
-            if err != 0 || focused_window.is_null() {
-                CFRelease(app_element);
-                return None;
-            }
-
-            let attr = CFString::new(attribute);
-            let mut value: *const std::ffi::c_void = std::ptr::null();
-            let err = AXUIElementCopyAttributeValue(
-                focused_window as *mut _,
-                attr.as_concrete_TypeRef(),
-                &mut value,
-            );
-
-            let result = if err == 0 && !value.is_null() {
-                let cf_type = CFType::wrap_under_create_rule(value as _);
-                cf_type.downcast::<CFString>().map(|s| s.to_string())
-            } else {
-                None
+            let app = ax_create_application(pid)?;
+            let window = match ax_child(app, "AXFocusedWindow") {
+                Some(w) => w,
+                None => { ax_release(app); return None; }
             };
-
-            CFRelease(focused_window as *mut _);
-            CFRelease(app_element);
+            let result = ax_read_string(window, attribute);
+            ax_release(window);
+            ax_release(app);
             result
         }
     }
@@ -321,55 +280,14 @@ impl MacOSFocusMonitor {
     /// Used for S10: reading `AXURL` from a WKWebView/web area element.
     fn query_focused_element_attribute(&self, pid: i32, attribute: &str) -> Option<String> {
         unsafe {
-            use core_foundation::base::{CFType, TCFType};
-            use core_foundation::string::CFString;
-
-            #[link(name = "ApplicationServices", kind = "framework")]
-            extern "C" {
-                fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
-                fn AXUIElementCopyAttributeValue(
-                    element: *mut std::ffi::c_void,
-                    attribute: core_foundation::string::CFStringRef,
-                    value: *mut *const std::ffi::c_void,
-                ) -> i32;
-                fn CFRelease(cf: *mut std::ffi::c_void);
-            }
-
-            let app_element = AXUIElementCreateApplication(pid);
-            if app_element.is_null() {
-                return None;
-            }
-
-            let attr_focused_elem = CFString::new("AXFocusedUIElement");
-            let mut focused_elem: *const std::ffi::c_void = std::ptr::null();
-            let err = AXUIElementCopyAttributeValue(
-                app_element,
-                attr_focused_elem.as_concrete_TypeRef(),
-                &mut focused_elem,
-            );
-
-            if err != 0 || focused_elem.is_null() {
-                CFRelease(app_element);
-                return None;
-            }
-
-            let attr = CFString::new(attribute);
-            let mut value: *const std::ffi::c_void = std::ptr::null();
-            let err = AXUIElementCopyAttributeValue(
-                focused_elem as *mut _,
-                attr.as_concrete_TypeRef(),
-                &mut value,
-            );
-
-            let result = if err == 0 && !value.is_null() {
-                let cf_type = CFType::wrap_under_create_rule(value as _);
-                cf_type.downcast::<CFString>().map(|s| s.to_string())
-            } else {
-                None
+            let app = ax_create_application(pid)?;
+            let elem = match ax_child(app, "AXFocusedUIElement") {
+                Some(e) => e,
+                None => { ax_release(app); return None; }
             };
-
-            CFRelease(focused_elem as *mut _);
-            CFRelease(app_element);
+            let result = ax_read_string(elem, attribute);
+            ax_release(elem);
+            ax_release(app);
             result
         }
     }
@@ -378,6 +296,61 @@ impl MacOSFocusMonitor {
 impl WindowProvider for MacOSFocusMonitor {
     fn get_active_window(&self) -> Option<WindowInfo> {
         self.get_active_window_info()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared AX helpers used by query_focused_window_attribute and
+// query_focused_element_attribute to avoid duplicating extern "C" blocks.
+// ---------------------------------------------------------------------------
+
+#[link(name = "ApplicationServices", kind = "framework")]
+extern "C" {
+    fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
+    fn AXUIElementCopyAttributeValue(
+        element: *mut std::ffi::c_void,
+        attribute: core_foundation::string::CFStringRef,
+        value: *mut *const std::ffi::c_void,
+    ) -> i32;
+    fn CFRelease(cf: *mut std::ffi::c_void);
+}
+
+/// Create an AXUIElement for a process, returning `None` if the pid is invalid.
+unsafe fn ax_create_application(pid: i32) -> Option<*mut std::ffi::c_void> {
+    let el = AXUIElementCreateApplication(pid);
+    if el.is_null() { None } else { Some(el) }
+}
+
+/// Copy a single AX attribute from `element` as a raw CF pointer.
+/// Returns `None` on any AX error or when the attribute value is null.
+unsafe fn ax_child(
+    element: *mut std::ffi::c_void,
+    attribute: &str,
+) -> Option<*mut std::ffi::c_void> {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+    let attr = CFString::new(attribute);
+    let mut value: *const std::ffi::c_void = std::ptr::null();
+    let err = AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut value);
+    if err == 0 && !value.is_null() { Some(value as *mut _) } else { None }
+}
+
+/// Read an AX attribute from `element` as a `String`.
+unsafe fn ax_read_string(
+    element: *mut std::ffi::c_void,
+    attribute: &str,
+) -> Option<String> {
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::string::CFString;
+    let child = ax_child(element, attribute)?;
+    let cf = CFType::wrap_under_create_rule(child as _);
+    cf.downcast::<CFString>().map(|s| s.to_string())
+}
+
+/// Release a Core Foundation object obtained via a `Copy` or `Create` rule.
+unsafe fn ax_release(ptr: *mut std::ffi::c_void) {
+    if !ptr.is_null() {
+        CFRelease(ptr);
     }
 }
 

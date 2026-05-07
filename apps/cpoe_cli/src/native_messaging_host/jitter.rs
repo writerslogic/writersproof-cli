@@ -52,7 +52,9 @@ pub(crate) fn compute_jitter_stats(intervals: &[u64]) -> JitterStats {
 }
 
 /// Minimum sample count to produce a meaningful forensic verdict.
-const MIN_FORENSIC_SAMPLES: usize = 20;
+/// 20 keystrokes gives too few degrees of freedom for CV to stabilise;
+/// 50 is the practical minimum for reliable distribution characterisation.
+const MIN_FORENSIC_SAMPLES: usize = 50;
 /// CV threshold below which typing is suspiciously machine-regular.
 const SYNTHETIC_CV_THRESHOLD: f64 = 0.08;
 /// Fraction of intervals that are multiples of 10ms (10_000µs) indicating
