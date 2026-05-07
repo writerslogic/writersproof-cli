@@ -157,6 +157,25 @@ pub fn increment_session_counter(provider: &dyn Provider) -> Result<u64, TpmErro
     Ok(clock.clock)
 }
 
+/// Enforce hardware attestation requirement from config.
+///
+/// Returns `Err` if `require_hardware_attestation` is set and the current provider
+/// is a software fallback. Call this before initiating evidence signing when the
+/// config option is enabled.
+pub fn enforce_hardware_attestation(
+    provider: &dyn Provider,
+    config: &crate::config::SentinelConfig,
+) -> crate::error::Result<()> {
+    if config.require_hardware_attestation
+        && attestation_tier(provider) == AttestationTier::SoftwareFallback
+    {
+        return Err(crate::error::Error::crypto(
+            "signing refused: require_hardware_attestation is set but no SE/TPM is available",
+        ));
+    }
+    Ok(())
+}
+
 /// Detect and initialize the best available TPM provider for this platform.
 pub fn detect_provider() -> ProviderHandle {
     #[cfg(target_os = "macos")]
