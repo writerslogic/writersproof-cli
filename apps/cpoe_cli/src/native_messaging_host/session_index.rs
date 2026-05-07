@@ -50,7 +50,7 @@ pub(crate) fn save(dir: &Path, index: &SessionIndex) {
 
 /// Look up a recent prior session for `url`. Returns `None` if none exists
 /// or the record is older than `MAX_AGE_NS`.
-pub(crate) fn lookup_recent(index: &SessionIndex, url: &str, now_ns: u64) -> Option<&SessionRecord> {
+pub(crate) fn lookup_recent<'a>(index: &'a SessionIndex, url: &str, now_ns: u64) -> Option<&'a SessionRecord> {
     index.get(url).filter(|r| {
         now_ns.saturating_sub(r.last_active_ns) < MAX_AGE_NS
     })

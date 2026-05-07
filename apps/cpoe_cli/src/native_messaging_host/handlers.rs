@@ -7,7 +7,8 @@ use std::time::Instant;
 use subtle::ConstantTimeEq;
 
 use super::jitter::{
-    compute_jitter_stats, JITTER_REFILL_PER_MS, JITTER_TOKEN_COST, JITTER_TOKEN_MAX, MAX_BATCH_SIZE,
+    analyze_browser_jitter, compute_jitter_stats, JITTER_REFILL_PER_MS, JITTER_TOKEN_COST,
+    JITTER_TOKEN_MAX, MAX_BATCH_SIZE,
 };
 use super::protocol::{is_domain_allowed, now_nanos, validate_content_hash};
 use super::session_index;
@@ -568,6 +569,24 @@ pub(crate) fn handle_stop_session() -> Response {
             session.id,
             final_result.error_message.as_deref().unwrap_or("unknown")
         );
+    }
+
+    if let Some(forensics) = analyze_browser_jitter(&session.jitter_intervals) {
+        let line = format!(
+            "<!-- jitter-forensics: samples={} cv={:.3} regularity={:.3} rounding={:.3} verdict={} -->\n",
+            forensics.sample_count,
+            forensics.cv,
+            forensics.regularity_ratio,
+            forensics.rounding_ratio,
+            forensics.verdict,
+        );
+        if let Err(e) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&session.evidence_path)
+            .and_then(|mut f| f.write_all(line.as_bytes()))
+        {
+            eprintln!("Warning: failed to write jitter forensics: {e}");
+        }
     }
 
     let signature = session.signing_key.as_ref().map(|sk| {

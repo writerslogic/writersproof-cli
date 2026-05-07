@@ -208,8 +208,10 @@ pub(crate) struct Session {
     /// Device Ed25519 signing key for checkpoint signatures. ZeroizeOnDrop via ed25519-dalek.
     pub(crate) signing_key: Option<SigningKey>,
     /// Web editor type detected by the browser extension (e.g., "google-docs", "notion").
+    #[allow(dead_code)]
     pub(crate) editor_type: Option<String>,
     /// Session ID of the most recent prior session for the same URL, if within MAX_AGE_NS.
+    #[allow(dead_code)]
     pub(crate) prior_session_id: Option<String>,
 }
 
