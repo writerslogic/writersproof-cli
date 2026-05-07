@@ -52,7 +52,7 @@ serde_bytes = "0.11"
 serde_json = "1.0.135"
 scopeguard = "1"
 async-trait = "0.1"
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "query"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "query", "blocking"] }
 url = "2"
 log = "0.4"
 getrandom = "0.2"
@@ -182,6 +182,7 @@ uniffi = { version = "0.29", features = ["build"], optional = true }
 [dev-dependencies]
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
 
 [[bench]]
 name = "crypto_bench"

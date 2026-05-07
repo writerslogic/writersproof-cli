@@ -22,6 +22,7 @@ pub struct CpopConfig {
     pub privacy: PrivacyConfig,
     pub writersproof: WritersProofConfig,
     pub beacons: BeaconConfig,
+    pub trust_bundle: TrustBundleConfig,
 }
 
 impl Default for CpopConfig {
@@ -38,6 +39,7 @@ impl Default for CpopConfig {
             privacy: PrivacyConfig::default(),
             writersproof: WritersProofConfig::default(),
             beacons: BeaconConfig::default(),
+            trust_bundle: TrustBundleConfig::default(),
         }
     }
 }
@@ -83,6 +85,8 @@ pub struct BeaconConfig {
     pub timeout_secs: u64,
     /// Retry attempts before marking beacon source unavailable. Default: 2.
     pub retries: u32,
+    /// Roughtime dual-anchor configuration.
+    pub roughtime: RoughtimeConfig,
 }
 
 impl Default for BeaconConfig {
@@ -91,6 +95,7 @@ impl Default for BeaconConfig {
             enabled: true,
             timeout_secs: 5,
             retries: 2,
+            roughtime: RoughtimeConfig::default(),
         }
     }
 }
@@ -100,6 +105,58 @@ impl BeaconConfig {
     pub fn sanitize(&mut self) {
         self.timeout_secs = self.timeout_secs.clamp(1, 300);
         self.retries = self.retries.clamp(0, 10);
+        self.roughtime.sanitize();
+    }
+}
+
+/// Configuration for Roughtime dual-anchor temporal validation.
+///
+/// The Roughtime quorum timestamp is compared against an RFC 3161 TSA timestamp.
+/// When they disagree beyond `tolerance_secs`, the evidence packet is marked with
+/// `time_anchor_disagreement = true` and the dual-anchor proof is omitted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RoughtimeConfig {
+    /// Enable Roughtime dual-anchor validation. Default: true.
+    pub enabled: bool,
+    /// Maximum allowed disagreement between RFC 3161 and Roughtime in seconds.
+    /// Set to 0 to use the auto-calibrated value (mean + 3σ, capped at 180s).
+    /// Default: 0 (auto-calibrate).
+    pub tolerance_secs: u64,
+    /// Roughtime server list. Each entry is `"name|address|base64_pubkey"`.
+    /// When empty, the built-in defaults (Cloudflare, int08h, roughtime.se, txryan) are used.
+    pub servers: Vec<String>,
+}
+
+impl Default for RoughtimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            tolerance_secs: 0,
+            servers: Vec::new(),
+        }
+    }
+}
+
+impl RoughtimeConfig {
+    /// Clamp tolerance to at most 180 seconds (the production cap).
+    pub fn sanitize(&mut self) {
+        if self.tolerance_secs > 180 {
+            self.tolerance_secs = 180;
+        }
+    }
+
+    /// Effective tolerance: the configured value, or the production cap when 0.
+    ///
+    /// A value of 0 signals "use auto-calibrated tolerance". At runtime the
+    /// calibration path sets the actual value; this fallback prevents a zero
+    /// tolerance from rejecting all anchors if calibration has not run yet.
+    pub fn effective_tolerance(&self) -> u64 {
+        if self.tolerance_secs == 0 {
+            180
+        } else {
+            self.tolerance_secs
+        }
     }
 }
 
@@ -115,6 +172,14 @@ pub struct FingerprintConfig {
     /// Minimum samples before creating a profile
     pub min_samples: u32,
     pub storage_path: PathBuf,
+    /// Sessions before anomaly detection activates (Bootstrap → Advisory boundary).
+    /// During Bootstrap, IDENTITY_ANOMALY signals are suppressed entirely.
+    /// Default: 5.
+    pub bootstrap_sessions: u32,
+    /// Sessions before full anomaly enforcement begins (Advisory → Enforced boundary).
+    /// During Advisory, anomaly flags are recorded but do not block export.
+    /// Must be > bootstrap_sessions. Default: 10.
+    pub advisory_sessions: u32,
 }
 
 impl Default for FingerprintConfig {
@@ -128,6 +193,8 @@ impl Default for FingerprintConfig {
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join(".writersproof")
                 .join("fingerprints"),
+            bootstrap_sessions: 5,
+            advisory_sessions: 10,
         }
     }
 }
@@ -491,5 +558,47 @@ impl From<CpopConfig> for VdfParameters {
             min_iterations: cfg.vdf.min_iterations,
             max_iterations: cfg.vdf.max_iterations,
         }
+    }
+}
+
+/// CA trust bundle configuration for WritersProof beacon attestation verification.
+///
+/// At startup the engine fetches a signed key manifest from `manifest_url` and
+/// caches it at `local_cache_path`. If the fetch fails, the engine falls back to
+/// the pinned bundle embedded in the binary. When `local_cache_path` exists and
+/// is newer than `max_cache_age_secs`, the network fetch is skipped.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TrustBundleConfig {
+    /// URL of the signed CA key manifest. Empty string disables remote fetch.
+    pub manifest_url: String,
+    /// Local path for caching the fetched manifest.
+    pub local_cache_path: PathBuf,
+    /// Maximum age of a cached manifest before a refresh is attempted (seconds).
+    /// Default: 86400 (24 hours).
+    pub max_cache_age_secs: u64,
+    /// Fetch timeout in seconds. Default: 10.
+    pub fetch_timeout_secs: u64,
+}
+
+impl Default for TrustBundleConfig {
+    fn default() -> Self {
+        let cache_dir = dirs::cache_dir()
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("WritersProof");
+        Self {
+            manifest_url: "https://writersproof.com/.well-known/ca-bundle.json".to_string(),
+            local_cache_path: cache_dir.join("ca-bundle.json"),
+            max_cache_age_secs: 86_400,
+            fetch_timeout_secs: 10,
+        }
+    }
+}
+
+impl TrustBundleConfig {
+    /// Clamp fetch timeout to a safe range (1–60 s).
+    pub fn sanitize(&mut self) {
+        self.fetch_timeout_secs = self.fetch_timeout_secs.clamp(1, 60);
     }
 }

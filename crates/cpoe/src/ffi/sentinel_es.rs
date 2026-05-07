@@ -308,6 +308,117 @@ pub fn ffi_sentinel_es_terminal_editor_exec(
     })
 }
 
+/// Notify the sentinel that a dictation session has begun for `doc_path`.
+///
+/// Called by `DictationMonitor.swift` when `SFSpeechRecognizer` starts recognizing
+/// for a document that is already being tracked.
+///
+/// `device_uid_hash_hex` is the 8-byte IORegistry device UID hash, hex-encoded (16 chars).
+/// `ambient_noise_db` is the dBFS reading from AVAudioEngine (-100.0 = not measured).
+///
+/// Returns `true` if the sentinel accepted the begin event.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_dictation_begin(
+    doc_path: String,
+    es_speech_pid: u32,
+    audio_transport_type: u8,
+    device_uid_hash_hex: String,
+    ambient_noise_db: f32,
+) -> bool {
+    catch_ffi_panic!(false, {
+    if doc_path.len() > 4096 || device_uid_hash_hex.len() > 16 {
+        log::warn!("ffi_sentinel_dictation_begin: params too long");
+        return false;
+    }
+
+    let device_uid_hash = match crate::utils::hex_decode_8(&device_uid_hash_hex) {
+        Ok(h) => h,
+        Err(_) => [0u8; 8],
+    };
+
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    sentinel.begin_dictation(&doc_path, es_speech_pid, audio_transport_type, device_uid_hash, ambient_noise_db)
+    })
+}
+
+/// Record an incremental recognition fragment from the speech recognizer.
+///
+/// Called by `DictationMonitor.swift` for each `SFSpeechRecognitionResult` that
+/// is marked as final. `transcript_text` is hashed with BLAKE3 on the Rust side
+/// and never stored — only the hash enters the WAL chain.
+///
+/// Returns `true` if the fragment was recorded.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_dictation_fragment(
+    doc_path: String,
+    word_count: u32,
+    confidence: f32,
+    correction_count: u32,
+    transcript_text: String,
+    speaker_output_active: bool,
+) -> bool {
+    catch_ffi_panic!(false, {
+    if doc_path.len() > 4096 || transcript_text.len() > 65536 {
+        log::warn!("ffi_sentinel_dictation_fragment: params too long");
+        return false;
+    }
+    if !confidence.is_finite() || !(0.0..=1.0).contains(&confidence) {
+        log::warn!("ffi_sentinel_dictation_fragment: invalid confidence {confidence}");
+        return false;
+    }
+
+    let text_hash = crate::utils::blake3_hash_bytes(transcript_text.as_bytes());
+
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    sentinel.record_dictation_fragment(
+        &doc_path,
+        word_count,
+        confidence,
+        correction_count,
+        text_hash,
+        speaker_output_active,
+    )
+    })
+}
+
+/// Finalize the active dictation session for `doc_path`.
+///
+/// Called by `DictationMonitor.swift` when `SFSpeechRecognizer` ends recognition.
+/// `cross_window_similarity` (0.0–1.0) is computed by `CrossWindowDetector` on
+/// the Swift side comparing the recognized text to visible screen content.
+///
+/// Returns `true` if the session was finalized and a `DictationEvent` was recorded.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_dictation_end(
+    doc_path: String,
+    speaker_output_active: bool,
+    keystrokes_during: u32,
+    cross_window_similarity: f32,
+) -> bool {
+    catch_ffi_panic!(false, {
+    if doc_path.len() > 4096 {
+        log::warn!("ffi_sentinel_dictation_end: doc_path too long");
+        return false;
+    }
+    let cross_window_similarity = cross_window_similarity.clamp(0.0, 1.0);
+
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    sentinel.end_dictation(&doc_path, speaker_output_active, keystrokes_during, cross_window_similarity)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4,6 +4,7 @@ use super::*;
 
 use ed25519_dalek::SigningKey;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 fn temp_wal_path() -> PathBuf {
@@ -698,4 +699,220 @@ fn test_wal_empty_verify() {
 
     let _ = wal.close();
     let _ = fs::remove_file(&path);
+}
+
+// ── Wal::recover() tests ───────────────────────────────────────────────────────
+
+// For 1-byte-payload entries the serialised frame is exactly 154 bytes:
+//   4 (length prefix) + 8 (seq) + 8 (ts) + 1 (type) + 4 (payload_len) +
+//   1 (payload) + 32 (prev_hash) + 32 (cumulative_hash) + 64 (signature)
+const FRAME_SIZE: u64 = 154;
+const HEADER_BYTES: u64 = 64;
+// Signature field starts at frame offset 4+8+8+1+4+1+32+32 = 90.
+const SIG_OFFSET_IN_FRAME: u64 = 90;
+
+fn corrupt_file(path: &std::path::Path, file_offset: u64, xor_byte: u8, count: usize) {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .expect("open for corruption");
+    f.seek(SeekFrom::Start(file_offset)).expect("seek");
+    let mut buf = vec![0u8; count];
+    f.read_exact(&mut buf).expect("read for corruption");
+    for b in &mut buf {
+        *b ^= xor_byte;
+    }
+    f.seek(SeekFrom::Start(file_offset)).expect("re-seek");
+    f.write_all(&buf).expect("write corrupted");
+    f.sync_all().expect("sync after corruption");
+}
+
+#[test]
+fn test_wal_recover_clean_returns_no_lost() {
+    let path = temp_wal_path();
+    let session_id = [50u8; 32];
+    let wal = Wal::open(&path, session_id, test_signing_key()).expect("open");
+    wal.append(EntryType::Heartbeat, vec![1]).expect("append 0");
+    wal.append(EntryType::Heartbeat, vec![2]).expect("append 1");
+    wal.flush().expect("flush");
+
+    let report = wal.recover().expect("recover clean WAL");
+    assert_eq!(report.lost_count, 0, "clean WAL must report zero lost entries");
+    assert_eq!(wal.entry_count(), 2);
+    assert!(wal.verify().expect("verify").valid);
+
+    let _ = wal.close();
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn test_wal_recover_trailing_corruption_truncates() {
+    let path = temp_wal_path();
+    let session_id = [51u8; 32];
+    let wal = Wal::open(&path, session_id, test_signing_key()).expect("open");
+    for i in 0u8..4 {
+        wal.append(EntryType::Heartbeat, vec![i]).expect("append");
+    }
+    wal.flush().expect("flush");
+
+    // Corrupt the signature field of entry 2 (0-indexed) while the WAL is open.
+    let entry2_sig_offset = HEADER_BYTES + 2 * FRAME_SIZE + SIG_OFFSET_IN_FRAME;
+    corrupt_file(&path, entry2_sig_offset, 0xFF, 1);
+
+    let report = wal.recover().expect("recover should succeed");
+    assert!(report.lost_count > 0, "must report lost entries after truncation");
+    assert_eq!(report.truncated_at_sequence, 2, "truncated at sequence 2");
+    assert_eq!(wal.entry_count(), 2, "entries 0 and 1 survive");
+    assert!(wal.verify().expect("verify").valid);
+
+    // Append still works after recovery.
+    wal.append(EntryType::Heartbeat, vec![99]).expect("append after recovery");
+    assert_eq!(wal.entry_count(), 3);
+    assert!(wal.verify().expect("verify post-append").valid);
+
+    let _ = wal.close();
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn test_wal_recover_first_entry_corrupt_returns_unrecoverable() {
+    let path = temp_wal_path();
+    let session_id = [52u8; 32];
+    let wal = Wal::open(&path, session_id, test_signing_key()).expect("open");
+    wal.append(EntryType::Heartbeat, vec![1]).expect("append");
+    wal.flush().expect("flush");
+
+    // Corrupt all 64 bytes of the first entry's signature.
+    let entry0_sig_offset = HEADER_BYTES + SIG_OFFSET_IN_FRAME;
+    corrupt_file(&path, entry0_sig_offset, 0xFF, 64);
+
+    let result = wal.recover();
+    assert!(
+        matches!(result, Err(WalError::Unrecoverable)),
+        "corruption before first valid entry must be Unrecoverable, got {:?}",
+        result
+    );
+
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn test_wal_recover_partial_frame_unclean_shutdown() {
+    // Simulate process kill mid-write: close the WAL normally, then append an
+    // orphan 4-byte length prefix with no entry body to mimic a torn write.
+    let path = temp_wal_path();
+    let session_id = [53u8; 32];
+    {
+        let wal = Wal::open(&path, session_id, test_signing_key()).expect("open");
+        wal.append(EntryType::Heartbeat, vec![1]).expect("append 0");
+        wal.append(EntryType::Heartbeat, vec![2]).expect("append 1");
+        wal.close().expect("close");
+    }
+    {
+        let mut f = fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("open for partial write");
+        f.write_all(&150u32.to_be_bytes()).expect("write partial length prefix");
+        f.sync_all().expect("sync");
+    }
+
+    // scan_to_end on reopen truncates the partial frame.
+    let wal2 = Wal::open(&path, session_id, test_signing_key()).expect("reopen");
+    assert_eq!(wal2.entry_count(), 2, "scan_to_end preserves valid entries");
+
+    // recover() on an already-clean WAL confirms zero lost.
+    let report = wal2.recover().expect("recover");
+    assert_eq!(report.lost_count, 0);
+    assert!(wal2.verify().expect("verify").valid);
+
+    let _ = wal2.close();
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn test_wal_append_after_reopen_on_corrupted_wal_is_valid() {
+    // Regression for the scan_to_end hasher-contamination bug:
+    // if the cumulative_hasher is not restored on a failed entry, all appends
+    // after reopen would produce wrong cumulative hashes and fail verify().
+    let path = temp_wal_path();
+    let session_id = [54u8; 32];
+    {
+        let wal = Wal::open(&path, session_id, test_signing_key()).expect("open");
+        wal.append(EntryType::Heartbeat, vec![1]).expect("append 0");
+        wal.append(EntryType::Heartbeat, vec![2]).expect("append 1");
+        wal.close().expect("close");
+    }
+
+    // Corrupt the signature of entry 1 (last entry).
+    let entry1_sig_offset = HEADER_BYTES + FRAME_SIZE + SIG_OFFSET_IN_FRAME;
+    corrupt_file(&path, entry1_sig_offset, 0xFF, 1);
+
+    // Reopen: scan_to_end truncates to entry 0.
+    let wal2 = Wal::open(&path, session_id, test_signing_key()).expect("reopen corrupted");
+    assert_eq!(wal2.entry_count(), 1);
+
+    // Append must produce a verifiable chain — would fail with a contaminated hasher.
+    wal2.append(EntryType::Heartbeat, vec![99]).expect("append after reopen");
+    assert_eq!(wal2.entry_count(), 2);
+    let v = wal2.verify().expect("verify");
+    assert!(v.valid, "chain must be valid after append on reopened WAL");
+    assert_eq!(v.entries, 2);
+
+    let _ = wal2.close();
+    let _ = fs::remove_file(&path);
+}
+
+mod prop_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn prop_recover_preserves_pre_corruption_entries(
+            n_entries in 2usize..=5,
+            // 1 = corrupt last entry, 2 = second-to-last, etc.
+            corrupt_from_last in 1usize..=4,
+            // byte index within the 64-byte signature field to flip
+            sig_byte_idx in 0usize..64,
+            xor_byte in 1u8..=255u8,
+        ) {
+            let corrupt_idx = n_entries
+                .saturating_sub(corrupt_from_last)
+                .max(1); // always >= 1 so entry 0 always survives
+
+            let path = temp_wal_path();
+            let session_id = [99u8; 32];
+            let wal = Wal::open(&path, session_id, test_signing_key()).expect("open");
+            for i in 0..n_entries {
+                wal.append(EntryType::Heartbeat, vec![i as u8]).expect("append");
+            }
+            wal.flush().expect("flush");
+
+            let sig_file_offset = HEADER_BYTES
+                + corrupt_idx as u64 * FRAME_SIZE
+                + SIG_OFFSET_IN_FRAME
+                + sig_byte_idx as u64;
+            corrupt_file(&path, sig_file_offset, xor_byte, 1);
+
+            let report = wal.recover().expect("recover");
+            prop_assert!(
+                report.truncated_at_sequence <= corrupt_idx as u64,
+                "truncation point {} must be <= corrupt_idx {}",
+                report.truncated_at_sequence,
+                corrupt_idx
+            );
+            prop_assert_eq!(
+                wal.entry_count(),
+                corrupt_idx as u64,
+                "entries before corruption must survive"
+            );
+            prop_assert!(wal.verify().expect("verify").valid);
+
+            let _ = wal.close();
+            let _ = fs::remove_file(&path);
+        }
+    }
 }

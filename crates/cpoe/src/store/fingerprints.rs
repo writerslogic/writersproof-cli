@@ -32,4 +32,36 @@ impl SecureStore {
         )?;
         Ok(())
     }
+
+    /// Return the number of completed sessions for a profile (bootstrap counter).
+    /// Returns 0 when no row exists yet.
+    pub fn get_fingerprint_session_count(&self, profile_id: &str) -> anyhow::Result<u32> {
+        let result = self.conn.query_row(
+            "SELECT COALESCE(session_count, 0) FROM fingerprints WHERE profile_id = ?",
+            [profile_id],
+            |row| row.get::<_, i64>(0),
+        );
+        match result {
+            Ok(n) => Ok(u32::try_from(n).unwrap_or(u32::MAX)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(0),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Increment the session counter for a profile by 1.
+    ///
+    /// If no row exists yet, an empty row is inserted first so the counter can
+    /// be incremented before the full fingerprint data is available.
+    pub fn increment_fingerprint_session_count(&self, profile_id: &str) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().timestamp();
+        self.conn.execute(
+            "INSERT INTO fingerprints (profile_id, data_json, updated_at, session_count)
+             VALUES (?, '{}', ?, 1)
+             ON CONFLICT(profile_id) DO UPDATE SET
+                 session_count = COALESCE(session_count, 0) + 1,
+                 updated_at    = excluded.updated_at",
+            params![profile_id, now],
+        )?;
+        Ok(())
+    }
 }

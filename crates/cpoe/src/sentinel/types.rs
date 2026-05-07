@@ -659,6 +659,26 @@ pub struct DetectedAiTool {
     pub detected_at: SystemTime,
 }
 
+/// In-flight state for a dictation session within a document session.
+///
+/// Created on `ffi_sentinel_dictation_begin`, consumed on `ffi_sentinel_dictation_end`.
+#[derive(Debug)]
+pub struct ActiveDictationSession {
+    pub start_ns: i64,
+    pub es_speech_pid: u32,
+    pub audio_transport_type: u8,
+    pub device_uid_hash: [u8; 8],
+    pub fragment_count: u32,
+    pub total_words: u32,
+    pub confidence_values: Vec<f32>,
+    pub speaker_output_ever_active: bool,
+    pub ambient_noise_db: f32,
+    /// Keystroke count at dictation begin (compare with session count at end).
+    pub keystrokes_at_begin: u64,
+    /// Cumulative correction count across all recorded fragments.
+    pub total_corrections: u32,
+}
+
 #[derive(Debug)]
 pub struct DocumentSession {
     pub path: String,
@@ -693,6 +713,10 @@ pub struct DocumentSession {
     pub ai_tools_detected: Vec<DetectedAiTool>,
     /// Number of ES capture gaps (dropped events) during this session.
     pub capture_gaps: u32,
+    /// In-flight dictation session, present between DictationBegin and DictationEnd.
+    pub active_dictation: Option<ActiveDictationSession>,
+    /// Completed dictation events recorded during this document session.
+    pub dictation_events: Vec<crate::evidence::DictationEvent>,
     pub(crate) has_focus: bool,
     pub(crate) focus_started: Option<Instant>,
     pub event_validation: crate::forensics::event_validation::EventValidationState,
@@ -905,6 +929,8 @@ impl Clone for DocumentSession {
             focus_switches: self.focus_switches.clone(),
             ai_tools_detected: self.ai_tools_detected.clone(),
             capture_gaps: self.capture_gaps,
+            active_dictation: None,
+            dictation_events: self.dictation_events.clone(),
             has_focus: self.has_focus,
             focus_started: self.focus_started,
             event_validation: self.event_validation.clone(),
@@ -971,6 +997,8 @@ impl DocumentSession {
             focus_switches: VecDeque::new(),
             ai_tools_detected: Vec::new(),
             capture_gaps: 0,
+            active_dictation: None,
+            dictation_events: Vec::new(),
             has_focus: false,
             focus_started: None,
             event_validation: Default::default(),

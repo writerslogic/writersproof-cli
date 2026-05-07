@@ -8,6 +8,6 @@ mod types;
 mod tests;
 
 pub use types::{
-    CpopConfig, FingerprintConfig, PresenceConfig, PrivacyConfig, ResearchConfig, SentinelConfig,
-    VdfConfig, WritersProofConfig,
+    BeaconConfig, CpopConfig, FingerprintConfig, PresenceConfig, PrivacyConfig, ResearchConfig,
+    SentinelConfig, TrustBundleConfig, VdfConfig, WritersProofConfig,
 };

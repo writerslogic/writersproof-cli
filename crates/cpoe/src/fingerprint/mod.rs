@@ -9,6 +9,7 @@ pub mod author;
 pub mod comparison;
 pub mod consent;
 pub mod manager;
+pub mod maturity;
 pub mod storage;
 pub mod voice;
 
@@ -23,6 +24,7 @@ pub use author::{AuthorFingerprint, ProfileId};
 pub use comparison::{FingerprintComparison, ProfileMatcher};
 pub use consent::{ConsentManager, ConsentRecord, ConsentStatus};
 pub use manager::{FingerprintManager, FingerprintStatus};
+pub use maturity::FingerprintMaturity;
 pub use storage::{FingerprintSnapshot, FingerprintStorage, StoredProfile};
 pub use voice::{StyleCollector, StyleFingerprint};
 

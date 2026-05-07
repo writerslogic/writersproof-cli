@@ -242,6 +242,12 @@ pub struct Packet {
     /// Present for bundle-based apps (Scrivener `.scriv`, Final Draft `.fdx`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document_structure: Option<DocumentStructureSnapshot>,
+    /// Set to `true` when the RFC 3161 and Roughtime timestamps disagree beyond
+    /// the configured tolerance. The dual-anchor proof is omitted from the packet
+    /// in this case (fail-closed). Absent / false means anchors agree or the
+    /// dual-anchor check was not performed.
+    #[serde(default, skip_serializing_if = "crate::utils::is_false")]
+    pub time_anchor_disagreement: bool,
 }
 
 impl Default for Packet {
@@ -287,6 +293,7 @@ impl Default for Packet {
             credential_reference: None,
             export_attestation: None,
             document_structure: None,
+            time_anchor_disagreement: false,
         }
     }
 }
@@ -617,6 +624,10 @@ pub struct BehavioralEvidence {
     pub fingerprint: Option<BehavioralFingerprint>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub forgery_analysis: Option<ForgeryAnalysis>,
+    /// Bootstrap maturity stage of the behavioral fingerprint at the time this
+    /// evidence was built. Absent when fingerprinting is disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint_maturity: Option<crate::fingerprint::FingerprintMaturity>,
 }
 
 /// Spatial edit region within the document (position range + byte delta).

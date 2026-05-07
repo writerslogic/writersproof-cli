@@ -286,7 +286,7 @@ fn test_active_session() {
 #[test]
 fn test_next_challenge_time_no_session() {
     let mut verifier = Verifier::new(test_config()).unwrap();
-    assert!(verifier.next_challenge_time().is_none());
+    assert!(verifier.next_challenge_time().unwrap().is_none());
 }
 
 #[test]
@@ -294,7 +294,7 @@ fn test_next_challenge_time_with_session() {
     let mut verifier = Verifier::new(test_config()).unwrap();
     verifier.start_session().expect("start session");
 
-    let next_time = verifier.next_challenge_time();
+    let next_time = verifier.next_challenge_time().expect("no error");
     assert!(next_time.is_some());
 }
 
@@ -309,13 +309,37 @@ fn test_should_issue_challenge() {
 
     verifier.start_session().expect("start session");
     std::thread::sleep(Duration::from_millis(10));
-    assert!(verifier.should_issue_challenge());
+    assert!(verifier.should_issue_challenge().expect("no error"));
 }
 
 #[test]
 fn test_should_issue_challenge_no_session() {
     let mut verifier = Verifier::new(test_config()).unwrap();
-    assert!(!verifier.should_issue_challenge());
+    assert!(!verifier.should_issue_challenge().expect("no error"));
+}
+
+/// H-057: next_challenge_time must propagate a duration conversion error rather than
+/// silently substituting a default window.
+#[test]
+fn test_next_challenge_time_no_implicit_window_substitution() {
+    // A challenge_interval near Duration::MAX causes from_std to fail because the
+    // nanosecond count overflows i64 (chrono's internal representation). Confirm the
+    // error surfaces rather than being replaced with an arbitrary fallback window.
+    let huge_interval = Duration::from_secs(u64::MAX / 2);
+    // Validation only checks zero / variance bounds, not chrono overflow, so new() succeeds.
+    let config = Config {
+        challenge_interval: huge_interval,
+        interval_variance: 0.0,
+        response_window: Duration::from_secs(60),
+        enabled_challenges: vec![ChallengeType::TypePhrase],
+    };
+    let mut verifier = Verifier::new(config).unwrap();
+    verifier.start_session().expect("start session");
+    let result = verifier.next_challenge_time();
+    assert!(
+        result.is_err(),
+        "out-of-range interval must return Err, not a substituted window"
+    );
 }
 
 #[test]

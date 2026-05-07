@@ -11,6 +11,7 @@ pub mod compat;
 pub mod ear;
 pub mod encoding;
 pub mod profiles;
+pub mod trust_bundle;
 pub mod types;
 pub mod verification;
 

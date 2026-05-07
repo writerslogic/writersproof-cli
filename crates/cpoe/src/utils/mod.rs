@@ -29,6 +29,11 @@ pub(crate) use time::DateTimeNanosExt;
 pub use time::{duration_to_ms, now_ns, now_secs, ns_elapsed, ns_to_ms, ns_to_secs};
 pub use validation::{BundleIdValidator, TextValidator, TimestampValidator};
 
+/// Serde helper: skip serializing a `bool` field when it is `false`.
+pub fn is_false(v: &bool) -> bool {
+    !v
+}
+
 /// Minimum dictation duration considered meaningful (1 second).
 ///
 /// Durations shorter than this are treated as incomplete or injected events
@@ -119,6 +124,11 @@ fn hex_decode_exact<const N: usize>(s: &str) -> crate::error::Result<[u8; N]> {
     bytes
         .try_into()
         .map_err(|_| crate::error::Error::validation(format!("expected {N} bytes, got {len}")))
+}
+
+/// Decode a hex string to a fixed 8-byte array.
+pub fn hex_decode_8(s: &str) -> crate::error::Result<[u8; 8]> {
+    hex_decode_exact::<8>(s)
 }
 
 /// Decode a hex string to a fixed 16-byte array.

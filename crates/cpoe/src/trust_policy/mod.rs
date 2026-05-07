@@ -18,5 +18,5 @@ mod tests;
 
 pub use types::{
     AppraisalPolicy, EvidenceMetrics, FactorEvidence, FactorType, PolicyMetadata, ThresholdType,
-    TrustComputation, TrustFactor, TrustThreshold,
+    TrustComputation, TrustFactor, TrustPolicyError, TrustThreshold,
 };

@@ -201,6 +201,7 @@ impl Builder {
             metrics,
             fingerprint: None,
             forgery_analysis: None,
+            fingerprint_maturity: None,
         });
         self
     }
@@ -232,8 +233,23 @@ impl Builder {
             metrics,
             fingerprint,
             forgery_analysis,
+            fingerprint_maturity: None,
         });
 
+        self
+    }
+
+    /// Set the fingerprint maturity stage on an existing `BehavioralEvidence` layer.
+    ///
+    /// Must be called after `with_behavioral` or `with_behavioral_full`.
+    /// No-ops silently when no behavioral layer has been attached yet.
+    pub fn with_fingerprint_maturity(
+        mut self,
+        maturity: crate::fingerprint::FingerprintMaturity,
+    ) -> Self {
+        if let Some(ref mut beh) = self.packet.behavioral {
+            beh.fingerprint_maturity = Some(maturity);
+        }
         self
     }
 

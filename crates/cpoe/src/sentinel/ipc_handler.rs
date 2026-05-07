@@ -432,6 +432,20 @@ impl SentinelIpcHandler {
 
             builder = builder.with_behavioral_full(edit_regions, None, &typing_samples);
 
+            // Attach fingerprint maturity so verifiers know the enforcement stage.
+            let profile_id = hex::encode(&identity_fingerprint);
+            let fp_defaults = crate::config::FingerprintConfig::default();
+            let session_count = store_opt
+                .as_ref()
+                .and_then(|s| s.get_fingerprint_session_count(&profile_id).ok())
+                .unwrap_or(0);
+            let maturity = crate::fingerprint::FingerprintMaturity::from_session_count(
+                session_count,
+                fp_defaults.bootstrap_sessions,
+                fp_defaults.advisory_sessions,
+            );
+            builder = builder.with_fingerprint_maturity(maturity);
+
             // Build KeystrokeEvidence from session or store events.
             let first_ts = store_events.first().map(|e| e.timestamp_ns).unwrap_or(0);
             let last_ts = store_events.last().map(|e| e.timestamp_ns).unwrap_or(0);

@@ -7,4 +7,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use types::{Entry, EntryType, Header, Wal, WalError, WalVerification};
+pub use types::{
+    DictationBeginPayload, DictationEndPayload, DictationFragmentPayload, Entry, EntryType,
+    Header, Wal, WalError, WalRecoveryReport, WalVerification,
+};

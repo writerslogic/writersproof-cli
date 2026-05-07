@@ -14,6 +14,31 @@ pub struct RoughtimeServer {
     pub public_key_base64: &'static str,
 }
 
+/// Owned variant of [`RoughtimeServer`] for config-driven server lists.
+#[derive(Debug, Clone)]
+pub struct RoughtimeServerOwned {
+    pub name: String,
+    pub address: String,
+    pub public_key_base64: String,
+}
+
+impl RoughtimeServerOwned {
+    /// Parse a `"name|address|base64_pubkey"` config string.
+    pub fn from_config_str(s: &str) -> Result<Self> {
+        let parts: Vec<&str> = s.splitn(3, '|').collect();
+        if parts.len() != 3 {
+            return Err(anyhow!(
+                "roughtime server config must be 'name|address|base64_pubkey', got: {s}"
+            ));
+        }
+        Ok(Self {
+            name: parts[0].to_string(),
+            address: parts[1].to_string(),
+            public_key_base64: parts[2].to_string(),
+        })
+    }
+}
+
 // Source: https://github.com/cloudflare/roughtime/blob/master/ecosystem.json
 const SERVERS: &[RoughtimeServer] = &[
     RoughtimeServer {
@@ -52,11 +77,8 @@ const QUORUM_TOLERANCE_US: u64 = 10_000_000;
 pub struct RoughtimeClient;
 
 impl RoughtimeClient {
-    /// Fetch verified time from a Roughtime server.
-    ///
-    /// Sends a Roughtime request over UDP, parses the response, and
-    /// extracts the midpoint timestamp.
-    pub fn fetch_time(server: &RoughtimeServer) -> Result<u64> {
+    /// Core implementation: fetch verified time from server identified by borrowed strings.
+    fn fetch_time_inner(name: &str, address: &str, public_key_base64: &str) -> Result<u64> {
         use roughenough_protocol::cursor::ParseCursor;
         use roughenough_protocol::request::Request;
         use roughenough_protocol::response::Response;
@@ -64,7 +86,7 @@ impl RoughtimeClient {
         use roughenough_protocol::wire::{FromFrame, ToFrame};
 
         let public_key_bytes = general_purpose::STANDARD
-            .decode(server.public_key_base64)
+            .decode(public_key_base64)
             .map_err(|e| anyhow!("Invalid server public key: {e}"))?;
         if public_key_bytes.len() != 32 {
             return Err(anyhow!("Invalid server public key length"));
@@ -76,7 +98,7 @@ impl RoughtimeClient {
                 .try_into()
                 .map_err(|_| anyhow!("Failed to convert public key bytes"))?;
             VerifyingKey::from_bytes(&bytes)
-                .map_err(|e| anyhow!("Invalid Ed25519 public key for {}: {e}", server.name))?
+                .map_err(|e| anyhow!("Invalid Ed25519 public key for {name}: {e}"))?
         };
 
         let mut nonce_bytes = [0u8; 32];
@@ -95,21 +117,21 @@ impl RoughtimeClient {
             .set_read_timeout(Some(REQUEST_TIMEOUT))
             .map_err(|e| anyhow!("Failed to set socket timeout: {e}"))?;
         socket
-            .send_to(&request_bytes, server.address)
-            .map_err(|e| anyhow!("Failed to send request to {}: {e}", server.name))?;
+            .send_to(&request_bytes, address)
+            .map_err(|e| anyhow!("Failed to send request to {name}: {e}"))?;
 
         let mut recv_buf = vec![0u8; 4096];
         let (size, _) = socket
             .recv_from(&mut recv_buf)
-            .map_err(|e| anyhow!("Failed to receive response from {}: {e}", server.name))?;
+            .map_err(|e| anyhow!("Failed to receive response from {name}: {e}"))?;
         recv_buf.truncate(size);
 
         let mut cursor = ParseCursor::new(&mut recv_buf);
         let response = Response::from_frame(&mut cursor)
-            .map_err(|e| anyhow!("Failed to parse response from {}: {e}", server.name))?;
+            .map_err(|e| anyhow!("Failed to parse response from {name}: {e}"))?;
 
         if response.nonc() != &nonce {
-            return Err(anyhow!("Nonce mismatch in response from {}", server.name));
+            return Err(anyhow!("Nonce mismatch in response from {name}"));
         }
 
         // Verify the certificate: server long-term key signs the DELE (delegation) bytes.
@@ -125,7 +147,7 @@ impl RoughtimeClient {
             // Step 1: verify CERT.SIG = sign(server_long_term_key, dele_prefix || DELE bytes)
             let dele_bytes = dele
                 .as_bytes()
-                .map_err(|e| anyhow!("Failed to serialize DELE for {}: {e}", server.name))?;
+                .map_err(|e| anyhow!("Failed to serialize DELE for {name}: {e}"))?;
             let mut dele_msg = Vec::with_capacity(version.dele_prefix().len() + dele_bytes.len());
             dele_msg.extend_from_slice(version.dele_prefix());
             dele_msg.extend_from_slice(&dele_bytes);
@@ -133,29 +155,24 @@ impl RoughtimeClient {
                 .sig()
                 .as_ref()
                 .try_into()
-                .map_err(|_| anyhow!("Invalid CERT.SIG length from {}", server.name))?;
+                .map_err(|_| anyhow!("Invalid CERT.SIG length from {name}"))?;
             let cert_sig = Ed25519Sig::from_bytes(&cert_sig_bytes);
             server_long_term_key
                 .verify(&dele_msg, &cert_sig)
-                .map_err(|e| {
-                    anyhow!(
-                        "CERT signature verification failed for {}: {e}",
-                        server.name
-                    )
-                })?;
+                .map_err(|e| anyhow!("CERT signature verification failed for {name}: {e}"))?;
 
             // Step 2: extract delegate key from DELE, verify response SIG over SREP bytes.
             let dele_pubk_bytes: [u8; 32] = dele
                 .pubk()
                 .as_ref()
                 .try_into()
-                .map_err(|_| anyhow!("Invalid DELE.PUBK length from {}", server.name))?;
+                .map_err(|_| anyhow!("Invalid DELE.PUBK length from {name}"))?;
             let delegate_key = VerifyingKey::from_bytes(&dele_pubk_bytes)
-                .map_err(|e| anyhow!("Invalid delegate key from {}: {e}", server.name))?;
+                .map_err(|e| anyhow!("Invalid delegate key from {name}: {e}"))?;
             let srep_bytes = response
                 .srep()
                 .as_bytes()
-                .map_err(|e| anyhow!("Failed to serialize SREP for {}: {e}", server.name))?;
+                .map_err(|e| anyhow!("Failed to serialize SREP for {name}: {e}"))?;
             let mut srep_msg = Vec::with_capacity(version.srep_prefix().len() + srep_bytes.len());
             srep_msg.extend_from_slice(version.srep_prefix());
             srep_msg.extend_from_slice(&srep_bytes);
@@ -163,29 +180,36 @@ impl RoughtimeClient {
                 .sig()
                 .as_ref()
                 .try_into()
-                .map_err(|_| anyhow!("Invalid response SIG length from {}", server.name))?;
+                .map_err(|_| anyhow!("Invalid response SIG length from {name}"))?;
             let resp_sig = Ed25519Sig::from_bytes(&resp_sig_bytes);
-            delegate_key.verify(&srep_msg, &resp_sig).map_err(|e| {
-                anyhow!(
-                    "Response signature verification failed for {}: {e}",
-                    server.name
-                )
-            })?;
+            delegate_key
+                .verify(&srep_msg, &resp_sig)
+                .map_err(|e| anyhow!("Response signature verification failed for {name}: {e}"))?;
         }
 
         let midpoint = response.srep().midp();
         if midpoint == 0 {
-            return Err(anyhow!("Zero midpoint in response from {}", server.name));
+            return Err(anyhow!("Zero midpoint in response from {name}"));
         }
 
         log::info!(
             "roughtime: received verified time from {} (midpoint: {}, radius: {})",
-            server.name,
+            name,
             midpoint,
             response.srep().radi()
         );
 
         Ok(midpoint)
+    }
+
+    /// Fetch verified time from a static Roughtime server descriptor.
+    pub fn fetch_time(server: &RoughtimeServer) -> Result<u64> {
+        Self::fetch_time_inner(server.name, server.address, server.public_key_base64)
+    }
+
+    /// Fetch verified time from an owned Roughtime server descriptor.
+    pub fn fetch_time_owned(server: &RoughtimeServerOwned) -> Result<u64> {
+        Self::fetch_time_inner(&server.name, &server.address, &server.public_key_base64)
     }
 
     /// Find the largest group of timestamps that agree within tolerance,
@@ -248,6 +272,45 @@ impl RoughtimeClient {
         }
 
         Self::find_quorum(&mut results)
+    }
+
+    /// Query a caller-supplied list of Roughtime servers and return quorum time.
+    ///
+    /// Falls back to the built-in server list when `servers` is empty.
+    /// At least 2 servers in the list must agree within 10 seconds.
+    pub fn get_verified_time_with_servers(servers: &[RoughtimeServerOwned]) -> Result<u64> {
+        if servers.is_empty() {
+            return Self::get_verified_time();
+        }
+        let mut results: Vec<(u64, String)> = Vec::new();
+        for server in servers {
+            match Self::fetch_time_owned(server) {
+                Ok(time) => results.push((time, server.name.clone())),
+                Err(e) => log::warn!("roughtime: {} failed: {}", server.name, e),
+            }
+        }
+        // find_quorum requires &str names; build a parallel vec of tuples.
+        let mut ref_results: Vec<(u64, &str)> = results
+            .iter()
+            .map(|(t, n)| (*t, n.as_str()))
+            .collect();
+        Self::find_quorum(&mut ref_results)
+    }
+
+    /// Query the default servers multiple times and return per-sample microsecond timestamps.
+    ///
+    /// Used by the calibration path to build a skew distribution.
+    /// Each successful quorum result becomes one sample.
+    pub fn collect_samples(count: usize, servers: &[RoughtimeServerOwned]) -> Vec<u64> {
+        (0..count)
+            .filter_map(|_| {
+                if servers.is_empty() {
+                    Self::get_verified_time().ok()
+                } else {
+                    Self::get_verified_time_with_servers(servers).ok()
+                }
+            })
+            .collect()
     }
 }
 

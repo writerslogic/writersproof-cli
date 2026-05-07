@@ -229,11 +229,16 @@ impl Verifier {
     }
 
     /// Compute the next challenge time with randomized jitter.
-    pub fn next_challenge_time(&mut self) -> Option<DateTime<Utc>> {
-        let session = self.session.as_ref()?;
-        if !session.active {
-            return None;
-        }
+    ///
+    /// Returns `Ok(None)` when there is no active session. Returns `Err` when the
+    /// computed interval cannot be converted to a `chrono::Duration` (e.g. the
+    /// configured challenge interval overflows). The caller must treat `Err` as a
+    /// malformed-interval condition rather than silently substituting a default window.
+    pub fn next_challenge_time(&mut self) -> Result<Option<DateTime<Utc>>, String> {
+        let session = match self.session.as_ref() {
+            Some(s) if s.active => s,
+            _ => return Ok(None),
+        };
 
         let last_time = session
             .challenges
@@ -247,23 +252,23 @@ impl Verifier {
             * (self.rng.random_range(-1.0..1.0));
 
         let total_secs = (interval.as_secs_f64() + variance).max(0.0);
-        // Guard against NaN/Inf from extreme config values
+        // Guard against NaN/Inf from extreme config values (e.g. interval near f64::MAX).
         let total_secs = if total_secs.is_finite() {
             total_secs
         } else {
             interval.as_secs_f64()
         };
-        let next = last_time
-            + chrono::Duration::from_std(Duration::from_secs_f64(total_secs))
-                .unwrap_or(chrono::Duration::seconds(600));
-        Some(next)
+        let chrono_dur = chrono::Duration::from_std(Duration::from_secs_f64(total_secs))
+            .map_err(|e| format!("challenge interval out of chrono range: {e}"))?;
+        Ok(Some(last_time + chrono_dur))
     }
 
     /// Return `true` if the next challenge time has passed.
-    pub fn should_issue_challenge(&mut self) -> bool {
-        self.next_challenge_time()
+    pub fn should_issue_challenge(&mut self) -> Result<bool, String> {
+        Ok(self
+            .next_challenge_time()?
             .map(|time| Utc::now() > time)
-            .unwrap_or(false)
+            .unwrap_or(false))
     }
 
     /// Attach a previously persisted session so challenges resume against it.

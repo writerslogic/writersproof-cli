@@ -568,6 +568,18 @@ fn find_ca_key<'a>(kid: Option<&str>, fetched_at: &str) -> Result<&'a CaKeyEntry
 /// are rejected.
 /// If no beacon attestation is present, this check passes (beacons are optional).
 pub fn verify_beacon_attestation(evidence: &Packet) -> CheckResult {
+    verify_beacon_attestation_with_bundle(evidence, None)
+}
+
+/// Like [`verify_beacon_attestation`] but accepts a runtime-loaded trust bundle.
+///
+/// When `bundle` is `Some` and non-empty, key lookup uses the supplied entries
+/// instead of the compile-time `CA_KEY_RING`. Pass `None` to use the pinned
+/// fallback (same as [`verify_beacon_attestation`]).
+pub fn verify_beacon_attestation_with_bundle(
+    evidence: &Packet,
+    bundle: Option<&[crate::war::trust_bundle::CaBundleEntry]>,
+) -> CheckResult {
     let attestation = match &evidence.beacon_attestation {
         Some(a) => a,
         None => {
@@ -579,29 +591,44 @@ pub fn verify_beacon_attestation(evidence: &Packet) -> CheckResult {
         }
     };
 
-    // Select the CA key from the key ring.
-    let ca_entry = match find_ca_key(attestation.wp_key_id.as_deref(), &attestation.fetched_at) {
-        Ok(entry) => entry,
-        Err(msg) => {
-            return CheckResult {
-                name: "beacon_attestation".to_string(),
-                passed: false,
-                message: msg,
-            };
+    // Select the CA key: prefer runtime bundle when provided and non-empty,
+    // otherwise fall back to the compile-time CA_KEY_RING.
+    let (ca_kid, ca_pubkey_hex) = if let Some(b) = bundle.filter(|b| !b.is_empty()) {
+        match crate::war::trust_bundle::find_in_bundle(
+            attestation.wp_key_id.as_deref(),
+            &attestation.fetched_at,
+            b,
+        ) {
+            Ok(entry) => (entry.kid, entry.pubkey_hex),
+            Err(msg) => {
+                return CheckResult {
+                    name: "beacon_attestation".to_string(),
+                    passed: false,
+                    message: msg,
+                };
+            }
+        }
+    } else {
+        match find_ca_key(attestation.wp_key_id.as_deref(), &attestation.fetched_at) {
+            Ok(entry) => (entry.kid.to_string(), entry.pubkey_hex.to_string()),
+            Err(msg) => {
+                return CheckResult {
+                    name: "beacon_attestation".to_string(),
+                    passed: false,
+                    message: msg,
+                };
+            }
         }
     };
 
     // Decode the CA public key.
-    let ca_pubkey_bytes = match hex::decode(ca_entry.pubkey_hex) {
+    let ca_pubkey_bytes = match hex::decode(&ca_pubkey_hex) {
         Ok(b) if b.len() == 32 => b,
         _ => {
             return CheckResult {
                 name: "beacon_attestation".to_string(),
                 passed: false,
-                message: format!(
-                    "Internal error: invalid CA public key for kid {}",
-                    ca_entry.kid
-                ),
+                message: format!("Internal error: invalid CA public key for kid {ca_kid}"),
             };
         }
     };
@@ -612,7 +639,7 @@ pub fn verify_beacon_attestation(evidence: &Packet) -> CheckResult {
             return CheckResult {
                 name: "beacon_attestation".to_string(),
                 passed: false,
-                message: format!("Invalid CA public key for kid {}: {e}", ca_entry.kid),
+                message: format!("Invalid CA public key for kid {ca_kid}: {e}"),
             };
         }
     };
@@ -659,7 +686,7 @@ pub fn verify_beacon_attestation(evidence: &Packet) -> CheckResult {
             passed: true,
             message: format!(
                 "Beacon attestation valid (kid {}): drand round {}, NIST pulse {}",
-                ca_entry.kid, attestation.drand_round, attestation.nist_pulse_index
+                ca_kid, attestation.drand_round, attestation.nist_pulse_index
             ),
         },
         Err(e) => CheckResult {

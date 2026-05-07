@@ -198,3 +198,62 @@ fn test_evaluate_threshold_checking() {
     let evaluated_bad = policy.evaluate(&metrics_bad).unwrap();
     assert!(!evaluated_bad.check_thresholds());
 }
+
+/// H-060: CustomFormula must never silently fall back to a built-in scoring strategy.
+/// evaluate() must return Err so the caller can surface a policy_evaluation_failed tag.
+#[test]
+fn test_custom_formula_evaluate_returns_error() {
+    let policy = AppraisalPolicy::new("urn:test:custom", "1.0")
+        .with_computation(TrustComputation::CustomFormula)
+        .add_factor(TrustFactor::new(
+            "f1",
+            FactorType::ChainIntegrity,
+            1.0,
+            1.0,
+            1.0,
+        ));
+
+    let metrics = EvidenceMetrics {
+        chain_verified: true,
+        ..Default::default()
+    };
+
+    let result = policy.evaluate(&metrics);
+    assert!(
+        result.is_err(),
+        "CustomFormula evaluate() must return Err, not a fallback score"
+    );
+
+    let err = result.unwrap_err();
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("custom formula unavailable"),
+        "error message should identify unavailable custom formula, got: {err_str}"
+    );
+}
+
+/// H-060: The policy_evaluation_failed field serialises into the evidence representation
+/// so verifiers see an explicit failure tag rather than a successful evaluation.
+#[test]
+fn test_custom_formula_policy_evaluation_failed_tag() {
+    let policy = AppraisalPolicy::new("urn:test:custom", "1.0")
+        .with_computation(TrustComputation::CustomFormula);
+
+    let metrics = EvidenceMetrics::default();
+    let err = policy.evaluate(&metrics).unwrap_err();
+
+    // Caller's responsibility: stamp the failure reason onto a policy copy for the
+    // evidence packet before serialisation.
+    let mut tagged = policy.clone();
+    tagged.policy_evaluation_failed = Some(err.to_string());
+
+    let json = serde_json::to_string(&tagged).expect("serialize tagged policy");
+    assert!(
+        json.contains("policy_evaluation_failed"),
+        "serialised evidence must carry policy_evaluation_failed field"
+    );
+    assert!(
+        tagged.policy_evaluation_failed.is_some(),
+        "policy_evaluation_failed must be Some after stamping"
+    );
+}

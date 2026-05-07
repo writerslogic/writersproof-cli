@@ -306,6 +306,13 @@ impl SecureStore {
             )?;
         }
 
+        // Migration: add session_count to fingerprints for bootstrap policy tracking
+        if !has_column(&self.conn, "fingerprints", "session_count")? {
+            self.conn.execute_batch(
+                "ALTER TABLE fingerprints ADD COLUMN session_count INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+
         // Migration: shadow session persistence for bundle-based apps.
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS shadow_sessions (

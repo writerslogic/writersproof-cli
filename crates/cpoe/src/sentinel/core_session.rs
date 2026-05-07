@@ -584,3 +584,297 @@ impl Sentinel {
         Ok(())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Dictation session management
+// ---------------------------------------------------------------------------
+
+impl Sentinel {
+    /// Begin a dictation session for `doc_path`.
+    ///
+    /// Returns `false` if the path is not tracked or a dictation is already active.
+    pub(crate) fn begin_dictation(
+        &self,
+        doc_path: &str,
+        es_speech_pid: u32,
+        audio_transport_type: u8,
+        device_uid_hash: [u8; 8],
+        ambient_noise_db: f32,
+    ) -> bool {
+        // AUD-041: acquire signing_key before sessions.
+        let key = {
+            #[cfg(debug_assertions)]
+            let _guard =
+                super::core::lock_order::assert_order(super::core::lock_order::SIGNING_KEY);
+            self.signing_key.read_recover().key()
+        };
+        #[cfg(debug_assertions)]
+        let _session_guard =
+            super::core::lock_order::assert_order(super::core::lock_order::SESSIONS);
+
+        let mut sessions = self.sessions.write_recover();
+        let session = match sessions.get_mut(doc_path) {
+            Some(s) => s,
+            None => {
+                log::debug!("begin_dictation: path not tracked: {doc_path}");
+                return false;
+            }
+        };
+        if session.active_dictation.is_some() {
+            log::warn!("begin_dictation: dictation already active for {doc_path}");
+            return false;
+        }
+
+        let start_ns = crate::utils::now_ns();
+        let keystrokes_at_begin = super::hid_key_down_count();
+        let session_id = session.session_id.clone();
+        let id_bytes = dictation_session_id_bytes(&session_id);
+
+        dictation_wal_append(
+            &session_id,
+            id_bytes,
+            &self.config.wal_dir,
+            key.as_ref(),
+            EntryType::DictationBegin,
+            crate::wal::DictationBeginPayload {
+                session_id: id_bytes,
+                start_ns,
+                es_speech_pid,
+                audio_transport_type,
+                device_uid_hash,
+                speaker_output_active: false,
+                ambient_noise_db,
+            }
+            .to_bytes(),
+        );
+
+        session.active_dictation = Some(crate::sentinel::types::ActiveDictationSession {
+            start_ns,
+            es_speech_pid,
+            audio_transport_type,
+            device_uid_hash,
+            fragment_count: 0,
+            total_words: 0,
+            confidence_values: Vec::new(),
+            speaker_output_ever_active: false,
+            ambient_noise_db,
+            keystrokes_at_begin,
+            total_corrections: 0,
+        });
+        true
+    }
+
+    /// Record an incremental recognition fragment from the speech recognizer.
+    ///
+    /// Returns `false` if the path is not tracked or no dictation is active.
+    pub(crate) fn record_dictation_fragment(
+        &self,
+        doc_path: &str,
+        word_count: u32,
+        confidence: f32,
+        correction_count: u32,
+        text_hash: [u8; 32],
+        speaker_output_active: bool,
+    ) -> bool {
+        let key = {
+            #[cfg(debug_assertions)]
+            let _guard =
+                super::core::lock_order::assert_order(super::core::lock_order::SIGNING_KEY);
+            self.signing_key.read_recover().key()
+        };
+        #[cfg(debug_assertions)]
+        let _session_guard =
+            super::core::lock_order::assert_order(super::core::lock_order::SESSIONS);
+
+        let mut sessions = self.sessions.write_recover();
+        let session = match sessions.get_mut(doc_path) {
+            Some(s) => s,
+            None => return false,
+        };
+        let active = match session.active_dictation.as_mut() {
+            Some(a) => a,
+            None => {
+                log::warn!("record_dictation_fragment: no active dictation for {doc_path}");
+                return false;
+            }
+        };
+
+        let fragment_index = active.fragment_count;
+        active.fragment_count += 1;
+        active.total_words = active.total_words.saturating_add(word_count);
+        active.total_corrections = active.total_corrections.saturating_add(correction_count);
+        active.confidence_values.push(confidence);
+        if speaker_output_active {
+            active.speaker_output_ever_active = true;
+        }
+
+        let timestamp_ns = crate::utils::now_ns();
+        let session_id = session.session_id.clone();
+        let id_bytes = dictation_session_id_bytes(&session_id);
+
+        dictation_wal_append(
+            &session_id,
+            id_bytes,
+            &self.config.wal_dir,
+            key.as_ref(),
+            EntryType::DictationFragment,
+            crate::wal::DictationFragmentPayload {
+                session_id: id_bytes,
+                fragment_index,
+                timestamp_ns,
+                word_count,
+                confidence,
+                speaker_output_active,
+                text_hash,
+            }
+            .to_bytes(),
+        );
+        true
+    }
+
+    /// Finalize the active dictation session for `doc_path`, producing a `DictationEvent`.
+    ///
+    /// Returns `false` if the path is not tracked or no dictation is active.
+    pub(crate) fn end_dictation(
+        &self,
+        doc_path: &str,
+        speaker_output_active: bool,
+        keystrokes_during_caller: u32,
+        cross_window_similarity: f32,
+    ) -> bool {
+        let key = {
+            #[cfg(debug_assertions)]
+            let _guard =
+                super::core::lock_order::assert_order(super::core::lock_order::SIGNING_KEY);
+            self.signing_key.read_recover().key()
+        };
+        #[cfg(debug_assertions)]
+        let _session_guard =
+            super::core::lock_order::assert_order(super::core::lock_order::SESSIONS);
+
+        let mut sessions = self.sessions.write_recover();
+        let session = match sessions.get_mut(doc_path) {
+            Some(s) => s,
+            None => return false,
+        };
+        let active = match session.active_dictation.take() {
+            Some(a) => a,
+            None => {
+                log::warn!("end_dictation: no active dictation for {doc_path}");
+                return false;
+            }
+        };
+
+        let end_ns = crate::utils::now_ns();
+        let duration_ns = end_ns.saturating_sub(active.start_ns);
+        let wpm = crate::utils::words_per_minute(active.total_words, duration_ns);
+        let (conf_mean, conf_stddev) =
+            crate::utils::mean_and_std_dev_f32(&active.confidence_values);
+        let corr_rate = crate::utils::correction_rate(active.total_corrections, active.total_words);
+
+        let keystrokes_hid_end = super::hid_key_down_count();
+        let keystrokes_observed =
+            keystrokes_hid_end.saturating_sub(active.keystrokes_at_begin) as u32;
+        let keystrokes_during = keystrokes_observed.max(keystrokes_during_caller);
+        let speaker_ever_active = active.speaker_output_ever_active || speaker_output_active;
+
+        let mut event = crate::evidence::DictationEvent {
+            start_ns: active.start_ns,
+            end_ns,
+            word_count: active.total_words,
+            char_count: 0,
+            input_method: "com.apple.SpeechRecognitionCore".to_string(),
+            mic_active: true,
+            words_per_minute: wpm,
+            plausibility_score: 0.0,
+            es_speech_pid: active.es_speech_pid,
+            audio_transport_type: active.audio_transport_type,
+            device_uid_hash: active.device_uid_hash,
+            fragment_count: active.fragment_count,
+            confidence_mean: conf_mean,
+            confidence_stddev: conf_stddev,
+            correction_rate: corr_rate,
+            keystroke_void: keystrokes_observed == 0,
+            keystrokes_during_dictation: keystrokes_during,
+            speaker_output_active: speaker_ever_active,
+            ambient_noise_db: active.ambient_noise_db,
+            cross_window_similarity,
+        };
+        event.plausibility_score =
+            crate::forensics::dictation::score_dictation_plausibility(&event);
+
+        let session_id = session.session_id.clone();
+        let id_bytes = dictation_session_id_bytes(&session_id);
+
+        dictation_wal_append(
+            &session_id,
+            id_bytes,
+            &self.config.wal_dir,
+            key.as_ref(),
+            EntryType::DictationEnd,
+            crate::wal::DictationEndPayload {
+                session_id: id_bytes,
+                end_ns,
+                total_words: active.total_words,
+                total_fragments: active.fragment_count,
+                confidence_mean: conf_mean,
+                confidence_stddev: conf_stddev,
+                keystrokes_during_dictation: keystrokes_during,
+                cross_window_similarity,
+                plausibility_score: event.plausibility_score,
+            }
+            .to_bytes(),
+        );
+
+        log::info!(
+            "Dictation ended: {doc_path}, {} words, {:.1} WPM, plausibility {:.3}",
+            active.total_words,
+            wpm,
+            event.plausibility_score,
+        );
+
+        session.dictation_events.push(event);
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dictation WAL helpers (private to this file)
+// ---------------------------------------------------------------------------
+
+fn dictation_session_id_bytes(session_id: &str) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    let hex_str = session_id
+        .get(..64.min(session_id.len()))
+        .unwrap_or(session_id);
+    if hex::decode_to_slice(hex_str, &mut out).is_err() {
+        let digest = sha2::Sha256::digest(session_id.as_bytes());
+        out.copy_from_slice(&digest);
+    }
+    out
+}
+
+fn dictation_wal_append(
+    session_id: &str,
+    session_id_bytes: [u8; 32],
+    wal_dir: &std::path::Path,
+    key: Option<&SigningKey>,
+    entry_type: EntryType,
+    payload: Vec<u8>,
+) {
+    let Some(key) = key else { return };
+    let wal_path = wal_dir.join(format!("{session_id}.wal"));
+    let mut key_bytes = key.to_bytes();
+    let wal_key = SigningKey::from_bytes(&key_bytes);
+    key_bytes.zeroize();
+    match Wal::open(&wal_path, session_id_bytes, wal_key) {
+        Ok(wal) => {
+            if let Err(e) = wal.append(entry_type, payload) {
+                log::warn!("WAL {entry_type:?} append failed for session {session_id}: {e}");
+            }
+        }
+        Err(e) => {
+            log::warn!("WAL open failed for dictation session {session_id}: {e}");
+        }
+    }
+}

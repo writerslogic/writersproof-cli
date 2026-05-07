@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use super::types::{AppraisalPolicy, EvidenceMetrics, FactorType, ThresholdType, TrustComputation};
+use super::types::{
+    AppraisalPolicy, EvidenceMetrics, FactorType, ThresholdType, TrustComputation, TrustPolicyError,
+};
 use crate::error::{Error, Result};
 
 /// CoV below this is suspiciously regular (robotic).
@@ -90,36 +92,13 @@ impl AppraisalPolicy {
                     .product();
                 product.powf(1.0 / self.factors.len() as f32)
             }
-            TrustComputation::CustomFormula => {
-                if self.factors.is_empty() {
-                    return 0.0;
-                }
-                let total_weight: f32 = self.factors.iter().map(|f| f.weight).sum();
-                if total_weight <= 0.0 || !total_weight.is_finite() {
-                    return 0.0;
-                }
-                let log_sum: f32 = self
-                    .factors
-                    .iter()
-                    .map(|f| {
-                        let s = if f.normalized_score.is_finite() {
-                            f.normalized_score.max(1e-6)
-                        } else {
-                            1e-6
-                        };
-                        let w = if f.weight.is_finite() {
-                            f.weight.max(0.0)
-                        } else {
-                            0.0
-                        };
-                        (w / total_weight) * s.ln()
-                    })
-                    .sum();
-                if !log_sum.is_finite() {
-                    return 0.0;
-                }
-                log_sum.exp().clamp(0.0, 1.0)
-            }
+            // CustomFormula requires an external implementation registered by the
+            // caller via `evaluate()`. Direct callers must not bypass `evaluate()`,
+            // which enforces this contract. Returning 0.0 here prevents silent
+            // score inflation if `compute_score()` is called directly on a
+            // CustomFormula policy (all callers in practice go through `evaluate()`
+            // which returns Err before reaching here).
+            TrustComputation::CustomFormula => 0.0,
         }
     }
 
@@ -171,7 +150,21 @@ impl AppraisalPolicy {
 
     /// Score all factors against `metrics` and evaluate thresholds.
     /// Returns a new policy instance with populated scores.
+    ///
+    /// # Errors
+    /// Returns [`Error::TrustPolicy`] with [`TrustPolicyError::CustomFormulaUnavailable`]
+    /// when `computation_model` is `CustomFormula`. There is no silent fallback to an
+    /// alternative strategy; the caller must surface this as a `policy_evaluation_failed`
+    /// evidence tag rather than treating the result as a valid evaluation.
     pub fn evaluate(&self, metrics: &EvidenceMetrics) -> Result<Self> {
+        if self.computation_model == TrustComputation::CustomFormula {
+            return Err(Error::TrustPolicy(TrustPolicyError::CustomFormulaUnavailable {
+                policy_uri: self.policy_uri.clone(),
+                reason: "no external formula implementation is registered for this \
+                         evaluation context"
+                    .to_string(),
+            }));
+        }
         self.validate()?;
         let mut policy = self.clone();
 

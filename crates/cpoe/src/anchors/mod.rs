@@ -40,6 +40,79 @@ pub trait AnchorProvider: Send + Sync {
 /// Type-erased handle to an anchor provider.
 pub type ProviderHandle = Arc<dyn AnchorProvider>;
 
+/// Result of Roughtime calibration against the local system clock.
+#[derive(Debug, Clone)]
+pub struct RoughtimeCalibration {
+    /// Mean absolute skew in seconds between Roughtime and the system clock.
+    pub mean_skew_secs: f64,
+    /// Sample standard deviation of the skew distribution.
+    pub std_dev_secs: f64,
+    /// Recommended production tolerance: mean + 3σ, capped at 180 s.
+    pub recommended_tolerance_secs: u64,
+    /// Number of successful samples collected.
+    pub sample_count: usize,
+}
+
+/// Sample the Roughtime / system-clock skew distribution and return a recommended
+/// dual-anchor tolerance (mean + 3σ, capped at 180 seconds).
+///
+/// Pass `servers = &[]` to use the built-in default server list.
+/// `sample_count` is the number of Roughtime quorum queries to attempt; failed
+/// queries are silently skipped. Returns a [`RoughtimeCalibration`] with
+/// `sample_count = 0` when no samples succeed (caller should fall back to 180 s).
+pub fn calibrate_roughtime_tolerance(
+    servers: &[crate::vdf::roughtime_client::RoughtimeServerOwned],
+    sample_count: usize,
+) -> RoughtimeCalibration {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let mut skews: Vec<f64> = Vec::with_capacity(sample_count);
+
+    for _ in 0..sample_count {
+        let sys_us = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_micros() as u64)
+            .unwrap_or(0);
+
+        let rt_us = if servers.is_empty() {
+            crate::vdf::RoughtimeClient::get_verified_time()
+        } else {
+            crate::vdf::RoughtimeClient::get_verified_time_with_servers(servers)
+        };
+
+        if let (Ok(rt), true) = (rt_us, sys_us > 0) {
+            let skew_secs = (rt as i64 - sys_us as i64).unsigned_abs() as f64 / 1_000_000.0;
+            skews.push(skew_secs);
+        }
+    }
+
+    if skews.is_empty() {
+        return RoughtimeCalibration {
+            mean_skew_secs: 0.0,
+            std_dev_secs: 0.0,
+            recommended_tolerance_secs: 180,
+            sample_count: 0,
+        };
+    }
+
+    let n = skews.len() as f64;
+    let mean = skews.iter().sum::<f64>() / n;
+    // Sample variance: divide by (n - 1); clamp denominator to 1 for n=1.
+    let denom = (n - 1.0).max(1.0);
+    let variance = skews.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / denom;
+    let std_dev = variance.sqrt();
+
+    let raw_tolerance = (mean + 3.0 * std_dev).ceil() as u64;
+    let recommended_tolerance_secs = raw_tolerance.min(180).max(1);
+
+    RoughtimeCalibration {
+        mean_skew_secs: mean,
+        std_dev_secs: std_dev,
+        recommended_tolerance_secs,
+        sample_count: skews.len(),
+    }
+}
+
 /// Verify that two independent external timestamps agree within `tolerance_secs`.
 ///
 /// Call this after fetching both an RFC 3161 TSA response and a Roughtime response

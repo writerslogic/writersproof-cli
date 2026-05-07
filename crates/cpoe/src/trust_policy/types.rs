@@ -2,6 +2,23 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Errors from trust policy evaluation.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum TrustPolicyError {
+    /// The policy specifies `CustomFormula` computation, which requires an external
+    /// implementation identified by the policy URI. No such implementation is
+    /// registered for this evaluation context. The evaluation did NOT fall back to
+    /// an alternative scoring strategy; callers must treat this as a failed evaluation
+    /// and surface it to the verifier as a `policy_evaluation_failed` evidence tag.
+    #[error("custom formula unavailable for policy '{policy_uri}': {reason}")]
+    CustomFormulaUnavailable { policy_uri: String, reason: String },
+
+    /// The policy evaluation failed for a reason unrelated to formula availability.
+    #[error("policy evaluation failed: {reason}")]
+    EvaluationFailed { reason: String },
+}
 
 /// Algorithm used to combine trust factor scores into an aggregate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,6 +215,11 @@ pub struct AppraisalPolicy {
     pub thresholds: Vec<TrustThreshold>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<PolicyMetadata>,
+    /// Set when evaluation was attempted but failed (e.g. CustomFormula unavailable).
+    /// Verifiers must treat a non-None value as a `policy_evaluation_failed` evidence
+    /// tag; the policy result does NOT represent a successful evaluation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_evaluation_failed: Option<String>,
 }
 
 impl AppraisalPolicy {
@@ -210,6 +232,7 @@ impl AppraisalPolicy {
             factors: Vec::new(),
             thresholds: Vec::new(),
             metadata: None,
+            policy_evaluation_failed: None,
         }
     }
 

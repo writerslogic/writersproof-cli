@@ -475,6 +475,151 @@ impl Wal {
         Ok(())
     }
 
+    /// Walk the WAL from its last verified checkpoint, validating every entry's
+    /// hash-chain linkage and Ed25519 signature.
+    ///
+    /// * All entries intact — returns `Ok(WalRecoveryReport { lost_count: 0 })`.
+    /// * Corruption after at least one valid entry — truncates the file at the last
+    ///   good entry, resets the in-memory writer state, emits a
+    ///   `wal_truncation_recovered` log event, and returns a report with
+    ///   `lost_count > 0`. Further appends are safe after this returns.
+    /// * Corruption before the very first entry — returns `Err(WalError::Unrecoverable)`.
+    ///   The caller must treat the store as unreadable and request a manual restore.
+    pub fn recover(&self) -> Result<WalRecoveryReport, WalError> {
+        let mut state = self.inner.lock_recover();
+        if state.closed {
+            return Err(WalError::Closed);
+        }
+
+        // Clone the file handle so the read-only scan doesn't disturb the write position.
+        let mut file = state.file.try_clone()?;
+        file.seek(SeekFrom::Start(0))?;
+
+        let mut header_buf = vec![0u8; HEADER_SIZE];
+        file.read_exact(&mut header_buf)?;
+        let header = deserialize_header(&header_buf)?;
+        file.seek(SeekFrom::Start(HEADER_SIZE as u64))?;
+
+        let verifying_key = state.signing_key.verifying_key();
+        let mut prev_hash = [0u8; 32];
+        let mut cumulative_hasher = Hasher::new();
+        let mut expected_sequence = header.last_checkpoint_seq;
+        let mut last_timestamp = 0i64;
+        let mut valid_count: u64 = 0;
+        let mut valid_offset: u64 = HEADER_SIZE as u64;
+
+        loop {
+            let mut len_buf = [0u8; 4];
+            match file.read_exact(&mut len_buf) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(WalError::Io(e)),
+            }
+
+            let entry_len = u32::from_be_bytes(len_buf);
+            if entry_len == 0 || entry_len > MAX_ENTRY_SIZE {
+                break;
+            }
+
+            let mut entry_buf = vec![0u8; entry_len as usize];
+            match file.read_exact(&mut entry_buf) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(WalError::Io(e)),
+            }
+
+            let entry = match deserialize_entry(&entry_buf) {
+                Ok(e) => e,
+                Err(_) => break,
+            };
+
+            // Reject non-monotonic sequence, timestamp regression, or broken chain
+            // before spending time on crypto verification.
+            if entry.sequence != expected_sequence
+                || entry.timestamp < last_timestamp
+                || entry.prev_hash.ct_eq(&prev_hash).unwrap_u8() == 0
+            {
+                break;
+            }
+
+            let entry_hash = entry.compute_hash();
+            // Checkpoint the hasher before updating so we can restore it if
+            // this entry fails the cumulative-hash or signature check. If we
+            // break without restoring, the contaminated hasher would produce
+            // wrong cumulative hashes for all subsequent appends.
+            let hasher_checkpoint = cumulative_hasher.clone();
+            cumulative_hasher.update(&entry_hash);
+            let expected_cumulative = *cumulative_hasher.finalize().as_bytes();
+
+            if entry.cumulative_hash.ct_eq(&expected_cumulative).unwrap_u8() == 0 {
+                cumulative_hasher = hasher_checkpoint;
+                break;
+            }
+
+            let sig = Signature::from_bytes(&entry.signature);
+            if verifying_key.verify(&entry.cumulative_hash, &sig).is_err() {
+                cumulative_hasher = hasher_checkpoint;
+                break;
+            }
+
+            prev_hash = entry_hash;
+            expected_sequence += 1;
+            last_timestamp = entry.timestamp;
+            valid_count += 1;
+            valid_offset += (4 + entry_len) as u64;
+        }
+
+        let file_len = state.file.metadata().map_err(WalError::Io)?.len();
+
+        if valid_offset >= file_len {
+            // No corruption detected: file ends exactly at the last valid entry.
+            return Ok(WalRecoveryReport {
+                lost_count: 0,
+                truncated_at_sequence: state.next_sequence,
+                recovered_at: now_nanos(),
+            });
+        }
+
+        // Corruption detected after the header.
+        if valid_count == 0 {
+            // No valid entries at all: caller must restore from backup.
+            return Err(WalError::Unrecoverable);
+        }
+
+        let corrupt_bytes = file_len.saturating_sub(valid_offset);
+        // Minimum frame is 4-byte length prefix + 149-byte entry body = 153 bytes.
+        let lost_estimate = corrupt_bytes / 153;
+        log::warn!(
+            "wal_truncation_recovered: truncating at offset {} (next_seq {}), \
+             {} corrupt bytes (~{} entries lost)",
+            valid_offset,
+            expected_sequence,
+            corrupt_bytes,
+            lost_estimate,
+        );
+
+        state.file.set_len(valid_offset).map_err(WalError::Io)?;
+        state.file.sync_all().map_err(WalError::Io)?;
+        state
+            .file
+            .seek(SeekFrom::Start(valid_offset))
+            .map_err(WalError::Io)?;
+
+        // Rebuild writer state from the last verified position.
+        state.last_hash = prev_hash;
+        state.cumulative_hasher = cumulative_hasher;
+        state.next_sequence = expected_sequence;
+        state.entry_count = valid_count;
+        state.byte_count = valid_offset;
+        state.inconsistent = false;
+
+        Ok(WalRecoveryReport {
+            lost_count: lost_estimate,
+            truncated_at_sequence: expected_sequence,
+            recovered_at: now_nanos(),
+        })
+    }
+
     /// Return the filesystem path of the WAL file.
     pub fn path(&self) -> PathBuf {
         let state = self.inner.lock_recover();
@@ -718,6 +863,7 @@ impl Wal {
             }
 
             let entry_hash = entry.compute_hash();
+            let hasher_checkpoint = state.cumulative_hasher.clone();
             state.cumulative_hasher.update(&entry_hash);
             let expected_cumulative = *state.cumulative_hasher.finalize().as_bytes();
 
@@ -727,6 +873,7 @@ impl Wal {
                 .unwrap_u8()
                 == 0
             {
+                state.cumulative_hasher = hasher_checkpoint;
                 log::warn!(
                     "WAL cumulative hash mismatch at seq {}: truncating to last valid entry \
                      (offset {})",
@@ -739,6 +886,7 @@ impl Wal {
             let sig = Signature::from_bytes(&entry.signature);
             let verifying_key = state.signing_key.verifying_key();
             if verifying_key.verify(&entry.cumulative_hash, &sig).is_err() {
+                state.cumulative_hasher = hasher_checkpoint;
                 log::warn!(
                     "WAL signature invalid at seq {}: truncating to last valid entry (offset {})",
                     entry.sequence,

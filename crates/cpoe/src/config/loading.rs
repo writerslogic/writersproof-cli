@@ -118,6 +118,7 @@ impl CpopConfig {
             privacy: PrivacyConfig::default(),
             writersproof: WritersProofConfig::default(),
             beacons: BeaconConfig::default(),
+            trust_bundle: crate::config::TrustBundleConfig::default(),
         }
     }
 
