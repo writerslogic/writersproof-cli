@@ -29,6 +29,13 @@ pub enum EntryType {
     Checkpoint = 7,
     PathChange = 8,
     TextFragmentInsert = 9,
+    /// Manuscript export detected: a derived output file was created within 30s
+    /// of the last active checkpoint (links source session → exported manuscript).
+    ExportEvent = 10,
+    /// App compile/compile-draft pipeline started (e.g. Scrivener Compile).
+    CompileStarted = 11,
+    /// App compile/compile-draft pipeline finished.
+    CompileFinished = 12,
 }
 
 impl TryFrom<u8> for EntryType {
@@ -45,6 +52,9 @@ impl TryFrom<u8> for EntryType {
             7 => Ok(EntryType::Checkpoint),
             8 => Ok(EntryType::PathChange),
             9 => Ok(EntryType::TextFragmentInsert),
+            10 => Ok(EntryType::ExportEvent),
+            11 => Ok(EntryType::CompileStarted),
+            12 => Ok(EntryType::CompileFinished),
             _ => Err(WalError::InvalidEntryType(value)),
         }
     }

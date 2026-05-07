@@ -111,7 +111,10 @@ impl<T: serde::Serialize + serde::de::DeserializeOwned> SecureChannel<T> {
 pub struct SecureSender<T> {
     tx: Sender<EncryptedMessage>,
     cipher: ChaCha20Poly1305,
+    #[cfg(test)]
     pub(super) nonce_counter: AtomicU64,
+    #[cfg(not(test))]
+    nonce_counter: AtomicU64,
     /// Random prefix for nonce bytes [0..4], generated once at channel creation.
     nonce_prefix: Zeroizing<[u8; 4]>,
     _phantom: std::marker::PhantomData<T>,

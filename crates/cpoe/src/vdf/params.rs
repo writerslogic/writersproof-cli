@@ -324,8 +324,14 @@ impl BatchVerifier {
 
         // Partition work into chunks so each thread processes multiple proofs
         // instead of spawning one thread per proof.
-        let chunk_size = (proofs.len() + max_threads - 1) / max_threads.max(1);
-        for chunk_start in (0..proofs.len()).step_by(chunk_size.max(1)) {
+        // Use saturating arithmetic to avoid underflow when proofs is empty.
+        let chunk_size = proofs
+            .len()
+            .saturating_add(max_threads.saturating_sub(1))
+            .checked_div(max_threads.max(1))
+            .unwrap_or(1)
+            .max(1);
+        for chunk_start in (0..proofs.len()).step_by(chunk_size) {
             let chunk_end = (chunk_start + chunk_size).min(proofs.len());
             let chunk: Vec<(usize, Option<VdfProof>)> = proofs[chunk_start..chunk_end]
                 .iter()

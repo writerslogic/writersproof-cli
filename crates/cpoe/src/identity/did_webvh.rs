@@ -22,6 +22,8 @@ use didwebvh_rs::{
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Value};
 
+use subtle::ConstantTimeEq;
+
 use crate::error::Error;
 use crate::identity::did_document::did_key_from_public;
 
@@ -119,6 +121,8 @@ fn validate_address(address: &str) -> Result<(), Error> {
             }
         }
     }
+    // Defense-in-depth: `//` cannot pass the character allowlist (no `/`),
+    // but we reject it explicitly in case the allowlist is ever widened.
     if address.contains("..") || address.contains("//") {
         return Err(Error::identity("address must not contain '..' or '//'"));
     }
@@ -133,7 +137,8 @@ pub fn derive_webvh_signing_key(
     master_key: &SigningKey,
     address: &str,
 ) -> Result<SigningKey, Error> {
-    validate_address(address)?;
+    let address = address.to_ascii_lowercase();
+    validate_address(&address)?;
     let seed = crate::keyhierarchy::hkdf_expand(
         master_key.as_bytes(),
         WEBVH_IDENTITY_DOMAIN.as_bytes(),
@@ -310,6 +315,13 @@ impl WebVHIdentity {
         let data_dir = data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
         std::fs::create_dir_all(&data_dir)
             .map_err(|e| Error::identity(format!("create data directory: {e}")))?;
+        let dir_meta = std::fs::symlink_metadata(&data_dir)
+            .map_err(|e| Error::identity(format!("stat data directory: {e}")))?;
+        if !dir_meta.is_dir() {
+            return Err(Error::identity(
+                "data directory path is not a directory (possible symlink attack)",
+            ));
+        }
 
         let envelope = serde_json::json!({
             "did": self.did,
@@ -326,11 +338,21 @@ impl WebVHIdentity {
         let state_tmp_str = state_tmp
             .to_str()
             .ok_or_else(|| Error::identity("non-UTF-8 data directory path"))?;
-        self.state
-            .save_state(state_tmp_str)
-            .map_err(map_webvh_err)?;
-        crate::crypto::restrict_permissions(&state_tmp, 0o600)
-            .map_err(|e| Error::identity(format!("restrict state file permissions: {e}")))?;
+        // Set restrictive umask before save_state writes the temp file
+        #[cfg(unix)]
+        let _old_umask = unsafe { libc::umask(0o077) };
+        let save_result = self.state.save_state(state_tmp_str).map_err(map_webvh_err);
+        #[cfg(unix)]
+        unsafe {
+            libc::umask(_old_umask);
+        }
+        save_result?;
+        if let Err(e) = crate::crypto::restrict_permissions(&state_tmp, 0o600) {
+            let _ = std::fs::remove_file(&state_tmp);
+            return Err(Error::identity(format!(
+                "restrict state file permissions: {e}"
+            )));
+        }
         std::fs::rename(&state_tmp, &state_path)
             .map_err(|e| Error::identity(format!("rename webvh state: {e}")))?;
 
@@ -383,8 +405,7 @@ pub fn load_active_did() -> Result<String, Error> {
     if let Ok(identity) = WebVHIdentity::load() {
         return Ok(identity.did);
     }
-    let sk = load_signing_key()
-        .map_err(|e| Error::identity(format!("load signing key for active DID fallback: {e}")))?;
+    let sk = load_signing_key()?;
     did_key_from_public(sk.verifying_key().as_bytes())
         .ok_or_else(|| Error::identity("invalid public key length for did:key"))
 }
@@ -418,10 +439,23 @@ fn validate_did_host(did: &str) -> Result<(), Error> {
     // URL-decode (e.g. %3A for embedded colons), then strip optional port.
     let decoded = urlencoding::decode(host_raw)
         .map(|c| c.into_owned())
-        .unwrap_or_else(|_| host_raw.to_owned());
-    let host = match decoded.rsplit_once(':') {
-        Some((h, port)) if port.chars().all(|c| c.is_ascii_digit()) => h,
-        _ => decoded.as_str(),
+        .map_err(|_| {
+            Error::identity(format!(
+                "did:webvh host contains invalid percent-encoding: {host_raw}"
+            ))
+        })?;
+    let host = if decoded.starts_with('[') {
+        // IPv6 literal: [::1] or [::1]:8080 -- strip brackets (will be rejected below)
+        let bracket_end = decoded.find(']').unwrap_or(decoded.len());
+        &decoded[1..bracket_end]
+    } else if decoded.bytes().next().map_or(true, |b| b.is_ascii_alphabetic()) {
+        // Hostname: only strip port if first char is a letter (safe for DNS names)
+        match decoded.rsplit_once(':') {
+            Some((h, port)) if port.chars().all(|c| c.is_ascii_digit()) => h,
+            _ => decoded.as_str(),
+        }
+    } else {
+        decoded.as_str()
     };
     let host_lower = host.to_lowercase();
 
@@ -482,7 +516,11 @@ pub async fn resolve_and_verify_key(
     validate_did_host(did)?;
 
     let resolve_did = match version_time {
-        Some(ts) => format!("{}?versionTime={}", did, ts.to_rfc3339()),
+        Some(ts) => format!(
+            "{}?versionTime={}",
+            did,
+            urlencoding::encode(&ts.to_rfc3339())
+        ),
         None => did.to_string(),
     };
 
@@ -507,7 +545,7 @@ pub async fn resolve_and_verify_key(
     for method in methods {
         if let Some(key_mb) = method["publicKeyMultibase"].as_str() {
             if let Some(remote_pubkey) = decode_multibase_ed25519(key_mb) {
-                if remote_pubkey == expected_pubkey {
+                if remote_pubkey.ct_eq(expected_pubkey).into() {
                     return Ok(true);
                 }
             }
@@ -532,7 +570,8 @@ pub async fn verify_packet_author_did(
             "packet_created_ms {packet_created_ms} exceeds reasonable range"
         )));
     }
-    let secs = (packet_created_ms / 1000) as i64;
+    let secs = i64::try_from(packet_created_ms / 1000)
+        .map_err(|_| Error::identity("timestamp overflow"))?;
     let nanos = ((packet_created_ms % 1000) * 1_000_000) as u32;
     let version_time = chrono::DateTime::from_timestamp(secs, nanos).map(|dt| dt.fixed_offset());
 
@@ -557,26 +596,32 @@ fn data_dir() -> Option<PathBuf> {
     }
 }
 
-fn load_signing_key() -> Result<SigningKey, String> {
-    let data_dir = data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+fn load_signing_key() -> Result<SigningKey, Error> {
+    let data_dir =
+        data_dir().ok_or_else(|| Error::identity("Data directory not found"))?;
     let key_path = data_dir.join("signing_key");
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let meta = std::fs::metadata(&key_path).map_err(|e| format!("stat signing key: {e}"))?;
+        let meta = std::fs::metadata(&key_path)
+            .map_err(|e| Error::identity(format!("stat signing key: {e}")))?;
         let mode = meta.mode() & 0o777;
         if mode & 0o077 != 0 {
-            return Err(format!(
+            return Err(Error::identity(format!(
                 "signing key file has unsafe permissions {:o}; expected owner-only",
                 mode
-            ));
+            )));
         }
     }
     let key_data = zeroize::Zeroizing::new(
-        std::fs::read(&key_path).map_err(|e| format!("read signing key: {e}"))?,
+        std::fs::read(&key_path)
+            .map_err(|e| Error::identity(format!("read signing key: {e}")))?,
     );
-    if key_data.len() < 32 {
-        return Err("signing key too short".to_string());
+    if key_data.len() != 32 {
+        return Err(Error::identity(format!(
+            "signing key file has invalid length {} (expected exactly 32)",
+            key_data.len()
+        )));
     }
     let mut secret = zeroize::Zeroizing::new([0u8; 32]);
     secret.copy_from_slice(&key_data[..32]);
