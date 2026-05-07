@@ -333,6 +333,50 @@ fn max_consecutive_run(values: &[i64]) -> usize {
     max_run
 }
 
+/// Read the CPU's high-resolution hardware counter (TSC on x86_64, CNTVCT on
+/// aarch64, or nanoseconds since process start on other platforms).
+///
+/// Used by [`crate::evidence::KeystrokeBindingChain`] to bind each keystroke
+/// to the hardware counter at the moment it fires, creating a causal chain
+/// that cannot be reordered or synthesized without knowing the counter values.
+pub fn read_hardware_counter() -> u64 {
+    #[cfg(feature = "hardware")]
+    {
+        #[cfg(target_arch = "x86_64")]
+        // SAFETY: _mm_lfence and _rdtsc are safe CPU intrinsics for reading the TSC.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
+        unsafe {
+            core::arch::x86_64::_mm_lfence();
+            let tsc = core::arch::x86_64::_rdtsc();
+            core::arch::x86_64::_mm_lfence();
+            tsc
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        // SAFETY: mrs cntvct_el0 reads the virtual counter; available to EL0 by default.
+        // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
+        unsafe {
+            let cntvct: u64;
+            core::arch::asm!("mrs {}, cntvct_el0", out(reg) cntvct);
+            cntvct
+        }
+
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            use std::time::Instant;
+            static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+            START.get_or_init(Instant::now).elapsed().as_nanos() as u64
+        }
+    }
+
+    #[cfg(not(feature = "hardware"))]
+    {
+        use std::time::Instant;
+        static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        START.get_or_init(Instant::now).elapsed().as_nanos() as u64
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

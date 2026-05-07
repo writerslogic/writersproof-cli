@@ -21,17 +21,27 @@ pub struct KeystrokeBinding {
     pub timestamp_ns: u64,
     /// Sequence number within this session (prevents replay/insertion).
     pub sequence: u64,
-    /// HMAC-SHA256(session_key, key_code || timestamp_ns || sequence).
+    /// CPU hardware counter (TSC/CNTVCT) sampled at the moment of keypress.
+    /// Binds the event to the physical timeline; cannot be synthesized post-hoc.
+    pub counter_value: u64,
+    /// HMAC-SHA256(session_key, key_code || timestamp_ns || sequence || counter_value).
     pub binding_mac: [u8; 32],
 }
 
 impl KeystrokeBinding {
     /// Create a binding for a single keystroke event.
     ///
-    /// Computes HMAC-SHA256 over `key_code || timestamp_ns || sequence` using
-    /// the provided session key. The sequence must be strictly monotonically
-    /// increasing within a session to prevent insertion attacks.
-    pub fn new(key_code: u32, timestamp_ns: u64, sequence: u64, session_key: &[u8; 32]) -> Self {
+    /// Computes HMAC-SHA256 over `key_code || timestamp_ns || sequence || counter_value`
+    /// using the provided session key. The sequence must be strictly monotonically
+    /// increasing within a session to prevent insertion attacks. `counter_value` should
+    /// be sampled from [`crate::phys::read_hardware_counter`] at keypress time.
+    pub fn new(
+        key_code: u32,
+        timestamp_ns: u64,
+        sequence: u64,
+        counter_value: u64,
+        session_key: &[u8; 32],
+    ) -> Self {
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
         type HmacSha256 = Hmac<Sha256>;
@@ -41,17 +51,24 @@ impl KeystrokeBinding {
         mac.update(&key_code.to_le_bytes());
         mac.update(&timestamp_ns.to_le_bytes());
         mac.update(&sequence.to_le_bytes());
+        mac.update(&counter_value.to_le_bytes());
         let result = mac.finalize().into_bytes();
         let mut binding_mac = [0u8; 32];
         binding_mac.copy_from_slice(&result);
 
-        Self { key_code, timestamp_ns, sequence, binding_mac }
+        Self { key_code, timestamp_ns, sequence, counter_value, binding_mac }
     }
 
     /// Verify this binding against the session key in constant time.
     pub fn verify(&self, session_key: &[u8; 32]) -> bool {
         use subtle::ConstantTimeEq;
-        let expected = Self::new(self.key_code, self.timestamp_ns, self.sequence, session_key);
+        let expected = Self::new(
+            self.key_code,
+            self.timestamp_ns,
+            self.sequence,
+            self.counter_value,
+            session_key,
+        );
         expected.binding_mac.ct_eq(&self.binding_mac).into()
     }
 }
@@ -72,13 +89,18 @@ impl KeystrokeBindingChain {
     }
 
     /// Sample a binding for the next keystroke and append it to the chain.
+    ///
+    /// Reads [`crate::phys::read_hardware_counter`] at call time to capture the
+    /// CPU counter at the moment of the keystroke event.
     pub fn sample_for_keystroke(
         &mut self,
         key_code: u32,
         timestamp_ns: u64,
         session_key: &[u8; 32],
     ) -> &KeystrokeBinding {
-        let binding = KeystrokeBinding::new(key_code, timestamp_ns, self.next_sequence, session_key);
+        let counter_value = crate::phys::read_hardware_counter();
+        let binding =
+            KeystrokeBinding::new(key_code, timestamp_ns, self.next_sequence, counter_value, session_key);
         self.next_sequence = self.next_sequence.saturating_add(1);
         self.bindings.push(binding);
         self.bindings.last().expect("just pushed")
@@ -532,7 +554,7 @@ mod tests {
     #[test]
     fn test_keystroke_binding_verify_ok() {
         let key = [7u8; 32];
-        let binding = KeystrokeBinding::new(42, 1_000_000_000, 0, &key);
+        let binding = KeystrokeBinding::new(42, 1_000_000_000, 0, 0, &key);
         assert!(binding.verify(&key));
     }
 
@@ -540,7 +562,7 @@ mod tests {
     fn test_keystroke_binding_wrong_key_fails() {
         let key = [7u8; 32];
         let wrong_key = [8u8; 32];
-        let binding = KeystrokeBinding::new(42, 1_000_000_000, 0, &key);
+        let binding = KeystrokeBinding::new(42, 1_000_000_000, 0, 0, &key);
         assert!(!binding.verify(&wrong_key));
     }
 
