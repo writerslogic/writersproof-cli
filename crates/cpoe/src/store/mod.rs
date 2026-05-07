@@ -5,6 +5,7 @@ use std::path::Path;
 use zeroize::{Zeroize, Zeroizing};
 
 pub mod access_log;
+pub mod archive;
 pub mod baselines;
 pub mod document_stats;
 pub mod events;
@@ -14,11 +15,13 @@ pub mod text_fragments;
 pub mod types;
 
 #[cfg(test)]
+mod archive_tests;
+#[cfg(test)]
 mod tests;
 
 pub use document_stats::DocumentStats;
 pub use text_fragments::{KeystrokeContext, TextFragment};
-pub use types::SecureEvent;
+pub use types::{SecureEvent, ShadowSessionRow};
 
 /// SQLite busy timeout in milliseconds. Shared with `AccessLog` (see `access_log.rs`).
 pub(crate) const BUSY_TIMEOUT_MS: u32 = 5000;
@@ -91,13 +94,16 @@ impl SecureStore {
         captured_at: i64,
         signed_evidence: Option<&[u8]>,
     ) -> anyhow::Result<()> {
-        // Reject timestamps more than 5 minutes in the future.
+        // Reject timestamps more than 15 minutes in the future. The 15-minute window
+        // matches NTP's maximum step-back tolerance: a clock corrected backward by up
+        // to ~10 minutes would make a legitimately captured timestamp appear that far
+        // ahead of "now", so a 5-minute window caused false rejections after NTP jumps.
         let now_ns = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as i64)
-            .unwrap_or(0);
-        let five_min_ns = 5 * 60 * 1_000_000_000i64;
-        if timestamp > now_ns + five_min_ns || captured_at > now_ns + five_min_ns {
+            .map_err(|e| anyhow::anyhow!("System clock unavailable: {e}"))?;
+        let fifteen_min_ns = 15 * 60 * 1_000_000_000i64;
+        if timestamp > now_ns + fifteen_min_ns || captured_at > now_ns + fifteen_min_ns {
             anyhow::bail!("Clipboard event timestamp is too far in the future");
         }
 
@@ -137,6 +143,135 @@ impl SecureStore {
             ],
         )?;
         Ok(())
+    }
+
+    /// Persist or update a shadow session keyed by `(bundle_id, project_uuid)`.
+    ///
+    /// Called whenever a bundle-based session checkpoint is committed so the
+    /// session state survives a sentinel restart.
+    #[allow(clippy::too_many_arguments)]
+    pub fn upsert_shadow_session(
+        &self,
+        bundle_id: &str,
+        project_uuid: &str,
+        session_id: &str,
+        wal_path: Option<&str>,
+        segment_counts_json: &str,
+        scrivx_hash: Option<&str>,
+        last_checkpoint_ns: i64,
+    ) -> anyhow::Result<()> {
+        let now_ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as i64)
+            .unwrap_or(0);
+        self.conn.execute(
+            "INSERT INTO shadow_sessions
+             (bundle_id, project_uuid, session_id, wal_path, segment_counts_json,
+              scrivx_hash, last_checkpoint_ns, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(bundle_id, project_uuid) DO UPDATE SET
+                 session_id          = excluded.session_id,
+                 wal_path            = excluded.wal_path,
+                 segment_counts_json = excluded.segment_counts_json,
+                 scrivx_hash         = excluded.scrivx_hash,
+                 last_checkpoint_ns  = excluded.last_checkpoint_ns,
+                 updated_at          = excluded.updated_at",
+            rusqlite::params![
+                bundle_id,
+                project_uuid,
+                session_id,
+                wal_path,
+                segment_counts_json,
+                scrivx_hash,
+                last_checkpoint_ns,
+                now_ns,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Load a previously persisted shadow session for `(bundle_id, project_uuid)`.
+    ///
+    /// Returns `None` if no row exists (first launch or after cleanup).
+    pub fn load_shadow_session(
+        &self,
+        bundle_id: &str,
+        project_uuid: &str,
+    ) -> anyhow::Result<Option<ShadowSessionRow>> {
+        let result = self.conn.query_row(
+            "SELECT bundle_id, project_uuid, session_id, wal_path, segment_counts_json,
+                    scrivx_hash, last_checkpoint_ns, updated_at
+             FROM shadow_sessions
+             WHERE bundle_id = ? AND project_uuid = ?",
+            rusqlite::params![bundle_id, project_uuid],
+            |row| {
+                Ok(ShadowSessionRow {
+                    bundle_id: row.get(0)?,
+                    project_uuid: row.get(1)?,
+                    session_id: row.get(2)?,
+                    wal_path: row.get(3)?,
+                    segment_counts_json: row.get(4)?,
+                    scrivx_hash: row.get(5)?,
+                    last_checkpoint_ns: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            },
+        );
+        match result {
+            Ok(row) => Ok(Some(row)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Record a manuscript export attestation with HMAC protection.
+    ///
+    /// The HMAC covers the four hash fields and both timestamps to make the
+    /// attestation tamper-evident even if the database file is copied.
+    pub fn insert_export_event(
+        &self,
+        attestation: &crate::evidence::ManuscriptExportAttestation,
+    ) -> anyhow::Result<()> {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.hmac_key)
+            .expect("HMAC key length already validated");
+        mac.update(attestation.source_session_id.as_bytes());
+        mac.update(attestation.bundle_hash.as_bytes());
+        mac.update(attestation.output_hash.as_bytes());
+        mac.update(attestation.output_path_hash.as_bytes());
+        mac.update(&attestation.source_checkpoint_ns.to_le_bytes());
+        mac.update(&attestation.export_detected_ns.to_le_bytes());
+        let hmac_tag: [u8; 32] = mac.finalize().into_bytes().into();
+
+        self.conn.execute(
+            "INSERT INTO export_events
+             (source_session_id, bundle_hash, output_hash, output_path_hash,
+              source_checkpoint_ns, export_detected_ns, hmac)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                attestation.source_session_id,
+                attestation.bundle_hash,
+                attestation.output_hash,
+                attestation.output_path_hash,
+                attestation.source_checkpoint_ns,
+                attestation.export_detected_ns,
+                hmac_tag,
+            ],
+        )?;
+        Ok(())
+    }
+}
+
+/// Expose the raw connection for benchmarks and integration tests.
+/// Only available with the `test-utils` feature; never use in production code.
+#[cfg(feature = "test-utils")]
+impl SecureStore {
+    pub fn raw_conn(&self) -> &Connection {
+        &self.conn
+    }
+    pub fn raw_conn_mut(&mut self) -> &mut Connection {
+        &mut self.conn
     }
 }
 

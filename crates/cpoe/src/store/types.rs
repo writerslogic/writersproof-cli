@@ -50,6 +50,22 @@ pub struct SecureEvent {
     pub semantic_summary: Option<String>,
 }
 
+/// Persisted state for a shadow session keyed by `(bundle_id, project_uuid)`.
+///
+/// Loaded on sentinel restart so bundle-app sessions (Scrivener, Vellum, Ulysses)
+/// resume their checkpoint chain without resetting keystroke counts.
+#[derive(Debug, Clone)]
+pub struct ShadowSessionRow {
+    pub bundle_id: String,
+    pub project_uuid: String,
+    pub session_id: String,
+    pub wal_path: Option<String>,
+    pub segment_counts_json: Option<String>,
+    pub scrivx_hash: Option<String>,
+    pub last_checkpoint_ns: i64,
+    pub updated_at: i64,
+}
+
 impl SecureEvent {
     /// Create a new event with sensible defaults for most fields.
     ///

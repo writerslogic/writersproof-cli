@@ -18,6 +18,8 @@ const KNOWN_TABLES: &[&str] = &[
     "baseline_digests",
     "document_stats",
     "fingerprints",
+    "shadow_sessions",
+    "export_events",
 ];
 
 fn has_column(conn: &rusqlite::Connection, table: &str, col: &str) -> anyhow::Result<bool> {
@@ -303,6 +305,35 @@ impl SecureStore {
                 CREATE INDEX IF NOT EXISTS idx_keystroke_sequences_session ON keystroke_sequences(session_id);",
             )?;
         }
+
+        // Migration: shadow session persistence for bundle-based apps.
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS shadow_sessions (
+                bundle_id           TEXT NOT NULL,
+                project_uuid        TEXT NOT NULL,
+                session_id          TEXT NOT NULL,
+                wal_path            TEXT,
+                segment_counts_json TEXT,
+                scrivx_hash         TEXT,
+                last_checkpoint_ns  INTEGER NOT NULL,
+                updated_at          INTEGER NOT NULL,
+                PRIMARY KEY (bundle_id, project_uuid)
+            );
+            CREATE INDEX IF NOT EXISTS idx_shadow_sessions_updated
+                ON shadow_sessions(updated_at);
+            CREATE TABLE IF NOT EXISTS export_events (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_session_id       TEXT NOT NULL,
+                bundle_hash             TEXT NOT NULL,
+                output_hash             TEXT NOT NULL,
+                output_path_hash        TEXT NOT NULL,
+                source_checkpoint_ns    INTEGER NOT NULL,
+                export_detected_ns      INTEGER NOT NULL,
+                hmac                    BLOB NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_export_events_session
+                ON export_events(source_session_id, export_detected_ns);",
+        )?;
 
         Ok(())
     }
