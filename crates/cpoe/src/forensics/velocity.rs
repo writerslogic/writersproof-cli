@@ -3,8 +3,8 @@
 //! Velocity analysis and session detection.
 
 use super::types::{
-    EventData, SessionStats, SortedEvents, VelocityMetrics, DEFAULT_SESSION_GAP_SEC,
-    THRESHOLD_HIGH_VELOCITY_BPS,
+    EventData, SegmentVelocityProfile, SessionStats, SortedEvents, VelocityMetrics,
+    DEFAULT_SESSION_GAP_SEC, THRESHOLD_HIGH_VELOCITY_BPS,
 };
 
 /// Maximum inter-event delta in seconds before treating as a session gap.
@@ -161,4 +161,84 @@ pub fn compute_session_stats(sorted: SortedEvents<'_>) -> SessionStats {
     stats.time_span_sec = crate::utils::ns_to_secs(last.saturating_sub(first));
 
     stats
+}
+
+/// Classify whether a bundle-relative path contains prose content.
+///
+/// Prose paths: any file under `Files/Data/` or `Files/Docs/` with a text
+/// extension (`.rtf`, `.txt`, `.md`).
+/// Non-prose: synopsis files, metadata XML, search indexes, binder state,
+/// and anything outside the content subtree.
+fn is_prose_segment(rel_path: &str) -> bool {
+    let in_content = rel_path.contains("Files/Data/") || rel_path.contains("Files/Docs/");
+    if !in_content {
+        return false;
+    }
+    let lower = rel_path.to_ascii_lowercase();
+    lower.ends_with(".rtf") || lower.ends_with(".txt") || lower.ends_with(".md")
+}
+
+/// Compute per-segment velocity profiles from a map of bundle-relative paths to
+/// their [`EventData`] slices.
+///
+/// Each entry in `segments` is `(rel_path, events)` where events are pre-sorted
+/// by `timestamp_ns`.  Non-prose segments are included but flagged `is_prose: false`
+/// so callers can exclude them from aggregate behavioral scores.
+pub fn analyze_segment_velocity(segments: &[(&str, &[EventData])]) -> Vec<SegmentVelocityProfile> {
+    segments
+        .iter()
+        .map(|(rel_path, events)| {
+            let prose = is_prose_segment(rel_path);
+            let keystroke_count = events.len() as u64;
+
+            if events.len() < 2 {
+                return SegmentVelocityProfile {
+                    rel_path: rel_path.to_string(),
+                    is_prose: prose,
+                    mean_bps: 0.0,
+                    max_bps: 0.0,
+                    keystroke_count,
+                    high_velocity_bursts: 0,
+                };
+            }
+
+            let mut velocities = Vec::with_capacity(events.len() - 1);
+            let mut high_bursts = 0usize;
+
+            for w in events.windows(2) {
+                let delta_ns = w[1].timestamp_ns.saturating_sub(w[0].timestamp_ns);
+                let delta_sec = crate::utils::ns_to_secs(delta_ns);
+                if delta_sec > 0.0 && delta_sec < MAX_DELTA_SEC {
+                    let bps = w[1].size_delta.unsigned_abs() as f64 / delta_sec;
+                    velocities.push(bps);
+                    if bps > THRESHOLD_HIGH_VELOCITY_BPS {
+                        high_bursts += 1;
+                    }
+                }
+            }
+
+            let mean_bps = if velocities.is_empty() {
+                0.0
+            } else {
+                let s: f64 = velocities.iter().sum();
+                let m = s / velocities.len() as f64;
+                if m.is_finite() { m } else { 0.0 }
+            };
+            let max_bps = velocities
+                .iter()
+                .cloned()
+                .fold(0.0_f64, f64::max)
+                .max(0.0);
+            let max_bps = if max_bps.is_finite() { max_bps } else { 0.0 };
+
+            SegmentVelocityProfile {
+                rel_path: rel_path.to_string(),
+                is_prose: prose,
+                mean_bps,
+                max_bps,
+                keystroke_count,
+                high_velocity_bursts: high_bursts,
+            }
+        })
+        .collect()
 }

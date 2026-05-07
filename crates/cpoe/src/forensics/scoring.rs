@@ -5,13 +5,21 @@
 //! Consolidates cadence-score, focus-penalty, and combined-score logic
 //! that was previously duplicated in multiple FFI modules.
 
-use super::types::FocusMetrics;
+use super::types::{FocusMetrics, SegmentVelocityProfile};
 use crate::jitter::SimpleJitterSample;
 use crate::sentinel::types::FocusSwitchRecord;
+use crate::utils::Probability;
 
 /// Minimum number of jitter samples required to compute a meaningful
 /// cadence score. Below this threshold the score is 0.0.
 const MIN_CADENCE_SAMPLES: usize = 20;
+
+/// Weighted mean bytes-per-second (prose segments only) above which a
+/// velocity penalty begins.  Calibrated to the upper end of sustained human
+/// typing speed (~80 WPM × 5 bytes ≈ 33 BPS; 80 BPS is already fast paste).
+const PROSE_VELOCITY_PENALTY_THRESHOLD_BPS: f64 = 80.0;
+/// Maximum penalty applied by [`apply_segment_velocity_penalty`].
+const PROSE_VELOCITY_MAX_PENALTY: f64 = 0.20;
 
 /// Compute a cadence score from raw jitter samples.
 ///
@@ -48,6 +56,50 @@ pub fn compute_focus_penalty(focus: &FocusMetrics) -> f64 {
     } else {
         base
     }
+}
+
+/// Apply a velocity penalty to `score` based on prose-only segment profiles.
+///
+/// Non-prose segments (synopses, metadata XML, search indexes) are excluded so
+/// that Scrivener's internal churn does not inflate the apparent velocity.  The
+/// penalty is proportional to how far the keystroke-weighted mean BPS of prose
+/// segments exceeds [`PROSE_VELOCITY_PENALTY_THRESHOLD_BPS`], capped at
+/// [`PROSE_VELOCITY_MAX_PENALTY`].
+///
+/// No-op when there are no prose segments or fewer than two total prose events.
+pub fn apply_segment_velocity_penalty(
+    score: &mut Probability,
+    segments: &[SegmentVelocityProfile],
+) {
+    // Work only with segments that contain prose content.
+    let prose: Vec<&SegmentVelocityProfile> =
+        segments.iter().filter(|s| s.is_prose).collect();
+
+    if prose.is_empty() {
+        return;
+    }
+
+    // Keystroke-weighted mean BPS across all prose segments.
+    let total_keystrokes: u64 = prose.iter().map(|s| s.keystroke_count).sum();
+    if total_keystrokes < 2 {
+        return;
+    }
+
+    let weighted_bps: f64 = prose
+        .iter()
+        .map(|s| s.mean_bps * s.keystroke_count as f64)
+        .sum::<f64>()
+        / total_keystrokes as f64;
+
+    if !weighted_bps.is_finite() || weighted_bps <= PROSE_VELOCITY_PENALTY_THRESHOLD_BPS {
+        return;
+    }
+
+    // Scale linearly from 0 at threshold to max penalty at 2× threshold.
+    let excess = (weighted_bps - PROSE_VELOCITY_PENALTY_THRESHOLD_BPS)
+        / PROSE_VELOCITY_PENALTY_THRESHOLD_BPS;
+    let penalty = (PROSE_VELOCITY_MAX_PENALTY * excess).min(PROSE_VELOCITY_MAX_PENALTY);
+    *score = Probability::clamp(score.get() - penalty);
 }
 
 /// Compute a combined forensic score from jitter samples and focus
@@ -124,5 +176,57 @@ mod tests {
     fn session_score_empty_inputs() {
         let score = session_forensic_score(&[], &[], 0);
         assert_eq!(score, 0.0);
+    }
+
+    fn make_profile(is_prose: bool, mean_bps: f64, keystrokes: u64) -> SegmentVelocityProfile {
+        SegmentVelocityProfile {
+            rel_path: String::new(),
+            is_prose,
+            mean_bps,
+            max_bps: mean_bps,
+            keystroke_count: keystrokes,
+            high_velocity_bursts: 0,
+        }
+    }
+
+    #[test]
+    fn segment_velocity_penalty_no_prose_segments() {
+        let mut score = Probability::clamp(0.9);
+        let segments = vec![make_profile(false, 200.0, 1000)];
+        apply_segment_velocity_penalty(&mut score, &segments);
+        assert!((score.get() - 0.9).abs() < f64::EPSILON, "non-prose should not affect score");
+    }
+
+    #[test]
+    fn segment_velocity_penalty_below_threshold() {
+        let mut score = Probability::clamp(0.9);
+        let segments = vec![make_profile(true, 30.0, 500)];
+        apply_segment_velocity_penalty(&mut score, &segments);
+        assert!((score.get() - 0.9).abs() < f64::EPSILON, "under-threshold prose should not penalize");
+    }
+
+    #[test]
+    fn segment_velocity_penalty_above_threshold() {
+        let mut score = Probability::clamp(1.0);
+        // 160 BPS = 2× threshold → full max penalty
+        let segments = vec![make_profile(true, 160.0, 500)];
+        apply_segment_velocity_penalty(&mut score, &segments);
+        assert!(score.get() < 1.0, "over-threshold prose should penalize");
+        assert!(score.get() >= 1.0 - PROSE_VELOCITY_MAX_PENALTY - f64::EPSILON);
+    }
+
+    #[test]
+    fn segment_velocity_penalty_excludes_non_prose_weight() {
+        let mut score_prose_only = Probability::clamp(1.0);
+        let mut score_mixed = Probability::clamp(1.0);
+        let prose = make_profile(true, 160.0, 500);
+        // Adding a non-prose segment with low BPS should not dilute the prose penalty.
+        let non_prose = make_profile(false, 1.0, 100_000);
+        apply_segment_velocity_penalty(&mut score_prose_only, &[prose.clone()]);
+        apply_segment_velocity_penalty(&mut score_mixed, &[prose, non_prose]);
+        assert!(
+            (score_prose_only.get() - score_mixed.get()).abs() < f64::EPSILON,
+            "non-prose weight must not dilute prose penalty"
+        );
     }
 }

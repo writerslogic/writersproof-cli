@@ -55,7 +55,10 @@ pub use forgery_cost::{
 };
 pub use provenance_metrics::{ProvenanceMetrics, SourceSessionInfo};
 pub use report::*;
-pub use scoring::{cadence_score_from_samples, compute_focus_penalty, session_forensic_score};
+pub use scoring::{
+    apply_segment_velocity_penalty, cadence_score_from_samples, compute_focus_penalty,
+    session_forensic_score,
+};
 pub use topology::*;
 pub use types::*;
 pub use velocity::*;
