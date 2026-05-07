@@ -118,15 +118,15 @@
 
 ## High
 - [-] **H-001** `[security]` `CPoEEngineFFI.swift:27`: try! in RustBuffer.from() crashes on allocation failure
-  <!-- pid:FFI_TRY_UNWRAP | batch:3 | verified:true | first:2026-04-11 -->
+  <!-- pid:FFI_TRY_UNWRAP | batch:3 | verified:true | first:2026-04-11 | reason:architectural — auto-generated UniFFI file (line 1 header); hand-edits overwritten on every uniffi-bindgen run; same as C-007/SYS-001 -->
   Impact: Unrecoverable crash in OOM conditions | Fix: Replace try! with proper error propagation | Effort: small
 
 - [-] **H-002** `[security]` `CPoEEngineFFI.swift:34`: try! in deallocate() crashes on deallocation failure
-  <!-- pid:FFI_TRY_UNWRAP | batch:3 | verified:true | first:2026-04-11 -->
+  <!-- pid:FFI_TRY_UNWRAP | batch:3 | verified:true | first:2026-04-11 | reason:architectural — auto-generated UniFFI file; same as H-001 -->
   Impact: Memory leak or crash during cleanup | Fix: Wrap in do/catch and log | Effort: small
 
 - [-] **H-003** `[security]` `CPoEEngineFFI.swift:90`: Force cast (as!) in readInt for UInt8
-  <!-- pid:FFI_CAST_UNSAFE | batch:3 | verified:true | first:2026-04-11 -->
+  <!-- pid:FFI_CAST_UNSAFE | batch:3 | verified:true | first:2026-04-11 | reason:architectural — auto-generated UniFFI file; same as H-001 -->
   Impact: Type system violation at FFI boundary | Fix: Use safe cast with guard | Effort: small
 
 - [-] **H-004** `[error_handling]` `EngineService.swift:134`: validateFFIContract() crashes fatally if FFI incompatible
@@ -206,7 +206,7 @@
   Impact: DoS via extremely long filenames | Fix: Enforce 32-char title limit | Effort: small
 
 - [-] **H-023** `[concurrency]` `native_messaging_host/mod.rs:39`: Infinite loop with no timeout or graceful shutdown
-  <!-- pid:no_graceful_shutdown | batch:1 | verified:true | first:2026-04-11 -->
+  <!-- pid:no_graceful_shutdown | batch:1 | verified:true | first:2026-04-11 | reason:mitigated — browser sends EOF on port close (caught, breaks loop); browser sends SIGTERM to kill NMH (Rust default handler exits); framing errors also break the loop. Only gap: browser stalls without closing — low probability in NMH lifecycle -->
   Impact: Native messaging host hangs indefinitely on slow IPC | Fix: Add per-message timeout | Effort: medium
 
 - [-] **H-024** `[security]` `KeystrokeMonitorService.swift:156`: Paste attribution bypass; pasted content credited to document
