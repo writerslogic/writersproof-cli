@@ -19,7 +19,13 @@ pub struct Rfc3161Provider {
 
 impl Rfc3161Provider {
     /// Create a provider with explicit TSA endpoint URLs.
+    ///
+    /// Only HTTPS URLs are accepted. HTTP, file, and loopback/private addresses are
+    /// rejected to prevent SSRF.
     pub fn new(tsa_urls: Vec<String>) -> Result<Self, AnchorError> {
+        for url in &tsa_urls {
+            validate_tsa_url(url)?;
+        }
         let client = super::http::build_http_client(None)?;
         Ok(Self { tsa_urls, client })
     }
@@ -95,7 +101,13 @@ impl Rfc3161Provider {
         let tst_info = extract_tst_info(&body)?;
         let response_nonce = extract_nonce(&tst_info)
             .ok_or_else(|| AnchorError::InvalidFormat("TSA response missing nonce".into()))?;
-        if response_nonce.ct_eq(nonce_sent.as_slice()).unwrap_u8() != 1 {
+        // Canonicalize sent nonce the same way extract_nonce does: strip leading
+        // 0x00 bytes so both sides represent the same numeric value before comparing.
+        let mut sent_canonical = nonce_sent.as_slice();
+        while sent_canonical.len() > 1 && sent_canonical[0] == 0x00 {
+            sent_canonical = &sent_canonical[1..];
+        }
+        if response_nonce.ct_eq(sent_canonical).unwrap_u8() != 1 {
             return Err(AnchorError::InvalidFormat(
                 "TSA response nonce does not match request nonce".into(),
             ));
@@ -106,7 +118,7 @@ impl Rfc3161Provider {
 
     #[allow(clippy::vec_init_then_push)]
     fn build_timestamp_request(&self, hash: &[u8; 32]) -> Result<(Vec<u8>, Vec<u8>), AnchorError> {
-        let mut nonce = [0u8; 8];
+        let mut nonce = [0u8; 16];
         getrandom::getrandom(&mut nonce)
             .map_err(|_| AnchorError::Submission("Failed to generate nonce".into()))?;
         let nonce_vec = nonce.to_vec();
@@ -144,8 +156,15 @@ impl Rfc3161Provider {
                 .map_err(|_| AnchorError::Submission("DER length overflow".into()))?,
         );
         request.extend_from_slice(&message_imprint);
+        // DER INTEGER: prepend 0x00 sign byte when high bit is set so the
+        // value is unambiguously positive (RFC 5280 §4.1, X.690 §8.3.2).
         request.push(0x02);
-        request.push(0x08);
+        if nonce[0] >= 0x80 {
+            request.push(0x11); // length = 17 (with sign byte)
+            request.push(0x00);
+        } else {
+            request.push(0x10); // length = 16
+        }
         request.extend_from_slice(&nonce);
         request.push(0x01);
         request.push(0x01);
@@ -154,6 +173,9 @@ impl Rfc3161Provider {
         let mut final_request = Vec::new();
         final_request.push(0x30);
         if request.len() < 128 {
+            final_request.push(request.len() as u8);
+        } else if request.len() <= 0xFF {
+            final_request.push(0x81);
             final_request.push(request.len() as u8);
         } else if request.len() <= 0xFFFF {
             final_request.push(0x82);
@@ -183,10 +205,12 @@ impl Rfc3161Provider {
             AnchorError::InvalidFormat("Cannot extract serialNumber from TSTInfo".into())
         })?;
 
+        let tsa_name = extract_tsa_name(&tst_info).unwrap_or_else(|| "RFC 3161 TSA".to_string());
+
         Ok(TimestampInfo {
             timestamp: gen_time,
             serial_number: serial,
-            tsa_name: "RFC 3161 TSA".to_string(),
+            tsa_name,
         })
     }
 
@@ -213,6 +237,79 @@ impl Rfc3161Provider {
 
         verify_cms_signature(token, &tst_info)
     }
+}
+
+/// Validate that a TSA URL uses HTTPS and does not point to loopback or private addresses.
+pub(super) fn validate_tsa_url(url: &str) -> Result<(), AnchorError> {
+    let parsed = url::Url::parse(url)
+        .map_err(|_| AnchorError::Configuration(format!("Invalid TSA URL: {url}")))?;
+
+    if parsed.scheme() != "https" {
+        return Err(AnchorError::Configuration(format!(
+            "TSA URL must use HTTPS scheme: {url}"
+        )));
+    }
+
+    if let Some(host) = parsed.host_str() {
+        let lower = host.to_lowercase();
+        let blocked = lower == "localhost"
+            || lower == "127.0.0.1"
+            || lower == "::1"
+            || lower == "[::1]"
+            || lower == "0.0.0.0"
+            || lower.starts_with("10.")
+            || lower.starts_with("192.168.")
+            || lower.starts_with("169.254.")
+            || lower.starts_with("fe80:")
+            || lower.starts_with("[fe80:");
+        if blocked {
+            return Err(AnchorError::Configuration(format!(
+                "TSA URL must not point to loopback or private address: {url}"
+            )));
+        }
+        // Check 172.16.0.0/12 range
+        if let Some(rest) = lower.strip_prefix("172.") {
+            if let Some(octet) = rest.split('.').next().and_then(|s| s.parse::<u8>().ok()) {
+                if (16..=31).contains(&octet) {
+                    return Err(AnchorError::Configuration(format!(
+                        "TSA URL must not point to loopback or private address: {url}"
+                    )));
+                }
+            }
+        }
+        // Check 100.64.0.0/10 CGNAT range
+        if let Some(rest) = lower.strip_prefix("100.") {
+            if let Some(octet) = rest.split('.').next().and_then(|s| s.parse::<u8>().ok()) {
+                if (64..=127).contains(&octet) {
+                    return Err(AnchorError::Configuration(format!(
+                        "TSA URL must not point to loopback or private address: {url}"
+                    )));
+                }
+            }
+        }
+        // Check IPv4-mapped IPv6 (::ffff:127.x.x.x loopback and private ranges)
+        if let Some(ipv4_part) = lower
+            .strip_prefix("::ffff:")
+            .or_else(|| lower.strip_prefix("[::ffff:").and_then(|s| s.strip_suffix(']')))
+        {
+            if ipv4_part.starts_with("127.")
+                || ipv4_part.starts_with("10.")
+                || ipv4_part.starts_with("192.168.")
+                || ipv4_part.starts_with("169.254.")
+                || ipv4_part == "0.0.0.0"
+            {
+                return Err(AnchorError::Configuration(format!(
+                    "TSA URL must not point to loopback or private address: {url}"
+                )));
+            }
+        }
+    } else {
+        return Err(AnchorError::Configuration(format!(
+            "TSA URL has no host: {url}"
+        )));
+    }
+
+    Ok(())
 }
 
 // DER/CMS parsing uses byte-range offsets to sidestep lifetime issues
@@ -327,6 +424,21 @@ fn extract_tst_info(data: &[u8]) -> Result<Vec<u8>, AnchorError> {
 
     // First child SEQUENCE => TimeStampResp wrapper; otherwise bare ContentInfo
     let content_info_tlv = if outer_kids[0].tag == 0x30 && outer_kids.len() > 1 {
+        // PKIStatusInfo is the first SEQUENCE child; its first child is the status INTEGER.
+        let status_seq = &outer_kids[0];
+        let status_kids = children_of(data, status_seq);
+        if !status_kids.is_empty() && status_kids[0].tag == 0x02 {
+            let status_bytes = status_kids[0].content(data);
+            let status_val = status_bytes
+                .iter()
+                .fold(0u32, |acc, &b| acc.saturating_mul(256).saturating_add(b as u32));
+            // RFC 3161 s2.4.2: 0 = granted, 1 = grantedWithMods, 2-5 = failure
+            if status_val >= 2 {
+                return Err(AnchorError::InvalidFormat(format!(
+                    "TSA returned failure status {status_val} in PKIStatusInfo"
+                )));
+            }
+        }
         &outer_kids[1]
     } else {
         &outer
@@ -350,8 +462,9 @@ fn extract_tst_info(data: &[u8]) -> Result<Vec<u8>, AnchorError> {
                 if let Some(octet) = find_child_by_tag(data, &econtent_explicit, 0x04) {
                     return Ok(octet.content(data).to_vec());
                 }
-                // Fallback: raw content bytes
-                return Ok(econtent_explicit.content(data).to_vec());
+                return Err(AnchorError::InvalidFormat(
+                    "encapContentInfo [0] has no OCTET STRING for TSTInfo".into(),
+                ));
             }
         }
     }
@@ -390,10 +503,17 @@ fn parse_generalized_time(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     use chrono::{NaiveDateTime, TimeZone};
     let s = s.trim_end_matches('Z');
 
-    if let Some((base, _frac)) = s.split_once('.') {
+    if let Some((base, frac)) = s.split_once('.') {
         if base.len() == 14 {
             let naive = NaiveDateTime::parse_from_str(base, "%Y%m%d%H%M%S").ok()?;
-            return Some(chrono::Utc.from_utc_datetime(&naive));
+            let dt = chrono::Utc.from_utc_datetime(&naive);
+            // Parse fractional seconds: pad or truncate to 9 digits (nanoseconds)
+            let frac_digits: String = frac.chars().take(9).collect();
+            let padded = format!("{:0<9}", frac_digits);
+            let nanos: u32 = padded.parse().unwrap_or(0);
+            return Some(
+                dt + chrono::Duration::nanoseconds(i64::from(nanos)),
+            );
         }
     }
 
@@ -506,6 +626,53 @@ fn extract_message_imprint_hash(tst_info: &[u8]) -> Option<[u8; 32]> {
     None
 }
 
+/// Extract `tsa` GeneralName from TSTInfo, if present.
+///
+/// The tsa field is `[1] GeneralName` (context tag 0xA1). We look for a
+/// directoryName (tag 0xA4) or dNSName/rfc822Name (tag 0x82/0x81) inside it.
+fn extract_tsa_name(tst_info: &[u8]) -> Option<String> {
+    let outer = read_tlv(tst_info, 0)?;
+    let inner_start = if outer.tag == 0x30 { outer.content_start } else { 0 };
+    let inner_end = if outer.tag == 0x30 { outer.content_end } else { tst_info.len() };
+
+    for child in children(tst_info, inner_start, inner_end) {
+        if child.tag == 0xA1 {
+            // Try to find a UTF8String (0x0C) or PrintableString (0x13) inside
+            let inner_kids = children_of(tst_info, &child);
+            for kid in &inner_kids {
+                // directoryName [4] wraps RDNSequence
+                if kid.tag == 0xA4 {
+                    // Walk RDNSequence → SET → SEQUENCE → value string
+                    for rdn_set in children_of(tst_info, kid) {
+                        for attr_seq in children_of(tst_info, &rdn_set) {
+                            let attr_kids = children_of(tst_info, &attr_seq);
+                            if attr_kids.len() >= 2 {
+                                let val = &attr_kids[attr_kids.len() - 1];
+                                if matches!(val.tag, 0x0C | 0x13 | 0x16) {
+                                    if let Ok(s) = std::str::from_utf8(val.content(tst_info)) {
+                                        if !s.is_empty() {
+                                            return Some(s.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // dNSName [2] or rfc822Name [1]
+                if matches!(kid.tag, 0x82 | 0x81) {
+                    if let Ok(s) = std::str::from_utf8(kid.content(tst_info)) {
+                        if !s.is_empty() {
+                            return Some(s.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 // OID content bytes (sans tag+length) for the algorithms we support.
 const OID_SHA256: &[u8] = &[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01];
 const OID_SHA256_WITH_RSA: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b];
@@ -593,7 +760,9 @@ fn parse_signer_info(data: &[u8], si: &Tlv) -> Option<SignerInfoFields> {
         let content = kids[idx].content(data);
         let mut sa = Vec::with_capacity(4 + content.len());
         sa.push(0x31); // re-encode as SET for signature verification (RFC 5652 §5.4)
-        encode_der_length(&mut sa, content.len());
+        if !encode_der_length(&mut sa, content.len()) {
+            return None;
+        }
         sa.extend_from_slice(content);
         idx += 1;
         Some(sa)
@@ -620,35 +789,198 @@ fn parse_signer_info(data: &[u8], si: &Tlv) -> Option<SignerInfoFields> {
     })
 }
 
-fn encode_der_length(out: &mut Vec<u8>, len: usize) {
+fn encode_der_length(out: &mut Vec<u8>, len: usize) -> bool {
     if len < 0x80 {
         out.push(len as u8);
     } else if len <= 0xFF {
         out.push(0x81);
         out.push(len as u8);
-    } else {
+    } else if len <= 0xFFFF {
         out.push(0x82);
         out.push((len >> 8) as u8);
         out.push((len & 0xFF) as u8);
+    } else {
+        return false;
     }
+    true
 }
 
-fn verify_rsa_pkcs1v15_sha256(spki_der: &[u8], message: &[u8], sig_bytes: &[u8]) -> bool {
+fn verify_rsa_pkcs1v15_sha256(
+    spki_der: &[u8],
+    message: &[u8],
+    sig_bytes: &[u8],
+) -> Result<bool, AnchorError> {
     use rsa::{pkcs1v15::VerifyingKey, pkcs8::DecodePublicKey, signature::Verifier};
-    let pub_key = match rsa::RsaPublicKey::from_public_key_der(spki_der) {
-        Ok(k) => k,
-        Err(_) => return false,
-    };
+    let pub_key = rsa::RsaPublicKey::from_public_key_der(spki_der).map_err(|e| {
+        AnchorError::Verification(format!("Invalid RSA public key DER: {e}"))
+    })?;
     let verifying_key: VerifyingKey<sha2::Sha256> = VerifyingKey::new(pub_key);
-    let sig = match rsa::pkcs1v15::Signature::try_from(sig_bytes) {
-        Ok(s) => s,
-        Err(_) => return false,
+    let sig = rsa::pkcs1v15::Signature::try_from(sig_bytes).map_err(|e| {
+        AnchorError::Verification(format!("Invalid RSA signature encoding: {e}"))
+    })?;
+    Ok(verifying_key.verify(message, &sig).is_ok())
+}
+
+// OID for id-kp-timeStamping (1.3.6.1.5.5.7.3.8)
+const OID_KP_TIMESTAMPING: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x08];
+// OID for id-messageDigest (1.2.840.113549.1.9.4)
+const OID_MESSAGE_DIGEST: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x04];
+
+/// Check that a certificate's validity period covers `now`.
+fn check_cert_validity(data: &[u8], cert: &Tlv) -> Result<(), AnchorError> {
+    let tbs = children_of(data, cert)
+        .into_iter()
+        .find(|c| c.tag == 0x30)
+        .ok_or_else(|| AnchorError::Verification("No TBSCertificate".into()))?;
+    let tbs_kids = children_of(data, &tbs);
+    // Validity is the SEQUENCE after subject/issuer — search for a SEQUENCE containing
+    // two time values (UTCTime 0x17 or GeneralizedTime 0x18).
+    for kid in &tbs_kids {
+        if kid.tag == 0x30 {
+            let time_kids = children_of(data, kid);
+            if time_kids.len() == 2 && matches!(time_kids[0].tag, 0x17 | 0x18) {
+                let not_before = parse_cert_time(data, &time_kids[0]);
+                let not_after = parse_cert_time(data, &time_kids[1]);
+                if let (Some(nb), Some(na)) = (not_before, not_after) {
+                    let now = chrono::Utc::now();
+                    if now < nb {
+                        return Err(AnchorError::Verification(
+                            "TSA certificate not yet valid".into(),
+                        ));
+                    }
+                    if now > na {
+                        return Err(AnchorError::Verification(
+                            "TSA certificate has expired".into(),
+                        ));
+                    }
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Err(AnchorError::Verification(
+        "Could not parse certificate validity period".into(),
+    ))
+}
+
+/// Parse a UTCTime (0x17) or GeneralizedTime (0x18) from a cert field.
+fn parse_cert_time(data: &[u8], tlv: &Tlv) -> Option<chrono::DateTime<chrono::Utc>> {
+    let s = std::str::from_utf8(tlv.content(data)).ok()?;
+    if tlv.tag == 0x17 {
+        // UTCTime: YYMMDDHHMMSSZ
+        use chrono::{NaiveDateTime, TimeZone};
+        let s = s.trim_end_matches('Z');
+        if s.len() >= 12 {
+            let naive = NaiveDateTime::parse_from_str(&s[..12], "%y%m%d%H%M%S").ok()?;
+            return Some(chrono::Utc.from_utc_datetime(&naive));
+        }
+    } else if tlv.tag == 0x18 {
+        return parse_generalized_time(s);
+    }
+    None
+}
+
+/// Check that a certificate has id-kp-timeStamping in its extKeyUsage extension.
+fn check_cert_ext_key_usage(data: &[u8], cert: &Tlv) -> Result<(), AnchorError> {
+    let tbs = children_of(data, cert)
+        .into_iter()
+        .find(|c| c.tag == 0x30)
+        .ok_or_else(|| AnchorError::Verification("No TBSCertificate".into()))?;
+    // Extensions are in [3] EXPLICIT (tag 0xA3)
+    let ext_wrapper = match find_child_by_tag(data, &tbs, 0xA3) {
+        Some(w) => w,
+        None => {
+            log::warn!(
+                "TSA certificate has no extensions; cannot verify extKeyUsage"
+            );
+            return Ok(());
+        }
     };
-    verifying_key.verify(message, &sig).is_ok()
+    // Extensions SEQUENCE inside [3]
+    let ext_seq = match children_of(data, &ext_wrapper)
+        .into_iter()
+        .find(|c| c.tag == 0x30)
+    {
+        Some(s) => s,
+        None => return Ok(()),
+    };
+
+    // OID for extKeyUsage: 2.5.29.37
+    let oid_eku: &[u8] = &[0x55, 0x1D, 0x25];
+
+    for ext in children_of(data, &ext_seq) {
+        if ext.tag != 0x30 {
+            continue;
+        }
+        let ext_kids = children_of(data, &ext);
+        if ext_kids.is_empty() || ext_kids[0].tag != 0x06 {
+            continue;
+        }
+        if ext_kids[0].content(data) != oid_eku {
+            continue;
+        }
+        // Found extKeyUsage extension; parse the OCTET STRING value
+        for ek in &ext_kids {
+            if ek.tag == 0x04 {
+                let inner = ek.content(data);
+                // Inner is a SEQUENCE of OIDs
+                if let Some(seq) = read_tlv(inner, 0) {
+                    for oid_tlv in children_of(inner, &seq) {
+                        if oid_tlv.tag == 0x06
+                            && oid_tlv.content(inner) == OID_KP_TIMESTAMPING
+                        {
+                            return Ok(());
+                        }
+                    }
+                }
+                return Err(AnchorError::Verification(
+                    "TSA certificate lacks id-kp-timeStamping in extKeyUsage".into(),
+                ));
+            }
+        }
+    }
+    // No extKeyUsage extension found — warn but allow (some legacy certs omit it)
+    log::warn!("TSA certificate has no extKeyUsage extension; cannot confirm timeStamping EKU");
+    Ok(())
+}
+
+/// Extract the messageDigest attribute value from re-encoded signedAttrs bytes.
+///
+/// The signedAttrs have already been re-encoded with a SET (0x31) tag. We parse the
+/// inner Attribute SEQUENCEs looking for OID id-messageDigest (1.2.840.113549.1.9.4)
+/// and return the OCTET STRING value.
+fn extract_message_digest_from_signed_attrs(signed_attrs: &[u8]) -> Option<Vec<u8>> {
+    let outer = read_tlv(signed_attrs, 0)?;
+    for attr in children_of(signed_attrs, &outer) {
+        if attr.tag != 0x30 {
+            continue;
+        }
+        let attr_kids = children_of(signed_attrs, &attr);
+        if attr_kids.len() < 2 || attr_kids[0].tag != 0x06 {
+            continue;
+        }
+        if attr_kids[0].content(signed_attrs) != OID_MESSAGE_DIGEST {
+            continue;
+        }
+        // Value is in a SET (0x31) containing an OCTET STRING (0x04)
+        for val_kid in &attr_kids[1..] {
+            if val_kid.tag == 0x31 {
+                if let Some(octet) = find_child_by_tag(signed_attrs, val_kid, 0x04) {
+                    return Some(octet.content(signed_attrs).to_vec());
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Verify the CMS SignedData wrapper: locate SignerInfos, extract the TSA certificate's
 /// SubjectPublicKeyInfo, and check the RSA-SHA256 signature over signedAttrs (or eContent).
+///
+/// NOTE: Full PKIX chain-of-trust validation (path building, revocation checking) is NOT
+/// implemented here. That requires a dedicated PKIX library (e.g., webpki or x509-cert).
+/// We do check: (a) certificate validity period, (b) extKeyUsage for id-kp-timeStamping,
+/// and (c) messageDigest attribute matches SHA-256(TSTInfo).
 fn verify_cms_signature(token: &[u8], tst_info: &[u8]) -> Result<bool, AnchorError> {
     let signed_data = find_signed_data(token)
         .ok_or_else(|| AnchorError::InvalidFormat("Cannot locate SignedData".into()))?;
@@ -670,6 +1002,8 @@ fn verify_cms_signature(token: &[u8], tst_info: &[u8]) -> Result<bool, AnchorErr
         return Err(AnchorError::InvalidFormat("Empty signerInfos".into()));
     }
 
+    let mut last_error: Option<AnchorError> = None;
+
     for si in &signer_infos {
         let fields = match parse_signer_info(token, si) {
             Some(f) => f,
@@ -677,30 +1011,61 @@ fn verify_cms_signature(token: &[u8], tst_info: &[u8]) -> Result<bool, AnchorErr
         };
 
         if fields.sig_alg_oid != OID_SHA256_WITH_RSA || fields.digest_alg_oid != OID_SHA256 {
-            return Err(AnchorError::Unavailable(
+            last_error = Some(AnchorError::Unavailable(
                 "TSA uses non-RSA/SHA256 algorithm; CMS signature verification not supported"
                     .into(),
             ));
+            continue;
+        }
+
+        // Verify messageDigest attribute matches SHA-256(TSTInfo) when signedAttrs present
+        if let Some(ref sa) = fields.signed_attrs {
+            if let Some(md) = extract_message_digest_from_signed_attrs(sa) {
+                use sha2::Digest;
+                let computed = sha2::Sha256::digest(tst_info);
+                if md.ct_eq(computed.as_slice()).unwrap_u8() != 1 {
+                    last_error = Some(AnchorError::Verification(
+                        "messageDigest attribute does not match SHA-256(TSTInfo)".into(),
+                    ));
+                    continue;
+                }
+            }
         }
 
         let message: &[u8] = fields.signed_attrs.as_deref().unwrap_or(tst_info);
 
         for cert in &certs {
             if let Some(spki) = extract_spki(token, cert) {
-                if verify_rsa_pkcs1v15_sha256(spki.as_bytes(token), message, &fields.signature) {
-                    return Ok(true);
+                match verify_rsa_pkcs1v15_sha256(
+                    spki.as_bytes(token),
+                    message,
+                    &fields.signature,
+                ) {
+                    Ok(true) => {
+                        // Signature matches this cert — validate cert properties
+                        check_cert_validity(token, cert)?;
+                        check_cert_ext_key_usage(token, cert)?;
+                        return Ok(true);
+                    }
+                    Ok(false) => continue,
+                    Err(e) => {
+                        last_error = Some(e);
+                        continue;
+                    }
                 }
             }
         }
 
-        return Err(AnchorError::Verification(
-            "CMS signature verification failed: no matching TSA certificate".into(),
-        ));
+        if last_error.is_none() {
+            last_error = Some(AnchorError::Verification(
+                "CMS signature verification failed: no matching TSA certificate".into(),
+            ));
+        }
     }
 
-    Err(AnchorError::InvalidFormat(
-        "No parseable SignerInfo found".into(),
-    ))
+    Err(last_error.unwrap_or_else(|| {
+        AnchorError::InvalidFormat("No parseable SignerInfo found".into())
+    }))
 }
 
 struct TimestampInfo {
@@ -742,6 +1107,7 @@ impl AnchorProvider for Rfc3161Provider {
                         provider: ProviderType::Rfc3161,
                         status: ProofStatus::Confirmed,
                         anchored_hash: *hash,
+                        // Local clock time of submission; TSA-attested time is in confirmed_at.
                         submitted_at: chrono::Utc::now(),
                         confirmed_at: Some(info.timestamp),
                         proof_data: token,

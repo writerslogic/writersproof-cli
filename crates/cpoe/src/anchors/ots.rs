@@ -21,6 +21,14 @@ const OTS_BITCOIN_ATTESTATION_TAG: [u8; 8] = [0x05, 0x88, 0x96, 0x0d, 0x73, 0xd7
 /// Public Bitcoin block explorer API base URLs, tried in order for fallback.
 const BITCOIN_BLOCK_APIS: &[&str] = &["https://blockstream.info/api", "https://mempool.space/api"];
 
+/// Maximum HTTP response size (1 MiB) to prevent memory exhaustion from
+/// malicious or misconfigured servers.
+const MAX_RESPONSE_SIZE: usize = 1024 * 1024;
+
+/// Maximum length for varint-prefixed data fields (1 MiB) to prevent
+/// unbounded allocation from crafted proofs.
+const MAX_DATA_LEN: usize = 1024 * 1024;
+
 /// Size of a serialized Bitcoin block header in bytes.
 const BITCOIN_BLOCK_HEADER_SIZE: usize = 80;
 
@@ -55,11 +63,44 @@ impl OpenTimestampsProvider {
     /// Create a provider using custom calendar server URLs.
     #[allow(dead_code)]
     pub fn with_calendars(urls: Vec<String>) -> Result<Self, AnchorError> {
+        for url in &urls {
+            super::rfc3161::validate_tsa_url(url)?;
+        }
         Ok(Self {
             calendar_urls: urls,
             client: super::http::build_http_client(None)?,
             header_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
+    }
+
+    /// Read an HTTP response body up to `MAX_RESPONSE_SIZE`, rejecting
+    /// responses that exceed the limit regardless of Content-Length.
+    async fn read_response_bounded(
+        mut response: reqwest::Response,
+    ) -> Result<Vec<u8>, AnchorError> {
+        // Early reject if Content-Length advertises too much data.
+        if let Some(cl) = response.content_length() {
+            if cl as usize > MAX_RESPONSE_SIZE {
+                return Err(AnchorError::InvalidFormat(format!(
+                    "Response too large: {cl} bytes exceeds {MAX_RESPONSE_SIZE} limit"
+                )));
+            }
+        }
+
+        let mut buf = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|e| AnchorError::Network(e.to_string()))?
+        {
+            if buf.len() + chunk.len() > MAX_RESPONSE_SIZE {
+                return Err(AnchorError::InvalidFormat(format!(
+                    "Response exceeded {MAX_RESPONSE_SIZE} byte limit"
+                )));
+            }
+            buf.extend_from_slice(&chunk);
+        }
+        Ok(buf)
     }
 
     async fn submit_to_calendar(&self, url: &str, hash: &[u8; 32]) -> Result<Vec<u8>, AnchorError> {
@@ -81,12 +122,7 @@ impl OpenTimestampsProvider {
             )));
         }
 
-        let proof_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| AnchorError::Network(e.to_string()))?;
-
-        Ok(proof_bytes.to_vec())
+        Self::read_response_bounded(response).await
     }
 
     async fn upgrade_proof(
@@ -95,10 +131,24 @@ impl OpenTimestampsProvider {
         anchored_hash: &[u8; 32],
     ) -> Result<Option<Vec<u8>>, AnchorError> {
         let pending_urls = self.find_pending_calendars(proof_data)?;
+        if pending_urls.is_empty() {
+            return Ok(None);
+        }
 
-        for url in pending_urls {
+        let mut all_server_errors = true;
+
+        for url in &pending_urls {
+            // Only contact calendar URLs that were provided at construction time.
+            // URLs in the proof body come from a (partially) untrusted server response;
+            // allowing arbitrary URLs would enable SSRF. CWE-918.
+            if !self.calendar_urls.iter().any(|allowed| url.starts_with(allowed.as_str())) {
+                log::warn!("Proof contains unrecognized calendar URL {}; skipping", url);
+                all_server_errors = false;
+                continue;
+            }
+
             let endpoint = format!("{}/timestamp", url);
-            let commitment = self.extract_commitment(proof_data, &url, anchored_hash)?;
+            let commitment = self.extract_commitment(proof_data, url, anchored_hash)?;
 
             let response = self
                 .client
@@ -110,18 +160,31 @@ impl OpenTimestampsProvider {
             match response {
                 Ok(resp) => {
                     if resp.status().is_success() {
-                        let upgraded = resp
-                            .bytes()
-                            .await
-                            .map_err(|e| AnchorError::Network(e.to_string()))?;
-                        return Ok(Some(self.merge_proofs(proof_data, &upgraded, &url)?));
+                        let upgraded = Self::read_response_bounded(resp).await?;
+                        return Ok(Some(self.merge_proofs(proof_data, &upgraded, url)?));
                     }
-                    log::debug!("Calendar {} returned {} during upgrade", url, resp.status());
+                    let status = resp.status();
+                    if status == reqwest::StatusCode::NOT_FOUND {
+                        // 404 = attestation not yet ready; not a server error.
+                        all_server_errors = false;
+                        log::debug!("Calendar {} returned 404 (not ready)", url);
+                    } else if status.is_server_error() {
+                        log::warn!("Calendar {} returned server error {}", url, status);
+                    } else {
+                        all_server_errors = false;
+                        log::debug!("Calendar {} returned {} during upgrade", url, status);
+                    }
                 }
                 Err(e) => {
                     log::debug!("Calendar {} upgrade request failed: {e}", url);
                 }
             }
+        }
+
+        if all_server_errors {
+            return Err(AnchorError::Network(
+                "All calendar servers returned errors during upgrade".into(),
+            ));
         }
 
         Ok(None)
@@ -149,9 +212,14 @@ impl OpenTimestampsProvider {
                     let _ = Self::read_data(proof_data, &mut pos)?;
                 }
                 0x00 => {
-                    // Pending attestation
+                    // Pending attestation: URL followed by 8-byte tag + payload
                     let url = Self::read_string(proof_data, &mut pos)?;
                     urls.push(url);
+                    // Advance past the attestation tag and payload if present
+                    if pos + 8 <= proof_data.len() {
+                        pos += 8; // 8-byte attestation type tag
+                        let _ = Self::read_data(proof_data, &mut pos)?;
+                    }
                 }
                 _ => break, // Unknown or terminal
             }
@@ -336,6 +404,11 @@ impl OpenTimestampsProvider {
     /// advancing `pos` past both the length and the payload.
     fn read_data(data: &[u8], pos: &mut usize) -> Result<Vec<u8>, AnchorError> {
         let len = Self::read_varint(data, pos)?;
+        if len > MAX_DATA_LEN {
+            return Err(AnchorError::InvalidFormat(format!(
+                "Data field length {len} exceeds maximum {MAX_DATA_LEN}"
+            )));
+        }
         let end = pos
             .checked_add(len)
             .ok_or_else(|| AnchorError::InvalidFormat("Proof data length overflow".into()))?;
@@ -409,6 +482,11 @@ impl OpenTimestampsProvider {
                         data: Vec::new(),
                     });
                     break;
+                }
+                0xff => {
+                    return Err(AnchorError::InvalidFormat(
+                        "Branching proofs (fork opcode 0xff) are not supported".into(),
+                    ));
                 }
                 unknown => {
                     return Err(AnchorError::InvalidFormat(format!(
@@ -490,6 +568,11 @@ impl OpenTimestampsProvider {
                     let payload = Self::read_data(proof_data, &mut pos)?;
 
                     if tag == OTS_BITCOIN_ATTESTATION_TAG {
+                        if payload.len() > 8 {
+                            return Err(AnchorError::InvalidFormat(
+                                "Block height exceeds 8 bytes".into(),
+                            ));
+                        }
                         let height = payload
                             .iter()
                             .enumerate()
@@ -510,7 +593,11 @@ impl OpenTimestampsProvider {
         &self,
         height: u64,
     ) -> Result<[u8; BITCOIN_BLOCK_HEADER_SIZE], AnchorError> {
-        if let Ok(cache) = self.header_cache.lock() {
+        {
+            let cache = self
+                .header_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             if let Some(header) = cache.get(&height) {
                 return Ok(*header);
             }
@@ -534,9 +621,14 @@ impl OpenTimestampsProvider {
                         continue;
                     }
 
-                    if let Ok(mut cache) = self.header_cache.lock() {
-                        cache.insert(height, header);
+                    let mut cache = self
+                        .header_cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if cache.len() >= 1000 {
+                        cache.clear();
                     }
+                    cache.insert(height, header);
 
                     return Ok(header);
                 }
@@ -572,10 +664,9 @@ impl OpenTimestampsProvider {
             )));
         }
 
-        let block_hash = hash_resp
-            .text()
-            .await
-            .map_err(|e| AnchorError::Network(e.to_string()))?;
+        let hash_bytes = Self::read_response_bounded(hash_resp).await?;
+        let block_hash = String::from_utf8(hash_bytes)
+            .map_err(|e| AnchorError::InvalidFormat(format!("Invalid block hash UTF-8: {e}")))?;
         let block_hash = block_hash.trim();
 
         if block_hash.len() != 64 || !block_hash.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -601,10 +692,9 @@ impl OpenTimestampsProvider {
             )));
         }
 
-        let header_hex = header_resp
-            .text()
-            .await
-            .map_err(|e| AnchorError::Network(e.to_string()))?;
+        let header_raw = Self::read_response_bounded(header_resp).await?;
+        let header_hex = String::from_utf8(header_raw)
+            .map_err(|e| AnchorError::InvalidFormat(format!("Invalid header hex UTF-8: {e}")))?;
         let header_bytes = hex::decode(header_hex.trim())
             .map_err(|e| AnchorError::InvalidFormat(format!("Invalid header hex: {e}")))?;
 
@@ -655,7 +745,17 @@ impl OpenTimestampsProvider {
         let size = (bits >> 24) as usize;
         let mut word = bits & 0x007F_FFFF;
 
-        if word == 0 {
+        // Reject negative targets (sign bit set) per Bitcoin Core.
+        if bits & 0x0080_0000 != 0 {
+            return target;
+        }
+
+        if size == 0 || word == 0 {
+            return target;
+        }
+
+        // Size > 32 would place mantissa bytes outside the 32-byte target.
+        if size > 32 {
             return target;
         }
 
@@ -710,8 +810,12 @@ impl AnchorProvider for OpenTimestampsProvider {
     }
 
     async fn is_available(&self) -> bool {
+        // Use a shorter timeout than the shared client's 30s default
+        // to avoid blocking callers on a simple availability check.
+        let timeout = std::time::Duration::from_secs(5);
         for url in &self.calendar_urls {
-            if let Ok(resp) = self.client.get(url).send().await {
+            let result = tokio::time::timeout(timeout, self.client.get(url).send()).await;
+            if let Ok(Ok(resp)) = result {
                 if resp.status().is_success() {
                     return true;
                 }
@@ -823,7 +927,8 @@ impl AnchorProvider for OpenTimestampsProvider {
         };
 
         let merkle_root = Self::parse_merkle_root(&header);
-        if result.as_slice() == merkle_root.as_slice() {
+        use subtle::ConstantTimeEq;
+        if bool::from(result.as_slice().ct_eq(merkle_root.as_slice())) {
             log::info!(
                 "OTS proof verified against Bitcoin block {} merkle root",
                 height
