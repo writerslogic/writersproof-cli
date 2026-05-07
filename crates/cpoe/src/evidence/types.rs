@@ -234,6 +234,14 @@ pub struct Packet {
     /// Contains credential ID and issuer for wallet integration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_reference: Option<CredentialReference>,
+    /// Compile-to-export hash chain: links this evidence packet to a derived
+    /// manuscript file produced by Scrivener, Final Draft, Vellum, or Ulysses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_attestation: Option<ManuscriptExportAttestation>,
+    /// Document binder/outline structure snapshot captured at checkpoint time.
+    /// Present for bundle-based apps (Scrivener `.scriv`, Final Draft `.fdx`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_structure: Option<DocumentStructureSnapshot>,
 }
 
 impl Default for Packet {
@@ -277,6 +285,8 @@ impl Default for Packet {
             limitations: Vec::new(),
             beacon_attestation: None,
             credential_reference: None,
+            export_attestation: None,
+            document_structure: None,
         }
     }
 }
@@ -364,6 +374,57 @@ pub struct CredentialReference {
 
     /// SHA-256 hash of the evidence packet this credential references
     pub evidence_hash: String,
+}
+
+/// Hash-chain attestation linking a compile/export event to its source session.
+///
+/// Produced when a known bundle app (Scrivener, Final Draft, Vellum) creates a
+/// derived output file (`.docx`, `.pdf`, `.fdx`) within 30 seconds of the last
+/// active checkpoint for the session that owns the source bundle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManuscriptExportAttestation {
+    /// Session ID that produced the source content.
+    pub source_session_id: String,
+    /// BLAKE3 hash of the bundle root at compile time (hex).
+    pub bundle_hash: String,
+    /// BLAKE3 hash of the exported output file (hex).
+    pub output_hash: String,
+    /// SHA-256 hash of the output file path (privacy-preserving; hex).
+    pub output_path_hash: String,
+    /// Unix nanoseconds of the last active checkpoint before export.
+    pub source_checkpoint_ns: i64,
+    /// Unix nanoseconds when the output file was first observed.
+    pub export_detected_ns: i64,
+}
+
+/// One entry in a document's binder/scene tree snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentStructureEntry {
+    /// Unique identifier from the source format (Scrivener BinderItem ID, FDX Scene heading).
+    pub uuid: String,
+    /// Human-readable title of the item.
+    pub title: String,
+    /// Nesting depth within the binder/outline tree (0 = root).
+    pub depth: u32,
+    /// Type label from the source format (e.g. `"Text"`, `"Folder"`, `"Scene"`).
+    pub item_type: String,
+}
+
+/// Snapshot of a document's internal structure, captured at session checkpoint time.
+///
+/// For Scrivener: parsed from `project.scrivx`. For Final Draft: parsed from the
+/// ZIP-embedded FDX XML. The snapshot proves the structure existed at checkpoint time
+/// without revealing the document's content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentStructureSnapshot {
+    /// BLAKE3 hash of the document path string (privacy-preserving; hex).
+    pub document_path_hash: String,
+    /// Binder/outline entries captured from the project metadata file.
+    pub entries: Vec<DocumentStructureEntry>,
+    /// BLAKE3 hash of the raw metadata source file (hex).
+    pub source_hash: String,
+    /// When this snapshot was taken.
+    pub captured_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Classification of a context period within a writing session.

@@ -14,9 +14,10 @@ pub mod wire_conversion;
 pub use self::types::{
     compute_hw_entangled_hash, AccessControlInfo, AnchorProof, BehavioralEvidence, CheckpointProof,
     CheckpointSignature, Claim, ClaimType, ContextPeriod, ContextPeriodType, DictationEvent,
-    DocumentInfo, EditRegion, ExternalAnchors, ForensicMetrics, HardwareCosignature,
-    HardwareEvidence, InputDeviceInfo, KeyHierarchyEvidencePacket, KeystrokeEvidence, OtsProof,
-    Packet, RecordProvenance, Rfc3161Proof, TrustTier, WpBeaconAttestation, HW_COSIGN_DST,
+    DocumentInfo, DocumentStructureEntry, DocumentStructureSnapshot, EditRegion, ExternalAnchors,
+    ForensicMetrics, HardwareCosignature, HardwareEvidence, InputDeviceInfo,
+    KeyHierarchyEvidencePacket, KeystrokeEvidence, ManuscriptExportAttestation, OtsProof, Packet,
+    RecordProvenance, Rfc3161Proof, TrustTier, WpBeaconAttestation, HW_COSIGN_DST,
 };
 
 pub use self::builder::{
