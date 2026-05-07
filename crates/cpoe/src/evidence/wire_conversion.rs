@@ -146,6 +146,7 @@ pub fn chain_to_wire_with_signatures(
         document_content: None,
         document_filename: None,
         project_files: None,
+        session_counter: None,
     })
 }
 
