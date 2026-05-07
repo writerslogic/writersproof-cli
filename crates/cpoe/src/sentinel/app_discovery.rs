@@ -269,10 +269,16 @@ fn has_writing_uti_in_plist(bundle_path: &Path) -> bool {
         "public.rtf",
         "net.daringfireball.markdown",
         "public.plain-text",
+        "public.utf8-plain-text",
         "org.openxmlformats.wordprocessingml.document",
         "NSStringPboardType",
     ];
-    WRITING_INDICATORS.iter().any(|indicator| contents.contains(indicator))
+    if WRITING_INDICATORS.iter().any(|indicator| contents.contains(indicator)) {
+        return true;
+    }
+    // S13: An app that registers NSServices with NSSendTypes accepts text from other
+    // apps — a reliable indicator of a writing or editing app.
+    contents.contains("NSServices") && contents.contains("NSSendTypes")
 }
 
 /// Scan ~/Library/Group Containers/ for directories associated with this app.

@@ -116,9 +116,23 @@ impl MacOSFocusMonitor {
     }
 
     /// Query the focused window's `AXDocument` attribute for its `file://` URL.
+    /// Falls back to `AXURL` on the focused element (S10: WKWebView-hosted local content).
     fn get_document_path_via_ax(&self, pid: i32) -> Option<String> {
-        let raw = self.query_focused_window_attribute(pid, "AXDocument")?;
-        if let Some(path) = raw.strip_prefix("file://") {
+        if let Some(raw) = self.query_focused_window_attribute(pid, "AXDocument") {
+            if let Some(path) = raw.strip_prefix("file://") {
+                if let Ok(decoded) = urlencoding::decode(path) {
+                    let owned = decoded.into_owned();
+                    if !owned.is_empty() {
+                        return Some(owned);
+                    }
+                }
+            }
+        }
+        // S10: When AXDocument is absent (Electron/WKWebView apps), query AXURL
+        // on the focused element. Only accept file:// URLs — https:// documents
+        // are handled by the browser extension content script instead.
+        let url_raw = self.query_focused_element_attribute(pid, "AXURL")?;
+        if let Some(path) = url_raw.strip_prefix("file://") {
             if let Ok(decoded) = urlencoding::decode(path) {
                 let owned = decoded.into_owned();
                 if !owned.is_empty() {
@@ -298,6 +312,63 @@ impl MacOSFocusMonitor {
             };
 
             CFRelease(focused_window as *mut _);
+            CFRelease(app_element);
+            result
+        }
+    }
+
+    /// Query an attribute from the focused UI element (not the focused window).
+    /// Used for S10: reading `AXURL` from a WKWebView/web area element.
+    fn query_focused_element_attribute(&self, pid: i32, attribute: &str) -> Option<String> {
+        unsafe {
+            use core_foundation::base::{CFType, TCFType};
+            use core_foundation::string::CFString;
+
+            #[link(name = "ApplicationServices", kind = "framework")]
+            extern "C" {
+                fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
+                fn AXUIElementCopyAttributeValue(
+                    element: *mut std::ffi::c_void,
+                    attribute: core_foundation::string::CFStringRef,
+                    value: *mut *const std::ffi::c_void,
+                ) -> i32;
+                fn CFRelease(cf: *mut std::ffi::c_void);
+            }
+
+            let app_element = AXUIElementCreateApplication(pid);
+            if app_element.is_null() {
+                return None;
+            }
+
+            let attr_focused_elem = CFString::new("AXFocusedUIElement");
+            let mut focused_elem: *const std::ffi::c_void = std::ptr::null();
+            let err = AXUIElementCopyAttributeValue(
+                app_element,
+                attr_focused_elem.as_concrete_TypeRef(),
+                &mut focused_elem,
+            );
+
+            if err != 0 || focused_elem.is_null() {
+                CFRelease(app_element);
+                return None;
+            }
+
+            let attr = CFString::new(attribute);
+            let mut value: *const std::ffi::c_void = std::ptr::null();
+            let err = AXUIElementCopyAttributeValue(
+                focused_elem as *mut _,
+                attr.as_concrete_TypeRef(),
+                &mut value,
+            );
+
+            let result = if err == 0 && !value.is_null() {
+                let cf_type = CFType::wrap_under_create_rule(value as _);
+                cf_type.downcast::<CFString>().map(|s| s.to_string())
+            } else {
+                None
+            };
+
+            CFRelease(focused_elem as *mut _);
             CFRelease(app_element);
             result
         }
