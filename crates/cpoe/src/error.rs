@@ -101,6 +101,9 @@ pub enum Error {
     #[error("rfc: {0}")]
     Rfc(String),
 
+    #[error("trust policy: {0}")]
+    TrustPolicy(#[from] crate::trust_policy::TrustPolicyError),
+
     #[error("internal: {0}")]
     Internal(String),
 
@@ -144,6 +147,7 @@ impl Error {
             | Error::Evidence(_)
             | Error::Vdf(_)
             | Error::Physics(_) => ErrorCategory::Analysis,
+            Error::TrustPolicy(_) => ErrorCategory::Logic,
         }
     }
 

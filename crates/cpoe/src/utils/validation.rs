@@ -337,12 +337,13 @@ mod tests {
 
     #[test]
     fn test_timestamp_validator_with_custom_drift() {
-        let validator = TimestampValidator::with_future_drift(1000);
+        // Drift = 1s; use a 10s-future timestamp so the test can't race with validation's own now().
+        let validator = TimestampValidator::with_future_drift(1_000_000_000);
         let now = chrono::Utc::now().timestamp_nanos_safe();
-        // Just within 1000ns ahead
-        assert!(validator.validate(now + 500).is_ok());
-        // Beyond 1000ns ahead
-        assert!(validator.validate(now + 2000).is_err());
+        // Well within 1s ahead
+        assert!(validator.validate(now + 500_000_000).is_ok());
+        // Well beyond 1s ahead (10s)
+        assert!(validator.validate(now + 10_000_000_000).is_err());
     }
 
     #[test]

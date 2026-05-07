@@ -14,7 +14,8 @@ pub mod time;
 pub mod validation;
 
 pub use crypto_helpers::{
-    compute_content_hash, constant_time_eq, NonceManager, SignatureKey, SignedPayloadBuilder,
+    blake3_hash_bytes, blake3_hash_truncated_8, compute_content_hash, constant_time_eq,
+    NonceManager, SignatureKey, SignedPayloadBuilder,
 };
 pub use error_context::{sanitize_for_user, ErrorContext};
 pub use formatting::{format_bytes, format_duration_human, format_number, hash_bytes};
@@ -22,11 +23,33 @@ pub(crate) use lock::{MutexRecover, RwLockRecover};
 pub use probability::Probability;
 pub use stats::{
     coefficient_of_variation, lerp_score, mean, mean_and_sample_std_dev, mean_and_sample_variance,
-    mean_and_std_dev, mean_and_variance, median, std_dev,
+    mean_and_std_dev, mean_and_std_dev_f32, mean_and_variance, median, std_dev,
 };
 pub(crate) use time::DateTimeNanosExt;
 pub use time::{duration_to_ms, now_ns, now_secs, ns_elapsed, ns_to_ms, ns_to_secs};
 pub use validation::{BundleIdValidator, TextValidator, TimestampValidator};
+
+/// Compute words per minute from a word count and a nanosecond duration.
+///
+/// Returns `0.0` if `word_count` is zero or `duration_ns` is non-positive.
+/// Uses a 1 ms minimum floor on `duration_ns` to prevent divide-by-zero when
+/// the start and end timestamps are equal (e.g., in unit tests or injected events).
+pub fn words_per_minute(word_count: u32, duration_ns: i64) -> f64 {
+    if word_count == 0 || duration_ns <= 0 {
+        return 0.0;
+    }
+    let duration_minutes = (duration_ns.max(1_000_000) as f64) / (60.0 * 1_000_000_000.0);
+    word_count as f64 / duration_minutes
+}
+
+/// Duration between two nanosecond timestamps as seconds, floored at 1 ms.
+///
+/// The 1 ms floor prevents divide-by-zero in any rate calculation (WPM,
+/// characters-per-second) when start and end are identical.
+pub fn safe_duration_secs(start_ns: i64, end_ns: i64) -> f64 {
+    let nanos = end_ns.saturating_sub(start_ns).max(1_000_000);
+    nanos as f64 / 1_000_000_000.0
+}
 
 /// Hash a filesystem path (its UTF-8 string representation) with SHA-256.
 pub fn sha256_of_path(path: &std::path::Path) -> [u8; 32] {
@@ -232,5 +255,53 @@ mod tests {
     fn hex_decode_64_ok() {
         let arr = hex_decode_64(&"01".repeat(64)).unwrap();
         assert_eq!(arr, [0x01; 64]);
+    }
+
+    #[test]
+    fn words_per_minute_normal() {
+        // 60 words in 30 seconds = 120 WPM
+        let wpm = words_per_minute(60, 30 * 1_000_000_000);
+        assert!((wpm - 120.0).abs() < 0.01, "expected 120 WPM, got {wpm}");
+    }
+
+    #[test]
+    fn words_per_minute_zero_words() {
+        assert_eq!(words_per_minute(0, 30 * 1_000_000_000), 0.0);
+    }
+
+    #[test]
+    fn words_per_minute_zero_duration() {
+        assert_eq!(words_per_minute(60, 0), 0.0);
+    }
+
+    #[test]
+    fn words_per_minute_negative_duration() {
+        assert_eq!(words_per_minute(60, -1_000_000_000), 0.0);
+    }
+
+    #[test]
+    fn words_per_minute_identical_timestamps_floored() {
+        // duration_ns = 0 returns 0.0 (zero-duration guard, not the 1ms floor)
+        assert_eq!(words_per_minute(10, 0), 0.0);
+    }
+
+    #[test]
+    fn safe_duration_secs_normal() {
+        let d = safe_duration_secs(0, 5_000_000_000);
+        assert!((d - 5.0).abs() < 1e-9, "expected 5.0s, got {d}");
+    }
+
+    #[test]
+    fn safe_duration_secs_equal_timestamps_floored() {
+        // start == end → floor at 1ms = 0.001s
+        let d = safe_duration_secs(100, 100);
+        assert!((d - 0.001).abs() < 1e-9, "expected 0.001s floor, got {d}");
+    }
+
+    #[test]
+    fn safe_duration_secs_reversed_timestamps_floored() {
+        // end < start → saturating_sub gives 0 → floor at 1ms
+        let d = safe_duration_secs(1_000_000_000, 500_000_000);
+        assert!((d - 0.001).abs() < 1e-9, "expected 0.001s floor, got {d}");
     }
 }

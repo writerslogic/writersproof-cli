@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 //! Shared cryptographic utilities to eliminate duplication across modules.
-//! Used by: text_fragments, clipboard, wal, beacon, credentials
+//! Used by: text_fragments, clipboard, wal, beacon, credentials, dictation
 
 use crate::error::{Error, Result};
 use ed25519_dalek::{Verifier, VerifyingKey};
@@ -67,6 +67,24 @@ impl SignedPayloadBuilder {
     /// Append u32 (little-endian) to payload.
     pub fn push_u32(mut self, val: u32) -> Self {
         self.fields.push(val.to_le_bytes().to_vec());
+        self
+    }
+
+    /// Append u8 to payload.
+    pub fn push_u8(mut self, val: u8) -> Self {
+        self.fields.push(vec![val]);
+        self
+    }
+
+    /// Append f32 (little-endian) to payload.
+    pub fn push_f32(mut self, val: f32) -> Self {
+        self.fields.push(val.to_le_bytes().to_vec());
+        self
+    }
+
+    /// Append bool as a single byte (0x00 = false, 0x01 = true).
+    pub fn push_bool(mut self, val: bool) -> Self {
+        self.fields.push(vec![val as u8]);
         self
     }
 
@@ -193,6 +211,28 @@ pub fn compute_content_hash(data: &[u8]) -> [u8; 32] {
     let mut hash = [0u8; 32];
     hash.copy_from_slice(&result[..]);
     hash
+}
+
+/// Compute BLAKE3 hash of arbitrary data.
+///
+/// Preferred over SHA-256 for WAL chain entries and evidence fields because the
+/// WAL hash chain itself uses BLAKE3, enabling consistent algorithm use throughout
+/// the dictation evidence pipeline.
+pub fn blake3_hash_bytes(data: &[u8]) -> [u8; 32] {
+    *blake3::hash(data).as_bytes()
+}
+
+/// Compute the first 8 bytes of the BLAKE3 hash of `data`.
+///
+/// Used for compact hardware identity tokens (e.g., device UID hash) where a
+/// full 32-byte hash is unnecessary but domain-separation from raw UID values
+/// is required.
+pub fn blake3_hash_truncated_8(data: &[u8]) -> [u8; 8] {
+    let full = blake3::hash(data);
+    let bytes = full.as_bytes();
+    let mut out = [0u8; 8];
+    out.copy_from_slice(&bytes[..8]);
+    out
 }
 
 #[cfg(test)]
@@ -406,5 +446,79 @@ mod tests {
 
         // New nonce should still exist (is_used returns Ok(true))
         assert_eq!(mgr.is_used(&new_nonce).expect("check new failed"), true);
+    }
+
+    #[test]
+    fn blake3_hash_bytes_deterministic() {
+        let h1 = blake3_hash_bytes(b"hello dictation");
+        let h2 = blake3_hash_bytes(b"hello dictation");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn blake3_hash_bytes_differs_from_sha256() {
+        let data = b"test data";
+        let b3 = blake3_hash_bytes(data);
+        let sha = compute_content_hash(data);
+        assert_ne!(b3, sha);
+    }
+
+    #[test]
+    fn blake3_hash_bytes_different_inputs_differ() {
+        let h1 = blake3_hash_bytes(b"input_a");
+        let h2 = blake3_hash_bytes(b"input_b");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn blake3_hash_bytes_empty_input() {
+        let h = blake3_hash_bytes(b"");
+        assert_eq!(h.len(), 32);
+    }
+
+    #[test]
+    fn blake3_hash_truncated_8_is_prefix_of_full() {
+        let data = b"device-uid-string";
+        let full = blake3_hash_bytes(data);
+        let short = blake3_hash_truncated_8(data);
+        assert_eq!(short, full[..8]);
+    }
+
+    #[test]
+    fn blake3_hash_truncated_8_deterministic() {
+        let a = blake3_hash_truncated_8(b"uid-abc");
+        let b = blake3_hash_truncated_8(b"uid-abc");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn push_bool_encodes_as_single_byte() {
+        let true_payload = SignedPayloadBuilder::new("ns").push_bool(true).build();
+        let false_payload = SignedPayloadBuilder::new("ns").push_bool(false).build();
+        // Payloads differ (true=1, false=0) and differ from each other.
+        assert_ne!(true_payload, false_payload);
+        // The bool byte should be present after the namespace + 4-byte length prefix.
+        let ns_len = b"ns".len();
+        let bool_byte_true = true_payload[ns_len + 4];
+        let bool_byte_false = false_payload[ns_len + 4];
+        assert_eq!(bool_byte_true, 1u8);
+        assert_eq!(bool_byte_false, 0u8);
+    }
+
+    #[test]
+    fn push_f32_encodes_four_bytes_le() {
+        let val: f32 = -42.5;
+        let payload = SignedPayloadBuilder::new("ns").push_f32(val).build();
+        let ns_len = b"ns".len();
+        // After namespace (2 bytes) + length prefix (4 bytes), next 4 bytes are the f32.
+        let encoded = &payload[ns_len + 4..ns_len + 8];
+        assert_eq!(encoded, &val.to_le_bytes());
+    }
+
+    #[test]
+    fn push_u8_encodes_single_byte() {
+        let payload = SignedPayloadBuilder::new("ns").push_u8(0xAB).build();
+        let ns_len = b"ns".len();
+        assert_eq!(payload[ns_len + 4], 0xABu8);
     }
 }

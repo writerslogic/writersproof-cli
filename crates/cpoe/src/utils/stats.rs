@@ -94,6 +94,20 @@ pub fn lerp_score(value: f64, low: f64, high: f64) -> f64 {
     crate::utils::Probability::clamp((value - low) / (high - low)).get()
 }
 
+/// Compute sample mean and standard deviation of a `f32` slice.
+///
+/// Converts to `f64` internally for numerical stability, then narrows back.
+/// Returns `(0.0, 0.0)` for empty slices; `(values[0], 0.0)` for single-element slices.
+/// Uses Bessel-corrected (N-1) denominator — appropriate for a sample of confidence scores.
+pub fn mean_and_std_dev_f32(values: &[f32]) -> (f32, f32) {
+    if values.is_empty() {
+        return (0.0, 0.0);
+    }
+    let f64_values: Vec<f64> = values.iter().map(|&v| v as f64).collect();
+    let (m, sd) = mean_and_sample_std_dev(&f64_values);
+    (m as f32, sd as f32)
+}
+
 /// Compute the median of a slice of `f64`.
 pub fn median(values: &[f64]) -> f64 {
     if values.is_empty() {
@@ -200,5 +214,41 @@ mod tests {
         let (_, var) = mean_and_variance(&data);
         // Variance of 0..99 is 833.25 (population)
         assert!((var - 833.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn mean_and_std_dev_f32_empty() {
+        assert_eq!(mean_and_std_dev_f32(&[]), (0.0f32, 0.0f32));
+    }
+
+    #[test]
+    fn mean_and_std_dev_f32_single() {
+        let (m, sd) = mean_and_std_dev_f32(&[0.9f32]);
+        assert!((m - 0.9f32).abs() < 1e-6);
+        assert_eq!(sd, 0.0f32);
+    }
+
+    #[test]
+    fn mean_and_std_dev_f32_constant() {
+        let (m, sd) = mean_and_std_dev_f32(&[0.8f32; 5]);
+        assert!((m - 0.8f32).abs() < 1e-6);
+        assert!(sd.abs() < 1e-6);
+    }
+
+    #[test]
+    fn mean_and_std_dev_f32_live_speech_range() {
+        // Live speech confidence CV 0.08–0.18; stddev should be detectable.
+        let values = [0.82f32, 0.91, 0.78, 0.88, 0.95, 0.80, 0.93];
+        let (m, sd) = mean_and_std_dev_f32(&values);
+        assert!(m > 0.8 && m < 0.95, "mean {m} out of expected range");
+        assert!(sd > 0.04, "stddev {sd} too low for live speech");
+    }
+
+    #[test]
+    fn mean_and_std_dev_f32_tts_like_uniform() {
+        // TTS produces near-identical confidence scores; stddev should be near zero.
+        let values = [0.98f32, 0.98, 0.98, 0.99, 0.98];
+        let (_, sd) = mean_and_std_dev_f32(&values);
+        assert!(sd < 0.01, "stddev {sd} should be near zero for TTS-like input");
     }
 }

@@ -1296,6 +1296,8 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::High,
+            default_debounce_ms: None,
+            title_parser: TitleParserVariant::Generic,
         };
         let json = serde_json::to_string(&app).unwrap();
         let rt: UserWritingApp = serde_json::from_str(&json).unwrap();
@@ -1378,6 +1380,8 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
+            default_debounce_ms: None,
+            title_parser: TitleParserVariant::Generic,
         });
         assert!(result.is_err());
     }
@@ -1394,6 +1398,8 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
+            default_debounce_ms: None,
+            title_parser: TitleParserVariant::Generic,
         });
         assert!(result.is_err());
     }
@@ -1413,6 +1419,8 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Medium,
+            default_debounce_ms: None,
+            title_parser: TitleParserVariant::Generic,
         })
         .unwrap();
 
@@ -1433,6 +1441,8 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
+            default_debounce_ms: None,
+            title_parser: TitleParserVariant::Generic,
         })
         .unwrap();
         assert_eq!(reg.user_apps().len(), 1);
@@ -1468,6 +1478,8 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
+            default_debounce_ms: None,
+            title_parser: TitleParserVariant::Generic,
         };
         reg.add_user_app(app()).unwrap();
         reg.add_user_app(app()).unwrap();
