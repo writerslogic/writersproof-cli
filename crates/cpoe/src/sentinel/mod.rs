@@ -20,8 +20,12 @@ pub(crate) use trace;
 pub mod app_discovery;
 pub mod app_registry;
 pub use app_discovery::ProbeResult;
-pub use app_registry::{AppRegistry, ProbeConfidence, UserWritingApp};
+pub use app_registry::{
+    adapter_for_bundle, AppAdapter, AppRegistry, ProbeConfidence, StoragePattern, UserWritingApp,
+};
 pub mod behavioral_key;
+pub mod bundle_monitor;
+pub use self::bundle_monitor::{is_bundle_document, start_bundle_monitor, BundleMonitor};
 pub mod permission_monitor;
 pub mod clipboard;
 pub mod core;
@@ -57,11 +61,12 @@ pub use self::daemon::{
 pub use self::error::{Result, SentinelError};
 pub use self::focus::{PollingSentinelFocusTracker, SentinelFocusTracker, WindowProvider};
 pub use self::helpers::{
-    check_idle_sessions_sync, classify_paste_source, compute_file_hash,
-    create_document_hash_payload, create_session_start_payload, detect_paste_boundary,
-    end_all_sessions_sync, end_session_sync, focus_document_sync, handle_change_event_sync,
-    handle_focus_event_sync, is_within_paste_window, unfocus_document_sync,
-    update_keystroke_context_window,
+    attribute_change_to_segment, check_idle_sessions_sync, classify_paste_source,
+    compute_file_hash, create_document_hash_payload, create_session_start_payload,
+    detect_export_event, detect_paste_boundary, end_all_sessions_sync, end_session_sync,
+    focus_document_sync, handle_change_event_sync, handle_focus_event_sync,
+    is_within_paste_window, parse_fdx_scene_fingerprint, parse_scrivener_project_map,
+    unfocus_document_sync, update_keystroke_context_window,
 };
 pub use self::ipc_handler::SentinelIpcHandler;
 pub use self::shadow::ShadowManager;
@@ -71,7 +76,8 @@ pub use self::types::{
     infer_document_path_from_title_with_bundle, normalize_document_path, parse_url_parts,
     AiToolCategory, ChangeEvent, ChangeEventType, DetectedAiTool, DocumentSession, FocusEvent,
     FocusEventType, FocusSwitchRecord, KeystrokeContext, ObservationBasis, PasteContext,
-    PasteSource, SessionBinding, SessionEvent, SessionEventType, WindowInfo,
+    PasteSource, ScrivenerProjectMap, SessionBinding, SessionEvent, SessionEventType,
+    SessionSegment, WindowInfo,
 };
 
 // ---------------------------------------------------------------------------

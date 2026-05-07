@@ -22,6 +22,7 @@ impl Sentinel {
         Box<dyn SentinelFocusTracker>,
         mpsc::Receiver<FocusEvent>,
         mpsc::Receiver<ChangeEvent>,
+        mpsc::Sender<ChangeEvent>,
     )> {
         #[cfg(target_os = "macos")]
         let focus_monitor: Box<dyn SentinelFocusTracker> =
@@ -44,9 +45,10 @@ impl Sentinel {
         focus_monitor.start()?;
 
         let focus_rx = focus_monitor.focus_events()?;
+        let change_tx = focus_monitor.change_sender();
         let change_rx = focus_monitor.change_events()?;
 
-        Ok((focus_monitor, focus_rx, change_rx))
+        Ok((focus_monitor, focus_rx, change_rx, change_tx))
     }
 
     /// Initialize keystroke capture, spawn a bridge thread forwarding
@@ -58,6 +60,9 @@ impl Sentinel {
     ) -> mpsc::Receiver<crate::platform::KeystrokeEvent> {
         let (keystroke_tx, keystroke_rx) =
             tokio::sync::mpsc::channel::<crate::platform::KeystrokeEvent>(EVENT_CHANNEL_BUFFER);
+        // Keep a sender clone alive on the struct so restart_keystroke_capture and the
+        // permission-check event loop arm can spawn new bridge threads on the same channel.
+        *self.keystroke_event_tx.lock_recover() = Some(keystroke_tx.clone());
         let keystroke_running = Arc::clone(running);
 
         let capture_result = self.platform.create_keystroke_capture();

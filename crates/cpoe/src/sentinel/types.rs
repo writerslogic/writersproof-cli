@@ -55,6 +55,40 @@ pub enum SessionEventType {
     Saved,
     Ended,
     Renamed,
+    /// A manuscript export was detected within 30s of the last checkpoint.
+    ExportDetected,
+    /// App compile pipeline started.
+    CompileStarted,
+    /// App compile pipeline finished.
+    CompileFinished,
+}
+
+/// Per-chapter/segment keystroke and change counts for bundle documents.
+///
+/// Keyed by the path relative to the bundle root (e.g. `"Files/Data/<UUID>/content.rtf"`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionSegment {
+    /// Path relative to the bundle root.
+    pub rel_path: String,
+    /// Keystroke count attributed to this segment during the current session.
+    pub keystroke_count: u64,
+    /// File-change event count (saves/modifications) for this segment.
+    pub change_count: u32,
+    /// Nanoseconds-since-epoch of the most recent change observed.
+    pub last_modified_ns: i64,
+    /// BLAKE3 hash of the segment's content at the most recent change (hex).
+    pub content_hash: Option<String>,
+}
+
+/// Snapshot of a Scrivener project's binder structure captured from `project.scrivx`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScrivenerProjectMap {
+    /// UUID (BinderItem ID) → display title.
+    pub uuid_to_title: HashMap<String, String>,
+    /// BLAKE3 hash of the `.scrivx` contents at snapshot time (hex).
+    pub scrivx_hash: String,
+    /// Nanoseconds-since-epoch when this snapshot was taken.
+    pub captured_at_ns: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +111,9 @@ pub struct WindowInfo {
     pub is_unsaved: bool,
     /// IDE workspace/project root, if detected
     pub project_root: Option<String>,
+    /// CGWindowID of the topmost window. Used to detect Space transitions
+    /// where the frontmost app is unchanged but a different window is visible.
+    pub window_number: Option<u32>,
 }
 
 impl Default for WindowInfo {
@@ -90,6 +127,7 @@ impl Default for WindowInfo {
             is_document: false,
             is_unsaved: false,
             project_root: None,
+            window_number: None,
         }
     }
 }
@@ -685,6 +723,14 @@ pub struct DocumentSession {
     /// or download and later saved to a permanent location. Preserved across
     /// renames so evidence shows the file's origin.
     pub origin_temp_path: Option<String>,
+    /// Per-chapter keystroke/change counts for bundle documents (.scriv, .ulysses, Vellum).
+    /// Empty for non-bundle documents. Keyed by path relative to the bundle root.
+    pub(crate) segment_counts: HashMap<String, SessionSegment>,
+    /// Scrivener binder structure snapshot, populated on first successful parse of
+    /// `project.scrivx` and refreshed whenever the file hash changes.
+    pub(crate) scrivener_project_map: Option<ScrivenerProjectMap>,
+    /// Unix nanoseconds of the most recently detected export event for this session.
+    pub(crate) last_export_detected_ns: Option<i64>,
 }
 
 /// Accumulates keystroke semantic classification counts for a session.
@@ -860,6 +906,9 @@ impl Clone for DocumentSession {
             device_keystroke_counts: self.device_keystroke_counts.clone(),
             file_encoding: self.file_encoding,
             origin_temp_path: self.origin_temp_path.clone(),
+            segment_counts: self.segment_counts.clone(),
+            scrivener_project_map: self.scrivener_project_map.clone(),
+            last_export_detected_ns: self.last_export_detected_ns,
         }
     }
 }
@@ -921,6 +970,9 @@ impl DocumentSession {
             device_keystroke_counts: HashMap::new(),
             file_encoding: None,
             origin_temp_path: None,
+            segment_counts: HashMap::new(),
+            scrivener_project_map: None,
+            last_export_detected_ns: None,
         }
     }
 

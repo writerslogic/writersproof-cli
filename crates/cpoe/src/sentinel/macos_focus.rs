@@ -8,6 +8,15 @@ use objc::runtime::Object;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+/// Bundle IDs of system UI processes that briefly become frontmost during
+/// Mission Control, Stage Manager, and full-screen transitions. Returning
+/// `None` for these lets the debounce timer suppress spurious FocusLost events.
+const TRANSIENT_BUNDLES: &[&str] = &[
+    "com.apple.dock",
+    "com.apple.exposelauncher",
+    "com.apple.systemuiserver",
+];
+
 #[derive(Debug)]
 /// macOS focus monitor using NSWorkspace and Accessibility APIs.
 pub struct MacOSFocusMonitor {
@@ -45,12 +54,19 @@ impl MacOSFocusMonitor {
             let app_name = nsstring_to_string(name);
             let bundle_id_str = nsstring_to_string(bundle_id);
 
+            // Filter transient system UI processes (Mission Control, Stage Manager)
+            if TRANSIENT_BUNDLES.contains(&bundle_id_str.as_str()) {
+                let _: () = msg_send![pool, drain];
+                return None;
+            }
+
             // Try AX first (works when Accessibility permission is granted),
             // fall back to CGWindowList (works in App Sandbox without special perms).
             let doc_path = self.get_document_path_via_ax(pid);
+            let (cg_title, cg_window_number) = self.get_cgwindow_info(pid);
             let window_title = self
                 .get_window_title_via_ax(pid)
-                .or_else(|| self.get_window_title_via_cgwindow(pid));
+                .or(cg_title);
             let title_str = window_title.unwrap_or_default();
 
             super::trace!(
@@ -90,6 +106,7 @@ impl MacOSFocusMonitor {
                 timestamp: SystemTime::now(),
                 is_unsaved: false,
                 project_root: None,
+                window_number: cg_window_number,
             })
         };
         unsafe {
@@ -122,8 +139,10 @@ impl MacOSFocusMonitor {
         }
     }
 
-    /// Get the window title via CGWindowListCopyWindowInfo (works in App Sandbox).
-    fn get_window_title_via_cgwindow(&self, pid: i32) -> Option<String> {
+    /// Query CGWindowListCopyWindowInfo for the topmost layer-0 window of a pid.
+    /// Returns (window_title, window_number). Works in App Sandbox without
+    /// Accessibility permission.
+    fn get_cgwindow_info(&self, pid: i32) -> (Option<String>, Option<u32>) {
         unsafe {
             use core_foundation::base::TCFType;
             use core_foundation::string::CFString;
@@ -140,13 +159,14 @@ impl MacOSFocusMonitor {
             // kCGWindowListOptionOnScreenOnly = 1, kCGNullWindowID = 0
             let list = CGWindowListCopyWindowInfo(1, 0);
             if list.is_null() {
-                return None;
+                return (None, None);
             }
 
             let count = core_foundation_sys::array::CFArrayGetCount(list);
             let key_pid = CFString::from_static_string("kCGWindowOwnerPID");
             let key_name = CFString::from_static_string("kCGWindowName");
             let key_layer = CFString::from_static_string("kCGWindowLayer");
+            let key_number = CFString::from_static_string("kCGWindowNumber");
 
             for i in 0..count {
                 let raw_dict = core_foundation_sys::array::CFArrayGetValueAtIndex(list, i)
@@ -183,24 +203,47 @@ impl MacOSFocusMonitor {
                     continue;
                 }
 
+                // Extract window number (kCGWindowNumber)
+                let mut num_ptr: *const std::ffi::c_void = std::ptr::null();
+                let win_num = if CFDictionaryGetValueIfPresent(
+                    raw_dict,
+                    key_number.as_CFTypeRef(),
+                    &mut num_ptr,
+                ) != 0
+                    && !num_ptr.is_null()
+                {
+                    let n = core_foundation::number::CFNumber::wrap_under_get_rule(
+                        num_ptr as core_foundation::number::CFNumberRef,
+                    );
+                    n.to_i32().map(|v| v as u32)
+                } else {
+                    None
+                };
+
+                // Extract window title
                 let mut name_ptr: *const std::ffi::c_void = std::ptr::null();
-                if CFDictionaryGetValueIfPresent(raw_dict, key_name.as_CFTypeRef(), &mut name_ptr)
-                    != 0
+                let title = if CFDictionaryGetValueIfPresent(
+                    raw_dict,
+                    key_name.as_CFTypeRef(),
+                    &mut name_ptr,
+                ) != 0
                     && !name_ptr.is_null()
                 {
                     let name = CFString::wrap_under_get_rule(
                         name_ptr as core_foundation::string::CFStringRef,
                     );
-                    let title = name.to_string();
-                    if !title.is_empty() {
-                        core_foundation_sys::base::CFRelease(list as _);
-                        return Some(title);
-                    }
-                }
+                    let s = name.to_string();
+                    if s.is_empty() { None } else { Some(s) }
+                } else {
+                    None
+                };
+
+                core_foundation_sys::base::CFRelease(list as _);
+                return (title, win_num);
             }
 
             core_foundation_sys::base::CFRelease(list as _);
-            None
+            (None, None)
         }
     }
 
@@ -249,11 +292,7 @@ impl MacOSFocusMonitor {
 
             let result = if err == 0 && !value.is_null() {
                 let cf_type = CFType::wrap_under_create_rule(value as _);
-                if let Some(cf_str) = cf_type.downcast::<CFString>() {
-                    Some(cf_str.to_string())
-                } else {
-                    Some(format!("{:?}", cf_type))
-                }
+                cf_type.downcast::<CFString>().map(|s| s.to_string())
             } else {
                 None
             };

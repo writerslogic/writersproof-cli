@@ -245,6 +245,10 @@ pub struct SentinelConfig {
     pub hash_on_focus: bool,
     pub hash_on_save: bool,
     pub poll_interval_ms: u64,
+    /// Delay (ms) before confirming FocusLost. Suppresses transient focus
+    /// bounces during Mission Control, Stage Manager, and full-screen transitions.
+    /// 0 = disabled (legacy). Default: 150.
+    pub focus_debounce_ms: u64,
     /// When true, a copy of the tracked file is saved at each auto-checkpoint.
     pub snapshots_enabled: bool,
 }
@@ -333,6 +337,7 @@ impl Default for SentinelConfig {
             hash_on_focus: true,
             hash_on_save: true,
             poll_interval_ms: 100,
+            focus_debounce_ms: 150,
             snapshots_enabled: false,
         }
     }

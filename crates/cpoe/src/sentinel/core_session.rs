@@ -253,100 +253,163 @@ impl Sentinel {
         if !self.running.load(std::sync::atomic::Ordering::SeqCst) {
             return false;
         }
-        // Use the cached store to avoid per-checkpoint connection churn.
-        let mut store_guard = match self.get_or_open_store() {
-            Some(g) => g,
-            None => {
-                log::warn!("Auto-checkpoint skipped: signing key not initialized");
-                return false;
-            }
-        };
-        let store = match store_guard.as_mut() {
-            Some(s) => s,
-            None => {
-                log::warn!("Auto-checkpoint skipped: store not available");
-                return false;
-            }
+
+        // Phase 0: snapshot session info under a read lock before opening the store.
+        // Keeping no sessions lock during Phase 1 maintains the documented ordering:
+        // sessions → cached_store (AUD-041 / CS-1).
+        let session_info = {
+            let sessions = self.sessions.read_recover();
+            sessions.get(path).map(|s| {
+                (
+                    s.session_id.clone(),
+                    s.paste_context.is_some(),
+                    s.app_bundle_id.clone(),
+                    s.window_title.reveal().to_string(),
+                )
+            })
         };
 
-        let mut event = crate::store::SecureEvent::new(
-            path.to_string(),
-            content_hash,
-            file_size,
-            Some("Auto-checkpoint".to_string()),
-        );
+        // Snapshot bundle-specific state for shadow session persistence.
+        // Only populated when `path` is a bundle document (.scriv, .ulysses).
+        let bundle_snapshot = if super::bundle_monitor::is_bundle_document(
+            std::path::Path::new(path),
+        ) {
+            let sessions = self.sessions.read_recover();
+            sessions.get(path).map(|s| {
+                let segment_json = serde_json::to_string(&s.segment_counts).ok();
+                let scrivx_hash = s
+                    .scrivener_project_map
+                    .as_ref()
+                    .map(|m| m.scrivx_hash.clone());
+                let project_uuid = s
+                    .scrivener_project_map
+                    .as_ref()
+                    .and_then(|m| m.uuid_to_title.keys().next().cloned())
+                    .unwrap_or_else(|| hex::encode(blake3::hash(path.as_bytes()).as_bytes()));
+                (
+                    s.session_id.clone(),
+                    s.app_bundle_id.clone(),
+                    project_uuid,
+                    segment_json,
+                    scrivx_hash,
+                )
+            })
+        } else {
+            None
+        };
 
-        match store.add_secure_event_with_signer(&mut event, sk_cached.as_ref()) {
-            Ok(_) => {
-                log::info!("Auto-checkpoint committed for {path}");
-                let session_info = {
-                    let sessions = self.sessions.read_recover();
-                    sessions.get(path).map(|s| {
-                        (
-                            s.session_id.clone(),
-                            s.paste_context.is_some(),
-                            s.app_bundle_id.clone(),
-                            s.window_title.reveal().to_string(),
-                        )
-                    })
+        // Phase 1: all store I/O in a scoped closure so the cached_store MutexGuard
+        // is released before Phase 2 acquires the sessions write lock.
+        let store_result: Result<([u8; 32], [u8; 32]), anyhow::Error> = (|| {
+            let mut store_guard = self
+                .get_or_open_store()
+                .ok_or_else(|| anyhow::anyhow!("signing key not initialized"))?;
+            let store = store_guard
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("store not available"))?;
+
+            let mut event = crate::store::SecureEvent::new(
+                path.to_string(),
+                content_hash,
+                file_size,
+                Some("Auto-checkpoint".to_string()),
+            );
+            store.add_secure_event_with_signer(&mut event, sk_cached.as_ref())?;
+
+            if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title))) =
+                (&sk_cached, &session_info)
+            {
+                let ts = crate::store::text_fragments::current_timestamp_ms();
+                let nonce = crate::store::text_fragments::generate_nonce();
+                let ctx = if *has_paste {
+                    crate::store::text_fragments::KeystrokeContext::PastedContent
+                } else {
+                    crate::store::text_fragments::KeystrokeContext::OriginalComposition
                 };
+                let sig = crate::store::text_fragments::sign_fragment(
+                    sk,
+                    sid,
+                    &content_hash,
+                    ts,
+                    &nonce,
+                );
+                let fragment = crate::store::text_fragments::TextFragment {
+                    id: None,
+                    fragment_hash: content_hash.to_vec(),
+                    session_id: sid.clone(),
+                    source_app_bundle_id: Some(bundle.clone()).filter(|s| !s.is_empty()),
+                    source_window_title: Some(title.clone()).filter(|s| !s.is_empty()),
+                    source_signature: sig.to_vec(),
+                    nonce: nonce.to_vec(),
+                    timestamp: ts,
+                    keystroke_context: Some(ctx),
+                    keystroke_confidence: Some(1.0),
+                    keystroke_sequence_hash: None,
+                    source_session_id: None,
+                    source_evidence_packet: None,
+                    wal_entry_hash: None,
+                    cloudkit_record_id: None,
+                    sync_state: None,
+                };
+                if let Err(e) = store.insert_text_fragment(&fragment) {
+                    log::warn!("Failed to insert text fragment for {path}: {e}");
+                }
+            }
+
+            // Persist shadow session state for bundle documents so sessions
+            // resume correctly across sentinel restarts.
+            if let Some((ref sid, ref app_bid, ref proj_uuid, ref seg_json, ref scrivx)) =
+                bundle_snapshot
+            {
+                let now_ns = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos() as i64)
+                    .unwrap_or(0);
+                if let Err(e) = store.upsert_shadow_session(
+                    app_bid,
+                    proj_uuid,
+                    sid,
+                    None,
+                    seg_json.as_deref().unwrap_or("{}"),
+                    scrivx.as_deref(),
+                    now_ns,
+                ) {
+                    log::warn!("shadow session upsert failed for {path}: {e}");
+                }
+            }
+
+            Ok((event.content_hash, event.event_hash))
+            // store_guard (cached_store Mutex) released here.
+        })();
+
+        match store_result {
+            Ok((ev_content_hash, ev_event_hash)) => {
+                log::info!("Auto-checkpoint committed for {path}");
+
+                // Phase 2: hw cosign — sessions write acquired first, then cached_store
+                // inside it (correct lock ordering per AUD-041: sessions → cached_store).
                 if let Some(ref tpm) = self.tpm_provider {
                     let mut sessions = self.sessions.write_recover();
                     if let Some(session) = sessions.get_mut(path) {
-                        try_hw_cosign(
-                            session,
-                            tpm.as_ref(),
-                            &event.content_hash,
-                            Some(&event.event_hash),
-                            Some((&store, path)),
-                        );
+                        if let Some(guard) = self.get_or_open_store() {
+                            try_hw_cosign(
+                                session,
+                                tpm.as_ref(),
+                                &ev_content_hash,
+                                Some(&ev_event_hash),
+                                (*guard).as_ref().map(|s| (s, path)),
+                            );
+                        }
                     }
                 }
-                if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title))) =
-                    (&sk_cached, &session_info)
-                {
-                    let ts = crate::store::text_fragments::current_timestamp_ms();
-                    let nonce = crate::store::text_fragments::generate_nonce();
-                    let ctx = if *has_paste {
-                        crate::store::text_fragments::KeystrokeContext::PastedContent
-                    } else {
-                        crate::store::text_fragments::KeystrokeContext::OriginalComposition
-                    };
-                    let sig = crate::store::text_fragments::sign_fragment(
-                        sk,
-                        sid,
-                        &content_hash,
-                        ts,
-                        &nonce,
-                    );
-                    let fragment = crate::store::text_fragments::TextFragment {
-                        id: None,
-                        fragment_hash: content_hash.to_vec(),
-                        session_id: sid.clone(),
-                        source_app_bundle_id: Some(bundle.clone()).filter(|s| !s.is_empty()),
-                        source_window_title: Some(title.clone()).filter(|s| !s.is_empty()),
-                        source_signature: sig.to_vec(),
-                        nonce: nonce.to_vec(),
-                        timestamp: ts,
-                        keystroke_context: Some(ctx),
-                        keystroke_confidence: Some(1.0),
-                        keystroke_sequence_hash: None,
-                        source_session_id: None,
-                        source_evidence_packet: None,
-                        wal_entry_hash: None,
-                        cloudkit_record_id: None,
-                        sync_state: None,
-                    };
-                    if let Err(e) = store.insert_text_fragment(&fragment) {
-                        log::warn!("Failed to insert text fragment for {path}: {e}");
-                    }
-                }
+
                 true
             }
             Err(e) => {
                 log::warn!("Auto-checkpoint store write failed for {path}: {e}");
                 // Roll back the claim so the next tick can retry, but only if no
                 // other commit has advanced the counter past ours in the meantime.
+                // No store lock is held here; sessions write is safe to acquire.
                 let mut sessions = self.sessions.write_recover();
                 if let Some(session) = sessions.get_mut(path) {
                     if session.last_checkpoint_keystrokes == claimed_count {

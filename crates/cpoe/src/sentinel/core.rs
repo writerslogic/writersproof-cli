@@ -161,6 +161,10 @@ pub struct Sentinel {
         Arc<Mutex<Option<mpsc::Sender<crate::platform::KeystrokeEvent>>>>,
     /// Cancellation token for the clipboard monitor task; set in start(), cancelled in stop().
     clipboard_cancel: Arc<Mutex<Option<tokio_util::sync::CancellationToken>>>,
+    /// Active `BundleMonitor`s keyed by bundle root path; started on first focus of a bundle doc.
+    bundle_monitors: Arc<Mutex<HashMap<String, super::bundle_monitor::BundleMonitor>>>,
+    /// Sender into the main change-event channel; shared with bundle monitors.
+    bundle_change_tx: Arc<Mutex<Option<mpsc::Sender<super::types::ChangeEvent>>>>,
 }
 
 impl Sentinel {
@@ -243,6 +247,8 @@ impl Sentinel {
             )),
             keystroke_event_tx: Arc::new(Mutex::new(None)),
             clipboard_cancel: Arc::new(Mutex::new(None)),
+            bundle_monitors: Arc::new(Mutex::new(HashMap::new())),
+            bundle_change_tx: Arc::new(Mutex::new(None)),
         };
         mouse_stego_seed.zeroize();
         Ok(sentinel)
@@ -437,13 +443,15 @@ impl Sentinel {
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
         *self.shutdown_tx.lock_recover() = Some(shutdown_tx);
 
-        let (focus_monitor, mut focus_rx, mut change_rx) = match self.setup_focus_tracker() {
-            Ok(f) => f,
-            Err(e) => {
-                self.running.store(false, Ordering::SeqCst);
-                return Err(e);
-            }
-        };
+        let (focus_monitor, mut focus_rx, mut change_rx, change_tx_for_bundles) =
+            match self.setup_focus_tracker() {
+                Ok(f) => f,
+                Err(e) => {
+                    self.running.store(false, Ordering::SeqCst);
+                    return Err(e);
+                }
+            };
+        *self.bundle_change_tx.lock_recover() = Some(change_tx_for_bundles);
 
         // Reset bridge health and stopping flag on (re-)start.
         // running is already true from the compare_exchange above.
@@ -504,6 +512,8 @@ impl Sentinel {
         let keystroke_event_tx_for_loop = Arc::clone(&self.keystroke_event_tx);
         let platform_for_loop = Arc::clone(&self.platform);
         let mut session_events_rx = self.session_events_tx.subscribe();
+        let bundle_monitors_for_loop = Arc::clone(&self.bundle_monitors);
+        let bundle_change_tx_for_loop = Arc::clone(&self.bundle_change_tx);
 
         let event_loop_handle_ref = Arc::clone(&self.event_loop_handle);
         let handle = tokio::spawn(async move {
@@ -818,6 +828,56 @@ impl Sentinel {
                             &wal_dir,
                             &session_events_tx,
                         );
+                        // Start a BundleMonitor for newly-focused bundle documents
+                        // (Scrivener .scriv, Ulysses .ulysses) if not already watching.
+                        if let Some(ref path) = *current_focus.read_recover() {
+                            let bundle_path = std::path::Path::new(path.as_str());
+                            if super::bundle_monitor::is_bundle_document(bundle_path) {
+                                let mut monitors = bundle_monitors_for_loop.lock_recover();
+                                if !monitors.contains_key(path) {
+                                    if let Some(ref tx) = *bundle_change_tx_for_loop.lock_recover() {
+                                        match super::bundle_monitor::start_bundle_monitor(
+                                            bundle_path, tx.clone(),
+                                        ) {
+                                            Ok(monitor) => {
+                                                // Eagerly parse Scrivener project map and
+                                                // restore segment counts from the shadow session
+                                                // (sessions → cached_store lock order per AUD-041).
+                                                if let Some(map) = super::helpers::parse_scrivener_project_map(bundle_path) {
+                                                    let project_uuid = map
+                                                        .uuid_to_title
+                                                        .keys()
+                                                        .next()
+                                                        .cloned();
+                                                    let mut sessions_map = sessions.write_recover();
+                                                    if let Some(session) = sessions_map.get_mut(path.as_str()) {
+                                                        if session.segment_counts.is_empty() {
+                                                            if let Some(ref proj_uuid) = project_uuid {
+                                                                let app_bid = session.app_bundle_id.clone();
+                                                                if let Some(ref store) = *cached_store_for_loop.lock_recover() {
+                                                                    if let Ok(Some(shadow)) = store.load_shadow_session(&app_bid, proj_uuid) {
+                                                                        if let Some(ref json) = shadow.segment_counts_json {
+                                                                            if let Ok(counts) = serde_json::from_str(json) {
+                                                                                session.segment_counts = counts;
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        session.scrivener_project_map = Some(map);
+                                                    }
+                                                }
+                                                monitors.insert(path.clone(), monitor);
+                                            }
+                                            Err(e) => {
+                                                log::warn!("bundle_monitor: failed to start for {path:?}: {e}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Some(event) = change_rx.recv() => {
@@ -930,6 +990,8 @@ impl Sentinel {
                                 }
                             }
                             end_session_sync(path, &sessions, &session_events_tx);
+                            // Drop BundleMonitor for this path if one was active.
+                            bundle_monitors_for_loop.lock_recover().remove(path);
                         }
 
                         // Check CGEventTap health
@@ -1503,6 +1565,8 @@ impl Sentinel {
             let _ = cap.stop();
         }
         super::stop_hid_capture();
+        self.bundle_monitors.lock_recover().clear();
+        *self.bundle_change_tx.lock_recover() = None;
 
         // Now join bridge threads (senders dropped, so they will exit)
         let handles: Vec<_> = self.bridge_threads.lock_recover().drain(..).collect();

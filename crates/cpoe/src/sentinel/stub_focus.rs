@@ -18,16 +18,18 @@ pub struct StubSentinelFocusTracker {
     _config: Arc<SentinelConfig>,
     focus_rx: Arc<Mutex<Option<mpsc::Receiver<FocusEvent>>>>,
     change_rx: Arc<Mutex<Option<mpsc::Receiver<ChangeEvent>>>>,
+    change_tx: mpsc::Sender<ChangeEvent>,
 }
 
 impl StubSentinelFocusTracker {
     pub fn new(config: Arc<SentinelConfig>) -> Self {
         let (_focus_tx, focus_rx) = mpsc::channel(1);
-        let (_change_tx, change_rx) = mpsc::channel(1);
+        let (change_tx, change_rx) = mpsc::channel(1);
         Self {
             _config: config,
             focus_rx: Arc::new(Mutex::new(Some(focus_rx))),
             change_rx: Arc::new(Mutex::new(Some(change_rx))),
+            change_tx,
         }
     }
 
@@ -82,6 +84,7 @@ impl WindowProvider for LinuxWindowProvider {
             is_document: false,
             is_unsaved: false,
             project_root: cwd,
+            window_number: None,
         })
     }
 }
@@ -120,5 +123,9 @@ impl SentinelFocusTracker for StubSentinelFocusTracker {
             .lock_recover()
             .take()
             .ok_or_else(|| SentinelError::Channel("Change receiver already consumed".into()))
+    }
+
+    fn change_sender(&self) -> mpsc::Sender<ChangeEvent> {
+        self.change_tx.clone()
     }
 }

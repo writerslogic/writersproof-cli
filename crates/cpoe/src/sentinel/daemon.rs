@@ -180,8 +180,7 @@ impl DaemonManager {
                     return Ok(false);
                 }
                 Err(e) => {
-                    return Err(SentinelError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    return Err(SentinelError::Io(std::io::Error::other(
                         format!("flock failed on PID file: {e}"),
                     )));
                 }
@@ -202,9 +201,21 @@ impl DaemonManager {
         Ok(true)
     }
 
-    /// Remove the PID file.
+    /// Remove the PID file, but only if it records this process's own PID.
+    ///
+    /// Skips removal if the file belongs to a concurrently started daemon to
+    /// avoid destroying another daemon's lock.
     pub fn remove_pid(&self) -> Result<()> {
-        fs::remove_file(&self.pid_file)?;
+        let our_pid = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
+        match self.read_pid() {
+            Ok(pid) if pid == our_pid => {
+                let _ = fs::remove_file(&self.pid_file);
+            }
+            Ok(_) => {
+                log::debug!("Skipping PID file removal: file belongs to another process");
+            }
+            Err(_) => {}
+        }
         Ok(())
     }
 
@@ -237,31 +248,31 @@ impl DaemonManager {
     #[cfg(windows)]
     pub fn signal_stop(&self) -> Result<()> {
         let pid = self.read_pid()?;
-        let pid_str = pid.to_string();
-
-        // Try graceful termination first (no /F). This allows the target process
-        // to run any shutdown handlers before exiting. If it does not exit within
-        // the timeout, fall back to /F (force) to guarantee termination.
-        let graceful = std::process::Command::new("taskkill")
-            .args(["/PID", &pid_str])
+        // Graceful termination request (no /F). Returns as soon as taskkill accepts
+        // the request; the caller uses wait_for_stop to poll and signal_force_stop
+        // to escalate if the process does not exit in time.
+        let output = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string()])
             .output()
             .map_err(SentinelError::Io)?;
-
-        if graceful.status.success() {
-            // Graceful signal accepted; wait up to 5 s for the process to exit.
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while Instant::now() < deadline {
-                if !is_process_running(pid) {
-                    return Ok(());
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(SentinelError::Io(std::io::Error::other(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            )))
         }
+    }
 
-        // Process did not exit gracefully; force-terminate it.
+    /// Force-terminate the daemon process immediately (Windows only).
+    ///
+    /// Called by `cmd_stop` when graceful shutdown times out.
+    #[cfg(windows)]
+    fn signal_force_stop(&self) -> Result<()> {
+        let pid = self.read_pid()?;
         log::warn!("pid {pid} did not exit gracefully, sending /F");
         let output = std::process::Command::new("taskkill")
-            .args(["/PID", &pid_str, "/F"])
+            .args(["/PID", &pid.to_string(), "/F"])
             .output()
             .map_err(SentinelError::Io)?;
         if output.status.success() {
@@ -557,6 +568,15 @@ pub fn cmd_stop(writerslogic_dir: &Path) -> Result<()> {
     }
 
     daemon_mgr.signal_stop()?;
+
+    // On Windows, signal_stop sends a graceful taskkill request and returns
+    // immediately. Wait up to 5 s for the process to honour it; if it does
+    // not exit in time, escalate to a forced termination.
+    #[cfg(windows)]
+    if daemon_mgr.wait_for_stop(Duration::from_secs(5)).is_err() {
+        daemon_mgr.signal_force_stop()?;
+    }
+
     daemon_mgr.wait_for_stop(Duration::from_secs(10))?;
     daemon_mgr.cleanup();
 

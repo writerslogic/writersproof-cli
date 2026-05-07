@@ -27,18 +27,22 @@ pub fn handle_focus_event_sync(
     wal_dir: &Path,
     session_events_tx: &broadcast::Sender<SessionEvent>,
 ) {
-    // Targeted mode: only process focus events for the pinned document.
-    // Empty-path events (FocusLost from apps that don't report paths) are
-    // allowed through so the targeted document's focus state updates correctly.
-    if let Some(ref target) = *targeted_path.read_recover() {
-        if !event.path.is_empty() && event.path != *target {
-            super::trace!(
-                "[FOCUS] targeted mode: ignoring {:?} (target={:?})",
-                event.path,
-                target
-            );
-            return;
-        }
+    // Targeted mode: only maintain the pin while the user stays on the pinned
+    // document.  Empty-path events (FocusLost from apps that don't expose
+    // paths) are always passed through so the session's focus state updates.
+    // When a non-empty path *different* from the target arrives the user has
+    // switched documents or apps; exit targeted mode so focus follows naturally
+    // and the new document's session (or app-allowed check) takes over.
+    let exit_targeted = {
+        let guard = targeted_path.read_recover();
+        matches!(guard.as_deref(), Some(t) if !event.path.is_empty() && event.path != t)
+    };
+    if exit_targeted {
+        super::trace!(
+            "[FOCUS] targeted mode: auto-following focus to {:?}",
+            event.path
+        );
+        *targeted_path.write_recover() = None;
     }
     #[cfg(debug_assertions)]
     {
@@ -602,9 +606,27 @@ pub fn handle_change_event_sync(
                 if let Some(hash) = &event.hash {
                     session.current_hash = Some(hash.clone());
                 }
+                // Attribute intra-bundle file changes (e.g. Scrivener chapter .rtf)
+                // to the bundle-relative segment so per-chapter velocity is tracked.
+                if event.path != normalized_path {
+                    let rel = event
+                        .path
+                        .strip_prefix(normalized_path.as_str())
+                        .map(|s| s.trim_start_matches('/'))
+                        .unwrap_or(event.path.as_str());
+                    attribute_change_to_segment(session, rel, event.hash.as_deref());
+                }
             }
             ChangeEventType::Created => {
-                // Picked up on next focus event
+                // Picked up on next focus event; attribute bundle-relative creation.
+                if event.path != normalized_path {
+                    let rel = event
+                        .path
+                        .strip_prefix(normalized_path.as_str())
+                        .map(|s| s.trim_start_matches('/'))
+                        .unwrap_or(event.path.as_str());
+                    attribute_change_to_segment(session, rel, event.hash.as_deref());
+                }
             }
             ChangeEventType::Deleted | ChangeEventType::Renamed { .. } => {
                 unreachable!("handled above")
@@ -1963,86 +1985,9 @@ fn strip_xml_tags(xml: &str) -> String {
 
 /// Read a single entry from a `.docx` (ZIP) file without external zip dependencies.
 ///
-/// Parses ZIP local file headers to find the named entry, decompresses
-/// DEFLATE data using `flate2`, or reads STORED data directly.
+/// Delegates to [`read_zip_entry_bytes`] and converts the result to UTF-8.
 fn read_docx_entry(path: &Path, entry_name: &str) -> Option<String> {
-    use std::io::{Read, Seek, SeekFrom};
-
-    let mut file = std::fs::File::open(path).ok()?;
-
-    const LOCAL_HEADER_SIG: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
-    const MAX_ENTRIES: usize = 500;
-
-    let file_len = file.metadata().ok()?.len();
-    if file_len > 100 * 1024 * 1024 {
-        return None;
-    }
-
-    for _ in 0..MAX_ENTRIES {
-        let pos = file.stream_position().ok()?;
-        if pos >= file_len {
-            break;
-        }
-
-        let mut sig = [0u8; 4];
-        if file.read_exact(&mut sig).is_err() {
-            break;
-        }
-        if sig != LOCAL_HEADER_SIG {
-            break;
-        }
-
-        // Read local file header fields (26 bytes after signature)
-        let mut header = [0u8; 26];
-        file.read_exact(&mut header).ok()?;
-
-        let compression = u16::from_le_bytes([header[4], header[5]]);
-        let compressed_size =
-            u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
-        let name_len = u16::from_le_bytes([header[22], header[23]]) as usize;
-        let extra_len = u16::from_le_bytes([header[24], header[25]]) as usize;
-
-        let mut name_buf = vec![0u8; name_len];
-        file.read_exact(&mut name_buf).ok()?;
-        let name = String::from_utf8_lossy(&name_buf);
-
-        if extra_len > 0 {
-            file.seek(SeekFrom::Current(extra_len as i64)).ok()?;
-        }
-
-        if name == entry_name {
-            const MAX_DECOMPRESSED: u64 = 16 * 1024 * 1024;
-            if compressed_size as u64 > MAX_DECOMPRESSED {
-                return None;
-            }
-
-            let mut compressed = vec![0u8; compressed_size as usize];
-            file.read_exact(&mut compressed).ok()?;
-
-            let data = match compression {
-                0 => compressed,
-                8 => {
-                    use flate2::read::DeflateDecoder;
-                    let decoder = DeflateDecoder::new(&compressed[..]);
-                    let mut decompressed = Vec::new();
-                    decoder
-                        .take(MAX_DECOMPRESSED)
-                        .read_to_end(&mut decompressed)
-                        .ok()?;
-                    decompressed
-                }
-                _ => return None,
-            };
-
-            return String::from_utf8(data).ok();
-        }
-
-        if compressed_size > 0 {
-            file.seek(SeekFrom::Current(compressed_size as i64)).ok()?;
-        }
-    }
-
-    None
+    String::from_utf8(read_zip_entry_bytes(path, entry_name)?).ok()
 }
 
 /// Detect whether a `.docx` file contains Track Changes (revisions).
@@ -2063,6 +2008,345 @@ pub fn has_track_changes(path: &Path) -> bool {
         Some(xml) => xml.contains("<w:ins") || xml.contains("<w:del"),
         None => false,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Bundle document helpers (Scrivener, Final Draft, Vellum)
+// ---------------------------------------------------------------------------
+
+/// Maximum number of segment entries tracked per bundle session.
+const MAX_SEGMENT_ENTRIES: usize = 10_000;
+
+/// Window (nanoseconds) within which a new output file creation is considered
+/// a direct compile/export of the associated session's bundle.
+const EXPORT_CORRELATION_WINDOW_NS: i64 = 30 * 1_000_000_000;
+
+/// File extensions that indicate a manuscript export output.
+const EXPORT_EXTENSIONS: &[&str] = &["docx", "pdf", "epub", "rtf", "odt"];
+
+/// Parse all `<BinderItem>` entries from a Scrivener `.scriv` package into a
+/// [`ScrivenerProjectMap`].
+///
+/// Reuses the private `find_scrivx_file` helper already in this module.  The
+/// `.scrivx` XML is scanned with the same string-based technique as
+/// `find_binder_item_title` to avoid new dependencies.
+///
+/// Returns `None` if the bundle is not a `.scriv` directory, the `.scrivx`
+/// file is unreadable, or no binder items are found.
+pub fn parse_scrivener_project_map(scriv_root: &Path) -> Option<ScrivenerProjectMap> {
+    let scrivx_path = find_scrivx_file(scriv_root)?;
+    let contents = std::fs::read_to_string(&scrivx_path).ok()?;
+
+    let scrivx_hash = hex::encode(blake3::hash(contents.as_bytes()).as_bytes());
+
+    let mut uuid_to_title = std::collections::HashMap::new();
+    let mut search_from = 0usize;
+
+    while let Some(rel_pos) = contents[search_from..].find("<BinderItem") {
+        let abs_pos = search_from + rel_pos;
+        let tag_end = match contents[abs_pos..].find('>') {
+            Some(e) => abs_pos + e,
+            None => break,
+        };
+        let tag = &contents[abs_pos..=tag_end];
+
+        // Extract the ID attribute from the tag.
+        let id = ['\"', '\''].iter().find_map(|q| {
+            let needle = format!("ID={q}");
+            let after = tag.find(needle.as_str()).map(|p| &tag[p + needle.len()..])?;
+            after.find(*q).map(|end| after[..end].to_string())
+        });
+
+        if let Some(id) = id {
+            let after_tag = &contents[tag_end..];
+            if let Some(title_start) = after_tag.find("<Title>") {
+                let content_start = title_start + "<Title>".len();
+                if let Some(title_end) = after_tag[content_start..].find("</Title>") {
+                    let title = after_tag[content_start..content_start + title_end].trim();
+                    if !title.is_empty() {
+                        uuid_to_title.insert(id, title.to_string());
+                    }
+                }
+            }
+        }
+
+        search_from = tag_end + 1;
+    }
+
+    if uuid_to_title.is_empty() {
+        return None;
+    }
+
+    let captured_at_ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as i64;
+
+    Some(ScrivenerProjectMap {
+        uuid_to_title,
+        scrivx_hash,
+        captured_at_ns,
+    })
+}
+
+/// Record a file-change event for a path inside a bundle document session.
+///
+/// `rel_path` is the path component after the bundle root (e.g.
+/// `"Files/Data/3F2C1A/content.rtf"`).  Increments the segment's
+/// `change_count` and updates its `last_modified_ns` and `content_hash`.
+/// New segment entries are created on first observation; the total number of
+/// tracked segments is capped at [`MAX_SEGMENT_ENTRIES`].
+pub fn attribute_change_to_segment(
+    session: &mut DocumentSession,
+    rel_path: &str,
+    content_hash: Option<&str>,
+) {
+    if rel_path.is_empty() {
+        return;
+    }
+    let now_ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as i64;
+
+    if let Some(seg) = session.segment_counts.get_mut(rel_path) {
+        seg.change_count = seg.change_count.saturating_add(1);
+        seg.last_modified_ns = now_ns;
+        if let Some(h) = content_hash {
+            seg.content_hash = Some(h.to_string());
+        }
+    } else if session.segment_counts.len() < MAX_SEGMENT_ENTRIES {
+        session.segment_counts.insert(
+            rel_path.to_string(),
+            SessionSegment {
+                rel_path: rel_path.to_string(),
+                keystroke_count: 0,
+                change_count: 1,
+                last_modified_ns: now_ns,
+                content_hash: content_hash.map(|h| h.to_string()),
+            },
+        );
+    }
+}
+
+/// Check whether `new_file_path` looks like a manuscript export derived from
+/// the given session's bundle.
+///
+/// Conditions that must all be true:
+/// - `new_file_path` has one of the [`EXPORT_EXTENSIONS`].
+/// - The export was created within [`EXPORT_CORRELATION_WINDOW_NS`] of the
+///   session's last focused time.
+/// - The session has recorded at least one keystroke (not a stale re-open).
+///
+/// Returns a [`ManuscriptExportAttestation`] on match, `None` otherwise.
+pub fn detect_export_event(
+    session: &DocumentSession,
+    new_file_path: &str,
+    new_file_hash: &str,
+    bundle_hash: &str,
+    now_ns: i64,
+) -> Option<crate::evidence::ManuscriptExportAttestation> {
+    if session.keystroke_count == 0 {
+        return None;
+    }
+
+    let ext = std::path::Path::new(new_file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    let is_export_ext = ext.as_deref().map(|e| EXPORT_EXTENSIONS.contains(&e)).unwrap_or(false);
+    if !is_export_ext {
+        return None;
+    }
+
+    let last_focus_ns = session
+        .last_focused_at
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as i64;
+
+    if now_ns.saturating_sub(last_focus_ns) > EXPORT_CORRELATION_WINDOW_NS {
+        return None;
+    }
+
+    let output_path_hash = hex::encode(
+        blake3::hash(new_file_path.as_bytes()).as_bytes(),
+    );
+
+    Some(crate::evidence::ManuscriptExportAttestation {
+        source_session_id: session.session_id.clone(),
+        bundle_hash: bundle_hash.to_string(),
+        output_hash: new_file_hash.to_string(),
+        output_path_hash,
+        source_checkpoint_ns: last_focus_ns,
+        export_detected_ns: now_ns,
+    })
+}
+
+/// Read a named entry from a ZIP archive as raw bytes.
+///
+/// Handles STORED (method 0) and DEFLATE (method 8) entries.  Returns `None`
+/// on any I/O error, unsupported compression method, or if the entry is not
+/// found within the first 500 entries.  The decompressed size is capped at
+/// 16 MiB to prevent zip-bomb amplification.
+fn read_zip_entry_bytes(path: &Path, entry_name: &str) -> Option<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+
+    const LOCAL_HEADER_SIG: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
+    const MAX_ENTRIES: usize = 500;
+    const MAX_DECOMPRESSED: u64 = 16 * 1024 * 1024;
+
+    let file_len = file.metadata().ok()?.len();
+    if file_len > 100 * 1024 * 1024 {
+        return None;
+    }
+
+    for _ in 0..MAX_ENTRIES {
+        let pos = file.stream_position().ok()?;
+        if pos >= file_len {
+            break;
+        }
+
+        let mut sig = [0u8; 4];
+        if file.read_exact(&mut sig).is_err() {
+            break;
+        }
+        if sig != LOCAL_HEADER_SIG {
+            break;
+        }
+
+        let mut header = [0u8; 26];
+        file.read_exact(&mut header).ok()?;
+
+        let compression = u16::from_le_bytes([header[4], header[5]]);
+        let compressed_size =
+            u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
+        let name_len = u16::from_le_bytes([header[22], header[23]]) as usize;
+        let extra_len = u16::from_le_bytes([header[24], header[25]]) as usize;
+
+        let mut name_buf = vec![0u8; name_len];
+        file.read_exact(&mut name_buf).ok()?;
+        let name = String::from_utf8_lossy(&name_buf);
+
+        if extra_len > 0 {
+            file.seek(SeekFrom::Current(extra_len as i64)).ok()?;
+        }
+
+        if name == entry_name {
+            if compressed_size as u64 > MAX_DECOMPRESSED {
+                return None;
+            }
+            let mut compressed = vec![0u8; compressed_size as usize];
+            file.read_exact(&mut compressed).ok()?;
+
+            return match compression {
+                0 => Some(compressed),
+                8 => {
+                    use flate2::read::DeflateDecoder;
+                    let decoder = DeflateDecoder::new(&compressed[..]);
+                    let mut out = Vec::new();
+                    decoder.take(MAX_DECOMPRESSED).read_to_end(&mut out).ok()?;
+                    Some(out)
+                }
+                _ => None,
+            };
+        }
+
+        if compressed_size > 0 {
+            file.seek(SeekFrom::Current(compressed_size as i64)).ok()?;
+        }
+    }
+
+    None
+}
+
+/// Compute a stable structural fingerprint for a Final Draft `.fdx` file.
+///
+/// `.fdx` files are ZIP archives containing a single XML document.  This
+/// function locates the XML entry (any entry ending in `.fdx` inside the
+/// archive), extracts scene-heading text (`Element Type="Scene Heading"`),
+/// and returns the BLAKE3 hash of a canonical `{count}:{heading1}:{heading2}:…`
+/// string.  The fingerprint is stable across cosmetic re-saves because it is
+/// derived from parsed scene content rather than raw bytes (which vary due to
+/// compression timestamps).
+///
+/// Returns `None` if the file cannot be opened, is not a valid ZIP, or
+/// contains no scene headings.
+pub fn parse_fdx_scene_fingerprint(path: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    // Scan the ZIP directory to find the FDX XML entry name.
+    let entry_name = {
+        let mut file = std::fs::File::open(path).ok()?;
+        let file_len = file.metadata().ok()?.len();
+        const LOCAL_HEADER_SIG: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
+        let mut found = None;
+        for _ in 0..50 {
+            let pos = file.stream_position().ok()?;
+            if pos >= file_len {
+                break;
+            }
+            let mut sig = [0u8; 4];
+            if file.read_exact(&mut sig).is_err() {
+                break;
+            }
+            if sig != LOCAL_HEADER_SIG {
+                break;
+            }
+            let mut header = [0u8; 26];
+            file.read_exact(&mut header).ok()?;
+            let _compression = u16::from_le_bytes([header[4], header[5]]);
+            let compressed_size =
+                u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
+            let name_len = u16::from_le_bytes([header[22], header[23]]) as usize;
+            let extra_len = u16::from_le_bytes([header[24], header[25]]) as usize;
+            let mut name_buf = vec![0u8; name_len];
+            file.read_exact(&mut name_buf).ok()?;
+            if extra_len > 0 {
+                file.seek(SeekFrom::Current(extra_len as i64)).ok()?;
+            }
+            let name = String::from_utf8_lossy(&name_buf).into_owned();
+            if name.ends_with(".fdx") {
+                found = Some(name);
+                break;
+            }
+            if compressed_size > 0 {
+                file.seek(SeekFrom::Current(compressed_size as i64)).ok()?;
+            }
+        }
+        found?
+    };
+
+    let xml_bytes = read_zip_entry_bytes(path, &entry_name)?;
+    let xml = String::from_utf8_lossy(&xml_bytes);
+
+    // Collect scene headings: <Paragraph Type="Scene Heading"><Text>…</Text></Paragraph>
+    let mut headings: Vec<String> = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = xml[search_from..].find("Type=\"Scene Heading\"") {
+        let abs = search_from + rel;
+        // Find the <Text> element within this paragraph block.
+        let after = &xml[abs..];
+        if let Some(text_start) = after.find("<Text>") {
+            let content_start = text_start + "<Text>".len();
+            if let Some(text_end) = after[content_start..].find("</Text>") {
+                let heading = after[content_start..content_start + text_end].trim();
+                if !heading.is_empty() {
+                    headings.push(heading.to_string());
+                }
+            }
+        }
+        search_from = abs + rel + 1;
+    }
+
+    if headings.is_empty() {
+        return None;
+    }
+
+    let canonical = format!("{}:{}", headings.len(), headings.join(":"));
+    Some(hex::encode(blake3::hash(canonical.as_bytes()).as_bytes()))
 }
 
 #[cfg(test)]

@@ -603,3 +603,47 @@ fn test_modifier_flags() {
 
     assert!(!MF::default().has_command_modifier());
 }
+
+// --- Permission state tests ---
+
+#[test]
+fn test_permission_state_default_is_full() {
+    use super::permission_monitor::PermissionState;
+    assert_eq!(PermissionState::default(), PermissionState::Full);
+}
+
+#[test]
+fn test_permission_state_keystroke_allowed() {
+    use super::permission_monitor::PermissionState;
+    assert!(PermissionState::Full.keystroke_capture_allowed());
+    assert!(!PermissionState::KeystrokeDegraded.keystroke_capture_allowed());
+    assert!(!PermissionState::Revoked.keystroke_capture_allowed());
+}
+
+#[test]
+fn test_permission_state_as_str() {
+    use super::permission_monitor::PermissionState;
+    assert_eq!(PermissionState::Full.as_str(), "full");
+    assert_eq!(PermissionState::KeystrokeDegraded.as_str(), "keystroke_degraded");
+    assert_eq!(PermissionState::Revoked.as_str(), "revoked");
+}
+
+#[test]
+fn test_sentinel_has_permission_state_field() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = SentinelConfig::default().with_writersproof_dir(dir.path());
+    let sentinel = Sentinel::new(config).expect("sentinel creation");
+    use crate::MutexRecover;
+    use super::permission_monitor::PermissionState;
+    let state = *sentinel.permission_state.lock_recover();
+    assert_eq!(state, PermissionState::Full);
+}
+
+#[test]
+fn test_restart_keystroke_capture_before_start_returns_false() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = SentinelConfig::default().with_writersproof_dir(dir.path());
+    let sentinel = Sentinel::new(config).expect("sentinel creation");
+    // No start() called: no tx stored, capture inactive → returns false.
+    assert!(!sentinel.restart_keystroke_capture());
+}

@@ -47,6 +47,11 @@ pub enum StoragePattern {
     /// inside the app's sandbox. The sentinel watches the container for any
     /// change activity; document identity comes from the window title.
     DatabaseBacked,
+    /// Content is stored in a macOS package/bundle directory (e.g. `.scriv`, `.fdx`).
+    /// The sentinel watches the bundle root via `AXDocument` and additionally
+    /// registers a recursive FSEvents watcher on the bundle's internal content
+    /// subtree so per-chapter edits contribute to the parent session.
+    BundleBased,
 }
 
 /// Confidence level from auto-discovery probing.
@@ -154,7 +159,15 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     WritingApp {
         bundle_id: "com.literatureandlatte.scrivener3",
         display_name: "Scrivener",
-        storage: StoragePattern::FileBased,
+        storage: StoragePattern::BundleBased,
+        container_paths: &[],
+        needs_title_inference: false,
+    },
+    // ── Vellum ─────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.180g.vellum",
+        display_name: "Vellum",
+        storage: StoragePattern::BundleBased,
         container_paths: &[],
         needs_title_inference: false,
     },
@@ -945,6 +958,96 @@ impl AppRegistry {
     }
 }
 
+// ---------------------------------------------------------------------------
+// App-specific compile/export adapter
+// ---------------------------------------------------------------------------
+
+/// Per-app knowledge about compile pipelines and bundle internals.
+///
+/// Implement this trait for each `BundleBased` writing app to teach the sentinel
+/// how to recognise compile helper processes and which bundle subdirectory contains
+/// the prose content files.
+pub trait AppAdapter: Send + Sync {
+    /// The `CFBundleIdentifier` this adapter handles.
+    fn bundle_id(&self) -> &str;
+
+    /// Return `true` if `process_name` is a known compile/export helper for this app.
+    fn is_compile_process(&self, process_name: &str) -> bool;
+
+    /// Path inside the bundle root where prose content files live, if any.
+    /// The sentinel registers a recursive FSEvents watcher on this subdirectory.
+    fn internal_docs_path(&self) -> Option<&str>;
+}
+
+struct ScrivenerAdapter;
+impl AppAdapter for ScrivenerAdapter {
+    fn bundle_id(&self) -> &str {
+        "com.literatureandlatte.scrivener3"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Scrivener" || process_name.contains("scrivener-compile")
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        Some("Files/Data")
+    }
+}
+
+struct FinalDraftAdapter;
+impl AppAdapter for FinalDraftAdapter {
+    fn bundle_id(&self) -> &str {
+        "com.finaldraft.mac.finaldraft10"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Final Draft" || process_name.contains("FinalDraft")
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
+struct UlyssesAdapter;
+impl AppAdapter for UlyssesAdapter {
+    fn bundle_id(&self) -> &str {
+        "com.ulyssesapp.mac"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Ulysses"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
+struct VellumAdapter;
+impl AppAdapter for VellumAdapter {
+    fn bundle_id(&self) -> &str {
+        "com.180g.vellum"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Vellum"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
+/// Return a boxed `AppAdapter` for the given bundle ID, or `None` if no adapter exists.
+pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
+    match bundle_id {
+        id if id.eq_ignore_ascii_case("com.literatureandlatte.scrivener3") => {
+            Some(Box::new(ScrivenerAdapter))
+        }
+        id if id.eq_ignore_ascii_case("com.finaldraft.mac.finaldraft10")
+            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd11") =>
+        {
+            Some(Box::new(FinalDraftAdapter))
+        }
+        id if id.eq_ignore_ascii_case("com.ulyssesapp.mac") => Some(Box::new(UlyssesAdapter)),
+        id if id.eq_ignore_ascii_case("com.180g.vellum") => Some(Box::new(VellumAdapter)),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1233,6 +1336,43 @@ mod tests {
                     app.display_name
                 );
             }
+            // BundleBased apps use AXDocument for the bundle root path; no
+            // container_paths are required.
         }
+    }
+
+    #[test]
+    fn test_vellum_registered() {
+        assert!(lookup("com.180g.vellum").is_some());
+        let app = lookup("com.180g.vellum").unwrap();
+        assert_eq!(app.storage, StoragePattern::BundleBased);
+        assert!(!app.needs_title_inference);
+    }
+
+    #[test]
+    fn test_scrivener_bundle_based() {
+        let app = lookup("com.literatureandlatte.scrivener3").unwrap();
+        assert_eq!(app.storage, StoragePattern::BundleBased);
+    }
+
+    #[test]
+    fn test_adapter_for_bundle() {
+        let a = adapter_for_bundle("com.literatureandlatte.scrivener3").unwrap();
+        assert_eq!(a.internal_docs_path(), Some("Files/Data"));
+        assert!(a.is_compile_process("Scrivener"));
+
+        let b = adapter_for_bundle("com.180g.vellum").unwrap();
+        assert!(b.is_compile_process("Vellum"));
+        assert_eq!(b.internal_docs_path(), None);
+
+        assert!(adapter_for_bundle("com.nonexistent.App").is_none());
+    }
+
+    #[test]
+    fn test_bundle_based_serde() {
+        let json = serde_json::to_string(&StoragePattern::BundleBased).unwrap();
+        assert_eq!(json, "\"bundle_based\"");
+        let rt: StoragePattern = serde_json::from_str("\"bundle_based\"").unwrap();
+        assert_eq!(rt, StoragePattern::BundleBased);
     }
 }

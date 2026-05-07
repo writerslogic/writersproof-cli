@@ -63,6 +63,7 @@ impl WindowProvider for WindowsFocusMonitor {
                 timestamp: SystemTime::now(),
                 is_unsaved: false,
                 project_root: None,
+                window_number: None,
             })
         }
     }
