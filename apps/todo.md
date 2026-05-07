@@ -9,18 +9,18 @@
 | MEDIUM   | 0    | 36    | 62      | 0              |
 
 ## Compound Risk
-- [ ] **CLU-001** `ffi_crash_cascade`, CRITICAL, components: C-001, C-002, C-003, C-007
-  <!-- compound_impact: "FFI boundary failures cascade to unrecoverable app crash; no graceful degradation" -->
-- [ ] **CLU-002** `key_material_leak`, CRITICAL, components: C-006, C-012, H-020, H-053
-  <!-- compound_impact: "Signing keys remain in memory across multiple surfaces; memory dump recovers non-repudiation keys" -->
-- [ ] **CLU-003** `ipc_protocol_desync`, CRITICAL, components: C-014, H-008, H-043
-  <!-- compound_impact: "IPC event listener races with request/response; push events corrupt protocol state" -->
-- [ ] **CLU-004** `commitment_chain_forgery`, HIGH, components: H-035, H-036, H-038, H-040
-  <!-- compound_impact: "Browser extension commitment chains can be forged via race conditions, hex parsing, and session storage tampering" -->
+- [-] **CLU-001** `ffi_crash_cascade`, CRITICAL, components: C-001, C-002, C-003, C-007
+  <!-- compound_impact: "FFI boundary failures cascade to unrecoverable app crash; no graceful degradation" | skipped:2026-05-06 — C-001/C-002 fixed; C-003 false positive; C-007 architectural (UniFFI-generated code, template change required) -->
+- [-] **CLU-002** `key_material_leak`, CRITICAL, components: C-006, C-012, H-020, H-053
+  <!-- compound_impact: "Signing keys remain in memory across multiple surfaces; memory dump recovers non-repudiation keys" | skipped:2026-05-06 — C-006 false positive; H-020 fixed; C-012/H-053 architectural (.NET SecureString deep redesign required) -->
+- [-] **CLU-003** `ipc_protocol_desync`, CRITICAL, components: C-014, H-008, H-043
+  <!-- compound_impact: "IPC event listener races with request/response; push events corrupt protocol state" | skipped:2026-05-06 — C-014 false positive; H-008 fixed:2026-05-06; H-043 architectural (Windows submodule not checked out) -->
+- [-] **CLU-004** `commitment_chain_forgery`, HIGH, components: H-035, H-036, H-038, H-040
+  <!-- compound_impact: "Browser extension commitment chains can be forged via race conditions, hex parsing, and session storage tampering" | skipped:2026-05-06 — H-038 fixed; H-035/H-036 deferred (Office365 submodule not checked out); H-040 architectural -->
 
 ## Systemic Issues
-- [ ] **SYS-001** `force_unwrap_ffi`, 50+ sites, CRITICAL — macOS CPoEEngineFFI.swift
-  <!-- pid:force_unwrap_ffi | verified:true | first:2026-04-11 -->
+- [-] **SYS-001** `force_unwrap_ffi`, 50+ sites, CRITICAL — macOS CPoEEngineFFI.swift
+  <!-- pid:force_unwrap_ffi | verified:true | first:2026-04-11 | skipped:2026-05-06 — 112 of 114 try! sites are in UniFFI auto-generated Swift (CPoEEngineFFI.swift); hand-written call sites (C-001, C-002) already fixed. Auto-generated code is overwritten on every uniffi-bindgen run; hand-editing is not viable. -->
   Files: `CPoEEngineFFI.swift:551`, `:567`, `:550`, `:27`, `:34`, `:90`, `:5520` (nested try!)
   Fix: Replace try!/force-unwrap with do/catch error propagation across all 50+ FFI functions
 
@@ -29,8 +29,8 @@
   Files: `SafariExtensionShared.swift:599`, `CloudSyncDetectionService.swift:451`, `AuthService.cs:370`, `ErrorService.cs:164`, `CrashReportingService.swift:62`, `App.tsx:271`
   macOS sites verified: SafariExtensionShared:599 uses appropriate fallback pattern; CloudSyncDetectionService:451 is standard Swift optional guard; CrashReportingService:62 is just a log. Windows/Office365 sites in unchecked-out submodules.
 
-- [ ] **SYS-003** `god_module`, 14 files, HIGH
-  <!-- pid:god_module | verified:true | first:2026-04-11 -->
+- [-] **SYS-003** `god_module`, 14 files, HIGH
+  <!-- pid:god_module | verified:true | first:2026-04-11 | skipped:2026-05-06 — deferred per user preference (don't split working files); files are large but functional -->
   Files: `CPoEEngineFFI.swift:6344`, `OnboardingView.swift:1450`, `SettingsContent.swift:1383`, `SafariExtensionShared.swift:1214`, `CloudSyncService.swift:1206`, `cmd_track/mod.rs:1107`, `ReceiptValidation.swift:1139`, `StatusBarController.swift:983`, `PopoverComponents.swift:942`, `CollaborativeEvidenceDialog.xaml.cs:924`, `SettingsPage.xaml.cs:855`, `NotificationManager.swift:839`, `App.tsx:834`, `Code.ts:888`
   Fix: Split each into focused submodules per existing pattern in codebase
 
@@ -44,13 +44,13 @@
   Files: `Code.ts:566`, `WritersProofClient.ts:175` (Office365), `SafariExtensionShared.swift:246`
   Safari site verified: SafariExtensionShared uses AES-GCM encrypted storage with Keychain-derived keys; no plaintext API keys found. Office365 files in unchecked-out submodule.
 
-- [ ] **SYS-006** `async_void_exception_loss`, 5 files, MEDIUM — Windows app
-  <!-- pid:async_void | verified:true | first:2026-04-11 -->
+- [-] **SYS-006** `async_void_exception_loss`, 5 files, MEDIUM — Windows app
+  <!-- pid:async_void | verified:true | first:2026-04-11 | skipped:2026-05-06 — Windows submodule not checked out; cannot access or edit files -->
   Files: `ErrorService.cs:164`, `FileWatcherService.cs:202`, `App.xaml.cs:549`
   Fix: Change async void to async Task, or wrap body in try-catch
 
-- [ ] **SYS-007** `missing_cancellation_token`, 4 files, MEDIUM — Windows pages
-  <!-- pid:missing_cancellation_token | verified:true | first:2026-04-11 -->
+- [-] **SYS-007** `missing_cancellation_token`, 4 files, MEDIUM — Windows pages
+  <!-- pid:missing_cancellation_token | verified:true | first:2026-04-11 | skipped:2026-05-06 — Windows submodule not checked out; cannot access or edit files -->
   Files: `HomePage.xaml.cs:185`, `SessionPage.xaml.cs:120`, `DashboardPage.xaml.cs:380`
   Fix: Implement OnNavigatedFrom with CancellationTokenSource.Cancel()
 
@@ -145,12 +145,12 @@
   <!-- pid:FAIL_OPEN | batch:4 | verified:true | first:2026-04-11 | fixed:2026-05-06 — bindOrVerify() returns false on nil fingerprint; nil triggers re-auth in restoration flow -->
   Impact: Auth on wrong device if IOKit returns nil | Fix: Fail closed; require re-authentication | Effort: small
 
-- [-] **H-008** `[security]` `ReceiptValidation.swift:837`: Keychain error during receipt downgrade check bypasses validation
-  <!-- pid:DOWNGRADE_CHECK_FAIL | batch:4 | verified:true | first:2026-04-11 -->
+- [x] **H-008** `[security]` `ReceiptValidation.swift:837`: Keychain error during receipt downgrade check bypasses validation
+  <!-- pid:DOWNGRADE_CHECK_FAIL | batch:4 | verified:true | first:2026-04-11 | fixed:2026-05-06 — implemented checkVersionDowngrade (fails closed on any Keychain error except errSecItemNotFound), storeValidatedVersion, and isVersionOlderThan helpers -->
   Impact: Receipt replay with older versions | Fix: Fail closed on Keychain error | Effort: small
 
-- [-] **H-009** `[security]` `AuthService+OAuth.swift:152`: O_NOFOLLOW on file but parent dir not checked for symlinks
-  <!-- pid:SYMLINK_RACE | batch:4 | verified:true | first:2026-04-11 -->
+- [x] **H-009** `[security]` `AuthService+OAuth.swift:152`: O_NOFOLLOW on file but parent dir not checked for symlinks
+  <!-- pid:SYMLINK_RACE | batch:4 | verified:true | first:2026-04-11 | fixed:2026-05-06 — resolvingSymlinksInPath() called on dataDir before appending token filename; O_NOFOLLOW now guards an already-canonical path -->
   Impact: API key file written to attacker-controlled location | Fix: Validate parent with resolvingSymlinksInPath() | Effort: medium
 
 - [x] **H-010** `[security]` `EncryptedSessionStore.swift:168`: Deadlock guard check is inside sync block (already blocked)
@@ -497,7 +497,7 @@
 | C-006 | CRITICAL | cmd_verify.rs:598 | Unzeroized Ed25519 key material | small |
 | C-010 | CRITICAL | WARReportHTMLRenderer.swift:176 | XSS in HTML report | small |
 | H-007 | HIGH | AuthService+Session.swift:417 | Device binding fails open | small |
-| H-008 | HIGH | ReceiptValidation.swift:837 | Downgrade check bypass on Keychain error | small |
+| H-008 | HIGH | ReceiptValidation.swift:837 | Downgrade check bypass on Keychain error | FIXED:2026-05-06 |
 | H-010 | HIGH | EncryptedSessionStore.swift:168 | Deadlock guard check too late | small |
 | H-011 | HIGH | ReceiptValidation.swift:438 | Partial binding field bypass | small |
 | H-016 | HIGH | DeviceAttestationService.swift:373 | Empty string passes !isEmpty | small |
