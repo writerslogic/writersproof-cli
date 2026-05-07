@@ -118,6 +118,38 @@ pub struct EvidencePacketWire {
     /// Enables project-level evidence for multi-file workflows (Scrivener, LaTeX).
     #[serde(rename = "23", default, skip_serializing_if = "Option::is_none")]
     pub project_files: Option<Vec<ProjectFileRef>>,
+
+    /// Monotonic hardware counter value at session export time.
+    ///
+    /// Sourced from the TPM monotonic counter or SE-backed HMAC counter chain.
+    /// Verifiers reject evidence where this value is not strictly greater than
+    /// the previous session's counter for the same signing identity.
+    #[serde(rename = "24", default, skip_serializing_if = "Option::is_none")]
+    pub session_counter: Option<u64>,
+}
+
+impl EvidencePacketWire {
+    /// Verify that this packet's `session_counter` is strictly greater than
+    /// `previous_counter` for the same signing identity.
+    ///
+    /// Returns `Ok(())` when:
+    /// - `session_counter` is absent in either packet (counter not used).
+    /// - `previous_counter` is `None` (first session for this identity).
+    /// - `self.session_counter > previous_counter`.
+    ///
+    /// Returns `Err` when both counters are present and the new one is not
+    /// strictly greater, indicating a replayed or out-of-order session.
+    pub fn verify_session_counter_order(
+        &self,
+        previous_counter: Option<u64>,
+    ) -> Result<(), String> {
+        match (self.session_counter, previous_counter) {
+            (Some(new), Some(prev)) if new <= prev => Err(format!(
+                "session counter {new} is not greater than previous {prev}; possible replay"
+            )),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// Reference to a file within a writing project.
