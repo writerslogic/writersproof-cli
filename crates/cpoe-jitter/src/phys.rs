@@ -8,6 +8,10 @@ use sha2::{Digest, Sha256};
 
 use crate::{EntropySource, Error, Jitter, JitterEngine, PhysHash};
 
+/// Hardware-based jitter engine using TSC/CNTVCT timing measurements.
+///
+/// Samples physical timing noise from the CPU's high-resolution counter,
+/// hashes it with SHA-256, and produces a [`PhysHash`] with estimated entropy bits.
 #[derive(Debug, Clone)]
 pub struct PhysJitter {
     min_entropy_bits: u8,
@@ -43,6 +47,7 @@ impl Default for PhysJitter {
 }
 
 impl PhysJitter {
+    /// Create a `PhysJitter` that requires at least `min_entropy_bits` of entropy per sample.
     pub fn new(min_entropy_bits: u8) -> Self {
         Self {
             min_entropy_bits,

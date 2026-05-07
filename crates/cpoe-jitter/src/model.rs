@@ -47,15 +47,27 @@ const MIN_PATTERN_CHECKS_EXCLUSIVE: usize = 2;
 /// are rejected as invalid input rather than silently capped.
 const MAX_PLAUSIBLE_IKI_US: u64 = 600_000_000;
 
+/// Statistical model of human typing based on the Aalto 136M keystroke dataset.
+///
+/// All IKI (inter-keystroke interval) fields are in microseconds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanModel {
+    /// Minimum plausible IKI (µs). Default: 30 000 (30 ms).
     pub iki_min_us: u32,
+    /// Maximum plausible IKI (µs). Default: 2 000 000 (2 s).
     pub iki_max_us: u32,
+    /// Expected mean IKI (µs). Default: 200 000 (200 ms, ~60 WPM).
     pub iki_mean_us: u32,
+    /// Expected IKI standard deviation (µs). Default: 80 000 (80 ms).
     pub iki_std_us: u32,
+    /// Minimum plausible jitter value (µs). Default: 500.
     pub jitter_min_us: u32,
+    /// Maximum plausible jitter value (µs). Default: 3000.
     pub jitter_max_us: u32,
+    /// Minimum number of samples for meaningful validation.
     pub min_sequence_length: usize,
+    /// Maximum fraction of samples with identical timing (0.0–1.0).
+    /// Above this threshold an `Anomaly::PerfectTiming` is raised.
     pub max_perfect_ratio: f64,
 }
 
@@ -74,39 +86,57 @@ impl Default for HumanModel {
     }
 }
 
+/// Result of validating a jitter or IKI sequence against a [`HumanModel`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResult {
+    /// Whether the sequence is consistent with human typing.
     pub is_human: bool,
+    /// Confidence score in [0.0, 1.0], reduced by 0.25 per anomaly.
     pub confidence: f64,
+    /// Detected anomalies, if any.
     pub anomalies: Vec<Anomaly>,
+    /// Descriptive statistics of the input sequence.
     pub stats: SequenceStats,
 }
 
+/// A single anomaly detected during validation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anomaly {
+    /// Category of anomaly.
     pub kind: AnomalyKind,
+    /// Index of the first sample that triggered this anomaly.
     pub position: usize,
+    /// Human-readable description with counts and thresholds.
     pub detail: String,
 }
 
+/// Categories of timing anomalies that indicate non-human input.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AnomalyKind {
+    /// Too many samples share identical timing values.
     PerfectTiming,
+    /// Values outside the model's plausible range.
     OutOfRange,
     /// Sequence too short for meaningful analysis.
     InsufficientData,
     /// Detected a short repeating pattern (length 2-5).
     RepeatingPattern,
+    /// Standard deviation below the minimum threshold.
     LowVariance,
 }
 
+/// Descriptive statistics of a jitter or IKI sequence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceStats {
+    /// Number of samples.
     pub count: usize,
+    /// Arithmetic mean (µs).
     pub mean: f64,
-    /// Population standard deviation.
+    /// Population standard deviation (µs).
     pub std_dev: f64,
+    /// Minimum value (µs).
     pub min: Jitter,
+    /// Maximum value (µs).
     pub max: Jitter,
 }
 
@@ -146,22 +176,26 @@ where
 }
 
 impl HumanModel {
+    /// Load the built-in Aalto baseline model.
     #[cfg(feature = "std")]
     pub fn baseline() -> Result<Self, serde_json::Error> {
         const BASELINE: &str = include_str!("baseline.json");
         serde_json::from_str(BASELINE)
     }
 
+    /// Deserialize a model from a JSON string.
     #[cfg(feature = "std")]
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
 
+    /// Serialize this model to a pretty-printed JSON string.
     #[cfg(feature = "std")]
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
 
+    /// Validate raw jitter values against this model's thresholds.
     pub fn validate(&self, jitters: &[Jitter]) -> ValidationResult {
         let oor = out_of_range_anomaly(
             jitters.iter().copied(),
@@ -191,6 +225,7 @@ impl HumanModel {
         self.validate(&jitters)
     }
 
+    /// Validate inter-keystroke intervals (µs) against this model's IKI thresholds.
     pub fn validate_iki(&self, intervals_us: &[u64]) -> ValidationResult {
         // Reject implausible IKI values (>10 min) as invalid input.
         if let Some(pos) = intervals_us.iter().position(|&v| v > MAX_PLAUSIBLE_IKI_US) {
