@@ -18,6 +18,7 @@ use crate::DateTimeNanosExt;
 const KEYSTROKE_CHANNEL_CAPACITY: usize = 512;
 
 /// Global counter for debug file writes (only write every 100th keystroke).
+#[cfg(debug_assertions)]
 static DEBUG_KEYSTROKE_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Global counter for tap-disabled-by-timeout events (for diagnostics).
 static TAP_DISABLED_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -25,7 +26,8 @@ static TAP_DISABLED_COUNT: AtomicU64 = AtomicU64::new(0);
 static DROPPED_KEYSTROKE_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Write a debug line to `$CPOE_DATA_DIR/keystroke_debug.txt` (append mode).
-/// Only writes every 100th call to avoid I/O overhead in the hot path.
+/// Only active in debug builds to avoid I/O and string formatting in the hot path.
+#[cfg(debug_assertions)]
 fn debug_write_keystroke(tag: &str, count: u64) {
     let n = DEBUG_KEYSTROKE_COUNTER.fetch_add(1, Ordering::Relaxed);
     if n % 100 != 0 {
@@ -54,6 +56,10 @@ fn debug_write_keystroke(tag: &str, count: u64) {
         let _ = writeln!(f, "[{now}] {tag}: event #{n}, total_count={count}");
     }
 }
+
+#[cfg(not(debug_assertions))]
+#[inline(always)]
+fn debug_write_keystroke(_tag: &str, _count: u64) {}
 
 #[derive(Debug)]
 /// Thread-safe handle to a CFRunLoop that can be stopped from another thread.
@@ -248,17 +254,17 @@ where
 
             match verification {
                 EventVerificationResult::Synthetic => {
-                    rej_count.fetch_add(1, Ordering::SeqCst);
+                    rej_count.fetch_add(1, Ordering::Relaxed);
                     return;
                 }
                 EventVerificationResult::Hardware => {
-                    ver_count.fetch_add(1, Ordering::SeqCst);
+                    ver_count.fetch_add(1, Ordering::Relaxed);
                 }
                 EventVerificationResult::Suspicious => {}
             }
 
             if event_type == K_CG_EVENT_KEY_DOWN {
-                let count = ks_count.fetch_add(1, Ordering::SeqCst) + 1;
+                let count = ks_count.fetch_add(1, Ordering::Relaxed) + 1;
                 debug_write_keystroke("tap_cb", count);
             }
             on_keystroke(event, verification);
@@ -550,49 +556,48 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                     verified_hardware.fetch_add(1, Ordering::Relaxed);
                 } else {
                     rejected_synthetic.fetch_add(1, Ordering::Relaxed);
+                    return;
                 }
 
-                if is_hardware {
-                    let now = chrono::Utc::now().timestamp_nanos_safe();
-                    // SAFETY: event is a valid CGEventRef for a key event.
-                    let keycode = u16::try_from(unsafe {
-                        CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE)
-                    })
-                    .unwrap_or(0xFF);
-                    let zone = crate::jitter::keycode_to_zone(keycode);
+                let now = chrono::Utc::now().timestamp_nanos_safe();
+                // SAFETY: event is a valid CGEventRef for a key event.
+                let keycode = u16::try_from(unsafe {
+                    CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE)
+                })
+                .unwrap_or(0xFF);
+                let zone = crate::jitter::keycode_to_zone(keycode);
 
-                    let keystroke = KeystrokeEvent {
-                        timestamp_ns: now,
-                        keycode,
-                        zone: if zone >= 0 { zone as u8 } else { 0xFF },
-                        event_type: if event_type == K_CG_EVENT_KEY_DOWN {
-                            crate::platform::KeyEventType::Down
-                        } else {
-                            crate::platform::KeyEventType::Up
-                        },
-                        char_value: None,
-                        is_hardware: true,
-                        device_id: None,
-                        transport_type: None,
-                    };
+                let keystroke = KeystrokeEvent {
+                    timestamp_ns: now,
+                    keycode,
+                    zone: if zone >= 0 { zone as u8 } else { 0xFF },
+                    event_type: if event_type == K_CG_EVENT_KEY_DOWN {
+                        crate::platform::KeyEventType::Down
+                    } else {
+                        crate::platform::KeyEventType::Up
+                    },
+                    char_value: None,
+                    is_hardware: true,
+                    device_id: None,
+                    transport_type: None,
+                };
 
-                    if event_type == K_CG_EVENT_KEY_DOWN {
-                        debug_write_keystroke("capture_tx", total_events.load(Ordering::Relaxed));
+                if event_type == K_CG_EVENT_KEY_DOWN {
+                    debug_write_keystroke("capture_tx", total_events.load(Ordering::Relaxed));
+                }
+                match tx.try_send(keystroke) {
+                    Ok(()) => {}
+                    Err(mpsc::TrySendError::Full(_)) => {
+                        let prev = DROPPED_KEYSTROKE_COUNT.fetch_add(1, Ordering::Relaxed);
+                        if prev % 100 == 0 {
+                            log::warn!(
+                                "CGEventTap keystroke channel full; dropped events={}",
+                                prev + 1
+                            );
+                        }
                     }
-                    match tx.try_send(keystroke) {
-                        Ok(()) => {}
-                        Err(mpsc::TrySendError::Full(_)) => {
-                            let prev = DROPPED_KEYSTROKE_COUNT.fetch_add(1, Ordering::Relaxed);
-                            if prev % 100 == 0 {
-                                log::warn!(
-                                    "CGEventTap keystroke channel full; dropped events={}",
-                                    prev + 1
-                                );
-                            }
-                        }
-                        Err(mpsc::TrySendError::Disconnected(_)) => {
-                            running.store(false, Ordering::SeqCst);
-                        }
+                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                        running.store(false, Ordering::SeqCst);
                     }
                 }
             }

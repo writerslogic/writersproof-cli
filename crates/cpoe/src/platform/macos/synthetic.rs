@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 //! Synthetic event detection and dual-layer HID validation.
+//!
+//! Performance-critical: `verify_event_source` runs in the CGEventTap callback
+//! on every keystroke. All stats use lock-free atomics to avoid serializing the
+//! callback thread.
 
 use super::ffi::*;
 use super::EventVerificationResult;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::RwLock;
-
-use crate::RwLockRecover;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::DualLayerValidation;
 
@@ -24,16 +25,29 @@ pub struct SyntheticEventStats {
     pub rejected_zero_timestamp: u64,
 }
 
-static SYNTHETIC_STATS: RwLock<SyntheticEventStats> = RwLock::new(SyntheticEventStats {
-    total_events: 0,
-    verified_hardware: 0,
-    rejected_synthetic: 0,
-    suspicious_accepted: 0,
-    rejected_bad_source_state: 0,
-    rejected_bad_keyboard_type: 0,
-    rejected_non_kernel_pid: 0,
-    rejected_zero_timestamp: 0,
-});
+/// Lock-free atomic counters for synthetic event stats. Using Relaxed ordering
+/// since these are diagnostic counters with no synchronization dependencies.
+struct AtomicSyntheticStats {
+    total_events: AtomicU64,
+    verified_hardware: AtomicU64,
+    rejected_synthetic: AtomicU64,
+    suspicious_accepted: AtomicU64,
+    rejected_bad_source_state: AtomicU64,
+    rejected_bad_keyboard_type: AtomicU64,
+    rejected_non_kernel_pid: AtomicU64,
+    rejected_zero_timestamp: AtomicU64,
+}
+
+static SYNTHETIC_STATS: AtomicSyntheticStats = AtomicSyntheticStats {
+    total_events: AtomicU64::new(0),
+    verified_hardware: AtomicU64::new(0),
+    rejected_synthetic: AtomicU64::new(0),
+    suspicious_accepted: AtomicU64::new(0),
+    rejected_bad_source_state: AtomicU64::new(0),
+    rejected_bad_keyboard_type: AtomicU64::new(0),
+    rejected_non_kernel_pid: AtomicU64::new(0),
+    rejected_zero_timestamp: AtomicU64::new(0),
+};
 
 static STRICT_MODE: AtomicBool = AtomicBool::new(true);
 
@@ -47,12 +61,29 @@ pub fn get_strict_mode() -> bool {
 }
 
 pub fn get_synthetic_stats() -> SyntheticEventStats {
-    SYNTHETIC_STATS.read_recover().clone()
+    SyntheticEventStats {
+        total_events: SYNTHETIC_STATS.total_events.load(Ordering::Relaxed),
+        verified_hardware: SYNTHETIC_STATS.verified_hardware.load(Ordering::Relaxed),
+        rejected_synthetic: SYNTHETIC_STATS.rejected_synthetic.load(Ordering::Relaxed),
+        suspicious_accepted: SYNTHETIC_STATS.suspicious_accepted.load(Ordering::Relaxed),
+        rejected_bad_source_state: SYNTHETIC_STATS.rejected_bad_source_state.load(Ordering::Relaxed),
+        rejected_bad_keyboard_type: SYNTHETIC_STATS
+            .rejected_bad_keyboard_type
+            .load(Ordering::Relaxed),
+        rejected_non_kernel_pid: SYNTHETIC_STATS.rejected_non_kernel_pid.load(Ordering::Relaxed),
+        rejected_zero_timestamp: SYNTHETIC_STATS.rejected_zero_timestamp.load(Ordering::Relaxed),
+    }
 }
 
 pub fn reset_synthetic_stats() {
-    let mut stats = SYNTHETIC_STATS.write_recover();
-    *stats = SyntheticEventStats::default();
+    SYNTHETIC_STATS.total_events.store(0, Ordering::Relaxed);
+    SYNTHETIC_STATS.verified_hardware.store(0, Ordering::Relaxed);
+    SYNTHETIC_STATS.rejected_synthetic.store(0, Ordering::Relaxed);
+    SYNTHETIC_STATS.suspicious_accepted.store(0, Ordering::Relaxed);
+    SYNTHETIC_STATS.rejected_bad_source_state.store(0, Ordering::Relaxed);
+    SYNTHETIC_STATS.rejected_bad_keyboard_type.store(0, Ordering::Relaxed);
+    SYNTHETIC_STATS.rejected_non_kernel_pid.store(0, Ordering::Relaxed);
+    SYNTHETIC_STATS.rejected_zero_timestamp.store(0, Ordering::Relaxed);
 }
 
 /// Detects CGEventPost injection by checking source state, keyboard type, and PID.
@@ -71,10 +102,9 @@ pub unsafe fn verify_event_source(event: *mut std::ffi::c_void) -> EventVerifica
 
     // Private source state = programmatic injection
     if source_state_id == K_CG_EVENT_SOURCE_STATE_PRIVATE {
-        let mut stats = SYNTHETIC_STATS.write_recover();
-        stats.total_events += 1;
-        stats.rejected_synthetic += 1;
-        stats.rejected_bad_source_state += 1;
+        SYNTHETIC_STATS.total_events.fetch_add(1, Ordering::Relaxed);
+        SYNTHETIC_STATS.rejected_synthetic.fetch_add(1, Ordering::Relaxed);
+        SYNTHETIC_STATS.rejected_bad_source_state.fetch_add(1, Ordering::Relaxed);
         return EventVerificationResult::Synthetic;
     }
 
@@ -85,42 +115,38 @@ pub unsafe fn verify_event_source(event: *mut std::ffi::c_void) -> EventVerifica
     // Real keyboards report type (ANSI=40, ISO=41, JIS=42); synthetic events use 0
     if keyboard_type == 0 {
         if strict {
-            let mut stats = SYNTHETIC_STATS.write_recover();
-            stats.total_events += 1;
-            stats.rejected_synthetic += 1;
-            stats.rejected_bad_keyboard_type += 1;
+            SYNTHETIC_STATS.total_events.fetch_add(1, Ordering::Relaxed);
+            SYNTHETIC_STATS.rejected_synthetic.fetch_add(1, Ordering::Relaxed);
+            SYNTHETIC_STATS.rejected_bad_keyboard_type.fetch_add(1, Ordering::Relaxed);
             return EventVerificationResult::Synthetic;
         }
         suspicious = true;
     }
 
     if keyboard_type > 100 {
-        let mut stats = SYNTHETIC_STATS.write_recover();
-        stats.total_events += 1;
-        stats.rejected_synthetic += 1;
-        stats.rejected_bad_keyboard_type += 1;
+        SYNTHETIC_STATS.total_events.fetch_add(1, Ordering::Relaxed);
+        SYNTHETIC_STATS.rejected_synthetic.fetch_add(1, Ordering::Relaxed);
+        SYNTHETIC_STATS.rejected_bad_keyboard_type.fetch_add(1, Ordering::Relaxed);
         return EventVerificationResult::Synthetic;
     }
 
     // Hardware events have PID 0 (kernel); CGEventPost carries the injector's PID
     if source_pid != 0 {
         if strict {
-            let mut stats = SYNTHETIC_STATS.write_recover();
-            stats.total_events += 1;
-            stats.rejected_synthetic += 1;
-            stats.rejected_non_kernel_pid += 1;
+            SYNTHETIC_STATS.total_events.fetch_add(1, Ordering::Relaxed);
+            SYNTHETIC_STATS.rejected_synthetic.fetch_add(1, Ordering::Relaxed);
+            SYNTHETIC_STATS.rejected_non_kernel_pid.fetch_add(1, Ordering::Relaxed);
             return EventVerificationResult::Synthetic;
         }
         suspicious = true;
     }
 
-    let mut stats = SYNTHETIC_STATS.write_recover();
-    stats.total_events += 1;
+    SYNTHETIC_STATS.total_events.fetch_add(1, Ordering::Relaxed);
     if suspicious {
-        stats.suspicious_accepted += 1;
+        SYNTHETIC_STATS.suspicious_accepted.fetch_add(1, Ordering::Relaxed);
         EventVerificationResult::Suspicious
     } else {
-        stats.verified_hardware += 1;
+        SYNTHETIC_STATS.verified_hardware.fetch_add(1, Ordering::Relaxed);
         EventVerificationResult::Hardware
     }
 }
