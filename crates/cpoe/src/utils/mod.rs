@@ -29,17 +29,35 @@ pub(crate) use time::DateTimeNanosExt;
 pub use time::{duration_to_ms, now_ns, now_secs, ns_elapsed, ns_to_ms, ns_to_secs};
 pub use validation::{BundleIdValidator, TextValidator, TimestampValidator};
 
+/// Minimum dictation duration considered meaningful (1 second).
+///
+/// Durations shorter than this are treated as incomplete or injected events
+/// and produce a `0.0` WPM rather than an astronomically large value.
+const MIN_DICTATION_DURATION_NS: i64 = 1_000_000_000;
+
 /// Compute words per minute from a word count and a nanosecond duration.
 ///
-/// Returns `0.0` if `word_count` is zero or `duration_ns` is non-positive.
-/// Uses a 1 ms minimum floor on `duration_ns` to prevent divide-by-zero when
-/// the start and end timestamps are equal (e.g., in unit tests or injected events).
+/// Returns `0.0` for zero words, non-positive durations, or durations below
+/// 1 second (too short to be a real dictation fragment; avoids inflated WPM
+/// from injected or near-zero-duration events).
 pub fn words_per_minute(word_count: u32, duration_ns: i64) -> f64 {
-    if word_count == 0 || duration_ns <= 0 {
+    if word_count == 0 || duration_ns < MIN_DICTATION_DURATION_NS {
         return 0.0;
     }
-    let duration_minutes = (duration_ns.max(1_000_000) as f64) / (60.0 * 1_000_000_000.0);
+    let duration_minutes = duration_ns as f64 / (60.0 * 1_000_000_000.0);
     word_count as f64 / duration_minutes
+}
+
+/// Compute correction rate as a fraction of words corrected out of total words.
+///
+/// Returns `0.0` if `total_words` is zero (no output to measure against).
+/// Clamps to `[0.0, 1.0]` — a correction count exceeding the word count is
+/// treated as fully corrected (rate = 1.0).
+pub fn correction_rate(corrections: u32, total_words: u32) -> f32 {
+    if total_words == 0 {
+        return 0.0;
+    }
+    (corrections as f32 / total_words as f32).min(1.0)
 }
 
 /// Duration between two nanosecond timestamps as seconds, floored at 1 ms.
@@ -280,9 +298,38 @@ mod tests {
     }
 
     #[test]
-    fn words_per_minute_identical_timestamps_floored() {
-        // duration_ns = 0 returns 0.0 (zero-duration guard, not the 1ms floor)
-        assert_eq!(words_per_minute(10, 0), 0.0);
+    fn words_per_minute_sub_second_duration_returns_zero() {
+        // 999ms is below the 1s minimum — returns 0.0 rather than inflated WPM.
+        assert_eq!(words_per_minute(10, 999_999_999), 0.0);
+    }
+
+    #[test]
+    fn words_per_minute_exactly_one_second_floor() {
+        // Exactly 1s is the minimum valid duration.
+        let wpm = words_per_minute(1, 1_000_000_000);
+        assert!((wpm - 60.0).abs() < 0.01, "expected 60 WPM, got {wpm}");
+    }
+
+    #[test]
+    fn correction_rate_zero_total() {
+        assert_eq!(correction_rate(5, 0), 0.0);
+    }
+
+    #[test]
+    fn correction_rate_no_corrections() {
+        assert_eq!(correction_rate(0, 100), 0.0);
+    }
+
+    #[test]
+    fn correction_rate_normal() {
+        let r = correction_rate(25, 100);
+        assert!((r - 0.25).abs() < 1e-6, "expected 0.25, got {r}");
+    }
+
+    #[test]
+    fn correction_rate_clamped_at_one() {
+        // More corrections than words (pathological input) clamps to 1.0.
+        assert_eq!(correction_rate(200, 100), 1.0);
     }
 
     #[test]

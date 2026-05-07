@@ -70,6 +70,12 @@ impl SignedPayloadBuilder {
         self
     }
 
+    /// Append u64 (little-endian) to payload.
+    pub fn push_u64(mut self, val: u64) -> Self {
+        self.fields.push(val.to_le_bytes().to_vec());
+        self
+    }
+
     /// Append u8 to payload.
     pub fn push_u8(mut self, val: u8) -> Self {
         self.fields.push(vec![val]);
@@ -520,5 +526,14 @@ mod tests {
         let payload = SignedPayloadBuilder::new("ns").push_u8(0xAB).build();
         let ns_len = b"ns".len();
         assert_eq!(payload[ns_len + 4], 0xABu8);
+    }
+
+    #[test]
+    fn push_u64_encodes_eight_bytes_le() {
+        let val: u64 = 0xDEAD_BEEF_CAFE_1234;
+        let payload = SignedPayloadBuilder::new("ns").push_u64(val).build();
+        let ns_len = b"ns".len();
+        let encoded = &payload[ns_len + 4..ns_len + 12];
+        assert_eq!(encoded, &val.to_le_bytes());
     }
 }
