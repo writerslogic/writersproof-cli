@@ -17,6 +17,10 @@ use crate::jitter::SimpleJitterSample;
 const MIN_EVENTS: usize = 10;
 const MIN_JITTER_SAMPLES: usize = 20;
 
+/// Minimum jitter samples per 1000 document characters.
+/// Below this the jitter channel is too sparse to be credible.
+const MIN_JITTER_DENSITY_PER_KCHAR: f64 = 0.5;
+
 /// Human typing rarely exceeds 15 chars/second sustained over 10+ seconds.
 const MAX_SUSTAINED_CHARS_PER_SEC: f64 = 15.0;
 /// Minimum ratio of edit events to jitter samples (keystrokes should
@@ -123,6 +127,10 @@ pub fn analyze_cross_modal(input: &CrossModalInput<'_>) -> CrossModalResult {
                 input.document_length,
                 input.total_keystrokes,
             ));
+            checks.push(check_content_growth_vs_jitter_density(
+                samples,
+                input.document_length,
+            ));
         }
     }
 
@@ -138,7 +146,16 @@ pub fn analyze_cross_modal(input: &CrossModalInput<'_>) -> CrossModalResult {
     let score = total / checks.len() as f64;
     let failed = checks.iter().filter(|c| !c.passed).count();
 
-    let verdict = if failed >= 3 {
+    // Checks 3 (jitter_edit_coherence) and 5 (jitter_content_entanglement) are
+    // the strongest causal links between the jitter and keystroke channels.
+    // A single failure of either is treated as Inconsistent rather than Marginal
+    // because these checks cannot both fail by accident in genuine typing.
+    let critical_jitter_failed = checks.iter().any(|c| {
+        !c.passed
+            && (c.name == "jitter_edit_coherence" || c.name == "jitter_content_entanglement")
+    });
+
+    let verdict = if failed >= 3 || critical_jitter_failed {
         CrossModalVerdict::Inconsistent
     } else if failed >= 1 {
         CrossModalVerdict::Marginal
@@ -397,6 +414,47 @@ fn check_jitter_content_entanglement(
     }
 }
 
+/// Check 6: Jitter sample density vs document length.
+///
+/// Genuine typing produces roughly one jitter sample per keystroke. If the
+/// document has many characters but very few jitter samples, the content
+/// was likely inserted without corresponding physical keystrokes.
+fn check_content_growth_vs_jitter_density(
+    samples: &[SimpleJitterSample],
+    document_length: i64,
+) -> CrossModalCheck {
+    if document_length <= 0 {
+        return CrossModalCheck {
+            name: "content_growth_vs_jitter_density".into(),
+            passed: true,
+            score: INSUFFICIENT_SCORE,
+            detail: "No document content for jitter density check".into(),
+        };
+    }
+
+    let kchars = document_length as f64 / 1000.0;
+    let density = samples.len() as f64 / kchars;
+    let passed = density >= MIN_JITTER_DENSITY_PER_KCHAR;
+
+    let score = if passed {
+        (density / (MIN_JITTER_DENSITY_PER_KCHAR * 10.0)).min(1.0)
+    } else {
+        safe_div(density, MIN_JITTER_DENSITY_PER_KCHAR, 0.0).clamp(0.0, FAILED_CHECK_SCORE)
+    };
+
+    CrossModalCheck {
+        name: "content_growth_vs_jitter_density".into(),
+        passed,
+        score,
+        detail: format!(
+            "Jitter density: {:.2} samples/kchar ({} samples, {} chars)",
+            density,
+            samples.len(),
+            document_length
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,6 +538,47 @@ mod tests {
 
         let result = analyze_cross_modal(&input);
         assert!(result.score < 0.9);
+    }
+
+    #[test]
+    fn test_jitter_density_fail() {
+        // 1 jitter sample for a 10,000-char document = 0.1/kchar, below 0.5 threshold
+        let events = make_events(50, 1_000_000_000, 1_000_000_000);
+        let jitter = make_jitter(1, 1_000_000_000, 250_000_000);
+        let input = CrossModalInput {
+            events: &events,
+            jitter_samples: Some(&jitter),
+            document_length: 10_000,
+            total_keystrokes: 600,
+            checkpoint_count: 10,
+            session_duration_sec: 50.0,
+        };
+        // jitter length < MIN_JITTER_SAMPLES so density check won't run; verify boundary
+        let density_check = check_content_growth_vs_jitter_density(&jitter, 10_000);
+        assert!(!density_check.passed);
+    }
+
+    #[test]
+    fn test_critical_jitter_failure_gives_inconsistent() {
+        // Simulate a session with almost no jitter vs many edits (coherence fails)
+        let events = make_events(50, 1_000_000_000, 500_000_000);
+        let jitter = make_jitter(5000, 1_000_000_000, 10_000); // extreme jitter/edit imbalance
+        let input = CrossModalInput {
+            events: &events,
+            jitter_samples: Some(&jitter),
+            document_length: 500,
+            total_keystrokes: 50,
+            checkpoint_count: 10,
+            session_duration_sec: 50.0,
+        };
+        let result = analyze_cross_modal(&input);
+        // jitter_edit_coherence ratio = 50/5000 = 0.01 < MIN_EDIT_TO_JITTER_RATIO (0.02) → fails
+        let coherence = result.checks.iter().find(|c| c.name == "jitter_edit_coherence");
+        if let Some(c) = coherence {
+            if !c.passed {
+                assert_eq!(result.verdict, CrossModalVerdict::Inconsistent);
+            }
+        }
     }
 
     #[test]

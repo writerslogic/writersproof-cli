@@ -43,6 +43,23 @@ const CLIPBOARD_DEBOUNCE_MS: u64 = 100;
 /// Maximum monitored apps to prevent resource exhaustion.
 const MAX_MONITORED_APPS: usize = 50;
 
+/// Bundle IDs of known AI assistant applications.
+/// Pastes originating from these apps are flagged with `PASTE_FROM_AI_TOOL`.
+const KNOWN_AI_APP_BUNDLE_IDS: &[&str] = &[
+    "com.anthropic.claudefordesktop",
+    "com.openai.chat",
+    "com.microsoft.copilot",
+    "com.github.copilot",
+    "com.cursor.Cursor",
+    "com.todesktop.230313mzl4w4u92",  // Cursor alternative ID
+    "com.google.bard",
+    "com.google.gemini",
+    "com.perplexity.mac",
+    "io.perplexity.macos",
+    "com.mistral.mistral",
+    "com.cohere.coral",
+];
+
 /// Default monitored applications (writing apps).
 fn default_monitored_apps() -> Vec<String> {
     vec![
@@ -150,6 +167,13 @@ pub struct EvidenceEvent {
     pub source_app: String,
     /// Timestamp (nanos).
     pub timestamp: i64,
+    /// True when the paste originated from a known AI assistant application.
+    pub from_ai_tool: bool,
+}
+
+/// Returns `true` if the given bundle ID matches a known AI assistant app.
+pub fn is_ai_tool_bundle_id(bundle_id: &str) -> bool {
+    KNOWN_AI_APP_BUNDLE_IDS.iter().any(|&id| id == bundle_id)
 }
 
 /// Clipboard monitor for detecting copy events and generating evidence.
@@ -239,11 +263,19 @@ impl ClipboardMonitor {
                         Ok(signed) => {
                             // Emit to broadcast channel only on successful attachment
                             let evidence = signed.unwrap_or_else(|| copy_event.text_hash.to_vec());
+                            let from_ai_tool = is_ai_tool_bundle_id(&copy_event.app_bundle_id);
+                            if from_ai_tool {
+                                log::warn!(
+                                    "Paste from known AI tool: {}",
+                                    copy_event.app_bundle_id
+                                );
+                            }
                             if let Err(e) = self.pending_evidence_tx.send(EvidenceEvent {
                                 fragment_hash: copy_event.text_hash,
                                 evidence,
                                 source_app: copy_event.app_bundle_id.clone(),
                                 timestamp: copy_event.timestamp,
+                                from_ai_tool,
                             }) {
                                 log::debug!("No evidence subscribers: {e}");
                             }
@@ -620,10 +652,21 @@ mod tests {
             evidence: vec![1, 2, 3],
             source_app: "com.apple.Notes".to_string(),
             timestamp: 1000,
+            from_ai_tool: false,
         };
 
         assert_eq!(event.fragment_hash, hash);
         assert_eq!(event.evidence.len(), 3);
+    }
+
+    #[test]
+    fn test_is_ai_tool_bundle_id() {
+        assert!(is_ai_tool_bundle_id("com.anthropic.claudefordesktop"));
+        assert!(is_ai_tool_bundle_id("com.openai.chat"));
+        assert!(is_ai_tool_bundle_id("com.cursor.Cursor"));
+        assert!(!is_ai_tool_bundle_id("com.apple.Notes"));
+        assert!(!is_ai_tool_bundle_id("com.microsoft.Word"));
+        assert!(!is_ai_tool_bundle_id(""));
     }
 
     #[tokio::test]
@@ -636,6 +679,7 @@ mod tests {
             evidence: vec![],
             source_app: "test".to_string(),
             timestamp: 1000,
+            from_ai_tool: false,
         };
 
         let _ = monitor.pending_evidence_tx.send(event.clone());

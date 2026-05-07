@@ -54,6 +54,7 @@ pub mod verify;
 pub mod wal;
 
 pub mod anchors;
+pub mod integrity;
 pub mod credentials;
 pub mod declaration;
 pub mod report;

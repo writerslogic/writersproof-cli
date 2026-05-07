@@ -261,6 +261,10 @@ pub struct CadenceMetrics {
     /// Phase classification from fatigue model: 0=warmup, 1=plateau, 2=fatigue.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fatigue_phase: Option<u8>,
+    /// CV of inter-pause-gap lengths. AI-transcribed text has abnormally uniform
+    /// pause gaps (CV < 0.15 is suspicious). Higher = more naturally variable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structural_homogeneity_score: Option<f64>,
 }
 
 /// Cognitive-Linguistic Complexity metrics from n-gram surprisal analysis.
@@ -380,6 +384,28 @@ pub struct ForensicMetrics {
     /// Text fragment provenance metrics (composition ratios, source trust).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<super::provenance_metrics::ProvenanceMetrics>,
+    /// Per-chapter/segment velocity profiles for bundle documents (.scriv, .fdx, Vellum).
+    /// Empty for non-bundle sessions. Non-prose segments (synopsis, metadata) are flagged
+    /// `is_prose: false` and excluded from the aggregate behavioral authenticity score.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segment_profiles: Vec<SegmentVelocityProfile>,
+}
+
+/// Per-segment velocity and prose-classification metrics for bundle documents.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SegmentVelocityProfile {
+    /// Path relative to the bundle root (e.g. `"Files/Data/<UUID>/content.rtf"`).
+    pub rel_path: String,
+    /// `true` if the segment contains prose content eligible for behavioral scoring.
+    pub is_prose: bool,
+    /// Mean bytes/second edit velocity for this segment.
+    pub mean_bps: f64,
+    /// Peak bytes/second burst recorded for this segment.
+    pub max_bps: f64,
+    /// Total keystroke count attributed to this segment.
+    pub keystroke_count: u64,
+    /// Number of velocity bursts exceeding `THRESHOLD_HIGH_VELOCITY_BPS`.
+    pub high_velocity_bursts: usize,
 }
 
 impl ForensicMetrics {

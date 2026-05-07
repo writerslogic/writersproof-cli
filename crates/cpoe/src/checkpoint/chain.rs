@@ -22,6 +22,9 @@ use super::chain_helpers::{genesis_prev_hash, mix_physics_seed};
 use super::types::*;
 
 const MAX_CLOCK_DRIFT_SECS: i64 = 2;
+/// Minimum elapsed interval (seconds) above which the VDF duration must reflect
+/// real elapsed time. A zero-duration override for a >30s interval is rejected.
+const VDF_MIN_INTERVAL_SECS: u64 = 30;
 const MAX_CHAIN_FILE_SIZE: u64 = 500 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,11 +164,33 @@ impl Chain {
                 // Genesis: no elapsed time; VDF uses min_iterations to prevent forgery.
                 vdf_duration.unwrap_or(Duration::from_secs(0))
             } else if let Some(explicit) = vdf_duration {
+                // Reject zero-duration overrides when the actual elapsed time exceeds the
+                // mandatory VDF interval threshold. This prevents backdated checkpoints with
+                // trivially cheap proofs from bypassing the cost model.
+                if explicit.as_secs() == 0 {
+                    if let Some(last) = last_cp {
+                        let actual_elapsed = checkpoint
+                            .timestamp
+                            .signed_duration_since(last.timestamp)
+                            .num_seconds()
+                            .max(0) as u64;
+                        if actual_elapsed >= VDF_MIN_INTERVAL_SECS {
+                            return Err(Error::checkpoint(format!(
+                                "VDF proof required for interval > {VDF_MIN_INTERVAL_SECS}s \
+                                 (elapsed {actual_elapsed}s) but zero-duration override provided"
+                            )));
+                        }
+                    }
+                }
                 explicit
             } else {
                 let delta = checkpoint
                     .timestamp
-                    .signed_duration_since(last_cp.unwrap().timestamp);
+                    .signed_duration_since(
+                        last_cp
+                            .expect("ordinal > 0 implies at least one prior checkpoint")
+                            .timestamp,
+                    );
                 match delta.to_std() {
                     Ok(d) => d,
                     Err(_) => {
@@ -194,6 +219,7 @@ impl Chain {
     }
 
     fn commit_finish(&mut self, mut checkpoint: Checkpoint) -> Result<Checkpoint> {
+        crate::integrity::runtime_integrity_check()?;
         checkpoint.validate_timestamp()?;
         if checkpoint.explicit_hash_version.is_none() {
             checkpoint.explicit_hash_version = Some(checkpoint.hash_domain_version());

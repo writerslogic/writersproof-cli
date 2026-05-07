@@ -324,3 +324,28 @@ fn provider_config_serde_with_options() {
     assert_eq!(back.timeout_seconds, 60);
     assert_eq!(back.options.get("cert_path").unwrap(), "/etc/tsa.pem");
 }
+
+
+// --- verify_dual_anchor ---
+
+#[test]
+fn dual_anchor_within_tolerance_passes() {
+    assert!(verify_dual_anchor(1_700_000_000, 1_700_000_010, 30).is_ok());
+}
+
+#[test]
+fn dual_anchor_exceeds_tolerance_fails() {
+    let err = verify_dual_anchor(1_700_000_000, 1_700_000_100, 30).unwrap_err();
+    assert!(err.to_string().contains("disagree"));
+}
+
+#[test]
+fn dual_anchor_zero_timestamp_fails() {
+    assert!(verify_dual_anchor(0, 1_700_000_000, 30).is_err());
+    assert!(verify_dual_anchor(1_700_000_000, 0, 30).is_err());
+}
+
+#[test]
+fn dual_anchor_exact_tolerance_passes() {
+    assert!(verify_dual_anchor(1_700_000_000, 1_700_000_030, 30).is_ok());
+}

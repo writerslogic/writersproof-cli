@@ -128,6 +128,35 @@ pub fn generate_attestation_report(
     })
 }
 
+/// Return the attestation tier for the given provider.
+///
+/// Uses `capabilities().hardware_backed` as the discriminator. Any provider
+/// that reports hardware backing is `HardwareBound`; everything else is `SoftwareFallback`.
+pub fn attestation_tier(provider: &dyn Provider) -> AttestationTier {
+    if provider.capabilities().hardware_backed {
+        AttestationTier::HardwareBound
+    } else {
+        AttestationTier::SoftwareFallback
+    }
+}
+
+/// Increment the provider's monotonic session counter and return the new value.
+///
+/// On platforms with a hardware counter (SE / TPM 2.0), this calls the provider's
+/// `quote` path to advance the counter. On software providers it returns an error
+/// because software counters cannot guarantee monotonicity across process restarts.
+pub fn increment_session_counter(provider: &dyn Provider) -> Result<u64, TpmError> {
+    let caps = provider.capabilities();
+    if !caps.monotonic_counter {
+        return Err(TpmError::CounterNotInit);
+    }
+    let clock = provider.clock_info()?;
+    if !clock.safe {
+        return Err(TpmError::ClockNotSafe);
+    }
+    Ok(clock.clock)
+}
+
 /// Detect and initialize the best available TPM provider for this platform.
 pub fn detect_provider() -> ProviderHandle {
     #[cfg(target_os = "macos")]

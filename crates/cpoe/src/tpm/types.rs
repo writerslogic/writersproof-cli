@@ -155,3 +155,27 @@ pub struct Capabilities {
     pub monotonic_counter: bool,
     pub secure_clock: bool,
 }
+
+/// Trust tier for evidence attestation based on available hardware.
+///
+/// `HardwareBound` means evidence is signed by a key that cannot leave
+/// the device (Secure Enclave / TPM 2.0). `SoftwareFallback` means only
+/// a software key is available; evidence carries a scoring penalty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AttestationTier {
+    /// Key is hardware-bound and cannot be exported (SE / TPM 2.0).
+    HardwareBound,
+    /// Software-only key; no hardware root of trust available.
+    SoftwareFallback,
+}
+
+impl AttestationTier {
+    /// Returns the forensic score penalty for this tier.
+    /// `HardwareBound` carries no penalty; `SoftwareFallback` deducts 0.25.
+    pub fn score_penalty(self) -> f64 {
+        match self {
+            AttestationTier::HardwareBound => 0.0,
+            AttestationTier::SoftwareFallback => 0.25,
+        }
+    }
+}

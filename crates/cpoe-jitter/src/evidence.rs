@@ -8,6 +8,100 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+/// HMAC binding of a single physical keystroke to a session secret.
+///
+/// Created at the moment of each keystroke by sampling the hardware timer and
+/// computing HMAC-SHA256(session_key, key_code || timestamp_ns || sequence).
+/// The chain of bindings cannot be reordered without breaking every subsequent HMAC.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeystrokeBinding {
+    /// The key code of the pressed key.
+    pub key_code: u32,
+    /// Monotonic timestamp in nanoseconds at the moment of keypress.
+    pub timestamp_ns: u64,
+    /// Sequence number within this session (prevents replay/insertion).
+    pub sequence: u64,
+    /// HMAC-SHA256(session_key, key_code || timestamp_ns || sequence).
+    pub binding_mac: [u8; 32],
+}
+
+impl KeystrokeBinding {
+    /// Create a binding for a single keystroke event.
+    ///
+    /// Computes HMAC-SHA256 over `key_code || timestamp_ns || sequence` using
+    /// the provided session key. The sequence must be strictly monotonically
+    /// increasing within a session to prevent insertion attacks.
+    pub fn new(key_code: u32, timestamp_ns: u64, sequence: u64, session_key: &[u8; 32]) -> Self {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+
+        let mut mac =
+            HmacSha256::new_from_slice(session_key).expect("HMAC accepts any key size");
+        mac.update(&key_code.to_le_bytes());
+        mac.update(&timestamp_ns.to_le_bytes());
+        mac.update(&sequence.to_le_bytes());
+        let result = mac.finalize().into_bytes();
+        let mut binding_mac = [0u8; 32];
+        binding_mac.copy_from_slice(&result);
+
+        Self { key_code, timestamp_ns, sequence, binding_mac }
+    }
+
+    /// Verify this binding against the session key in constant time.
+    pub fn verify(&self, session_key: &[u8; 32]) -> bool {
+        use subtle::ConstantTimeEq;
+        let expected = Self::new(self.key_code, self.timestamp_ns, self.sequence, session_key);
+        expected.binding_mac.ct_eq(&self.binding_mac).into()
+    }
+}
+
+/// Append-only chain of keystroke bindings with sequential integrity.
+///
+/// Each binding commits to its sequence number, so insertion or reordering
+/// is detectable via sequence validation alone (no full chain replay needed).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct KeystrokeBindingChain {
+    pub bindings: Vec<KeystrokeBinding>,
+    next_sequence: u64,
+}
+
+impl KeystrokeBindingChain {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sample a binding for the next keystroke and append it to the chain.
+    pub fn sample_for_keystroke(
+        &mut self,
+        key_code: u32,
+        timestamp_ns: u64,
+        session_key: &[u8; 32],
+    ) -> &KeystrokeBinding {
+        let binding = KeystrokeBinding::new(key_code, timestamp_ns, self.next_sequence, session_key);
+        self.next_sequence = self.next_sequence.saturating_add(1);
+        self.bindings.push(binding);
+        self.bindings.last().expect("just pushed")
+    }
+
+    /// Verify all bindings against the session key.
+    /// Returns false on the first invalid binding (short-circuits).
+    pub fn verify_all(&self, session_key: &[u8; 32]) -> bool {
+        self.bindings
+            .iter()
+            .enumerate()
+            .all(|(i, b)| b.sequence == i as u64 && b.verify(session_key))
+    }
+
+    pub fn len(&self) -> usize {
+        self.bindings.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bindings.is_empty()
+    }
+}
+
 use crate::{Jitter, PhysHash};
 
 /// A single jitter evidence record, either hardware-bound (`Phys`) with a
@@ -32,6 +126,7 @@ pub enum Evidence {
 }
 
 impl Evidence {
+    /// Create a hardware-bound evidence record with an explicit timestamp.
     pub fn phys_with_timestamp(phys_hash: PhysHash, jitter: Jitter, timestamp_us: u64) -> Self {
         Self::Phys {
             phys_hash,
@@ -41,6 +136,7 @@ impl Evidence {
         }
     }
 
+    /// Create a software-only evidence record with an explicit timestamp.
     pub fn pure_with_timestamp(jitter: Jitter, timestamp_us: u64) -> Self {
         Self::Pure {
             jitter,
@@ -49,15 +145,18 @@ impl Evidence {
         }
     }
 
+    /// Create a hardware-bound evidence record timestamped to now.
     #[cfg(feature = "std")]
     pub fn phys(phys_hash: PhysHash, jitter: Jitter) -> Self {
         Self::phys_with_timestamp(phys_hash, jitter, current_timestamp_us())
     }
 
+    /// Create a software-only evidence record timestamped to now.
     #[cfg(feature = "std")]
     pub fn pure(jitter: Jitter) -> Self {
         Self::pure_with_timestamp(jitter, current_timestamp_us())
     }
+    /// Monotonic sequence number assigned on [`EvidenceChain::append`].
     #[inline]
     pub fn sequence(&self) -> u64 {
         match self {
@@ -94,15 +193,18 @@ impl Evidence {
         }
     }
 
+    /// Feed this record's fields into a SHA-256 hasher (for unkeyed chains).
     pub fn hash_into(&self, hasher: &mut sha2::Sha256) {
         use sha2::Digest;
         self.write_fields(|bytes| hasher.update(bytes));
     }
 
+    /// Feed this record's fields into an HMAC-SHA256 MAC (for keyed chains).
     pub fn hash_into_mac(&self, mac: &mut hmac::Hmac<sha2::Sha256>) {
         use hmac::Mac;
         self.write_fields(|bytes| mac.update(bytes));
     }
+    /// The jitter value (timing entropy measurement in microseconds).
     #[inline]
     pub fn jitter(&self) -> Jitter {
         match self {
@@ -110,10 +212,12 @@ impl Evidence {
             Evidence::Pure { jitter, .. } => *jitter,
         }
     }
+    /// Returns `true` if this record includes a hardware physical hash.
     #[inline]
     pub fn is_phys(&self) -> bool {
         matches!(self, Evidence::Phys { .. })
     }
+    /// Capture timestamp in microseconds since the UNIX epoch.
     #[inline]
     pub fn timestamp_us(&self) -> u64 {
         match self {
@@ -352,11 +456,13 @@ impl EvidenceChain {
         expected_mac.ct_eq(&self.chain_mac).into()
     }
 
+    /// Returns `true` if timestamps are monotonically non-decreasing.
     pub fn validate_timestamps(&self) -> bool {
         self.records
             .windows(2)
             .all(|w| w[0].timestamp_us() <= w[1].timestamp_us())
     }
+    /// Returns `true` if every record's sequence number matches its index.
     pub fn validate_sequences(&self) -> bool {
         self.records
             .iter()
@@ -364,13 +470,16 @@ impl EvidenceChain {
             .all(|(i, e)| e.sequence() == i as u64)
     }
 
+    /// Number of hardware-bound (`Phys`) records in the chain.
     pub fn phys_count(&self) -> usize {
         self.records.iter().filter(|e| e.is_phys()).count()
     }
 
+    /// Number of software-only (`Pure`) records in the chain.
     pub fn pure_count(&self) -> usize {
         self.records.len() - self.phys_count()
     }
+    /// Fraction of records that are hardware-bound (0.0 if empty).
     pub fn phys_ratio(&self) -> f64 {
         if self.records.is_empty() {
             0.0
@@ -379,6 +488,9 @@ impl EvidenceChain {
         }
     }
 
+    /// Verify every record's jitter value against the engine in constant time.
+    ///
+    /// Returns `false` if `inputs.len() != records.len()` or any record fails.
     pub fn verify_chain<E: crate::JitterEngine>(
         &self,
         secret: &[u8; 32],
@@ -388,25 +500,72 @@ impl EvidenceChain {
         if inputs.len() != self.records.len() {
             return false;
         }
-        self.records
+        // Fold with bitwise AND on subtle::Choice so all records are evaluated
+        // regardless of earlier failures, preventing a timing side-channel that
+        // would reveal the position of the first failing record.
+        use subtle::Choice;
+        let result: Choice = self
+            .records
             .iter()
             .zip(inputs.iter())
-            .all(|(evidence, input)| evidence.verify(secret, input, engine))
+            .fold(Choice::from(1u8), |acc, (evidence, input)| {
+                let ok = Choice::from(u8::from(evidence.verify(secret, input, engine)));
+                acc & ok
+            });
+        result.unwrap_u8() == 1
     }
 }
 
 #[cfg(feature = "std")]
 fn current_timestamp_us() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
+        .unwrap_or(Duration::from_secs(1))
         .as_micros() as u64
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_keystroke_binding_verify_ok() {
+        let key = [7u8; 32];
+        let binding = KeystrokeBinding::new(42, 1_000_000_000, 0, &key);
+        assert!(binding.verify(&key));
+    }
+
+    #[test]
+    fn test_keystroke_binding_wrong_key_fails() {
+        let key = [7u8; 32];
+        let wrong_key = [8u8; 32];
+        let binding = KeystrokeBinding::new(42, 1_000_000_000, 0, &key);
+        assert!(!binding.verify(&wrong_key));
+    }
+
+    #[test]
+    fn test_keystroke_binding_chain_sequence() {
+        let key = [3u8; 32];
+        let mut chain = KeystrokeBindingChain::new();
+        for i in 0u32..5 {
+            chain.sample_for_keystroke(i, (i as u64) * 1_000_000_000, &key);
+        }
+        assert_eq!(chain.len(), 5);
+        assert!(chain.verify_all(&key));
+        assert_eq!(chain.bindings[3].sequence, 3);
+    }
+
+    #[test]
+    fn test_keystroke_binding_chain_tamper_detected() {
+        let key = [3u8; 32];
+        let mut chain = KeystrokeBindingChain::new();
+        for i in 0u32..4 {
+            chain.sample_for_keystroke(i, (i as u64) * 500_000_000, &key);
+        }
+        chain.bindings[2].key_code = 99; // tamper
+        assert!(!chain.verify_all(&key));
+    }
 
     #[test]
     fn test_evidence_chain_tamper_detection() {

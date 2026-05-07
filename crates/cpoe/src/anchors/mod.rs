@@ -40,6 +40,34 @@ pub trait AnchorProvider: Send + Sync {
 /// Type-erased handle to an anchor provider.
 pub type ProviderHandle = Arc<dyn AnchorProvider>;
 
+/// Verify that two independent external timestamps agree within `tolerance_secs`.
+///
+/// Call this after fetching both an RFC 3161 TSA response and a Roughtime response
+/// for the same checkpoint. If the two timestamps disagree by more than `tolerance_secs`,
+/// one anchor may be compromised or the system clock was manipulated.
+///
+/// Returns `Ok(())` when both timestamps are within tolerance.
+/// Returns `Err(AnchorError::Verification)` when the difference exceeds the tolerance
+/// or when either timestamp is zero (missing / uninitialized).
+pub fn verify_dual_anchor(
+    rfc3161_unix_secs: i64,
+    roughtime_unix_secs: i64,
+    tolerance_secs: u64,
+) -> Result<(), AnchorError> {
+    if rfc3161_unix_secs == 0 || roughtime_unix_secs == 0 {
+        return Err(AnchorError::Verification(
+            "dual-anchor: one or both timestamps are zero (missing)".into(),
+        ));
+    }
+    let diff = (rfc3161_unix_secs - roughtime_unix_secs).unsigned_abs();
+    if diff > tolerance_secs {
+        return Err(AnchorError::Verification(format!(
+            "dual-anchor: RFC 3161 and Roughtime disagree by {diff}s (tolerance: {tolerance_secs}s)"
+        )));
+    }
+    Ok(())
+}
+
 /// Coordinates multi-provider anchor submission, polling, and verification.
 pub struct AnchorManager {
     providers: Vec<ProviderHandle>,

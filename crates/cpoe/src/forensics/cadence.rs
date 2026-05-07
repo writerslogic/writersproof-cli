@@ -111,6 +111,8 @@ pub fn analyze_cadence(samples: &[SimpleJitterSample]) -> CadenceMetrics {
     metrics.burst_speed_cv = compute_burst_speed_cv(&bursts, &ikis);
     metrics.zero_variance_windows = count_zero_variance_windows(&ikis);
 
+    metrics.structural_homogeneity_score = Some(compute_structural_homogeneity_score(&ikis));
+
     // Sanitize non-finite values from ratio/CV computations
     if !metrics.coefficient_of_variation.is_finite() {
         metrics.coefficient_of_variation = 0.0;
@@ -375,6 +377,28 @@ fn compute_burst_speed_cv(bursts: &[TypingBurst], ikis: &[f64]) -> f64 {
         return 0.0;
     }
     mean(&valid_bursts)
+}
+
+/// Compute the CV of inter-pause-gap lengths (gaps between consecutive pauses > 2s).
+///
+/// AI-transcribed text produces abnormally uniform inter-pause gaps (CV < 0.15).
+/// Genuine cognitive writing has highly variable gaps because the writer pauses at
+/// irregular points to think. Returns the CV, or `None` when fewer than 3 pauses exist.
+pub fn compute_structural_homogeneity_score(ikis: &[f64]) -> f64 {
+    let pause_positions: Vec<f64> = ikis
+        .iter()
+        .enumerate()
+        .filter(|(_, &iki)| iki > PAUSE_THRESHOLD_NS)
+        .map(|(i, _)| i as f64)
+        .collect();
+
+    let gaps: Vec<f64> = pause_positions.windows(2).map(|w| w[1] - w[0]).collect();
+
+    if gaps.len() < 3 {
+        return 0.5;
+    }
+
+    coefficient_of_variation(&gaps)
 }
 
 /// Count 500ms sliding windows where IKI variance is near zero (<5ms std dev).

@@ -168,6 +168,100 @@ impl PerplexityModel {
     }
 }
 
+/// Threshold below which word-trigram perplexity flags text as suspiciously fluent.
+/// AI-generated text tends to have unnaturally low perplexity under a word-level model.
+pub const WORD_TRIGRAM_AI_THRESHOLD: f64 = 8.0;
+
+/// Word-level trigram model for AI-output fluency detection.
+///
+/// Complements the character-level model: AI-generated text has characteristically
+/// low word-trigram perplexity because LLMs produce text that is locally predictable
+/// at the word level even when character-level patterns vary.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WordTrigramModel {
+    pub counts: HashMap<(String, String), HashMap<String, usize>>,
+    pub totals: HashMap<(String, String), usize>,
+    pub sample_count: usize,
+}
+
+impl WordTrigramModel {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Tokenize text into lowercase words (ASCII alphanumeric runs).
+    fn tokenize(text: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut current = String::new();
+        for ch in text.chars() {
+            if ch.is_ascii_alphanumeric() || ch == '\'' {
+                current.push(ch.to_ascii_lowercase());
+            } else if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+        }
+        if !current.is_empty() {
+            words.push(current);
+        }
+        words
+    }
+
+    pub fn train(&mut self, text: &str) {
+        let words = Self::tokenize(text);
+        if words.len() < 3 {
+            return;
+        }
+        for i in 0..words.len() - 2 {
+            let ctx = (words[i].clone(), words[i + 1].clone());
+            let next = words[i + 2].clone();
+            *self.totals.entry(ctx.clone()).or_default() += 1;
+            *self.counts.entry(ctx).or_default().entry(next).or_default() += 1;
+        }
+        self.sample_count += words.len();
+    }
+
+    /// Perplexity of `text` under the trained word-trigram model.
+    /// Returns `None` when the model is undertrained or input is too short.
+    pub fn compute_perplexity(&self, text: &str) -> Option<f64> {
+        if self.sample_count < MIN_TRAINING_SAMPLES {
+            return None;
+        }
+        let words = Self::tokenize(text);
+        if words.len() < 3 {
+            return None;
+        }
+        let mut log_prob_sum = 0.0;
+        let mut count = 0usize;
+        let vocab_size = self.counts.len().max(1) as f64;
+        for i in 0..words.len() - 2 {
+            let ctx = (words[i].clone(), words[i + 1].clone());
+            let next = &words[i + 2];
+            let prob = if let Some(ctx_counts) = self.counts.get(&ctx) {
+                let char_count = *ctx_counts.get(next).unwrap_or(&0);
+                let total = *self.totals.get(&ctx).unwrap_or(&1);
+                (char_count as f64 + SMOOTHING_ALPHA)
+                    / (total as f64 + SMOOTHING_ALPHA * vocab_size)
+            } else {
+                SMOOTHING_ALPHA / (self.sample_count as f64 + vocab_size)
+            };
+            log_prob_sum += prob.ln();
+            count += 1;
+        }
+        if count == 0 {
+            return None;
+        }
+        let ppl = (-log_prob_sum / count as f64).exp();
+        if ppl.is_finite() { Some(ppl) } else { None }
+    }
+
+    /// Returns `true` when perplexity is below the AI-fluency threshold.
+    pub fn is_suspiciously_fluent(&self, text: &str) -> bool {
+        self.compute_perplexity(text)
+            .map(|ppl| ppl < WORD_TRIGRAM_AI_THRESHOLD)
+            .unwrap_or(false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,6 +340,32 @@ mod tests {
         let count_after_first = model.sample_count;
         model.train("world ");
         assert!(model.sample_count > count_after_first);
+    }
+
+    #[test]
+    fn test_word_trigram_undertrained() {
+        let model = WordTrigramModel::new();
+        assert!(model.compute_perplexity("the quick brown fox").is_none());
+        assert!(!model.is_suspiciously_fluent("the quick brown fox"));
+    }
+
+    #[test]
+    fn test_word_trigram_familiar_lower_than_random() {
+        let mut model = WordTrigramModel::new();
+        let training = "the quick brown fox jumps over the lazy dog ".repeat(50);
+        model.train(&training);
+
+        let ppl_same = model.compute_perplexity("the quick brown fox jumps over");
+        let ppl_random = model.compute_perplexity("zephyr quartz vortex nexus cipher lambda");
+        assert!(ppl_same.is_some() && ppl_random.is_some());
+        assert!(ppl_same.unwrap() < ppl_random.unwrap());
+    }
+
+    #[test]
+    fn test_word_trigram_short_input() {
+        let mut model = WordTrigramModel::new();
+        model.train(&"hello world foo ".repeat(400));
+        assert!(model.compute_perplexity("hi").is_none());
     }
 
     #[test]

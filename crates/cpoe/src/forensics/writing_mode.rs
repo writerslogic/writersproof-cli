@@ -76,6 +76,17 @@ const BURST_LENGTH_CV_LOW: f64 = 0.20; // transcriptive: uniform burst lengths
 const BURST_LENGTH_CV_HIGH: f64 = 0.60; // cognitive: highly variable burst lengths
 const BURST_LENGTH_CV_WEIGHT: f64 = 0.05;
 
+/// Pause before a burst, in nanoseconds, that separates distinct typing events.
+const BURST_SEPARATOR_NS: i64 = 1_000_000_000;
+
+/// Fraction of session tail (last 20%) used for scatter analysis.
+const SCATTER_TAIL_FRACTION: f64 = 0.20;
+/// Minimum fraction of backspace events in the tail to be suspicious.
+const SCATTER_TAIL_SUSPICIOUS: f64 = 0.70;
+
+const REVISION_SCATTER_WEIGHT: f64 = 0.04;
+const PAUSE_BURST_CORR_WEIGHT: f64 = 0.04;
+
 /// Minimum inter-event gap (nanoseconds) to count as a "thinking pause" (2 seconds).
 const THINKING_PAUSE_THRESHOLD_NS: i64 = 2_000_000_000;
 
@@ -190,6 +201,8 @@ pub fn classify_writing_mode(
     let revision = analyze_revision_patterns(sorted);
     let thinking_pause_ratio = compute_thinking_pause_ratio(sorted);
     let burst_length_cv = compute_burst_length_cv(sorted);
+    let revision_scatter = compute_revision_scatter_score(sorted);
+    let pause_burst_corr = compute_pause_burst_correlation(sorted);
 
     // Score each signal: 0.0 = transcriptive, 1.0 = cognitive.
     let scores = [
@@ -277,6 +290,8 @@ pub fn classify_writing_mode(
             lerp_score(burst_length_cv, BURST_LENGTH_CV_LOW, BURST_LENGTH_CV_HIGH),
             BURST_LENGTH_CV_WEIGHT,
         ),
+        (revision_scatter, REVISION_SCATTER_WEIGHT),
+        (pause_burst_corr, PAUSE_BURST_CORR_WEIGHT),
     ];
 
     let cognitive_score: f64 = scores.iter().map(|(s, w)| s * w).sum();
@@ -457,6 +472,121 @@ fn compute_burst_length_cv(sorted: SortedEvents<'_>) -> f64 {
         .sum::<f64>()
         / n;
     variance.sqrt() / mean
+}
+
+/// Score based on where backspace/deletion events are distributed across the session.
+///
+/// Genuine cognitive writing scatters corrections throughout the document. A session
+/// where >70% of all deletion events cluster in the last 20% of the session timeline
+/// is consistent with cleanup after pasting externally-generated content.
+/// Returns 1.0 (cognitive) when scatter is healthy, 0.0 when suspicious.
+fn compute_revision_scatter_score(sorted: SortedEvents<'_>) -> f64 {
+    if sorted.len() < MIN_EVENTS_FOR_MODE {
+        return 0.5;
+    }
+
+    let deletions: Vec<i64> = sorted
+        .iter()
+        .filter(|e| e.size_delta < 0)
+        .map(|e| e.timestamp_ns)
+        .collect();
+
+    if deletions.len() < 3 {
+        return 0.5;
+    }
+
+    let t_first = sorted.first().map(|e| e.timestamp_ns).unwrap_or(0);
+    let t_last = sorted.last().map(|e| e.timestamp_ns).unwrap_or(0);
+    let span = (t_last - t_first) as f64;
+    if span <= 0.0 {
+        return 0.5;
+    }
+
+    let tail_start = t_first as f64 + span * (1.0 - SCATTER_TAIL_FRACTION);
+    let tail_count = deletions.iter().filter(|&&ts| ts as f64 >= tail_start).count();
+    let tail_frac = tail_count as f64 / deletions.len() as f64;
+
+    if tail_frac >= SCATTER_TAIL_SUSPICIOUS {
+        0.0
+    } else {
+        1.0 - tail_frac / SCATTER_TAIL_SUSPICIOUS
+    }
+}
+
+/// Score based on Spearman correlation between pre-burst pause duration and burst size.
+///
+/// In genuine cognitive writing, longer pauses precede larger or more complex bursts
+/// (the writer is thinking before typing more). In transcription or AI-copied content,
+/// pauses are uniform and burst sizes are not correlated with preceding pause duration.
+/// Returns a score in [0, 1]: 0.0 when correlation is near zero (suspicious), 1.0 when strong.
+fn compute_pause_burst_correlation(sorted: SortedEvents<'_>) -> f64 {
+    if sorted.len() < MIN_EVENTS_FOR_MODE {
+        return 0.5;
+    }
+
+    // Collect (pause_ns, burst_size_bytes) pairs.
+    let mut pairs: Vec<(f64, f64)> = Vec::new();
+    let mut i = 0;
+    while i + 1 < sorted.len() {
+        let gap = sorted[i + 1].timestamp_ns.saturating_sub(sorted[i].timestamp_ns);
+        if gap >= BURST_SEPARATOR_NS {
+            // This is a pause; measure burst size starting at i+1.
+            let mut burst_bytes: i64 = 0;
+            let mut j = i + 1;
+            while j < sorted.len() {
+                let next_gap = if j + 1 < sorted.len() {
+                    sorted[j + 1].timestamp_ns.saturating_sub(sorted[j].timestamp_ns)
+                } else {
+                    i64::MAX
+                };
+                burst_bytes += sorted[j].size_delta.max(0) as i64;
+                if next_gap >= BURST_SEPARATOR_NS {
+                    break;
+                }
+                j += 1;
+            }
+            if burst_bytes > 0 {
+                pairs.push((gap as f64, burst_bytes as f64));
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+
+    if pairs.len() < 4 {
+        return 0.5;
+    }
+
+    // Spearman: rank both vectors, then compute Pearson on the ranks.
+    let n = pairs.len();
+    let mut pause_order: Vec<usize> = (0..n).collect();
+    pause_order.sort_unstable_by(|&a, &b| pairs[a].0.partial_cmp(&pairs[b].0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut burst_order: Vec<usize> = (0..n).collect();
+    burst_order.sort_unstable_by(|&a, &b| pairs[a].1.partial_cmp(&pairs[b].1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut pause_ranks = vec![0.0f64; n];
+    let mut burst_ranks = vec![0.0f64; n];
+    for (rank, &idx) in pause_order.iter().enumerate() {
+        pause_ranks[idx] = rank as f64;
+    }
+    for (rank, &idx) in burst_order.iter().enumerate() {
+        burst_ranks[idx] = rank as f64;
+    }
+
+    let mean_r = (n - 1) as f64 / 2.0;
+    let num: f64 = (0..n).map(|i| (pause_ranks[i] - mean_r) * (burst_ranks[i] - mean_r)).sum();
+    let denom_p: f64 = (0..n).map(|i| (pause_ranks[i] - mean_r).powi(2)).sum::<f64>().sqrt();
+    let denom_b: f64 = (0..n).map(|i| (burst_ranks[i] - mean_r).powi(2)).sum::<f64>().sqrt();
+    let denom = denom_p * denom_b;
+
+    if denom < f64::EPSILON {
+        return 0.5;
+    }
+
+    let rho = (num / denom).clamp(-1.0, 1.0);
+    // Map [-1, 1] → [0, 1]: correlation ≥ 0.1 is cognitive, near 0 is suspicious.
+    ((rho + 1.0) / 2.0).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]

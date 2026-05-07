@@ -176,6 +176,8 @@ impl Block {
     /// The signature covers `SEAL_SIG_DST || H3` (domain-separated) to prevent
     /// cross-protocol signature confusion.
     pub fn sign(&mut self, signer: &dyn EvidenceSigner) -> Result<(), String> {
+        crate::integrity::runtime_integrity_check()
+            .map_err(|e| format!("integrity check failed: {e}"))?;
         let mut msg = Vec::with_capacity(Self::SEAL_SIG_DST.len() + 32);
         msg.extend_from_slice(Self::SEAL_SIG_DST);
         msg.extend_from_slice(&self.seal.h3);

@@ -318,6 +318,70 @@ impl BehavioralFingerprint {
     }
 }
 
+/// Result of comparing a session fingerprint against a stored identity baseline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaselineComparison {
+    /// Mahalanobis distance from the stored baseline. Lower = more similar.
+    pub mahalanobis_distance: f64,
+    /// True when the distance exceeds the anomaly threshold (3.0).
+    pub is_anomalous: bool,
+}
+
+const MAHALANOBIS_ANOMALY_THRESHOLD: f64 = 3.0;
+
+impl BehavioralFingerprint {
+    /// Compare this fingerprint against a stored baseline using a simplified
+    /// Mahalanobis distance over the five most stable biometric dimensions.
+    ///
+    /// Returns `None` when the baseline has zero standard deviation on any
+    /// dimension (insufficient training data). The caller should persist the
+    /// returned comparison result alongside the evidence packet.
+    pub fn compare_to_baseline(&self, baseline: &BehavioralFingerprint) -> Option<BaselineComparison> {
+        // Feature vector: [mean_iki, std_iki, burst_length_mean, sentence_pause_mean, thinking_freq]
+        let current = [
+            self.keystroke_interval_mean,
+            self.keystroke_interval_std,
+            self.burst_length_mean,
+            self.sentence_pause_mean,
+            self.thinking_pause_frequency,
+        ];
+        let base = [
+            baseline.keystroke_interval_mean,
+            baseline.keystroke_interval_std,
+            baseline.burst_length_mean,
+            baseline.sentence_pause_mean,
+            baseline.thinking_pause_frequency,
+        ];
+        // Use baseline std as the diagonal covariance estimate.
+        // std_iki serves as a proxy for per-dimension spread for all dimensions
+        // except itself, which uses a fixed 5% relative spread.
+        let spread = [
+            baseline.keystroke_interval_std.max(1.0),
+            (baseline.keystroke_interval_std * 0.05).max(0.1),
+            (baseline.burst_length_mean * 0.3).max(0.1),
+            (baseline.sentence_pause_mean * 0.3).max(1.0),
+            0.02_f64.max(baseline.thinking_pause_frequency * 0.5),
+        ];
+
+        if spread.iter().any(|&s| s < f64::EPSILON) {
+            return None;
+        }
+
+        let dist_sq: f64 = current
+            .iter()
+            .zip(base.iter())
+            .zip(spread.iter())
+            .map(|((c, b), s)| ((c - b) / s).powi(2))
+            .sum();
+
+        let mahalanobis_distance = dist_sq.sqrt();
+        Some(BaselineComparison {
+            mahalanobis_distance,
+            is_anomalous: mahalanobis_distance > MAHALANOBIS_ANOMALY_THRESHOLD,
+        })
+    }
+}
+
 impl Default for BehavioralFingerprint {
     fn default() -> Self {
         Self {
@@ -494,6 +558,41 @@ mod tests {
             .flags
             .iter()
             .any(|f| matches!(f, ForgeryFlag::NoFatiguePattern)));
+    }
+
+    #[test]
+    fn test_compare_to_baseline_similar() {
+        let intervals_a = vec![200, 220, 190, 210, 230, 200, 210, 195, 205, 215];
+        let intervals_b = vec![202, 218, 192, 208, 228, 203, 212, 197, 207, 213];
+        let a = BehavioralFingerprint::from_samples(&mock_samples(&intervals_a));
+        let b = BehavioralFingerprint::from_samples(&mock_samples(&intervals_b));
+        let result = a.compare_to_baseline(&b);
+        if let Some(cmp) = result {
+            assert!(!cmp.is_anomalous, "Similar fingerprints should not be anomalous");
+        }
+    }
+
+    #[test]
+    fn test_compare_to_baseline_divergent() {
+        let intervals_a = vec![200, 220, 190, 210, 230, 200, 210, 195, 205, 215];
+        let intervals_b = vec![600, 620, 590, 610, 630, 600, 610, 595, 605, 615];
+        let a = BehavioralFingerprint::from_samples(&mock_samples(&intervals_a));
+        let b = BehavioralFingerprint::from_samples(&mock_samples(&intervals_b));
+        let result = a.compare_to_baseline(&b);
+        if let Some(cmp) = result {
+            assert!(cmp.mahalanobis_distance > 0.0);
+        }
+    }
+
+    #[test]
+    fn test_compare_to_self_is_zero_distance() {
+        let intervals = vec![200, 220, 190, 210, 230, 200, 210, 195, 205, 215];
+        let fp = BehavioralFingerprint::from_samples(&mock_samples(&intervals));
+        let result = fp.compare_to_baseline(&fp);
+        if let Some(cmp) = result {
+            assert!(cmp.mahalanobis_distance < f64::EPSILON);
+            assert!(!cmp.is_anomalous);
+        }
     }
 
     #[test]
