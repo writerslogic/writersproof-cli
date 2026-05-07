@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::types::{FfiCalibrationResult, FfiProcessScore};
+use crate::ffi::types::{catch_ffi_panic, FfiCalibrationResult, FfiProcessScore};
 use crate::forensics::provenance_metrics::ProvenanceMetrics;
 use crate::vdf::Parameters;
 use std::sync::Mutex;

@@ -2,6 +2,7 @@
 
 use crate::ffi::helpers::detect_attestation_tier_info;
 use crate::ffi::report_types::*;
+use crate::ffi::types::catch_ffi_panic;
 use crate::report::*;
 use crate::utils::finite_or;
 use crate::war::ear::{

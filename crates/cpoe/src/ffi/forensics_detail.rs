@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::load_events_for_path;
-use crate::ffi::types::try_ffi;
+use crate::ffi::types::{catch_ffi_panic, try_ffi};
 use crate::utils::finite_or;
 
 #[derive(Debug, Clone)]

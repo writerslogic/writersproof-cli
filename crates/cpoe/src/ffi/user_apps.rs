@@ -210,6 +210,7 @@ fn storage_to_str(s: crate::sentinel::app_registry::StoragePattern) -> String {
         ContainerBased => "container_based",
         CloudLibrary => "cloud_library",
         DatabaseBacked => "database_backed",
+        BundleBased => "bundle_based",
     }
     .to_string()
 }
@@ -221,6 +222,7 @@ fn str_to_storage(s: &str) -> Option<crate::sentinel::app_registry::StoragePatte
         "container_based" => Some(ContainerBased),
         "cloud_library" => Some(CloudLibrary),
         "database_backed" => Some(DatabaseBacked),
+        "bundle_based" => Some(BundleBased),
         _ => None,
     }
 }

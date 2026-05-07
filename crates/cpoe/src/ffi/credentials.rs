@@ -3,7 +3,7 @@
 //! FFI bindings for ISO mDoc-style authorship credentials.
 
 use super::helpers::{load_signing_key, open_store};
-use super::types::{catch_ffi_panic, try_ffi};
+use super::types::{catch_ffi_panic, try_ffi, FfiErrResult};
 use crate::credentials::AuthorshipCredential;
 
 // ---------------------------------------------------------------------------
