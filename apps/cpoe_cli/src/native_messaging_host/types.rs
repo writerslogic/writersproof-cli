@@ -5,6 +5,34 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
 use zeroize::Zeroize;
 
+fn deserialize_bounded_intervals<'de, D>(deserializer: D) -> Result<Vec<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{Error, SeqAccess, Visitor};
+    struct BoundedVec;
+    impl<'de> Visitor<'de> for BoundedVec {
+        type Value = Vec<u64>;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "an array of at most {} u64 intervals", super::jitter::MAX_BATCH_SIZE)
+        }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<u64>, A::Error> {
+            let mut v = Vec::with_capacity(seq.size_hint().unwrap_or(0).min(super::jitter::MAX_BATCH_SIZE));
+            while let Some(val) = seq.next_element::<u64>()? {
+                if v.len() >= super::jitter::MAX_BATCH_SIZE {
+                    return Err(A::Error::custom(format!(
+                        "intervals exceeds maximum length {}",
+                        super::jitter::MAX_BATCH_SIZE
+                    )));
+                }
+                v.push(val);
+            }
+            Ok(v)
+        }
+    }
+    deserializer.deserialize_seq(BoundedVec)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Request {
@@ -46,6 +74,7 @@ pub(crate) enum Request {
     StopSession,
     GetStatus,
     InjectJitter {
+        #[serde(deserialize_with = "deserialize_bounded_intervals")]
         intervals: Vec<u64>,
     },
     Ping {
@@ -151,6 +180,7 @@ pub(crate) struct Session {
     pub(crate) document_title: String,
     pub(crate) checkpoint_count: u64,
     pub(crate) evidence_path: std::path::PathBuf,
+    pub(crate) session_dir: std::path::PathBuf,
     pub(crate) jitter_intervals: Vec<u64>,
     pub(crate) prev_commitment: [u8; 32],
     pub(crate) expected_ordinal: u64,
@@ -170,6 +200,7 @@ impl Drop for Session {
     fn drop(&mut self) {
         self.session_nonce.zeroize();
         self.prev_commitment.zeroize();
+        self.jitter_hash.zeroize();
         // SigningKey handles its own zeroization via ZeroizeOnDrop.
     }
 }

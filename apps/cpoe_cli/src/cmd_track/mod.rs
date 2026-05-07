@@ -364,10 +364,10 @@ pub(crate) async fn cmd_track_smart(
         if current_file.exists() {
             let session_path = active_session_document(&current_file);
             let requested = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
-            let requested_str = requested.to_string_lossy();
 
             if let Some(ref tracked) = session_path {
-                if tracked == requested_str.as_ref() {
+                let tracked_canonical = fs::canonicalize(tracked).unwrap_or_else(|_| PathBuf::from(tracked));
+                if tracked_canonical == requested {
                     if !out.quiet {
                         println!("Tracking session active. Creating checkpoint...");
                     }

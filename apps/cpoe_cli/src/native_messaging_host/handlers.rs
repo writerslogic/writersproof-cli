@@ -12,7 +12,30 @@ use super::jitter::{
 use super::protocol::{is_domain_allowed, now_nanos, validate_content_hash};
 use super::types::{session, Response, Session};
 
+/// Maximum document title length accepted from the browser extension.
+/// Matches common filesystem filename limits and prevents DoS via unbounded allocation.
+const MAX_TITLE_LEN: usize = 255;
+
+/// Maximum document URL length accepted from the browser extension.
+/// 8192 bytes covers all practical URLs while bounding memory allocation.
+const MAX_URL_LEN: usize = 8192;
+
 pub(crate) fn handle_start_session(document_url: String, document_title: String) -> Response {
+    // Reject oversized URLs before any further allocation.
+    if document_url.len() > MAX_URL_LEN {
+        return Response::Error {
+            message: format!("document_url exceeds maximum length ({MAX_URL_LEN} bytes)"),
+            code: "URL_TOO_LONG".into(),
+        };
+    }
+
+    // Truncate at a UTF-8 character boundary to avoid allocating unbounded memory
+    // from a user-controlled browser field.
+    let document_title: String = document_title
+        .chars()
+        .take(MAX_TITLE_LEN)
+        .collect();
+
     if !is_domain_allowed(&document_url) {
         let host = url::Url::parse(&document_url)
             .ok()
@@ -177,6 +200,7 @@ pub(crate) fn handle_start_session(document_url: String, document_title: String)
         document_title: document_title.clone(),
         checkpoint_count: 1,
         evidence_path,
+        session_dir: session_dir.clone(),
         jitter_intervals: Vec::new(),
         prev_commitment: genesis,
         expected_ordinal: 2, // Next expected (1 already created)
@@ -255,18 +279,9 @@ pub(crate) fn handle_checkpoint(
 
     // Backward clock tolerance: 100ms accommodates NTP micro-adjustments
     // while rejecting replay attacks that rely on setting the clock back.
-    // Forward tolerance: 5s allows for minor clock-ahead drift.
+    // No forward check: normal typing sessions routinely exceed any fixed
+    // forward window (idle time, copy-paste, long pauses between checkpoints).
     const BACKWARD_TOLERANCE_NS: u64 = 100_000_000; // 100ms
-    const FORWARD_TOLERANCE_NS: u64 = 5_000_000_000; // 5s
-    if now_ns > session.last_checkpoint_ts.saturating_add(FORWARD_TOLERANCE_NS) {
-        return Response::Error {
-            message: format!(
-                "Timestamp too far in future: clock jumped forward by {:.1}s",
-                (now_ns - session.last_checkpoint_ts) as f64 / 1e9
-            ),
-            code: "TIMESTAMP_FUTURE".into(),
-        };
-    }
     if now_ns
         < session
             .last_checkpoint_ts
@@ -296,13 +311,20 @@ pub(crate) fn handle_checkpoint(
             session.expected_ordinal,
             &session.session_nonce,
         );
-        if let Ok(browser_bytes) = hex::decode(browser_commitment) {
-            if browser_bytes.len() == 32 && expected.ct_eq(&browser_bytes).unwrap_u8() == 0 {
-                eprintln!(
-                    "Warning: browser commitment mismatch for ordinal {} (protocol integrity check)",
-                    session.expected_ordinal,
-                );
-            }
+        // Constant-time comparison: decode unconditionally (fallback to zeros on
+        // invalid hex), pad/truncate to 32 bytes, then fold the length check into
+        // a subtle::Choice so no branch leaks timing information.
+        let browser_bytes = hex::decode(browser_commitment).unwrap_or_else(|_| vec![0u8; 32]);
+        let mut padded = [0u8; 32];
+        let copy_len = browser_bytes.len().min(32);
+        padded[..copy_len].copy_from_slice(&browser_bytes[..copy_len]);
+        let length_ok = subtle::Choice::from((browser_bytes.len() == 32) as u8);
+        let matches = length_ok & expected.ct_eq(&padded);
+        if matches.unwrap_u8() == 0 {
+            eprintln!( // intentional: daemon diagnostic log, not debug output
+                "Warning: browser commitment mismatch for ordinal {} (protocol integrity check)",
+                session.expected_ordinal,
+            );
         }
     }
 
@@ -324,7 +346,10 @@ pub(crate) fn handle_checkpoint(
         .create(true)
         .append(true)
         .open(&session.evidence_path)
-        .and_then(|mut f| f.write_all(content.as_bytes()))
+        .and_then(|mut f| {
+            f.write_all(content.as_bytes())?;
+            f.sync_all()
+        })
     {
         return Response::Error {
             message: format!("update evidence file: {e}"),
@@ -372,10 +397,16 @@ pub(crate) fn handle_checkpoint(
             "<!-- sig: {} pubkey: {} ordinal: {} -->\n",
             sig_hex, pubkey_hex, session.expected_ordinal
         );
-        let _ = std::fs::OpenOptions::new()
+        if let Err(e) = std::fs::OpenOptions::new()
             .append(true)
             .open(&session.evidence_path)
-            .and_then(|mut f| f.write_all(sig_line.as_bytes()));
+            .and_then(|mut f| {
+                f.write_all(sig_line.as_bytes())?;
+                f.sync_all()
+            })
+        {
+            eprintln!("Failed to persist checkpoint signature: {e}");
+        }
         sig_hex
     });
 
@@ -513,13 +544,16 @@ pub(crate) fn handle_stop_session() -> Response {
             hex::encode(file_hash),
             session.checkpoint_count
         );
-        let _ = std::fs::OpenOptions::new()
+        if let Err(e) = std::fs::OpenOptions::new()
             .append(true)
             .open(&session.evidence_path)
             .and_then(|mut f| {
                 f.write_all(seal_line.as_bytes())?;
                 f.sync_all()
-            });
+            })
+        {
+            eprintln!("Warning: failed to write/sync session seal: {e}"); // intentional
+        }
         sig_hex
     });
 
@@ -683,10 +717,10 @@ pub(crate) fn handle_snapshot_save(
         let note = format!(
             "browser-snapshot url={} hash={} chars={}",
             document_url,
-            &content_hash[..16],
+            content_hash.get(..16).unwrap_or(&content_hash),
             char_count
         );
-        let wal_path = session.evidence_path.join("browser_snapshots.jsonl");
+        let wal_path = session.session_dir.join("browser_snapshots.jsonl");
         const MAX_JSONL_SIZE: u64 = 10 * 1024 * 1024;
         if std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0) >= MAX_JSONL_SIZE {
             return Response::Error {
@@ -723,7 +757,7 @@ pub(crate) fn handle_snapshot_save(
 }
 
 const KNOWN_AI_SOURCES: &[&str] = &[
-    "chatgpt", "claude", "gemini", "copilot", "jasper", "copy-ai", "unknown",
+    "chatgpt", "claude", "gemini", "copilot", "jasper", "copy-ai",
 ];
 
 pub(crate) fn handle_ai_content_copied(
@@ -749,7 +783,7 @@ pub(crate) fn handle_ai_content_copied(
     let guard = session().lock().unwrap_or_else(|p| p.into_inner());
     if let Some(ref session) = *guard {
         // Write to session evidence directory (included in evidence export)
-        let wal_path = session.evidence_path.join("tool_usage.jsonl");
+        let wal_path = session.session_dir.join("tool_usage.jsonl");
         const MAX_JSONL_SIZE: u64 = 10 * 1024 * 1024;
         if std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0) >= MAX_JSONL_SIZE {
             return Response::Error {
@@ -822,13 +856,9 @@ pub(crate) fn handle_text_attestation(
         };
     }
 
-    // Validate ISO 8601 timestamp format (e.g. "2026-04-25T12:00:00Z").
-    if attested_at.len() < 20
-        || attested_at.len() > 30
-        || !attested_at.ends_with('Z')
-        || attested_at.as_bytes().get(4) != Some(&b'-')
-        || attested_at.as_bytes().get(10) != Some(&b'T')
-    {
+    // Validate ISO 8601 timestamp — parse rejects structurally valid but
+    // semantically invalid values like "0000-00-00T00:00:00Z".
+    if chrono::DateTime::parse_from_rfc3339(&attested_at).is_err() {
         return Response::TextAttestationResult {
             success: false,
             error: Some("attested_at must be an ISO 8601 UTC timestamp".into()),
