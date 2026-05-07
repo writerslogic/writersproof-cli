@@ -669,6 +669,43 @@ pub struct DictationEvent {
     /// Behavioral plausibility score (0.0-1.0).
     /// Based on WPM range (80-200 normal), duration consistency, etc.
     pub plausibility_score: f64,
+
+    // Hardened anti-forgery fields — populated by the sentinel via FFI callbacks.
+
+    /// PID of com.apple.SpeechRecognitionCore as observed by Endpoint Security EXEC.
+    /// 0 = not verified via ES (ES entitlement unavailable or process not observed).
+    pub es_speech_pid: u32,
+    /// IORegistry audio transport type of the input device (kAudioDeviceTransportType*).
+    /// 1 = Built-in (hardware, expected). 7 = Virtual (suspicious). 0 = unknown.
+    pub audio_transport_type: u8,
+    /// First 8 bytes of BLAKE3(device_UID). Ties evidence to a specific hardware input device.
+    pub device_uid_hash: [u8; 8],
+    /// Number of DictationFragment WAL entries recorded for this session.
+    pub fragment_count: u32,
+    /// Mean SFSpeechRecognizer confidence across all interim results.
+    /// Live speech: typically 0.75–0.95. TTS: often near 0.98–1.0.
+    pub confidence_mean: f32,
+    /// Sample standard deviation of SFSpeechRecognizer confidence values.
+    /// Live speech: 0.08–0.18. TTS through any path: typically <0.04.
+    pub confidence_stddev: f32,
+    /// Fraction of dictated words subsequently deleted or replaced (0.0–1.0).
+    /// High values (>0.4) indicate reading/editing rather than composing.
+    pub correction_rate: f32,
+    /// Whether keystrokes were effectively absent during the dictation window.
+    /// True = consistent with live dictation. False = concurrent typing (suspicious).
+    pub keystroke_void: bool,
+    /// Keystrokes recorded by the sentinel during the dictation window.
+    pub keystrokes_during_dictation: u32,
+    /// Whether any audio output (speakers) was active during dictation.
+    /// True = suspicious (possible replay — audio played for recognizer to capture).
+    pub speaker_output_active: bool,
+    /// Ambient noise floor in dBFS sampled at dictation begin. -100.0 = not measured.
+    /// Near-silence (-90 to -70 dBFS) suggests TTS or anechoic recording environment.
+    /// Real rooms: typically -55 to -25 dBFS.
+    pub ambient_noise_db: f32,
+    /// Text novelty score against content visible in other windows at session end.
+    /// 0.0 = novel composition. Values approaching 1.0 = copy of visible text.
+    pub cross_window_similarity: f32,
 }
 
 /// External timestamping anchors (OTS, RFC 3161, notary).

@@ -108,6 +108,18 @@ mod tests {
             mic_active,
             words_per_minute: wpm,
             plausibility_score: 0.0,
+            es_speech_pid: 0,
+            audio_transport_type: 0,
+            device_uid_hash: [0u8; 8],
+            fragment_count: 0,
+            confidence_mean: 0.0,
+            confidence_stddev: 0.0,
+            correction_rate: 0.0,
+            keystroke_void: true,
+            keystrokes_during_dictation: 0,
+            speaker_output_active: false,
+            ambient_noise_db: -100.0,
+            cross_window_similarity: 0.0,
         }
     }
 
