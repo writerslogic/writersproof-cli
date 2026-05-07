@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-//! Centralized validation utilities to prevent code duplication.
-//! Single source of truth for bounds checking, timestamp validation, app verification.
+//! Validation utility types for use at trust boundaries by callers of the engine.
+//!
+//! **These validators are NOT the internal enforcement layer.** Each engine subsystem
+//! enforces its own constraints where inputs arrive:
+//! - Timestamp validation: `ipc::messages` validates `Pulse` timestamps with
+//!   `MAX_PULSE_CLOCK_SKEW_NS` (±5 min symmetric), which is stricter than
+//!   `TimestampValidator`'s default (5 min future + 24 h past).
+//! - Bundle-ID validation: `config::types::SentinelConfig::is_app_allowed()` uses
+//!   a user-configurable allow/block list, not the hardcoded list in `BundleIdValidator`.
+//! - Text validation: `ipc::messages` enforces `MAX_ALERT_MESSAGE` (4096 bytes) inline.
+//!
+//! These types are provided for FFI layers, CLI frontends, and tests that need
+//! reusable, configurable validation building blocks.
 
 use crate::error::{Error, Result};
 use crate::utils::DateTimeNanosExt;
@@ -24,10 +35,21 @@ impl TimestampValidator {
     }
 
     /// Create validator with custom future drift (nanoseconds).
+    /// `drift_ns` must be non-negative; a negative value would flag all timestamps as future.
     pub fn with_future_drift(drift_ns: i64) -> Self {
+        debug_assert!(drift_ns >= 0, "drift_ns must be non-negative");
         TimestampValidator {
             max_future_drift_ns: drift_ns,
             max_age_ns: Some(24 * 60 * 60 * 1_000_000_000),
+        }
+    }
+
+    /// Create validator with both custom future drift and custom max age.
+    pub fn with_drift_and_age(drift_ns: i64, max_age_ns: Option<i64>) -> Self {
+        debug_assert!(drift_ns >= 0, "drift_ns must be non-negative");
+        TimestampValidator {
+            max_future_drift_ns: drift_ns,
+            max_age_ns,
         }
     }
 
@@ -115,9 +137,11 @@ impl BundleIdValidator {
         if self.allowed_apps.contains(bundle_id) {
             Ok(())
         } else {
+            // Truncate untrusted input to prevent log injection via oversized bundle IDs.
+            let display: String = bundle_id.chars().take(300).collect();
             Err(Error::validation(format!(
                 "bundle ID not in allowlist: {}",
-                bundle_id
+                display
             )))
         }
     }
@@ -163,6 +187,7 @@ impl TextValidator {
 
     /// Create validator with custom bounds.
     pub fn with_bounds(min_bytes: usize, max_bytes: usize) -> Self {
+        debug_assert!(min_bytes <= max_bytes, "min_bytes ({min_bytes}) must be <= max_bytes ({max_bytes})");
         TextValidator {
             min_bytes,
             max_bytes,

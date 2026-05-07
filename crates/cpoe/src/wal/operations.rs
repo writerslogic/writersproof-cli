@@ -196,6 +196,8 @@ impl Wal {
 
         let mut prev_hash = [0u8; 32];
         let mut cumulative_hasher = Hasher::new();
+        // Sequences start from last_checkpoint_seq (written by open/rotate/truncate),
+        // not from zero. This allows verify() to work correctly after rotation or truncation.
         let mut expected_sequence = header.last_checkpoint_seq;
         let mut last_timestamp = 0i64;
         let mut count = 0u64;
@@ -311,52 +313,11 @@ impl Wal {
         let mut file = state.file.try_clone()?;
         file.seek(SeekFrom::Start(HEADER_SIZE as u64))?;
 
-        // Stream through the file in one pass: validate the chain and collect only
-        // retained entries (sequence >= before_seq), avoiding a full in-memory load.
-        let mut expected_prev = [0u8; 32];
-        let mut entries: Vec<Entry> = Vec::new();
-        let mut entry_count: u64 = 0;
-
-        loop {
-            if entry_count >= MAX_WAL_ENTRIES {
-                return Err(WalError::TooManyEntries(MAX_WAL_ENTRIES));
-            }
-            let mut len_buf = [0u8; 4];
-            if file.read_exact(&mut len_buf).is_err() {
-                break;
-            }
-            let entry_len = u32::from_be_bytes(len_buf);
-            if entry_len > MAX_ENTRY_SIZE {
-                return Err(WalError::CorruptedEntry);
-            }
-            let mut entry_buf = vec![0u8; entry_len as usize];
-            file.read_exact(&mut entry_buf)?;
-            let entry = deserialize_entry(&entry_buf)?;
-
-            // Validate chain integrity for every entry regardless of whether it is retained.
-            if entry.prev_hash.ct_eq(&expected_prev).unwrap_u8() == 0 {
-                return Err(WalError::BrokenChain);
-            }
-            expected_prev = entry.compute_hash();
-            entry_count += 1;
-
-            // Only keep entries that fall within the retained range.
-            if entry.sequence >= before_seq {
-                entries.push(entry);
-            }
-        }
-
-        // Verify ordinal continuity: retained entries must have sequential ordinals.
-        for pair in entries.windows(2) {
-            if pair[1].sequence != pair[0].sequence + 1 {
-                return Err(WalError::SequenceGap);
-            }
-        }
-
+        // Single-pass streaming truncate: read entries from the old file and write
+        // retained ones directly to the new file without accumulating them in memory.
         let new_path = state.path.with_extension("wal.new");
-        let write_result = (|| -> Result<([u8; 32], Hasher), WalError> {
+        let write_result = (|| -> Result<([u8; 32], Hasher, u64, u64), WalError> {
             let mut new_file = File::create(&new_path)?;
-
             crate::crypto::restrict_permissions(&new_path, 0o600)?;
 
             let header = Header {
@@ -367,33 +328,71 @@ impl Wal {
                 last_checkpoint_seq: before_seq,
                 reserved: [0u8; 8],
             };
-
             new_file.write_all(&serialize_header(&header))?;
 
+            let mut expected_prev = [0u8; 32];
+            let mut entry_count: u64 = 0;
             let mut last_hash = [0u8; 32];
             let mut cumulative_hasher = Hasher::new();
+            let mut prev_retained_seq: Option<u64> = None;
+            let mut retained_count: u64 = 0;
 
-            for entry in &entries {
-                let mut entry = entry.clone();
-                entry.prev_hash = last_hash;
-                let entry_hash = entry.compute_hash();
-                cumulative_hasher.update(&entry_hash);
-                entry.cumulative_hash = *cumulative_hasher.finalize().as_bytes();
-                let sig = state.signing_key.sign(&entry.cumulative_hash);
-                entry.signature = sig.to_bytes();
+            loop {
+                if entry_count >= MAX_WAL_ENTRIES {
+                    return Err(WalError::TooManyEntries(MAX_WAL_ENTRIES));
+                }
+                let mut len_buf = [0u8; 4];
+                match file.read_exact(&mut len_buf) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                    Err(e) => return Err(WalError::Io(e)),
+                }
+                let entry_len = u32::from_be_bytes(len_buf);
+                if entry_len > MAX_ENTRY_SIZE {
+                    return Err(WalError::CorruptedEntry);
+                }
+                let mut entry_buf = vec![0u8; entry_len as usize];
+                file.read_exact(&mut entry_buf)?;
+                let entry = deserialize_entry(&entry_buf)?;
 
-                let data = serialize_entry(&entry)?;
-                let length = data.len() as u32;
-                new_file.write_all(&length.to_be_bytes())?;
-                new_file.write_all(&data)?;
-                last_hash = entry_hash;
+                // Validate chain integrity for every entry regardless of whether retained.
+                if entry.prev_hash.ct_eq(&expected_prev).unwrap_u8() == 0 {
+                    return Err(WalError::BrokenChain);
+                }
+                expected_prev = entry.compute_hash();
+                entry_count += 1;
+
+                // Stream-write entries in the retained range; check ordinal continuity inline.
+                if entry.sequence >= before_seq {
+                    if let Some(prev) = prev_retained_seq {
+                        if entry.sequence != prev + 1 {
+                            return Err(WalError::SequenceGap);
+                        }
+                    }
+                    prev_retained_seq = Some(entry.sequence);
+
+                    let mut entry = entry;
+                    entry.prev_hash = last_hash;
+                    let entry_hash = entry.compute_hash();
+                    cumulative_hasher.update(&entry_hash);
+                    entry.cumulative_hash = *cumulative_hasher.finalize().as_bytes();
+                    let sig = state.signing_key.sign(&entry.cumulative_hash);
+                    entry.signature = sig.to_bytes();
+
+                    let data = serialize_entry(&entry)?;
+                    new_file.write_all(&(data.len() as u32).to_be_bytes())?;
+                    new_file.write_all(&data)?;
+                    last_hash = entry_hash;
+                    retained_count += 1;
+                }
             }
 
             new_file.sync_all()?;
-            Ok((last_hash, cumulative_hasher))
+            let next_seq = prev_retained_seq.map_or(before_seq, |s| s + 1);
+            Ok((last_hash, cumulative_hasher, retained_count, next_seq))
         })();
 
-        let (last_hash, cumulative_hasher) = match write_result {
+        let (last_hash, cumulative_hasher, retained_count, next_seq) = match write_result {
             Ok(v) => v,
             Err(e) => {
                 // Remove the temp file so a retry sees a clean state.
@@ -430,13 +429,15 @@ impl Wal {
         state.file = reopened;
         state.last_hash = last_hash;
         state.cumulative_hasher = cumulative_hasher;
-        state.next_sequence = if let Some(last) = entries.last() {
-            last.sequence + 1
-        } else {
-            before_seq
+        state.next_sequence = next_seq;
+        state.entry_count = retained_count;
+        state.byte_count = match state.file.metadata() {
+            Ok(m) => m.len(),
+            Err(e) => {
+                state.inconsistent = true;
+                return Err(WalError::Io(e));
+            }
         };
-        state.entry_count = entries.len() as u64;
-        state.byte_count = state.file.metadata()?.len();
 
         Ok(())
     }
@@ -519,14 +520,25 @@ impl Wal {
         // left off (AUD-108). This prevents sequence reuse across rotations.
         let continued_sequence = state.next_sequence;
 
-        // Create a fresh WAL file.
-        let file = OpenOptions::new()
+        // Create a fresh WAL file. Mark inconsistent on any failure: the rename already
+        // committed, so the WAL cannot safely continue if setup fails.
+        let file = match OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(true)
-            .open(&state.path)?;
-        crate::crypto::restrict_permissions(&state.path, 0o600)?;
+            .open(&state.path)
+        {
+            Ok(f) => f,
+            Err(e) => {
+                state.inconsistent = true;
+                return Err(WalError::Io(e));
+            }
+        };
+        if let Err(e) = crate::crypto::restrict_permissions(&state.path, 0o600) {
+            state.inconsistent = true;
+            return Err(WalError::Io(e));
+        }
 
         state.file = file;
         state.next_sequence = continued_sequence;
@@ -545,10 +557,19 @@ impl Wal {
             reserved: [0u8; 8],
         };
         let buf = serialize_header(&header);
-        state.file.write_all(&buf)?;
-        state.file.sync_all()?;
+        if let Err(e) = state.file.write_all(&buf) {
+            state.inconsistent = true;
+            return Err(WalError::Io(e));
+        }
+        if let Err(e) = state.file.sync_all() {
+            state.inconsistent = true;
+            return Err(WalError::Io(e));
+        }
         state.byte_count = HEADER_SIZE as u64;
-        state.file.seek(SeekFrom::Start(HEADER_SIZE as u64))?;
+        if let Err(e) = state.file.seek(SeekFrom::Start(HEADER_SIZE as u64)) {
+            state.inconsistent = true;
+            return Err(WalError::Io(e));
+        }
 
         Ok(Some(archive_path))
     }
@@ -562,7 +583,18 @@ impl Wal {
             .map(|e| e.path())
             .filter(|p| p.to_string_lossy().ends_with(".archive"))
             .collect();
-        archives.sort();
+        // Sort by the numeric timestamp embedded in the filename: {name}.{nanos}.archive.
+        // Lexicographic sort would mis-order archives if the base name contains dots.
+        archives.sort_by_key(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|s| {
+                    let parts: Vec<&str> = s.rsplitn(3, '.').collect();
+                    // rsplitn(3): ["archive", "<nanos>", "<rest>"]
+                    parts.get(1).and_then(|ts| ts.parse::<u64>().ok())
+                })
+                .unwrap_or(0)
+        });
         archives
     }
 
@@ -630,8 +662,10 @@ impl Wal {
             }
 
             let mut len_buf = [0u8; 4];
-            if state.file.read_exact(&mut len_buf).is_err() {
-                break;
+            match state.file.read_exact(&mut len_buf) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(WalError::Io(e)),
             }
 
             let entry_len = u32::from_be_bytes(len_buf);
@@ -649,8 +683,27 @@ impl Wal {
 
             let entry = match deserialize_entry(&entry_buf) {
                 Ok(entry) => entry,
-                Err(_) => break,
+                Err(WalError::Serialization(_) | WalError::InvalidEntryType(_)) => {
+                    log::warn!(
+                        "WAL deserialize error at offset {}: truncating to last valid entry",
+                        offset,
+                    );
+                    break;
+                }
+                Err(e) => return Err(e),
             };
+
+            // Reject non-monotonic sequences before any crypto work.
+            if entry.sequence != state.next_sequence {
+                log::warn!(
+                    "WAL non-monotonic sequence at offset {}: expected {}, got {}; \
+                     truncating to last valid entry",
+                    offset,
+                    state.next_sequence,
+                    entry.sequence,
+                );
+                break;
+            }
 
             // Verify hash chain linkage (prev_hash must match our running last_hash).
             if entry.prev_hash.ct_eq(&state.last_hash).unwrap_u8() == 0 {
@@ -699,7 +752,13 @@ impl Wal {
         }
 
         // Truncate file to last valid entry to avoid appending after corrupt data
-        let file_len = state.file.metadata().map(|m| m.len()).unwrap_or(offset);
+        let file_len = match state.file.metadata() {
+            Ok(m) => m.len(),
+            Err(e) => {
+                state.inconsistent = true;
+                return Err(WalError::Io(e));
+            }
+        };
         let truncated = if file_len > offset {
             // Bytes after last valid entry indicate truncated/corrupt trailing data
             let lost = file_len.saturating_sub(offset);

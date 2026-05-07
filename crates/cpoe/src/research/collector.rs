@@ -103,11 +103,19 @@ impl ResearchCollector {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().map(|e| e == "json").unwrap_or(false) {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(export) = serde_json::from_str::<ResearchDataExport>(&content) {
-                        for session in export.sessions {
-                            self.sessions.push(session);
+                match fs::read_to_string(&path) {
+                    Ok(content) => match serde_json::from_str::<ResearchDataExport>(&content) {
+                        Ok(export) => {
+                            for session in export.sessions {
+                                self.sessions.push(session);
+                            }
                         }
+                        Err(e) => {
+                            log::warn!("research: skipping malformed file {:?}: {e}", path);
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("research: failed to read {:?}: {e}", path);
                     }
                 }
             }
@@ -164,13 +172,45 @@ impl ResearchCollector {
         }
 
         let export = self.export();
-        let client = reqwest::Client::new();
+        let result = Self::send_export(&export).await?;
+        if result.sessions_uploaded > 0 {
+            self.clear_after_upload();
+        }
+        Ok(result)
+    }
+
+    /// Return `true` if research is enabled and enough sessions are buffered.
+    pub fn should_upload(&self) -> bool {
+        self.is_enabled() && self.sessions.len() >= MIN_SESSIONS_FOR_UPLOAD
+    }
+
+    /// Export sessions if upload conditions are met; returns `None` otherwise.
+    /// Used by the uploader to snapshot data before releasing the mutex for the HTTP call.
+    pub fn take_export_if_ready(&self) -> Option<ResearchDataExport> {
+        if self.should_upload() { Some(self.export()) } else { None }
+    }
+
+    /// Clear buffered sessions and disk data after a successful upload.
+    pub fn clear_after_upload(&mut self) {
+        self.sessions.clear();
+        if self.config.research_data_dir.exists() {
+            if let Err(e) = fs::remove_dir_all(&self.config.research_data_dir) {
+                log::warn!("Failed to clean up research dir: {e}");
+            }
+        }
+    }
+
+    /// Perform the HTTP upload of an already-exported payload.
+    /// Split from `upload()` so callers can release the collector mutex before awaiting.
+    pub async fn send_export(export: &ResearchDataExport) -> Result<UploadResult, String> {
+        static HTTP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+        let client = HTTP_CLIENT.get_or_init(reqwest::Client::new);
 
         let response = client
             .post(RESEARCH_UPLOAD_URL)
             .header("Content-Type", "application/json")
             .header("X-CPoE-Version", CPOE_VERSION)
-            .json(&export)
+            .json(export)
             .timeout(Duration::from_secs(30))
             .send()
             .await
@@ -187,24 +227,10 @@ impl ResearchCollector {
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        if result.uploaded > 0 {
-            self.sessions.clear();
-            if self.config.research_data_dir.exists() {
-                if let Err(e) = fs::remove_dir_all(&self.config.research_data_dir) {
-                    log::warn!("Failed to clean up research dir: {e}");
-                }
-            }
-        }
-
         Ok(UploadResult {
             sessions_uploaded: result.uploaded,
             samples_uploaded: result.samples,
             message: result.message,
         })
-    }
-
-    /// Return `true` if research is enabled and enough sessions are buffered.
-    pub fn should_upload(&self) -> bool {
-        self.is_enabled() && self.sessions.len() >= MIN_SESSIONS_FOR_UPLOAD
     }
 }

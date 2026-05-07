@@ -22,6 +22,13 @@ const DST_BROWSER_COMMIT = "cpoe-browser-commit";
 // M-081: Expected sizes for public key validation
 const P256_UNCOMPRESSED_PUBKEY_LEN = 65; // 0x04 || X(32) || Y(32)
 
+// Allowlist of message types the native host is permitted to send through the encrypted channel.
+// Prevents a compromised NMH binary from injecting arbitrary privileged message types.
+const ALLOWED_NATIVE_MSG_TYPES = new Set([
+  "session_started", "session_stopped", "checkpoint_created",
+  "status", "jitter_received", "error", "pong", "text_attestation",
+]);
+
 // eslint-disable-next-line no-unused-vars
 class SecureChannel {
   constructor() {
@@ -64,6 +71,20 @@ class SecureChannel {
   async performHandshake(sendRaw) {
     if (this._handshakeTimeout) {
       clearTimeout(this._handshakeTimeout);
+    }
+    // Reset channel state on re-handshake to prevent stale sequences/keys carrying over.
+    this.txSequence = 0;
+    this.rxSequence = 1;
+    this.ratchetCount = 0;
+    this.handshakeComplete = false;
+    if (this.rawKeyBytes) {
+      this.rawKeyBytes.fill(0);
+      this.rawKeyBytes = null;
+    }
+    this.sessionKey = null;
+    if (this.canarySeed) {
+      this.canarySeed.fill(0);
+      this.canarySeed = null;
     }
     await this.generateKeyPair();
     const clientPubKey = await this.getPublicKeyBase64();
@@ -157,6 +178,9 @@ class SecureChannel {
       );
 
       // Decrypt and verify server's confirmation
+      if (typeof message.confirm !== "string" || message.confirm.length === 0) {
+        throw new Error("hello_accept: missing or invalid 'confirm' field");
+      }
       const confirmCiphertext = base64ToUint8(message.confirm);
       const confirmPlaintext = await this.decryptRaw(confirmCiphertext);
       const expectedConfirm = new TextEncoder().encode(DST_KEY_CONFIRM);
@@ -279,13 +303,13 @@ class SecureChannel {
     const nonce = data.subarray(8, 20);
     const ciphertext = data.subarray(20);
 
+    this.rxSequence += 2;
     const plaintext = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: nonce, tagLength: 128 },
       this.sessionKey,
       ciphertext
     );
 
-    this.rxSequence += 2;
     return new Uint8Array(plaintext);
   }
 
@@ -323,6 +347,11 @@ class SecureChannel {
         );
       }
     }
+    if (typeof envelope.seq === "number" && envelope.seq !== this.rxSequence) {
+      throw new Error(
+        `Envelope sequence mismatch: expected ${this.rxSequence}, got ${envelope.seq}`
+      );
+    }
     const data = base64ToUint8(envelope.payload);
     const plaintext = await this.decryptRaw(data);
 
@@ -339,6 +368,9 @@ class SecureChannel {
     if (typeof parsed.type !== "string" || parsed.type.length === 0) {
       throw new Error("Decrypted message missing required 'type' field");
     }
+    if (!ALLOWED_NATIVE_MSG_TYPES.has(parsed.type)) {
+      throw new Error(`Decrypted message has disallowed type: ${parsed.type}`);
+    }
 
     return parsed;
   }
@@ -348,6 +380,14 @@ class SecureChannel {
    * jitter_hash = SHA-256("cpoe-jitter-binding" || interval_1_le64 || interval_2_le64 || ...)
    */
   async computeJitterHash(intervals) {
+    if (!Array.isArray(intervals) || intervals.length === 0) {
+      throw new Error("computeJitterHash: intervals must be a non-empty array");
+    }
+    for (let i = 0; i < intervals.length; i++) {
+      if (!Number.isFinite(intervals[i]) || intervals[i] < 0) {
+        throw new Error(`computeJitterHash: intervals[${i}] is not a finite non-negative number`);
+      }
+    }
     const prefix = new TextEncoder().encode(DST_JITTER_BINDING);
     const data = new Uint8Array(prefix.length + intervals.length * 8);
     data.set(prefix, 0);
@@ -364,9 +404,10 @@ class SecureChannel {
    * Must be called AFTER receiving jitter_received ACK from NMH.
    */
   async ratchetWithJitter(jitterHash, newRatchetCount) {
-    // M-079: Validate ratchet count is a non-negative integer
-    if (!Number.isInteger(newRatchetCount) || newRatchetCount < 0) {
-      throw new Error(`Invalid ratchet count: ${newRatchetCount}`);
+    if (newRatchetCount !== this.ratchetCount + 1) {
+      throw new Error(
+        `ratchetWithJitter: count must increment by exactly 1 (expected ${this.ratchetCount + 1}, got ${newRatchetCount})`
+      );
     }
 
     const info = concatBytes(
@@ -410,14 +451,31 @@ class SecureChannel {
 
   /**
    * Compute a dual-channel commitment for a checkpoint.
-   * commitment = SHA-256("cpoe-browser-commit" || session_id || ordinal_le64 || content_hash || timestamp_le64)
+   * commitment = SHA-256(DST || len(session_id) || session_id || ordinal_le64 || len(content_hash) || content_hash || timestamp_le64)
+   * Variable-length fields are length-prefixed (4-byte LE) to prevent boundary confusion.
    */
   async computeCommitment(sessionId, ordinal, contentHash, timestamp) {
+    if (typeof sessionId !== "string" || sessionId.length === 0 || sessionId.length > 256) {
+      throw new Error("computeCommitment: sessionId must be a non-empty string up to 256 chars");
+    }
+    if (!Number.isInteger(ordinal) || ordinal < 0) {
+      throw new Error(`computeCommitment: ordinal must be a non-negative integer, got ${ordinal}`);
+    }
+    if (typeof contentHash !== "string" || contentHash.length === 0 || contentHash.length > 256) {
+      throw new Error("computeCommitment: contentHash must be a non-empty string up to 256 chars");
+    }
+    if (!Number.isFinite(timestamp) || timestamp < 0) {
+      throw new Error(`computeCommitment: timestamp must be a non-negative finite number, got ${timestamp}`);
+    }
+    const sessionIdBytes = new TextEncoder().encode(sessionId);
+    const contentHashBytes = new TextEncoder().encode(contentHash);
     const data = concatBytes(
       new TextEncoder().encode(DST_BROWSER_COMMIT),
-      new TextEncoder().encode(sessionId),
+      uint32ToLE(sessionIdBytes.length),
+      sessionIdBytes,
       uint64ToLE(ordinal),
-      new TextEncoder().encode(contentHash),
+      uint32ToLE(contentHashBytes.length),
+      contentHashBytes,
       uint64ToLE(timestamp)
     );
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
@@ -518,10 +576,28 @@ function uint8ToHex(bytes) {
 }
 
 function hexToUint8(hex) {
+  if (typeof hex !== "string" || hex.length === 0) {
+    throw new Error("hexToUint8: input must be a non-empty string");
+  }
+  if (hex.length % 2 !== 0) {
+    throw new Error(`hexToUint8: odd-length string (${hex.length} chars)`);
+  }
+  if (!/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new Error("hexToUint8: non-hex characters in input");
+  }
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
   }
+  return bytes;
+}
+
+function uint32ToLE(n) {
+  const bytes = new Uint8Array(4);
+  bytes[0] = n & 0xff;
+  bytes[1] = (n >> 8) & 0xff;
+  bytes[2] = (n >> 16) & 0xff;
+  bytes[3] = (n >>> 24) & 0xff;
   return bytes;
 }
 
@@ -531,13 +607,13 @@ function uint64ToLE(n) {
   bytes[0] = n & 0xff;
   bytes[1] = (n >> 8) & 0xff;
   bytes[2] = (n >> 16) & 0xff;
-  bytes[3] = (n >> 24) & 0xff;
+  bytes[3] = (n >>> 24) & 0xff;
   // For values > 2^32, use division
   const high = Math.floor(n / 0x100000000);
   bytes[4] = high & 0xff;
   bytes[5] = (high >> 8) & 0xff;
   bytes[6] = (high >> 16) & 0xff;
-  bytes[7] = (high >> 24) & 0xff;
+  bytes[7] = (high >>> 24) & 0xff;
   return bytes;
 }
 
@@ -545,7 +621,7 @@ function leToUint64(bytes) {
   const low =
     bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | ((bytes[3] << 24) >>> 0);
   const high =
-    bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | ((bytes[7] << 24) >>> 0);
+    (bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24)) >>> 0;
   return low + high * 0x100000000;
 }
 

@@ -58,7 +58,14 @@ pub(super) fn load_or_create_se_key(tag_str: &str) -> Result<(SecKeyRef, Vec<u8>
 
     if status == errSecSuccess && !result.is_null() {
         let key_ref = result as SecKeyRef;
-        let public_key = extract_public_key(key_ref)?;
+        let public_key = match extract_public_key(key_ref) {
+            Ok(pk) => pk,
+            Err(e) => {
+                // SAFETY: key_ref is a non-null SecKeyRef we own (+1 from SecItemCopyMatching); release to avoid leak.
+                unsafe { core_foundation_sys::base::CFRelease(key_ref as CFTypeRef) };
+                return Err(e);
+            }
+        };
         return Ok((key_ref, public_key));
     }
     if status != errSecItemNotFound {
@@ -68,13 +75,14 @@ pub(super) fn load_or_create_se_key(tag_str: &str) -> Result<(SecKeyRef, Vec<u8>
     }
 
     // SAFETY: kCFAllocatorDefault and kSecAttr* are valid static constants.
-    // null_mut() error param is allowed; we check the return for null below.
+    // access_error is an out-pointer; we check and release it below.
+    let mut access_error: CFErrorRef = null_mut();
     let access = unsafe {
         SecAccessControlCreateWithFlags(
             kCFAllocatorDefault,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly as CFTypeRef,
             kSecAccessControlPrivateKeyUsage,
-            null_mut(),
+            &mut access_error,
         )
     };
 
@@ -90,9 +98,17 @@ pub(super) fn load_or_create_se_key(tag_str: &str) -> Result<(SecKeyRef, Vec<u8>
         tag.as_CFType(),
     ));
     if access.is_null() {
+        if !access_error.is_null() {
+            // SAFETY: access_error is a non-null CFErrorRef we own; release to avoid leak.
+            unsafe { core_foundation_sys::base::CFRelease(access_error as CFTypeRef) };
+        }
         return Err(TpmError::KeyGeneration(
             "SecAccessControlCreateWithFlags returned null".into(),
         ));
+    }
+    // On success, error should be null per Apple docs; release defensively if not.
+    if !access_error.is_null() {
+        unsafe { core_foundation_sys::base::CFRelease(access_error as CFTypeRef) };
     }
 
     // SAFETY: access is non-null (checked above). wrap_under_create_rule takes
@@ -141,7 +157,19 @@ pub(super) fn load_or_create_se_key(tag_str: &str) -> Result<(SecKeyRef, Vec<u8>
         )));
     }
 
-    let public_key = extract_public_key(key_ref)?;
+    // On success, error should be null per Apple docs; release defensively if not.
+    if !error.is_null() {
+        unsafe { core_foundation_sys::base::CFRelease(error as CFTypeRef) };
+    }
+
+    let public_key = match extract_public_key(key_ref) {
+        Ok(pk) => pk,
+        Err(e) => {
+            // SAFETY: key_ref is a non-null SecKeyRef we own (+1 from SecKeyCreateRandomKey); release to avoid leak.
+            unsafe { core_foundation_sys::base::CFRelease(key_ref as CFTypeRef) };
+            return Err(e);
+        }
+    };
     Ok((key_ref, public_key))
 }
 
@@ -159,7 +187,10 @@ pub(super) fn load_device_id() -> Result<String, TpmError> {
         let digest = Sha256::digest(uuid.as_bytes());
         return Ok(format!("se-{}", crate::utils::short_hex_id(&digest)));
     }
-    let host = hostname::get().map_err(|_| TpmError::NotAvailable)?;
+    let host = hostname::get().map_err(|e| {
+        log::warn!("load_device_id: hostname lookup failed: {e}");
+        TpmError::NotAvailable
+    })?;
     let digest = Sha256::digest(format!("cpoe-fallback-{}", host.to_string_lossy()).as_bytes());
     Ok(format!("se-{}", crate::utils::short_hex_id(&digest)))
 }
@@ -176,15 +207,19 @@ pub(super) fn extract_public_key(key_ref: SecKeyRef) -> Result<Vec<u8>, TpmError
     // SecKeyCreateRandomKey. SecKeyCopyPublicKey returns a new +1 ref we must release.
     let public_key = unsafe { SecKeyCopyPublicKey(key_ref) };
     if public_key.is_null() {
-        return Err(TpmError::KeyExport("public key unavailable".into()));
+        return Err(TpmError::KeyExport("SecKeyCopyPublicKey returned null".into()));
     }
     let mut error: CFErrorRef = null_mut();
     // SAFETY: public_key is non-null (checked above); error is an out-pointer.
     let data_ref = unsafe { SecKeyCopyExternalRepresentation(public_key, &mut error) };
     if data_ref.is_null() {
+        // SAFETY: error is a +1 CFErrorRef we own from SecKeyCopyExternalRepresentation; release if non-null.
+        if !error.is_null() {
+            unsafe { core_foundation_sys::base::CFRelease(error as CFTypeRef) };
+        }
         // SAFETY: public_key is a non-null CF object we own; release to avoid leak.
         unsafe { core_foundation_sys::base::CFRelease(public_key as *mut std::ffi::c_void) };
-        return Err(TpmError::KeyExport("public key export failed".into()));
+        return Err(TpmError::KeyExport("SecKeyCopyExternalRepresentation returned null".into()));
     }
     // SAFETY: data_ref is non-null (checked above); wrap_under_create_rule takes ownership.
     let data = unsafe { CFData::wrap_under_create_rule(data_ref) };

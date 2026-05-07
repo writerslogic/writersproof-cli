@@ -64,9 +64,12 @@ pub struct SecureEnclaveProvider {
     pub(super) cached_public_key: Vec<u8>,
 }
 
-// SAFETY: SecKeyRef (Security.framework key objects) are thread-safe for signing
-// operations per Apple documentation. The Mutex<SecureEnclaveState> provides
-// exclusive access to mutable state.
+// SAFETY: SecKeyRef (Security.framework key objects) are documented as thread-safe
+// for concurrent signing operations (see Apple's Security framework docs). All
+// SecKeyRef values stored in SecureEnclaveState (key_ref, attestation_key_ref) are
+// accessed exclusively while holding the Mutex<SecureEnclaveState> lock. The cached_*
+// fields on SecureEnclaveProvider are immutable after construction and safe to read
+// from any thread. Together these guarantees satisfy both Send and Sync.
 unsafe impl Send for SecureEnclaveProvider {}
 unsafe impl Sync for SecureEnclaveProvider {}
 

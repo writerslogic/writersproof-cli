@@ -53,21 +53,33 @@ impl ResearchUploader {
                     break;
                 }
 
-                let mut guard = collector.lock().await;
-                if guard.should_upload() {
-                    match guard.upload().await {
+                let export = {
+                    let guard = collector.lock().await;
+                    guard.take_export_if_ready()
+                };
+                if let Some(export) = export {
+                    match ResearchCollector::send_export(&export).await {
                         Ok(result) => {
                             if result.sessions_uploaded > 0 {
+                                let mut guard = collector.lock().await;
+                                guard.clear_after_upload();
                                 log::info!(
                                     "[research] Uploaded {} sessions ({} samples)",
                                     result.sessions_uploaded,
                                     result.samples_uploaded
                                 );
+                            } else {
+                                log::warn!(
+                                    "[research] Server acknowledged upload but reported 0 sessions uploaded"
+                                );
                             }
                         }
                         Err(e) => {
                             log::error!("[research] Upload failed: {}", e);
-                            let _ = guard.save();
+                            let guard = collector.lock().await;
+                            if let Err(save_err) = guard.save() {
+                                log::warn!("[research] Failed to persist sessions after upload error: {save_err}");
+                            }
                         }
                     }
                 }
@@ -76,6 +88,10 @@ impl ResearchUploader {
     }
 
     /// Signal the background upload loop to stop.
+    ///
+    /// This is advisory: it sets a flag that the loop checks on its next iteration.
+    /// Any in-progress upload completes before the task exits. Call the returned
+    /// `JoinHandle` from [`start`](Self::start) to await full task completion.
     pub fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
     }
@@ -87,7 +103,22 @@ impl ResearchUploader {
 
     /// Trigger an immediate upload outside the periodic schedule.
     pub async fn upload_now(&self) -> Result<UploadResult, String> {
-        let mut guard = self.collector.lock().await;
-        guard.upload().await
+        let export = {
+            let guard = self.collector.lock().await;
+            guard.take_export_if_ready()
+        };
+        let Some(export) = export else {
+            return Ok(UploadResult {
+                sessions_uploaded: 0,
+                samples_uploaded: 0,
+                message: "Upload conditions not met".to_string(),
+            });
+        };
+        let result = ResearchCollector::send_export(&export).await?;
+        if result.sessions_uploaded > 0 {
+            let mut guard = self.collector.lock().await;
+            guard.clear_after_upload();
+        }
+        Ok(result)
     }
 }
