@@ -465,6 +465,9 @@ pub(crate) fn handle_checkpoint(
         sig_hex
     });
 
+    let evidence_quality =
+        analyze_browser_jitter(&session.jitter_intervals).map(|f| f.verdict.to_string());
+
     session.prev_commitment = new_commitment;
     session.expected_ordinal += 1;
     session.checkpoint_count += 1;
@@ -479,6 +482,7 @@ pub(crate) fn handle_checkpoint(
             .unwrap_or_else(|| "Checkpoint created".into()),
         commitment: hex::encode(new_commitment),
         signature,
+        evidence_quality,
     }
 }
 
@@ -571,7 +575,7 @@ pub(crate) fn handle_stop_session() -> Response {
         );
     }
 
-    if let Some(forensics) = analyze_browser_jitter(&session.jitter_intervals) {
+    let jitter_verdict = analyze_browser_jitter(&session.jitter_intervals).map(|forensics| {
         let line = format!(
             "<!-- jitter-forensics: samples={} cv={:.3} regularity={:.3} rounding={:.3} verdict={} -->\n",
             forensics.sample_count,
@@ -587,7 +591,8 @@ pub(crate) fn handle_stop_session() -> Response {
         {
             eprintln!("Warning: failed to write jitter forensics: {e}");
         }
-    }
+        forensics.verdict
+    });
 
     let signature = session.signing_key.as_ref().map(|sk| {
         // Hash the entire evidence file before appending the seal.
@@ -645,6 +650,7 @@ pub(crate) fn handle_stop_session() -> Response {
             session.document_title, session.checkpoint_count
         ),
         signature,
+        evidence_quality: jitter_verdict.map(|v| v.to_string()),
     }
 }
 

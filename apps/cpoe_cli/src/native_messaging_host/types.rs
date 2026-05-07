@@ -144,12 +144,19 @@ pub(crate) enum Response {
         /// Ed25519 signature over the checkpoint payload (hex).
         #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
+        /// Jitter-based evidence quality: "human_plausible", "low_variance", or
+        /// "synthetic_suspect". Absent until enough samples have been collected.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        evidence_quality: Option<String>,
     },
     SessionStopped {
         message: String,
         /// Ed25519 signature over session-end record (hex).
         #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
+        /// Final jitter-based evidence quality verdict for the session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        evidence_quality: Option<String>,
     },
     Status {
         initialized: bool,
