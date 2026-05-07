@@ -357,6 +357,14 @@ chrome.runtime.onMessage.addListener((message) => {
     case "session_update":
       if (message.active === false) {
         updateUI({ connected: true, activeSession: false, mode: message.mode });
+        if (message.evidence_quality && !elements.sessionSummary.hidden) {
+          const qualityLabel = message.evidence_quality === "human_plausible"
+            ? "Human typing patterns confirmed."
+            : message.evidence_quality === "low_variance"
+            ? "Low typing variance detected."
+            : "Atypical typing patterns detected — evidence may be flagged.";
+          elements.summaryEvidenceNote.textContent = elements.summaryEvidenceNote.textContent + " " + qualityLabel;
+        }
       } else {
         updateUI({
           connected: true,
