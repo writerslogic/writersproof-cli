@@ -252,6 +252,62 @@ pub fn ffi_sentinel_es_ai_tools_active() -> Vec<String> {
     })
 }
 
+/// Known terminal text editors whose exec events should create tracking sessions.
+/// Matched against the basename of the exec path.
+const TERMINAL_EDITORS: &[&str] = &[
+    "vi", "vim", "nvim", "neovim",
+    "emacs", "emacsclient",
+    "nano", "pico",
+    "hx",       // Helix
+    "micro",
+    "joe", "jed",
+    "mcedit",
+    "kakoune", "kak",
+];
+
+/// Called by the Swift ES client when `ES_EVENT_TYPE_NOTIFY_EXEC` fires for a
+/// process whose executable basename matches a known terminal text editor.
+///
+/// `editor_path` is the full exec path (e.g. `/usr/bin/vim`).
+/// `file_arg` is the first non-flag argument — the file being opened.
+///
+/// Returns `true` if a tracking session was successfully started for the file.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_es_terminal_editor_exec(
+    editor_path: String,
+    file_arg: String,
+) -> bool {
+    catch_ffi_panic!(false, {
+    if editor_path.len() > 4096 || file_arg.len() > 4096 {
+        log::warn!(
+            "ffi_sentinel_es_terminal_editor_exec: args too long ({}/{})",
+            editor_path.len(), file_arg.len()
+        );
+        return false;
+    }
+    if file_arg.is_empty() {
+        return false;
+    }
+
+    let editor_name = std::path::Path::new(&editor_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+
+    if !TERMINAL_EDITORS.iter().any(|&e| e == editor_name) {
+        log::debug!("ffi_sentinel_es_terminal_editor_exec: unrecognised editor {editor_name:?}");
+        return false;
+    }
+
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    sentinel.inject_terminal_editor_session(&file_arg, editor_name)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

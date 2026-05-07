@@ -1858,6 +1858,51 @@ impl Sentinel {
         self.shadow.update(shadow_id, content)
     }
 
+    /// Synthesise a focus-gained event for a terminal editor opened via ES exec.
+    ///
+    /// Called by `ffi_sentinel_es_terminal_editor_exec` when Endpoint Security
+    /// detects a known terminal editor (vim, nvim, emacs, nano, helix, …)
+    /// being exec'd with a file argument. Creates a tracking session for the
+    /// document so keystrokes captured while the terminal is focused are
+    /// attributed to that file.
+    pub fn inject_terminal_editor_session(&self, file_path: &str, editor_name: &str) -> bool {
+        use super::types::{FocusEvent, FocusEventType};
+        use crate::crypto::ObfuscatedString;
+
+        let path = match super::helpers::validate_path(file_path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                log::warn!("inject_terminal_editor_session: invalid path {file_path:?}: {e}");
+                return false;
+            }
+        };
+
+        let event = FocusEvent {
+            event_type: FocusEventType::FocusGained,
+            path: path.clone(),
+            shadow_id: String::new(),
+            app_bundle_id: format!("terminal.editor.{editor_name}"),
+            app_name: editor_name.to_string(),
+            window_title: ObfuscatedString::default(),
+            timestamp: SystemTime::now(),
+            window_id: None,
+        };
+
+        let wal_dir = self.config.wal_dir.clone();
+        focus_document_sync(
+            &path,
+            &event,
+            &self.sessions,
+            &self.config,
+            &self.shadow,
+            &self.signing_key,
+            &wal_dir,
+            &self.session_events_tx,
+        );
+        log::info!("terminal editor session started: editor={editor_name} path={path}");
+        true
+    }
+
     /// Check whether the sentinel can run on the current platform.
     pub fn available(&self) -> (bool, String) {
         #[cfg(target_os = "macos")]
