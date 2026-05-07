@@ -593,6 +593,7 @@ impl Sentinel {
     /// Begin a dictation session for `doc_path`.
     ///
     /// Returns `false` if the path is not tracked or a dictation is already active.
+    #[allow(dead_code)] // called from ffi::sentinel_es (feature = "ffi")
     pub(crate) fn begin_dictation(
         &self,
         doc_path: &str,
@@ -667,6 +668,7 @@ impl Sentinel {
     /// Record an incremental recognition fragment from the speech recognizer.
     ///
     /// Returns `false` if the path is not tracked or no dictation is active.
+    #[allow(dead_code)] // called from ffi::sentinel_es (feature = "ffi")
     pub(crate) fn record_dictation_fragment(
         &self,
         doc_path: &str,
@@ -735,6 +737,7 @@ impl Sentinel {
     /// Finalize the active dictation session for `doc_path`, producing a `DictationEvent`.
     ///
     /// Returns `false` if the path is not tracked or no dictation is active.
+    #[allow(dead_code)] // called from ffi::sentinel_es (feature = "ffi")
     pub(crate) fn end_dictation(
         &self,
         doc_path: &str,
@@ -842,6 +845,7 @@ impl Sentinel {
 // Dictation WAL helpers (private to this file)
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)] // used by begin_dictation/end_dictation (feature = "ffi")
 fn dictation_session_id_bytes(session_id: &str) -> [u8; 32] {
     let mut out = [0u8; 32];
     let hex_str = session_id
@@ -854,6 +858,7 @@ fn dictation_session_id_bytes(session_id: &str) -> [u8; 32] {
     out
 }
 
+#[allow(dead_code)] // used by begin_dictation/end_dictation (feature = "ffi")
 fn dictation_wal_append(
     session_id: &str,
     session_id_bytes: [u8; 32],
