@@ -130,7 +130,7 @@
   Impact: Type system violation at FFI boundary | Fix: Use safe cast with guard | Effort: small
 
 - [-] **H-004** `[error_handling]` `EngineService.swift:134`: validateFFIContract() crashes fatally if FFI incompatible
-  <!-- pid:INIT_FFI_VALIDATION | batch:3 | verified:true | first:2026-04-11 -->
+  <!-- pid:INIT_FFI_VALIDATION | batch:3 | verified:true | first:2026-04-11 | reason:architectural — UniFFI try! is uncatchable from Swift; current code validates early (startup) so crash has a clear stack trace. ffiGetStatus() is a lightweight probe call. Best achievable. -->
   Impact: Startup crash with no recovery | Fix: Wrap in try/catch; degrade gracefully | Effort: medium
 
 - [x] **H-005** `[security]` `EndpointSecurityClient.swift:238`: Force unwrap of es_new_client result
@@ -162,15 +162,15 @@
   Impact: Attacker strips one binding field to bypass device check | Fix: Require BOTH fields present AND valid | Effort: small
 
 - [-] **H-012** `[security]` `CertificateService.swift:223`: Path component bypass via normalization differences
-  <!-- pid:PATH_COMPONENT_BYPASS | batch:4 | verified:true | first:2026-04-11 -->
+  <!-- pid:PATH_COMPONENT_BYPASS | batch:4 | verified:false | first:2026-04-11 | reason:false_positive — resolvedURL at line 211 uses standardized.resolvingSymlinksInPath(); parentURL derived from resolvedURL is already canonical; allowedDirs also normalized; "/" suffix check prevents prefix bypass -->
   Impact: Sig file written outside allowed directory | Fix: resolveSymlinksInPath() before comparison | Effort: medium
 
-- [-] **H-013** `[concurrency]` `AuthService+Session.swift:284`: Session refresh race; two threads both attempt simultaneous refresh
-  <!-- pid:RACE_CONDITION | batch:4 | verified:true | first:2026-04-11 -->
+- [x] **H-013** `[concurrency]` `AuthService+Session.swift:284`: Session refresh race; two threads both attempt simultaneous refresh
+  <!-- pid:RACE_CONDITION | batch:4 | verified:true | first:2026-04-11 | fixed:prior — sessionRefreshTask coalescing: concurrent callers await existing task (lines 288-290) rather than starting a second refresh -->
   Impact: Token written twice; inconsistent state | Fix: Use DispatchSemaphore or async serialization | Effort: medium
 
 - [-] **H-014** `[security]` `AuthService+Session.swift:182`: Clock rollback detection using manipulable ProcessInfo.systemUptime
-  <!-- pid:SYSTEM_TIME_ATTACK | batch:4 | verified:true | first:2026-04-11 -->
+  <!-- pid:SYSTEM_TIME_ATTACK | batch:4 | verified:false | first:2026-04-11 | reason:false_positive — ProcessInfo.systemUptime is backed by mach_continuous_time() and is not user-adjustable; trust data stored in Keychain (SecureAuthStore) prevents offline modification of uptimeAtTrust -->
   Impact: Attacker resets device binding checks via time adjustment | Fix: Use mach_absolute_time() | Effort: medium
 
 - [x] **H-015** `[security]` `EncryptedSessionStore.swift:141`: Key rotation fallback without audit trail
@@ -189,8 +189,8 @@
   <!-- pid:PATH_TRAVERSAL_PROOF_CARD | batch:5 | verified:true | first:2026-04-11 | fixed:2026-05-06 — resolvingSymlinksInPath() + component-array containment check; comment at line 300 explicitly avoids prefix pitfall -->
   Impact: Proof card saved to arbitrary locations | Fix: Canonical path comparison | Effort: small
 
-- [-] **H-019** `[concurrency]` `DataDirectoryMonitor.swift:189`: FSEvent callback races with monitor stop; use-after-free risk
-  <!-- pid:RACE_FSEVENT | batch:5 | verified:true | first:2026-04-11 -->
+- [x] **H-019** `[concurrency]` `DataDirectoryMonitor.swift:189`: FSEvent callback races with monitor stop; use-after-free risk
+  <!-- pid:RACE_FSEVENT | batch:5 | verified:true | first:2026-04-11 | fixed:prior — FSEventStreamStop+Invalidate called on the same serial queue as the callback; _isRunning guard at line 229 is defense-in-depth; no callbacks fire after stop() -->
   Impact: Crash if FSEventStream torn down during background validation | Fix: Capture context; check _isRunning | Effort: medium
 
 - [x] **H-020** `[security]` `util.rs:82`: Signing key not fully zeroized; seed on stack
@@ -237,8 +237,8 @@
   <!-- pid:data_race | batch:7 | verified:true | first:2026-04-11 | fixed:2026-05-05 — lastStatusHMAC marked @ObservationIgnored (stops spurious SwiftUI re-renders); forceStatusRefresh handler now syncs HMAC after direct status assignment -->
   Impact: Status updates silently dropped or duplicated | Fix: Atomic compare-and-swap for HMAC | Effort: medium
 
-- [-] **H-031** `[concurrency]` `BatchVerifyView.swift:176`: Biometric auth race; cancelled state unreliable after task group
-  <!-- pid:race_condition | batch:7 | verified:true | first:2026-04-11 -->
+- [x] **H-031** `[concurrency]` `BatchVerifyView.swift:176`: Biometric auth race; cancelled state unreliable after task group
+  <!-- pid:race_condition | batch:7 | verified:true | first:2026-04-11 | fixed:prior — withTaskGroup races biometric auth against 30s timeout; cancelAll() after first result; isAwaitingBiometric reset in all paths -->
   Impact: Biometric prompt lost on timing edge | Fix: Use structured concurrency | Effort: medium
 
 - [-] **H-032** `[security]` `IpcClient.cs:617`: DEBUG builds bypass daemon identity verification
