@@ -251,6 +251,9 @@ pub struct SentinelConfig {
     pub focus_debounce_ms: u64,
     /// When true, a copy of the tracked file is saved at each auto-checkpoint.
     pub snapshots_enabled: bool,
+    /// When true, evidence signing is refused if the platform Secure Enclave or
+    /// TPM is unavailable and the session would fall back to software-only attestation.
+    pub require_hardware_attestation: bool,
 }
 
 impl Default for SentinelConfig {
@@ -339,6 +342,7 @@ impl Default for SentinelConfig {
             poll_interval_ms: 100,
             focus_debounce_ms: 150,
             snapshots_enabled: false,
+            require_hardware_attestation: false,
         }
     }
 }

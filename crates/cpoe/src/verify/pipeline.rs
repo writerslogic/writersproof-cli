@@ -79,6 +79,7 @@ pub(super) fn run_forensics(
             .map(|k| k.total_keystrokes as i64)
             .unwrap_or(0),
         checkpoint_count: packet.checkpoints.len() as u64,
+        attestation_tier: None,
     };
 
     let has_data = !jitter_samples.is_empty() || !events.is_empty();

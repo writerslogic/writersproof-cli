@@ -102,6 +102,21 @@ pub fn apply_segment_velocity_penalty(
     *score = Probability::clamp(score.get() - penalty);
 }
 
+/// Apply an attestation tier penalty to a score.
+///
+/// Software-fallback attestation (no SE/TPM) reduces the score by 0.25 to
+/// reflect that the evidence binding is weaker than hardware-backed attestation.
+/// Hardware-bound attestation incurs no penalty.
+pub fn apply_attestation_tier_penalty(
+    score: &mut Probability,
+    tier: crate::tpm::AttestationTier,
+) {
+    let penalty = tier.score_penalty();
+    if penalty > 0.0 {
+        *score = Probability::clamp(score.get() - penalty);
+    }
+}
+
 /// Compute a combined forensic score from jitter samples and focus
 /// switch records for a session that has no store-backed checkpoint
 /// data yet.
@@ -213,6 +228,27 @@ mod tests {
         apply_segment_velocity_penalty(&mut score, &segments);
         assert!(score.get() < 1.0, "over-threshold prose should penalize");
         assert!(score.get() >= 1.0 - PROSE_VELOCITY_MAX_PENALTY - f64::EPSILON);
+    }
+
+    #[test]
+    fn attestation_tier_hardware_no_penalty() {
+        let mut score = Probability::clamp(0.8);
+        apply_attestation_tier_penalty(&mut score, crate::tpm::AttestationTier::HardwareBound);
+        assert!((score.get() - 0.8).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn attestation_tier_software_applies_penalty() {
+        let mut score = Probability::clamp(0.8);
+        apply_attestation_tier_penalty(&mut score, crate::tpm::AttestationTier::SoftwareFallback);
+        assert!((score.get() - 0.55).abs() < f64::EPSILON, "expected 0.55, got {}", score.get());
+    }
+
+    #[test]
+    fn attestation_tier_software_penalty_clamps_at_zero() {
+        let mut score = Probability::clamp(0.1);
+        apply_attestation_tier_penalty(&mut score, crate::tpm::AttestationTier::SoftwareFallback);
+        assert!(score.get() >= 0.0);
     }
 
     #[test]

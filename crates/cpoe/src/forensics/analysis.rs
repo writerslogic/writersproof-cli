@@ -140,6 +140,9 @@ pub struct AnalysisContext {
     pub document_length: i64,
     pub total_keystrokes: i64,
     pub checkpoint_count: u64,
+    /// Attestation tier for the session. When `Some(SoftwareFallback)`, a
+    /// −0.25 penalty is applied to the assessment score.
+    pub attestation_tier: Option<crate::tpm::AttestationTier>,
 }
 
 pub fn analyze_forensics(
@@ -387,6 +390,10 @@ pub fn analyze_forensics_ext_with_focus(
             &mut metrics.assessment_score,
             &metrics.cross_window_matches,
         );
+    }
+
+    if let Some(tier) = context.attestation_tier {
+        super::scoring::apply_attestation_tier_penalty(&mut metrics.assessment_score, tier);
     }
 
     metrics.risk_level = determine_risk_level(metrics.assessment_score.get(), events.len());

@@ -953,6 +953,7 @@ fn test_analyze_forensics_ext_with_context() {
         document_length: 5000,
         total_keystrokes: 300,
         checkpoint_count: 5,
+        attestation_tier: None,
     };
     let metrics = analysis::analyze_forensics_ext(&events, &regions, None, None, None, &context);
     assert!(metrics.assessment_score.get() >= 0.0);
