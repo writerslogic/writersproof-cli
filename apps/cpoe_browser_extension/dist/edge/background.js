@@ -321,7 +321,7 @@ function handleNativeMessage(message) {
         });
       }
       updateBadge(String(message.checkpoint_count), "#2ecc71");
-      broadcastToPopup({ type: "checkpoint_update", hash: message.hash, checkpoint_count: message.checkpoint_count, commitment: message.commitment });
+      broadcastToPopup({ type: "checkpoint_update", hash: message.hash, checkpoint_count: message.checkpoint_count, commitment: message.commitment, evidence_quality: message.evidence_quality || null });
       break;
 
     case "session_stopped":
@@ -334,7 +334,7 @@ function handleNativeMessage(message) {
       chrome.storage.local.remove(["_nativePendingResume"]);
       updateBadge("", "#95a5a6");
       stopCheckpointTimer();
-      broadcastToPopup({ type: "session_update", active: false });
+      broadcastToPopup({ type: "session_update", active: false, evidence_quality: message.evidence_quality || null });
       break;
 
     case "status":
