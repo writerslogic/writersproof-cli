@@ -349,6 +349,7 @@ fn build_wire_packet(
         document_content: embedded_content,
         document_filename: embedded_filename,
         project_files: collect_project_files(&file_path, &store),
+        session_counter: None,
     };
 
     let encoded = wire_packet

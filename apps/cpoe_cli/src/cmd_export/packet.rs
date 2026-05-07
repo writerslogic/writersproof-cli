@@ -387,6 +387,7 @@ pub(super) fn build_wire_packet_from_events(
         document_content: None,
         document_filename: None,
         project_files: None,
+        session_counter: None,
     })
 }
 
