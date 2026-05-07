@@ -4,7 +4,6 @@
 
 use super::{AuthorFingerprint, ProfileId};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Similarity above this threshold yields a SameAuthor verdict.
 const SAME_AUTHOR_THRESHOLD: f64 = 0.80;
@@ -14,14 +13,6 @@ const LIKELY_SAME_THRESHOLD: f64 = 0.60;
 const INCONCLUSIVE_THRESHOLD: f64 = 0.40;
 /// Similarity above this threshold yields a LikelyDifferentAuthors verdict.
 const LIKELY_DIFFERENT_THRESHOLD: f64 = 0.20;
-
-/// All verdict thresholds for hysteresis checking.
-const VERDICT_THRESHOLDS: [f64; 4] = [
-    SAME_AUTHOR_THRESHOLD,
-    LIKELY_SAME_THRESHOLD,
-    INCONCLUSIVE_THRESHOLD,
-    LIKELY_DIFFERENT_THRESHOLD,
-];
 
 /// Confidence scales linearly with sample count, saturating at this value.
 pub(crate) const CONFIDENCE_SATURATION_SAMPLES: f64 = 200.0;
@@ -77,7 +68,11 @@ impl FingerprintComparison {
         let midpoint = LIKELY_SAME_THRESHOLD;
         let raw = 1.0 / (1.0 + (-k * (self.similarity - midpoint)).exp());
         let result = raw * self.confidence;
-        if result.is_finite() { result.clamp(0.0, 1.0) } else { 0.0 }
+        if result.is_finite() {
+            result.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
     }
 }
 
@@ -107,19 +102,50 @@ impl ComparisonVerdict {
         }
     }
 
-    /// Classify with hysteresis: if similarity is within 0.05 of any threshold
-    /// and a previous verdict is provided, retain the previous verdict to avoid
-    /// flip-flopping on boundary values.
+    /// Classify with hysteresis: if `previous` is provided and the similarity
+    /// is within 0.05 of the threshold that *directly separates* `new` from
+    /// `previous`, retain `previous` to avoid flip-flopping on boundary values.
+    ///
+    /// Only the specific threshold between the two adjacent verdicts is checked;
+    /// checking all thresholds would lock in a far-off previous verdict when
+    /// crossing an unrelated boundary.
     pub fn from_similarity_with_hysteresis(similarity: f64, previous: Option<Self>) -> Self {
         let new = Self::from_similarity(similarity);
         if let Some(prev) = previous {
-            for threshold in VERDICT_THRESHOLDS {
-                if (similarity - threshold).abs() < 0.05 {
-                    return prev;
+            if new != prev {
+                if let Some(t) = Self::threshold_between(new, prev) {
+                    if (similarity - t).abs() < 0.05 {
+                        return prev;
+                    }
                 }
             }
         }
         new
+    }
+
+    /// Return the threshold that directly separates two adjacent verdicts,
+    /// or `None` if they are not adjacent (differ by more than one level).
+    fn threshold_between(a: Self, b: Self) -> Option<f64> {
+        let ord = |v: Self| -> u8 {
+            match v {
+                Self::DifferentAuthors => 0,
+                Self::LikelyDifferentAuthors => 1,
+                Self::Inconclusive => 2,
+                Self::LikelySameAuthor => 3,
+                Self::SameAuthor => 4,
+            }
+        };
+        let (lo, hi) = if ord(a) < ord(b) { (a, b) } else { (b, a) };
+        if ord(hi).saturating_sub(ord(lo)) != 1 {
+            return None;
+        }
+        Some(match hi {
+            Self::LikelyDifferentAuthors => LIKELY_DIFFERENT_THRESHOLD,
+            Self::Inconclusive => INCONCLUSIVE_THRESHOLD,
+            Self::LikelySameAuthor => LIKELY_SAME_THRESHOLD,
+            Self::SameAuthor => SAME_AUTHOR_THRESHOLD,
+            Self::DifferentAuthors => return None,
+        })
     }
 
     /// Return a human-readable description of this verdict.
@@ -191,7 +217,11 @@ pub fn compare_fingerprints(a: &AuthorFingerprint, b: &AuthorFingerprint) -> Fin
     let hurst_sim = match (a.activity.hurst_exponent, b.activity.hurst_exponent) {
         (Some(ha), Some(hb)) => {
             let sim = 1.0 - (ha - hb).abs().min(1.0);
-            if sim.is_finite() { Some(sim) } else { None }
+            if sim.is_finite() {
+                Some(sim)
+            } else {
+                None
+            }
         }
         _ => None,
     };
@@ -209,16 +239,30 @@ pub fn compare_fingerprints(a: &AuthorFingerprint, b: &AuthorFingerprint) -> Fin
                 .similarity(&vb.punctuation_signature);
             let ngram = va.ngram_signature.similarity(&vb.ngram_signature);
             let correction = va.backspace_signature.similarity(&vb.backspace_signature);
-            (Some(sim), Some(word_len), Some(punct), Some(ngram), Some(correction))
+            (
+                Some(sim),
+                Some(word_len),
+                Some(punct),
+                Some(ngram),
+                Some(correction),
+            )
         } else {
             (None, None, None, None, None)
         };
 
     // Per-dimension weighted similarity with dynamic redistribution.
     let similarity = weighted_similarity(
-        iki_sim, zone_sim, pause_sim,
-        dwell_sim, flight_sim, digraph_sim, hurst_sim,
-        word_len_sim, punct_sim, ngram_sim, correction_sim,
+        iki_sim,
+        zone_sim,
+        pause_sim,
+        dwell_sim,
+        flight_sim,
+        digraph_sim,
+        hurst_sim,
+        word_len_sim,
+        punct_sim,
+        ngram_sim,
+        correction_sim,
     );
 
     let min_samples = a.sample_count.min(b.sample_count);
@@ -252,19 +296,25 @@ pub fn compare_fingerprints(a: &AuthorFingerprint, b: &AuthorFingerprint) -> Fin
 ///
 /// When a dimension is absent (None), its weight is redistributed
 /// proportionally among the present dimensions.
+#[allow(clippy::too_many_arguments)]
 fn weighted_similarity(
-    iki: f64, zone: f64, pause: f64,
-    dwell: Option<f64>, flight: Option<f64>,
-    digraph: Option<f64>, hurst: Option<f64>,
-    word_len: Option<f64>, punct: Option<f64>,
-    ngram: Option<f64>, correction: Option<f64>,
+    iki: f64,
+    zone: f64,
+    pause: f64,
+    dwell: Option<f64>,
+    flight: Option<f64>,
+    digraph: Option<f64>,
+    hurst: Option<f64>,
+    word_len: Option<f64>,
+    punct: Option<f64>,
+    ngram: Option<f64>,
+    correction: Option<f64>,
 ) -> f64 {
-    // Always-present activity dimensions.
-    let mut total_weight = W_IKI + W_ZONE + W_PAUSE;
-    let mut weighted_sum = iki * W_IKI + zone * W_ZONE + pause * W_PAUSE;
-
-    // Optional dimensions: add if present, skip if absent.
-    let optional: [(Option<f64>, f64); 7] = [
+    // All dimensions: add if finite, skip and redistribute weight if NaN/inf/absent.
+    let all: [(Option<f64>, f64); 11] = [
+        (Some(iki), W_IKI),
+        (Some(zone), W_ZONE),
+        (Some(pause), W_PAUSE),
         (dwell, W_DWELL),
         (flight, W_FLIGHT),
         (digraph, W_DIGRAPH),
@@ -272,14 +322,17 @@ fn weighted_similarity(
         (word_len, W_WORD_LEN),
         (punct, W_PUNCT),
         (ngram, W_NGRAM),
+        (correction, W_CORRECTION),
     ];
-    // Correction weight comes from the style group.
-    let correction_pair = (correction, W_CORRECTION);
 
-    for (value, weight) in optional.iter().chain(std::iter::once(&correction_pair)) {
+    let mut total_weight = 0.0;
+    let mut weighted_sum = 0.0;
+    for (value, weight) in &all {
         if let Some(v) = value {
-            weighted_sum += v * weight;
-            total_weight += weight;
+            if v.is_finite() {
+                weighted_sum += v * weight;
+                total_weight += weight;
+            }
         }
     }
 
@@ -404,7 +457,7 @@ pub struct VerificationResult {
 }
 
 #[derive(Debug)]
-/// Single-linkage clustering of fingerprints by similarity.
+/// Leader-based greedy clustering of fingerprints by similarity.
 pub struct BatchComparator {
     cluster_threshold: f64,
 }
@@ -418,7 +471,7 @@ impl BatchComparator {
     }
 
     pub fn with_threshold(mut self, threshold: f64) -> Self {
-        self.cluster_threshold = threshold;
+        self.cluster_threshold = crate::utils::Probability::clamp(threshold).get();
         self
     }
 
@@ -439,10 +492,6 @@ impl BatchComparator {
             return self.find_clusters(&fingerprints[..500]);
         }
 
-        // O(1) lookup by ProfileId, avoiding repeated linear scans.
-        let fp_by_id: HashMap<&ProfileId, &AuthorFingerprint> =
-            fingerprints.iter().map(|f| (&f.id, f)).collect();
-
         let mut assigned = vec![false; n];
         let mut clusters = Vec::new();
 
@@ -458,6 +507,10 @@ impl BatchComparator {
             };
             assigned[i] = true;
 
+            // Cache leader→member similarities to avoid recomputation below.
+            let mut member_indices: Vec<usize> = Vec::new();
+            let mut leader_sims: Vec<f64> = Vec::new();
+
             for j in (i + 1)..n {
                 if assigned[j] {
                     continue;
@@ -466,22 +519,29 @@ impl BatchComparator {
                 let comparison = compare_fingerprints(&fingerprints[i], &fingerprints[j]);
                 if comparison.similarity >= self.cluster_threshold {
                     cluster.members.push(fingerprints[j].id.clone());
+                    member_indices.push(j);
+                    leader_sims.push(comparison.similarity);
                     assigned[j] = true;
                 }
             }
 
             if cluster.members.len() > 1 {
-                let mut total_sim = 0.0;
-                let mut count = 0;
-                for (idx, m1) in cluster.members.iter().enumerate() {
-                    for m2 in cluster.members.iter().skip(idx + 1) {
-                        if let (Some(&f1), Some(&f2)) = (fp_by_id.get(m1), fp_by_id.get(m2)) {
-                            total_sim += compare_fingerprints(f1, f2).similarity;
-                            count += 1;
+                // Start with cached leader→member similarities.
+                let mut total_sim: f64 = leader_sims.iter().copied().sum();
+                let mut count = leader_sims.len();
+
+                // Compute only member↔member (non-leader) pairs.
+                for (idx_a, &ja) in member_indices.iter().enumerate() {
+                    for &jb in member_indices.iter().skip(idx_a + 1) {
+                        let sim =
+                            compare_fingerprints(&fingerprints[ja], &fingerprints[jb]).similarity;
+                        if sim.is_finite() {
+                            total_sim += sim;
                         }
+                        count += 1;
                     }
                 }
-                if count > 0 {
+                if count > 0 && total_sim.is_finite() {
                     cluster.avg_internal_similarity = total_sim / count as f64;
                 }
             }
@@ -645,8 +705,7 @@ mod tests {
 
     #[test]
     fn test_hysteresis_none_previous() {
-        let verdict =
-            ComparisonVerdict::from_similarity_with_hysteresis(0.81, None);
+        let verdict = ComparisonVerdict::from_similarity_with_hysteresis(0.81, None);
         assert_eq!(verdict, ComparisonVerdict::SameAuthor);
     }
 
@@ -656,8 +715,7 @@ mod tests {
             0.9, 0.8, 0.7, None, None, None, None, None, None, None, None,
         );
         assert!(sim >= 0.0 && sim <= 1.0);
-        let expected =
-            (0.9 * W_IKI + 0.8 * W_ZONE + 0.7 * W_PAUSE) / (W_IKI + W_ZONE + W_PAUSE);
+        let expected = (0.9 * W_IKI + 0.8 * W_ZONE + 0.7 * W_PAUSE) / (W_IKI + W_ZONE + W_PAUSE);
         assert!(
             (sim - expected).abs() < 1e-10,
             "sim={} expected={}",
@@ -667,9 +725,90 @@ mod tests {
     }
 
     #[test]
+    fn test_weights_sum_to_one() {
+        let sum = W_IKI
+            + W_ZONE
+            + W_PAUSE
+            + W_DWELL
+            + W_FLIGHT
+            + W_DIGRAPH
+            + W_HURST
+            + W_WORD_LEN
+            + W_PUNCT
+            + W_NGRAM
+            + W_CORRECTION;
+        assert!(
+            (sum - 1.0).abs() < 1e-10,
+            "dimension weights must sum to 1.0, got {}",
+            sum
+        );
+    }
+
+    #[test]
+    fn test_weighted_similarity_nan_guard() {
+        // NaN in a required dimension: skip it, redistribute weight to others.
+        let sim = weighted_similarity(
+            f64::NAN,
+            0.8,
+            0.7,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            sim.is_finite(),
+            "NaN in required dimension should be skipped"
+        );
+        let expected = (0.8 * W_ZONE + 0.7 * W_PAUSE) / (W_ZONE + W_PAUSE);
+        assert!(
+            (sim - expected).abs() < 1e-10,
+            "sim={sim} expected={expected}"
+        );
+
+        // NaN in optional dimension: also skipped.
+        let sim2 = weighted_similarity(
+            0.9,
+            0.8,
+            0.7,
+            Some(f64::NAN),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(
+            sim2.is_finite(),
+            "NaN in optional dimension should be skipped"
+        );
+
+        // All NaN: returns 0.0 (no valid dimensions).
+        let sim3 = weighted_similarity(
+            f64::NAN,
+            f64::NAN,
+            f64::NAN,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(sim3, 0.0, "all-NaN should return 0.0");
+    }
+
+    #[test]
     fn test_comparison_components_serde_default() {
-        let json =
-            r#"{"iki_similarity":0.5,"zone_similarity":0.5,"pause_similarity":0.5}"#;
+        let json = r#"{"iki_similarity":0.5,"zone_similarity":0.5,"pause_similarity":0.5}"#;
         let components: ComparisonComponents = serde_json::from_str(json).unwrap();
         assert!(components.dwell_similarity.is_none());
         assert!(components.flight_similarity.is_none());
