@@ -166,11 +166,10 @@ impl Packet {
                 .unwrap_or_default();
             if trusted_keys.is_empty() {
                 log::warn!(
-                    "Hardware attestation verified without trusted keys; \
-                     only internal chain consistency is checked"
+                    "Hardware attestation skipped: no trusted keys provided; \
+                     binding authenticity cannot be verified"
                 );
-            }
-            if let Err(err) = tpm::verify_binding_chain(&hardware.bindings, &trusted_keys) {
+            } else if let Err(err) = tpm::verify_binding_chain(&hardware.bindings, &trusted_keys) {
                 return Err(Error::evidence(format!(
                     "hardware attestation invalid: {:?}",
                     err

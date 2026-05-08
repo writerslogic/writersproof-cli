@@ -49,6 +49,12 @@ pub struct FfiForensicBreakdown {
     pub iki_modality_score: f64,
     /// Deviation from personal writing baseline (0 = normal, >0.6 = anomalous).
     pub baseline_deviation: f64,
+    /// Mean plausibility of dictation events (1.0 = fully plausible, <0.3 = likely forged).
+    pub dictation_plausibility: f64,
+    /// Fraction of content that was dictated (0.0 = all typed, 1.0 = all dictated).
+    pub dictation_ratio: f64,
+    /// Whether multiple speakers were detected in dictation segments.
+    pub multi_speaker_detected: bool,
     pub error_message: Option<String>,
 }
 
@@ -94,6 +100,9 @@ impl FfiForensicBreakdown {
             lrd_correlation: 0.0,
             iki_modality_score: 0.0,
             baseline_deviation: 0.0,
+            dictation_plausibility: 0.0,
+            dictation_ratio: 0.0,
+            multi_speaker_detected: false,
             error_message: Some(msg),
         }
     }
@@ -131,6 +140,33 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
                         wm.cognitive_layer = Some(layer);
                     }
                 }
+                break;
+            }
+        }
+    }
+
+    // Enrich with dictation scoring from live session if available.
+    let mut dictation_plausibility = 0.0;
+    let mut dictation_ratio = 0.0;
+    let mut multi_speaker_detected = false;
+    if let Some(sentinel) = super::sentinel::get_sentinel() {
+        for session in sentinel.sessions() {
+            if session.path == path && !session.dictation_events.is_empty() {
+                let dict_words: u32 = session.dictation_events.iter().map(|e| e.word_count).sum();
+                let typed_words = (session.cognitive.word_boundary_count() as u32).saturating_sub(dict_words);
+                let segments = crate::forensics::dictation::cluster_speaker_segments(
+                    &session.dictation_events,
+                );
+                let multi = segments.iter().any(|s| s.speaker_label > 0);
+                let comp = crate::forensics::dictation::apply_dictation_adjustment(
+                    metrics.assessment_score.get(),
+                    &session.dictation_events,
+                    typed_words,
+                    multi,
+                );
+                dictation_plausibility = comp.dictated_score;
+                dictation_ratio = comp.dictation_ratio;
+                multi_speaker_detected = comp.multi_speaker_detected;
                 break;
             }
         }
@@ -225,6 +261,9 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
             .and_then(|wm| wm.cognitive_layer.as_ref())
             .map(|cl| cl.baseline_deviation)
             .unwrap_or(0.0),
+        dictation_plausibility,
+        dictation_ratio,
+        multi_speaker_detected,
         error_message: None,
     }
     })

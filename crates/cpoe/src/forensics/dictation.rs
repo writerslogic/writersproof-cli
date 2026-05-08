@@ -160,6 +160,294 @@ pub fn score_dictation_plausibility(event: &DictationEvent) -> f64 {
     crate::utils::Probability::clamp(score).get()
 }
 
+// ---------------------------------------------------------------------------
+// Pro-tier analytics: aggregation, multi-speaker clustering, scoring component
+// ---------------------------------------------------------------------------
+
+/// Confidence break threshold (2 stddev) for detecting speaker changes.
+const SPEAKER_CONFIDENCE_BREAK: f32 = 0.15;
+
+/// Ambient noise shift (dB) for detecting environment changes.
+const SPEAKER_NOISE_BREAK_DB: f32 = 10.0;
+
+/// Temporal gap (nanoseconds) above which a new speaker segment starts.
+const SPEAKER_GAP_NS: i64 = 5 * 60 * 1_000_000_000; // 5 minutes
+
+/// A segment of dictation attributed to a single speaker.
+#[derive(Debug, Clone)]
+pub struct SpeakerSegment {
+    pub segment_index: u32,
+    pub start_ns: i64,
+    pub end_ns: i64,
+    pub word_count: u32,
+    pub device_uid_hash: [u8; 8],
+    pub confidence_mean: f32,
+    pub ambient_noise_db: f32,
+    pub is_primary_speaker: bool,
+    pub speaker_label: u8,
+}
+
+/// Aggregated dictation analytics for a document session.
+#[derive(Debug, Clone)]
+pub struct DictationAnalytics {
+    pub total_dictation_events: u32,
+    pub total_dictated_words: u32,
+    pub total_dictated_chars: u32,
+    pub total_duration_sec: f64,
+    pub mean_wpm: f64,
+    pub mean_confidence: f64,
+    pub mean_plausibility: f64,
+    pub min_plausibility: f64,
+    pub plausibility_timeline: Vec<(i64, f64)>,
+    pub speaker_segments: Vec<SpeakerSegment>,
+    pub dictation_ratio_words: f64,
+    pub multi_speaker_detected: bool,
+}
+
+/// Compute aggregated analytics over a session's dictation events.
+pub fn compute_dictation_analytics(
+    events: &[DictationEvent],
+    total_typed_words: u32,
+) -> DictationAnalytics {
+    if events.is_empty() {
+        return DictationAnalytics {
+            total_dictation_events: 0,
+            total_dictated_words: 0,
+            total_dictated_chars: 0,
+            total_duration_sec: 0.0,
+            mean_wpm: 0.0,
+            mean_confidence: 0.0,
+            mean_plausibility: 0.0,
+            min_plausibility: 1.0,
+            plausibility_timeline: Vec::new(),
+            speaker_segments: Vec::new(),
+            dictation_ratio_words: 0.0,
+            multi_speaker_detected: false,
+        };
+    }
+
+    let mut total_words = 0u32;
+    let mut total_chars = 0u32;
+    let mut total_duration_ns = 0i64;
+    let mut wpm_sum = 0.0;
+    let mut conf_sum = 0.0f64;
+    let mut plaus_sum = 0.0;
+    let mut min_plaus = 1.0f64;
+    let mut timeline = Vec::with_capacity(events.len());
+
+    for ev in events {
+        total_words = total_words.saturating_add(ev.word_count);
+        total_chars = total_chars.saturating_add(ev.char_count);
+        total_duration_ns += ev.end_ns.saturating_sub(ev.start_ns);
+        wpm_sum += if ev.words_per_minute.is_finite() { ev.words_per_minute } else { 0.0 };
+        conf_sum += if (ev.confidence_mean as f64).is_finite() { ev.confidence_mean as f64 } else { 0.0 };
+        let plaus = score_dictation_plausibility(ev);
+        plaus_sum += plaus;
+        if plaus < min_plaus {
+            min_plaus = plaus;
+        }
+        timeline.push((ev.start_ns, plaus));
+    }
+
+    let n = events.len() as f64;
+    let total_all_words = total_words.saturating_add(total_typed_words);
+    let segments = cluster_speaker_segments(events);
+    let multi = segments.iter().any(|s| s.speaker_label > 0);
+
+    DictationAnalytics {
+        total_dictation_events: events.len() as u32,
+        total_dictated_words: total_words,
+        total_dictated_chars: total_chars,
+        total_duration_sec: crate::utils::ns_to_secs(total_duration_ns),
+        mean_wpm: wpm_sum / n,
+        mean_confidence: conf_sum / n,
+        mean_plausibility: plaus_sum / n,
+        min_plausibility: min_plaus,
+        plausibility_timeline: timeline,
+        speaker_segments: segments,
+        dictation_ratio_words: if total_all_words > 0 {
+            total_words as f64 / total_all_words as f64
+        } else {
+            0.0
+        },
+        multi_speaker_detected: multi,
+    }
+}
+
+/// Cluster dictation events into speaker segments.
+///
+/// Groups by `device_uid_hash` (different mic = different speaker), then splits
+/// within the same device on statistical breaks in confidence or ambient noise,
+/// or temporal gaps exceeding 5 minutes.
+pub fn cluster_speaker_segments(events: &[DictationEvent]) -> Vec<SpeakerSegment> {
+    if events.is_empty() {
+        return Vec::new();
+    }
+
+    let mut segments: Vec<SpeakerSegment> = Vec::new();
+    let mut seg_start = 0usize;
+
+    for i in 1..events.len() {
+        let prev = &events[i - 1];
+        let curr = &events[i];
+
+        let device_change = prev.device_uid_hash != curr.device_uid_hash;
+        let conf_diff = (prev.confidence_mean - curr.confidence_mean).abs();
+        let conf_break = conf_diff.is_finite() && conf_diff > SPEAKER_CONFIDENCE_BREAK;
+        let noise_diff = (prev.ambient_noise_db - curr.ambient_noise_db).abs();
+        let noise_break = prev.ambient_noise_db > -100.0
+            && curr.ambient_noise_db > -100.0
+            && noise_diff.is_finite()
+            && noise_diff > SPEAKER_NOISE_BREAK_DB;
+        let gap = curr.start_ns.saturating_sub(prev.end_ns) > SPEAKER_GAP_NS;
+
+        if device_change || conf_break || noise_break || gap {
+            segments.push(build_segment(&events[seg_start..i], segments.len() as u32));
+            seg_start = i;
+        }
+    }
+    segments.push(build_segment(&events[seg_start..], segments.len() as u32));
+
+    // Assign speaker labels: same device_uid_hash = same speaker.
+    let mut uid_to_label: std::collections::HashMap<[u8; 8], u8> = std::collections::HashMap::new();
+    let mut next_label = 0u8;
+    let mut max_words = 0u32;
+    let mut primary_label = 0u8;
+
+    for seg in &mut segments {
+        let label = *uid_to_label.entry(seg.device_uid_hash).or_insert_with(|| {
+            let l = next_label;
+            next_label = next_label.saturating_add(1);
+            l
+        });
+        seg.speaker_label = label;
+        if seg.word_count > max_words {
+            max_words = seg.word_count;
+            primary_label = label;
+        }
+    }
+    for seg in &mut segments {
+        seg.is_primary_speaker = seg.speaker_label == primary_label;
+    }
+
+    segments
+}
+
+fn build_segment(events: &[DictationEvent], index: u32) -> SpeakerSegment {
+    let first = &events[0];
+    let last = &events[events.len() - 1];
+    let word_count: u32 = events.iter().map(|e| e.word_count).sum();
+    let conf_sum: f32 = events.iter().map(|e| e.confidence_mean).sum();
+    let noise_sum: f32 = events
+        .iter()
+        .filter(|e| e.ambient_noise_db > -100.0)
+        .map(|e| e.ambient_noise_db)
+        .sum();
+    let noise_count = events
+        .iter()
+        .filter(|e| e.ambient_noise_db > -100.0)
+        .count();
+
+    SpeakerSegment {
+        segment_index: index,
+        start_ns: first.start_ns,
+        end_ns: last.end_ns,
+        word_count,
+        device_uid_hash: first.device_uid_hash,
+        confidence_mean: if events.is_empty() {
+            0.0
+        } else {
+            conf_sum / events.len() as f32
+        },
+        ambient_noise_db: if noise_count > 0 {
+            noise_sum / noise_count as f32
+        } else {
+            -100.0
+        },
+        is_primary_speaker: false,
+        speaker_label: 0,
+    }
+}
+
+/// Dictation scoring component for integration into assessment score.
+#[derive(Debug, Clone)]
+pub struct DictationScoreComponent {
+    pub typed_score: f64,
+    pub dictated_score: f64,
+    pub dictation_ratio: f64,
+    pub multi_speaker_detected: bool,
+    pub composite_adjustment: f64,
+}
+
+/// Multi-speaker penalty applied to assessment score.
+const MULTI_SPEAKER_PENALTY: f64 = 0.85;
+
+/// Penalty when any dictation event has low plausibility.
+const LOW_PLAUSIBILITY_PENALTY: f64 = 0.90;
+
+/// Low plausibility threshold.
+const LOW_PLAUSIBILITY_THRESHOLD: f64 = 0.3;
+
+/// Apply dictation-aware penalties to an existing assessment score.
+///
+/// Returns a component breakdown for display in Pro-tier reports.
+pub fn apply_dictation_adjustment(
+    base_score: f64,
+    events: &[DictationEvent],
+    total_typed_words: u32,
+    multi_speaker: bool,
+) -> DictationScoreComponent {
+    if events.is_empty() {
+        return DictationScoreComponent {
+            typed_score: base_score,
+            dictated_score: 1.0,
+            dictation_ratio: 0.0,
+            multi_speaker_detected: multi_speaker,
+            composite_adjustment: 0.0,
+        };
+    }
+
+    let n = events.len() as f64;
+    let mean_plausibility: f64 = events
+        .iter()
+        .map(|e| score_dictation_plausibility(e))
+        .sum::<f64>()
+        / n;
+
+    let total_dict_words: u32 = events.iter().map(|e| e.word_count).sum();
+    let total_words = total_dict_words.saturating_add(total_typed_words);
+    let ratio = if total_words > 0 {
+        total_dict_words as f64 / total_words as f64
+    } else {
+        0.0
+    };
+
+    // Weighted composite: typed portion at base_score, dictated at mean_plausibility.
+    let composite = ratio * mean_plausibility + (1.0 - ratio) * base_score;
+    let mut adjusted = composite;
+
+    if multi_speaker {
+        adjusted *= MULTI_SPEAKER_PENALTY;
+    }
+
+    let has_low = events
+        .iter()
+        .any(|e| score_dictation_plausibility(e) < LOW_PLAUSIBILITY_THRESHOLD);
+    if has_low {
+        adjusted *= LOW_PLAUSIBILITY_PENALTY;
+    }
+
+    let adjustment = adjusted - base_score;
+
+    DictationScoreComponent {
+        typed_score: base_score,
+        dictated_score: mean_plausibility,
+        dictation_ratio: ratio,
+        multi_speaker_detected: multi_speaker,
+        composite_adjustment: adjustment,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,5 +672,155 @@ mod tests {
         event.ambient_noise_db = -45.0; // Normal room noise
         let score = score_dictation_plausibility(&event);
         assert!(score > 0.9, "real room noise should not be penalized, got {score}");
+    }
+
+    // ---- compute_dictation_analytics tests ----
+
+    #[test]
+    fn analytics_empty_events() {
+        let a = compute_dictation_analytics(&[], 100);
+        assert_eq!(a.total_dictation_events, 0);
+        assert_eq!(a.total_dictated_words, 0);
+        assert!((a.dictation_ratio_words - 0.0).abs() < f64::EPSILON);
+        assert!(!a.multi_speaker_detected);
+    }
+
+    #[test]
+    fn analytics_single_event() {
+        let ev = make_event(60, 30.0, true);
+        let a = compute_dictation_analytics(&[ev], 240);
+        assert_eq!(a.total_dictation_events, 1);
+        assert_eq!(a.total_dictated_words, 60);
+        assert!((a.dictation_ratio_words - 0.2).abs() < 0.01); // 60 / 300
+        assert!(!a.multi_speaker_detected);
+        assert_eq!(a.plausibility_timeline.len(), 1);
+    }
+
+    #[test]
+    fn analytics_nan_wpm_filtered() {
+        let mut ev = make_event(60, 30.0, true);
+        ev.words_per_minute = f64::NAN;
+        let a = compute_dictation_analytics(&[ev], 0);
+        assert!(a.mean_wpm.is_finite(), "NaN WPM should be filtered to 0");
+    }
+
+    #[test]
+    fn analytics_nan_confidence_filtered() {
+        let mut ev = make_event(60, 30.0, true);
+        ev.confidence_mean = f32::NAN;
+        let a = compute_dictation_analytics(&[ev], 0);
+        assert!(a.mean_confidence.is_finite(), "NaN confidence should be filtered");
+    }
+
+    // ---- cluster_speaker_segments tests ----
+
+    #[test]
+    fn cluster_empty_events() {
+        let segments = cluster_speaker_segments(&[]);
+        assert!(segments.is_empty());
+    }
+
+    #[test]
+    fn cluster_single_event() {
+        let ev = make_event(60, 30.0, true);
+        let segments = cluster_speaker_segments(&[ev]);
+        assert_eq!(segments.len(), 1);
+        assert!(segments[0].is_primary_speaker);
+        assert_eq!(segments[0].speaker_label, 0);
+    }
+
+    #[test]
+    fn cluster_same_device_no_breaks() {
+        let ev1 = make_event(30, 15.0, true);
+        let mut ev2 = make_event(30, 15.0, true);
+        ev2.start_ns = 15_000_000_000;
+        ev2.end_ns = 30_000_000_000;
+        ev2.confidence_mean = 0.01; // small diff, within threshold
+        let segments = cluster_speaker_segments(&[ev1, ev2]);
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].word_count, 60);
+    }
+
+    #[test]
+    fn cluster_different_devices_creates_segments() {
+        let ev1 = make_event(30, 15.0, true);
+        let mut ev2 = make_event(30, 15.0, true);
+        ev2.device_uid_hash = [1u8; 8]; // different device
+        ev2.start_ns = 15_000_000_000;
+        ev2.end_ns = 30_000_000_000;
+        let segments = cluster_speaker_segments(&[ev1, ev2]);
+        assert_eq!(segments.len(), 2);
+        assert_ne!(segments[0].speaker_label, segments[1].speaker_label);
+    }
+
+    #[test]
+    fn cluster_confidence_break_creates_segment() {
+        let mut ev1 = make_event(30, 15.0, true);
+        ev1.confidence_mean = 0.9;
+        let mut ev2 = make_event(30, 15.0, true);
+        ev2.confidence_mean = 0.5; // >0.15 diff
+        ev2.start_ns = 15_000_000_000;
+        ev2.end_ns = 30_000_000_000;
+        let segments = cluster_speaker_segments(&[ev1, ev2]);
+        assert_eq!(segments.len(), 2);
+    }
+
+    #[test]
+    fn cluster_nan_confidence_no_break() {
+        let mut ev1 = make_event(30, 15.0, true);
+        ev1.confidence_mean = f32::NAN;
+        let mut ev2 = make_event(30, 15.0, true);
+        ev2.confidence_mean = 0.5;
+        ev2.start_ns = 15_000_000_000;
+        ev2.end_ns = 30_000_000_000;
+        let segments = cluster_speaker_segments(&[ev1, ev2]);
+        // NaN diff is not finite, so no confidence break — single segment
+        assert_eq!(segments.len(), 1);
+    }
+
+    #[test]
+    fn cluster_primary_speaker_is_most_words() {
+        let ev1 = make_event(100, 50.0, true);
+        let mut ev2 = make_event(10, 5.0, true);
+        ev2.device_uid_hash = [1u8; 8];
+        ev2.start_ns = 50_000_000_000;
+        ev2.end_ns = 55_000_000_000;
+        let segments = cluster_speaker_segments(&[ev1, ev2]);
+        assert!(segments[0].is_primary_speaker);
+        assert!(!segments[1].is_primary_speaker);
+    }
+
+    // ---- apply_dictation_adjustment tests ----
+
+    #[test]
+    fn adjustment_empty_events_no_change() {
+        let comp = apply_dictation_adjustment(0.8, &[], 100, false);
+        assert!((comp.typed_score - 0.8).abs() < f64::EPSILON);
+        assert!((comp.composite_adjustment - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn adjustment_good_dictation_minimal_change() {
+        let ev = make_event(60, 30.0, true);
+        let comp = apply_dictation_adjustment(0.8, &[ev], 240, false);
+        // 20% dictation at ~1.0 plausibility + 80% typed at 0.8 ≈ 0.84
+        assert!(comp.composite_adjustment > -0.05, "good dictation should barely change score");
+        assert!(!comp.multi_speaker_detected);
+    }
+
+    #[test]
+    fn adjustment_multi_speaker_penalty() {
+        let ev = make_event(60, 30.0, true);
+        let comp = apply_dictation_adjustment(0.8, &[ev], 240, true);
+        assert!(comp.multi_speaker_detected);
+        assert!(comp.composite_adjustment < 0.0, "multi-speaker should apply penalty");
+    }
+
+    #[test]
+    fn adjustment_low_plausibility_penalty() {
+        let mut ev = make_event(60, 30.0, false); // no mic = low plausibility
+        ev.words_per_minute = 300.0; // suspicious WPM
+        let comp = apply_dictation_adjustment(0.8, &[ev], 0, false);
+        assert!(comp.composite_adjustment < -0.1, "low plausibility should penalize");
     }
 }

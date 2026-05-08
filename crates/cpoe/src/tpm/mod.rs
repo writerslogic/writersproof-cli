@@ -207,9 +207,10 @@ mod tests {
     #[test]
     fn test_software_provider_binding_chain() {
         let provider = SoftwareProvider::new();
+        let trusted_key = provider.public_key();
         let binding1 = provider.bind(b"checkpoint-1").expect("bind");
         let binding2 = provider.bind(b"checkpoint-2").expect("bind");
-        verify_binding_chain(&[binding1, binding2], &[]).expect("verify chain");
+        verify_binding_chain(&[binding1, binding2], &[trusted_key]).expect("verify chain");
     }
 
     #[test]

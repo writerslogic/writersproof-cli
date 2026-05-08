@@ -121,12 +121,36 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
         input.cross_modal_passed,
         input.cross_modal_total
     );
-    let mut components = Vec::new();
 
-    let vdf_cost = if input.vdf_iterations > 0 && input.vdf_rate > 0 {
+    let components = vec![
+        compute_vdf_cost(input),
+        compute_checkpoint_chain_cost(input),
+        compute_jitter_cost(input),
+        compute_hardware_attestation_cost(input),
+        compute_behavioral_cost(input),
+        compute_cross_modal_cost(input),
+        compute_temporal_cost(input),
+        compute_entanglement_cost(input),
+    ];
+
+    let (overall_difficulty, weakest_link, estimated_forge_time_sec) =
+        aggregate_costs(&components);
+
+    let tier = classify_tier(overall_difficulty, input.has_hardware_attestation);
+
+    ForgeryCostEstimate {
+        components,
+        overall_difficulty,
+        weakest_link,
+        estimated_forge_time_sec,
+        tier,
+    }
+}
+
+/// VDF proof chain: inherently sequential work that parallelism cannot speed up.
+fn compute_vdf_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.vdf_iterations > 0 && input.vdf_rate > 0 {
         let sequential_seconds = input.vdf_iterations as f64 / input.vdf_rate as f64;
-        // VDFs are inherently sequential -- parallelism doesn't help.
-        // Adversary must spend at least this much wall-clock time.
         ComponentCost {
             name: "vdf_proof_chain".into(),
             cost_cpu_sec: sequential_seconds,
@@ -143,14 +167,15 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "No VDF proofs present".into(),
         }
-    };
-    components.push(vdf_cost);
+    }
+}
 
-    let chain_cost = if input.checkpoint_count > 0 {
-        let cost = input.chain_duration_sec as f64;
+/// Checkpoint chain: adversary must simulate elapsed wall-clock time.
+fn compute_checkpoint_chain_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.checkpoint_count > 0 {
         ComponentCost {
             name: "checkpoint_chain".into(),
-            cost_cpu_sec: cost,
+            cost_cpu_sec: input.chain_duration_sec as f64,
             present: true,
             explanation: format!(
                 "{} checkpoints over {}s; adversary must simulate elapsed time",
@@ -164,10 +189,12 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "No checkpoint chain".into(),
         }
-    };
-    components.push(chain_cost);
+    }
+}
 
-    let jitter_cost = if input.has_jitter_binding && input.jitter_sample_count > 0 {
+/// Jitter entropy: adversary must produce statistically valid 1/f keystroke timing.
+fn compute_jitter_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.has_jitter_binding && input.jitter_sample_count > 0 {
         let cost = input.jitter_sample_count as f64 * JITTER_FORGE_COST_PER_SAMPLE;
         ComponentCost {
             name: "jitter_entropy".into(),
@@ -186,15 +213,18 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "No jitter binding".into(),
         }
-    };
-    components.push(jitter_cost);
+    }
+}
 
-    let hw_cost = if input.has_hardware_attestation {
+/// Hardware attestation: forgery requires physical access to TPM/Secure Enclave.
+fn compute_hardware_attestation_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.has_hardware_attestation {
         ComponentCost {
             name: "hardware_attestation".into(),
             cost_cpu_sec: f64::INFINITY,
             present: true,
-            explanation: "Hardware-bound key; forgery requires physical device access".into(),
+            explanation: "Hardware-bound key; forgery requires physical device access"
+                .into(),
         }
     } else {
         ComponentCost {
@@ -203,15 +233,18 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "Software-only keys; extractable by device owner".into(),
         }
-    };
-    components.push(hw_cost);
+    }
+}
 
-    let behavioral_cost = if input.has_behavioral_fingerprint {
+/// Behavioral fingerprint: adversary must replicate typing dynamics.
+fn compute_behavioral_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.has_behavioral_fingerprint {
         ComponentCost {
             name: "behavioral_fingerprint".into(),
             cost_cpu_sec: BEHAVIORAL_FORGE_COST_SEC,
             present: true,
-            explanation: "Must replicate typing dynamics (Hurst, 1/f, cadence)".into(),
+            explanation: "Must replicate typing dynamics (Hurst, 1/f, cadence)"
+                .into(),
         }
     } else {
         ComponentCost {
@@ -220,10 +253,12 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "No behavioral fingerprint".into(),
         }
-    };
-    components.push(behavioral_cost);
+    }
+}
 
-    let cross_modal_cost = if input.cross_modal_total >= 2 {
+/// Cross-modal consistency: pairwise constraints between evidence modalities.
+fn compute_cross_modal_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.cross_modal_total >= 2 {
         let n = input.cross_modal_total as f64;
         let constraint_factor = n * (n - 1.0) / 2.0;
         let cost = if input.cross_modal_consistent {
@@ -237,7 +272,9 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: true,
             explanation: format!(
                 "{}/{} checks passed; {} pairwise constraints",
-                input.cross_modal_passed, input.cross_modal_total, constraint_factor as u64
+                input.cross_modal_passed,
+                input.cross_modal_total,
+                constraint_factor as u64
             ),
         }
     } else {
@@ -247,15 +284,18 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "No cross-modal checks performed".into(),
         }
-    };
-    components.push(cross_modal_cost);
+    }
+}
 
-    let time_cost = if input.has_external_time_anchor {
+/// External time anchor: RFC3161/Roughtime prevents backdating.
+fn compute_temporal_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.has_external_time_anchor {
         ComponentCost {
             name: "external_time_anchor".into(),
             cost_cpu_sec: f64::INFINITY,
             present: true,
-            explanation: "RFC3161/Roughtime timestamp; adversary cannot backdate".into(),
+            explanation: "RFC3161/Roughtime timestamp; adversary cannot backdate"
+                .into(),
         }
     } else {
         ComponentCost {
@@ -264,11 +304,14 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "No external time anchor".into(),
         }
-    };
-    components.push(time_cost);
+    }
+}
 
-    let entangle_cost = if input.has_content_key_entanglement {
-        let cost = input.chain_duration_sec as f64 * ENTANGLEMENT_DURATION_MULTIPLIER;
+/// Content-key entanglement: modifying content requires full recomputation.
+fn compute_entanglement_cost(input: &ForgeryCostInput) -> ComponentCost {
+    if input.has_content_key_entanglement {
+        let cost =
+            input.chain_duration_sec as f64 * ENTANGLEMENT_DURATION_MULTIPLIER;
         ComponentCost {
             name: "content_key_entanglement".into(),
             cost_cpu_sec: cost,
@@ -284,9 +327,13 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             present: false,
             explanation: "No content-key entanglement".into(),
         }
-    };
-    components.push(entangle_cost);
+    }
+}
 
+/// Combine per-component costs into overall difficulty, weakest link, and forge time.
+fn aggregate_costs(
+    components: &[ComponentCost],
+) -> (f64, Option<String>, f64) {
     let finite_costs: Vec<f64> = components
         .iter()
         .filter(|c| c.present && c.cost_cpu_sec.is_finite() && c.cost_cpu_sec > 0.0)
@@ -297,9 +344,12 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
         .iter()
         .any(|c| c.present && c.cost_cpu_sec.is_infinite());
 
+    // Use a near-max but finite value for hardware-attestation difficulty so
+    // the result serializes to valid JSON (Infinity serializes as null or errors).
+    const HARDWARE_ATTESTATION_DIFFICULTY: f64 = 1e308;
     let overall_difficulty = if finite_costs.is_empty() {
         if has_infinite {
-            f64::INFINITY
+            HARDWARE_ATTESTATION_DIFFICULTY
         } else {
             0.0
         }
@@ -316,7 +366,9 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
         let geo_mean = if raw.is_finite() {
             raw
         } else {
-            log::warn!("forgery_cost: geometric mean is non-finite ({raw}), clamping to f64::MAX");
+            log::warn!(
+                "forgery_cost: geometric mean is non-finite ({raw}), clamping to f64::MAX"
+            );
             f64::MAX
         };
         if has_infinite {
@@ -342,15 +394,7 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
             .fold(0.0_f64, f64::max)
     };
 
-    let tier = classify_tier(overall_difficulty, input.has_hardware_attestation);
-
-    ForgeryCostEstimate {
-        components,
-        overall_difficulty,
-        weakest_link,
-        estimated_forge_time_sec,
-        tier,
-    }
+    (overall_difficulty, weakest_link, estimated_forge_time_sec)
 }
 
 fn classify_tier(difficulty: f64, has_hardware_attestation: bool) -> ForgeryResistanceTier {

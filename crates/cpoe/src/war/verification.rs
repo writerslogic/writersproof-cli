@@ -632,7 +632,16 @@ pub fn verify_beacon_attestation_with_bundle(
             };
         }
     };
-    let ca_key_array: &[u8; 32] = ca_pubkey_bytes.as_slice().try_into().unwrap();
+    let ca_key_array: &[u8; 32] = match ca_pubkey_bytes.as_slice().try_into() {
+        Ok(a) => a,
+        Err(_) => {
+            return CheckResult {
+                name: "beacon_attestation".to_string(),
+                passed: false,
+                message: format!("CA key for kid {ca_kid} is not 32 bytes"),
+            };
+        }
+    };
     let ca_verifying_key = match VerifyingKey::from_bytes(ca_key_array) {
         Ok(key) => key,
         Err(e) => {
@@ -665,20 +674,35 @@ pub fn verify_beacon_attestation_with_bundle(
             };
         }
     };
-    let signature = Signature::from_bytes(sig_bytes.as_slice().try_into().unwrap());
+    let sig_array: [u8; 64] = match sig_bytes.as_slice().try_into() {
+        Ok(a) => a,
+        Err(_) => {
+            return CheckResult {
+                name: "beacon_attestation".to_string(),
+                passed: false,
+                message: "Beacon signature is not 64 bytes".to_string(),
+            };
+        }
+    };
+    let signature = Signature::from_bytes(&sig_array);
 
     // Reconstruct the signed message: checkpoint_hash || drand fields || nist fields || fetched_at.
     // This must match what WritersProof signed server-side.
-    // NOTE: String fields (drand_randomness, nist_output_value, fetched_at) are
-    // encoded via `.as_bytes()` which returns their UTF-8 representation. Both
-    // client and server MUST use identical UTF-8 encoding for signature agreement.
+    // Variable-length string fields are length-prefixed (4-byte big-endian) to prevent
+    // boundary ambiguity attacks where adjacent fields can be shifted across the boundary.
     let mut signed_msg = Vec::new();
+    let drand_rand = attestation.drand_randomness.as_bytes();
+    let nist_out = attestation.nist_output_value.as_bytes();
+    let fetched_at = attestation.fetched_at.as_bytes();
     signed_msg.extend_from_slice(evidence.document.final_hash.as_bytes());
     signed_msg.extend_from_slice(&attestation.drand_round.to_be_bytes());
-    signed_msg.extend_from_slice(attestation.drand_randomness.as_bytes());
+    signed_msg.extend_from_slice(&(drand_rand.len() as u32).to_be_bytes());
+    signed_msg.extend_from_slice(drand_rand);
     signed_msg.extend_from_slice(&attestation.nist_pulse_index.to_be_bytes());
-    signed_msg.extend_from_slice(attestation.nist_output_value.as_bytes());
-    signed_msg.extend_from_slice(attestation.fetched_at.as_bytes());
+    signed_msg.extend_from_slice(&(nist_out.len() as u32).to_be_bytes());
+    signed_msg.extend_from_slice(nist_out);
+    signed_msg.extend_from_slice(&(fetched_at.len() as u32).to_be_bytes());
+    signed_msg.extend_from_slice(fetched_at);
 
     match ca_verifying_key.verify_strict(&signed_msg, &signature) {
         Ok(()) => CheckResult {

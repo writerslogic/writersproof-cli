@@ -376,7 +376,9 @@ fn inject_keystroke_inner_v3(
             let pushed =
                 session.jitter_samples.len() < crate::sentinel::types::MAX_DOCUMENT_JITTER_SAMPLES;
             if pushed {
+                let idx = session.jitter_samples.len();
                 session.jitter_samples.push(sample.clone());
+                session.jitter_sample_index.insert(sample.timestamp_ns, idx);
             }
 
             // Record semantic and device classification for evidence enrichment.
@@ -399,6 +401,7 @@ fn inject_keystroke_inner_v3(
             if validation.confidence < min_confidence {
                 session.keystroke_count = session.keystroke_count.saturating_sub(increment);
                 if pushed {
+                    session.jitter_sample_index.remove(&sample.timestamp_ns);
                     session.jitter_samples.pop();
                 }
             }

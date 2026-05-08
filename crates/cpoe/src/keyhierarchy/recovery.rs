@@ -18,7 +18,12 @@ pub fn recover_session(
     recovery: &SessionRecoveryState,
     document_hash: [u8; 32],
 ) -> Result<Session, KeyHierarchyError> {
-    if recovery.certificate.session_id == [0u8; 32] {
+    if subtle::ConstantTimeEq::ct_eq(
+        &recovery.certificate.session_id[..],
+        &[0u8; 32][..],
+    )
+    .into()
+    {
         return Err(KeyHierarchyError::NoRecoveryData);
     }
 

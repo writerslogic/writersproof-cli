@@ -698,6 +698,8 @@ pub struct DocumentSession {
     pub window_title: ObfuscatedString,
     /// Per-document jitter samples for forensic analysis.
     pub(crate) jitter_samples: Vec<crate::jitter::SimpleJitterSample>,
+    /// O(1) index: timestamp_ns → index in jitter_samples. Kept in sync with jitter_samples.
+    pub(crate) jitter_sample_index: std::collections::HashMap<i64, usize>,
     /// Incremental hash chain over accepted jitter samples.
     ///
     /// Updated on every validated keystroke:
@@ -924,6 +926,7 @@ impl Clone for DocumentSession {
             app_name: self.app_name.clone(),
             window_title: self.window_title.clone(),
             jitter_samples: self.jitter_samples.clone(),
+            jitter_sample_index: self.jitter_sample_index.clone(),
             jitter_hash_state: self.jitter_hash_state,
             cognitive: self.cognitive.clone(),
             focus_switches: self.focus_switches.clone(),
@@ -992,6 +995,7 @@ impl DocumentSession {
             app_name,
             window_title,
             jitter_samples: Vec::new(),
+            jitter_sample_index: std::collections::HashMap::new(),
             jitter_hash_state,
             cognitive: crate::forensics::cognitive_accumulator::CognitiveAccumulator::new(),
             focus_switches: VecDeque::new(),

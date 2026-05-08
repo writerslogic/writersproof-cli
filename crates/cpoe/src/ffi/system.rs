@@ -425,9 +425,9 @@ pub fn ffi_get_dashboard_metrics() -> FfiDashboardMetrics {
             let ninety_days_ago_ns =
                 (chrono::Utc::now() - chrono::Duration::days(90)).timestamp_nanos_safe();
             let timestamps = store
-                .get_all_event_timestamps(ninety_days_ago_ns)
+                .get_all_event_timestamps_unverified(ninety_days_ago_ns)
                 .unwrap_or_else(|e| {
-                    log::warn!("store get_all_event_timestamps failed: {e}");
+                    log::warn!("store get_all_event_timestamps_unverified failed: {e}");
                     Default::default()
                 });
 
@@ -468,9 +468,9 @@ pub fn ffi_get_activity_data(days: u32) -> Vec<FfiActivityPoint> {
             (chrono::Utc::now() - chrono::Duration::days(days as i64)).timestamp_nanos_safe();
 
         let timestamps = store
-            .get_all_event_timestamps(start_ns)
+            .get_all_event_timestamps_unverified(start_ns)
             .unwrap_or_else(|e| {
-                log::warn!("store get_all_event_timestamps failed: {e}");
+                log::warn!("store get_all_event_timestamps_unverified failed: {e}");
                 Default::default()
             });
 

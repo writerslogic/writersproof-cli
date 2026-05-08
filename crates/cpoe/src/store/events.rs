@@ -96,17 +96,26 @@ impl SecureStore {
                 e.hw_cosign_signature.as_deref(),
                 e.hw_cosign_pubkey.as_deref(),
                 e.hw_cosign_salt_commitment.as_deref(),
-                e.hw_cosign_chain_index.map(|c| i64::try_from(c).unwrap_or(i64::MAX)),
+                e.hw_cosign_chain_index.map(|c| {
+                    i64::try_from(c).unwrap_or_else(|_| {
+                        log::warn!("hw_cosign_chain_index {} exceeds i64::MAX, clamped", c);
+                        i64::MAX
+                    })
+                }),
                 e.hw_cosign_entangled_hash.as_deref(),
                 e.hw_cosign_entropy_digest.as_deref(),
-                e.hw_cosign_entropy_bytes.map(|v| i64::try_from(v).unwrap_or(i64::MAX)),
+                e.hw_cosign_entropy_bytes.map(|v| {
+                    i64::try_from(v).unwrap_or_else(|_| {
+                        log::warn!("hw_cosign_entropy_bytes {} exceeds i64::MAX, clamped", v);
+                        i64::MAX
+                    })
+                }),
                 e.posme_proof.as_deref(),
                 e.semantic_summary
             ],
         )?;
 
         let id = tx.last_insert_rowid();
-        e.id = Some(id);
 
         let (prev_event_count, last_verified_seq): (i64, i64) = tx.query_row(
             "SELECT event_count, last_verified_sequence FROM integrity WHERE id = 1",
@@ -128,6 +137,7 @@ impl SecureStore {
         )?;
 
         tx.commit()?;
+        e.id = Some(id);
         self.last_hash = e.event_hash;
         Ok(())
     }
@@ -310,12 +320,27 @@ impl SecureStore {
                     })
                 })
                 .transpose()?,
-            vdf_iterations: u64::try_from(row.get::<_, i64>(15)?).unwrap_or(0),
+            vdf_iterations: u64::try_from(row.get::<_, i64>(15)?).map_err(|_| {
+                rusqlite::Error::InvalidColumnType(
+                    15,
+                    "vdf_iterations".into(),
+                    rusqlite::types::Type::Integer,
+                )
+            })?,
             forensic_score: row.get(16)?,
             is_paste: row.get::<_, i32>(17)? != 0,
             hardware_counter: row
                 .get::<_, Option<i64>>(18)?
-                .map(|v| u64::try_from(v).unwrap_or(0)),
+                .map(|v| {
+                    u64::try_from(v).map_err(|_| {
+                        rusqlite::Error::InvalidColumnType(
+                            18,
+                            "hardware_counter".into(),
+                            rusqlite::types::Type::Integer,
+                        )
+                    })
+                })
+                .transpose()?,
             input_method: row.get(19)?,
             lamport_signature: row.get(20)?,
             lamport_pubkey_fingerprint: row.get(21)?,
@@ -325,12 +350,30 @@ impl SecureStore {
             hw_cosign_salt_commitment: row.get(25)?,
             hw_cosign_chain_index: row
                 .get::<_, Option<i64>>(26)?
-                .map(|v| u64::try_from(v).unwrap_or(0)),
+                .map(|v| {
+                    u64::try_from(v).map_err(|_| {
+                        rusqlite::Error::InvalidColumnType(
+                            26,
+                            "hw_cosign_chain_index".into(),
+                            rusqlite::types::Type::Integer,
+                        )
+                    })
+                })
+                .transpose()?,
             hw_cosign_entangled_hash: row.get(27)?,
             hw_cosign_entropy_digest: row.get(28)?,
             hw_cosign_entropy_bytes: row
                 .get::<_, Option<i64>>(29)?
-                .map(|v| u64::try_from(v).unwrap_or(0)),
+                .map(|v| {
+                    u64::try_from(v).map_err(|_| {
+                        rusqlite::Error::InvalidColumnType(
+                            29,
+                            "hw_cosign_entropy_bytes".into(),
+                            rusqlite::types::Type::Integer,
+                        )
+                    })
+                })
+                .transpose()?,
             posme_proof: row.get(30)?,
             semantic_summary: row.get(31)?,
         })
@@ -351,7 +394,7 @@ impl SecureStore {
     /// Return (timestamp, 1) pairs for all events after `start_ts`.
     pub fn get_global_activity(&self, start_ts: i64) -> anyhow::Result<Vec<(i64, i64)>> {
         Ok(self
-            .get_all_event_timestamps(start_ts)?
+            .get_all_event_timestamps_unverified(start_ts)?
             .into_iter()
             .map(|ts| (ts, 1i64))
             .collect())
@@ -361,14 +404,50 @@ impl SecureStore {
     ///
     /// **HMAC note**: This query returns raw column values without HMAC verification.
     /// Callers must treat timestamps as untrusted for forensic purposes; use
-    /// `get_all_events_grouped` (which verifies HMACs) for integrity-sensitive paths.
-    pub fn get_all_event_timestamps(&self, start_ts: i64) -> anyhow::Result<Vec<i64>> {
+    /// `get_all_event_timestamps_verified` or `get_all_events_grouped` for
+    /// integrity-sensitive paths.
+    pub(crate) fn get_all_event_timestamps_unverified(
+        &self,
+        start_ts: i64,
+    ) -> anyhow::Result<Vec<i64>> {
         let mut stmt = self.conn.prepare(
             "SELECT timestamp_ns FROM secure_events WHERE timestamp_ns >= ? ORDER BY timestamp_ns ASC"
         )?;
 
         let rows = stmt.query_map([start_ts], |row| row.get(0))?;
         rows.map(|r| r.map_err(anyhow::Error::from)).collect()
+    }
+
+    /// Return all HMAC-verified event timestamps after `start_ts`, ascending.
+    ///
+    /// Each row's HMAC is verified before including its timestamp in the result.
+    /// Returns an error if any event fails HMAC verification (possible tampering).
+    #[allow(dead_code)]
+    pub(crate) fn get_all_event_timestamps_verified(
+        &self,
+        start_ts: i64,
+    ) -> anyhow::Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, device_id, machine_id, timestamp_ns, file_path, \
+                content_hash, file_size, size_delta, previous_hash, event_hash, hmac, \
+                context_type, context_note, vdf_input, vdf_output, vdf_iterations, \
+                forensic_score, is_paste, hardware_counter, input_method, \
+                lamport_signature, lamport_pubkey_fingerprint, challenge_nonce, \
+                hw_cosign_signature, hw_cosign_pubkey, hw_cosign_salt_commitment, \
+                hw_cosign_chain_index, hw_cosign_entangled_hash, \
+                hw_cosign_entropy_digest, hw_cosign_entropy_bytes, \
+                posme_proof, semantic_summary \
+                FROM secure_events WHERE timestamp_ns >= ?1 ORDER BY timestamp_ns ASC",
+        )?;
+
+        let rows = stmt.query_map([start_ts], Self::row_to_event_with_hmac)?;
+        let mut timestamps = Vec::new();
+        for row in rows {
+            let (event, stored_hmac) = row?;
+            self.verify_event_row_hmac(&event, &stored_hmac)?;
+            timestamps.push(event.timestamp_ns);
+        }
+        Ok(timestamps)
     }
 
     /// Retrieve all events grouped by file path in a single query.
@@ -436,8 +515,7 @@ impl SecureStore {
                 [],
                 |row| row.get::<_, i64>(0),
             )
-            .map(|c| c > 0)
-            .unwrap_or(false);
+            .map(|c| c > 0)?;
         if has_integrity {
             return Err(anyhow::anyhow!(
                 "cannot update file_path: store has HMAC-verified events; \

@@ -56,7 +56,7 @@ impl SecureStore {
     /// Update a physical baseline signal using Welford's online algorithm.
     pub fn update_baseline(&mut self, signal: &str, value: f64) -> anyhow::Result<()> {
         if !value.is_finite() {
-            return Ok(()); // Silently reject non-finite values to prevent database corruption
+            return Err(anyhow::anyhow!("baseline value is non-finite: {value}"));
         }
 
         let tx = self.conn.transaction()?;

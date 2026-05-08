@@ -53,70 +53,23 @@ pub(crate) fn handle_start_session(
         };
     }
 
-    let init_result = cpoe::ffi::ffi_init();
-    if !init_result.success {
-        return Response::Error {
-            message: init_result
-                .error_message
-                .unwrap_or_else(|| "Initialization failed".into()),
-            code: "INIT_FAILED".into(),
-        };
+    if let Err(resp) = ensure_engine_initialized() {
+        return resp;
     }
 
-    let data_dir = match dirs::data_local_dir().or_else(dirs::home_dir) {
-        Some(dir) => dir,
-        None => {
-            return Response::Error {
-                message: "Cannot determine data directory: no home or local data dir found".into(),
-                code: "NO_DATA_DIR".into(),
-            };
-        }
+    let session_dir = match resolve_session_dir() {
+        Ok(dir) => dir,
+        Err(resp) => return resp,
     };
 
-    let session_dir = data_dir.join("CPoE").join("browser-sessions");
-    if let Err(e) = std::fs::create_dir_all(&session_dir) {
-        return Response::Error {
-            message: format!("create session dir: {e}"),
-            code: "IO_ERROR".into(),
-        };
-    }
+    let session_nonce = match generate_session_nonce() {
+        Ok(nonce) => nonce,
+        Err(resp) => return resp,
+    };
 
-    let mut session_nonce = [0u8; 16];
-    if let Err(e) = getrandom::getrandom(&mut session_nonce) {
-        return Response::Error {
-            message: format!("CSPRNG failure: {e}"),
-            code: "CRYPTO_ERROR".into(),
-        };
-    }
+    let session_id = derive_session_id(&document_url, &session_nonce);
 
-    let mut hasher = Sha256::new();
-    hasher.update(document_url.as_bytes());
-    hasher.update(now_nanos().to_le_bytes());
-    hasher.update(session_nonce);
-    let hash = hasher.finalize();
-    let session_id = hex::encode(&hash[..8]);
-
-    let safe_title: String = document_title
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(64)
-        .collect();
-    let evidence_path = session_dir.join(format!("{safe_title}_{session_id}.cpoe"));
-
-    // Sanitize editor_type: only alphanumeric and '-', max 32 chars.
-    let safe_editor_type: Option<String> = editor_type.as_deref().and_then(|et| {
-        let s: String = et.chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-            .take(32)
-            .collect();
-        if s.is_empty() { None } else { Some(s) }
-    });
+    let safe_editor_type = sanitize_editor_type(editor_type.as_deref());
 
     // Look up any recent prior session for this URL to chain evidence files.
     let lookup_now_ns = now_nanos();
@@ -126,52 +79,26 @@ pub(crate) fn handle_start_session(
             .map(|r| r.session_id.clone())
     };
 
-    // Escape HTML comment delimiters to prevent evidence format corruption.
-    let safe_title_html = document_title
-        .replace("--", "\u{2014}")
-        .replace('>', "\u{203A}");
-    // Write to a temp file with restricted permissions first, then rename
-    // to avoid a TOCTOU window where the file is world-readable.
-    {
-        let mut tmp = match tempfile::NamedTempFile::new_in(&session_dir) {
-            Ok(t) => t,
-            Err(e) => {
-                return Response::Error {
-                    message: format!("create temp evidence file: {e}"),
-                    code: "IO_ERROR".into(),
-                };
-            }
-        };
-        // Restrict permissions on the temp file before writing content.
-        if let Err(e) = cpoe::restrict_permissions(tmp.path(), 0o600) {
-            eprintln!("Warning: chmod temp evidence file: {e}");
-        }
-        let mut header = format!("<!-- {safe_title_html} -->\n");
-        if let Some(ref et) = safe_editor_type {
-            header.push_str(&format!("<!-- editor_type: {et} -->\n"));
-        }
-        if let Some(ref prior_id) = prior_session_id {
-            header.push_str(&format!("<!-- continues_from: {prior_id} -->\n"));
-        }
-        if let Err(e) = tmp.write_all(header.as_bytes()) {
-            return Response::Error {
-                message: format!("write evidence file: {e}"),
-                code: "IO_ERROR".into(),
-            };
-        }
-        if let Err(e) = tmp.persist(&evidence_path) {
-            return Response::Error {
-                message: format!("persist evidence file: {e}"),
-                code: "IO_ERROR".into(),
-            };
-        }
+    let evidence_path = build_evidence_path(
+        &session_dir,
+        &document_title,
+        &session_id,
+    );
+
+    if let Err(resp) = write_evidence_header(
+        &session_dir,
+        &evidence_path,
+        &document_title,
+        safe_editor_type.as_deref(),
+        prior_session_id.as_deref(),
+    ) {
+        return resp;
     }
 
     let checkpoint_result = cpoe::ffi::ffi_create_checkpoint(
         evidence_path.display().to_string(),
         format!("Browser session started: {document_title}"),
     );
-
     if !checkpoint_result.success {
         return Response::Error {
             message: checkpoint_result
@@ -182,15 +109,11 @@ pub(crate) fn handle_start_session(
     }
 
     let signing_key = load_device_signing_key();
-
-    let mut genesis_hasher = Sha256::new();
-    genesis_hasher.update(session_id.as_bytes());
-    genesis_hasher.update(session_nonce);
-    if let Some(ref sk) = signing_key {
-        genesis_hasher.update(sk.verifying_key().as_bytes());
-    }
-    genesis_hasher.update(b"genesis");
-    let genesis: [u8; 32] = genesis_hasher.finalize().into();
+    let genesis = compute_genesis_hash(
+        &session_id,
+        &session_nonce,
+        signing_key.as_ref(),
+    );
 
     let now_ns = now_nanos();
 
@@ -199,26 +122,7 @@ pub(crate) fn handle_start_session(
         p.into_inner()
     });
 
-    if let Some(prev) = session_lock.take() {
-        eprintln!(
-            "Finalizing previous session {} ('{}', {} checkpoints) before starting new session",
-            prev.id, prev.document_title, prev.checkpoint_count
-        );
-        let final_result = cpoe::ffi::ffi_create_checkpoint(
-            prev.evidence_path.display().to_string(),
-            format!(
-                "Browser session ended (superseded): {} ({} checkpoints)",
-                prev.document_title, prev.checkpoint_count
-            ),
-        );
-        if !final_result.success {
-            eprintln!(
-                "Warning: final checkpoint failed for previous session {}: {}",
-                prev.id,
-                final_result.error_message.as_deref().unwrap_or("unknown")
-            );
-        }
-    }
+    finalize_prior_session(&mut session_lock);
 
     let device_public_key = signing_key
         .as_ref()
@@ -251,6 +155,179 @@ pub(crate) fn handle_start_session(
         message: format!("Now witnessing: {document_title}"),
         session_nonce: hex::encode(session_nonce),
         device_public_key,
+    }
+}
+
+/// Initialize the CPoE engine, returning an error response on failure.
+fn ensure_engine_initialized() -> Result<(), Response> {
+    let init_result = cpoe::ffi::ffi_init();
+    if !init_result.success {
+        return Err(Response::Error {
+            message: init_result
+                .error_message
+                .unwrap_or_else(|| "Initialization failed".into()),
+            code: "INIT_FAILED".into(),
+        });
+    }
+    Ok(())
+}
+
+/// Resolve and create the browser session directory.
+fn resolve_session_dir() -> Result<std::path::PathBuf, Response> {
+    let data_dir = dirs::data_local_dir().or_else(dirs::home_dir).ok_or_else(|| {
+        Response::Error {
+            message: "Cannot determine data directory: no home or local data dir found"
+                .into(),
+            code: "NO_DATA_DIR".into(),
+        }
+    })?;
+
+    let session_dir = data_dir.join("CPoE").join("browser-sessions");
+    std::fs::create_dir_all(&session_dir).map_err(|e| Response::Error {
+        message: format!("create session dir: {e}"),
+        code: "IO_ERROR".into(),
+    })?;
+
+    Ok(session_dir)
+}
+
+/// Generate a 16-byte cryptographic session nonce.
+fn generate_session_nonce() -> Result<[u8; 16], Response> {
+    let mut nonce = [0u8; 16];
+    getrandom::getrandom(&mut nonce).map_err(|e| Response::Error {
+        message: format!("CSPRNG failure: {e}"),
+        code: "CRYPTO_ERROR".into(),
+    })?;
+    Ok(nonce)
+}
+
+/// Derive a hex session ID from the document URL, current time, and nonce.
+fn derive_session_id(document_url: &str, session_nonce: &[u8; 16]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(document_url.as_bytes());
+    hasher.update(now_nanos().to_le_bytes());
+    hasher.update(session_nonce);
+    let hash = hasher.finalize();
+    hex::encode(&hash[..8])
+}
+
+/// Sanitize editor_type: only alphanumeric and '-', max 32 chars.
+fn sanitize_editor_type(editor_type: Option<&str>) -> Option<String> {
+    editor_type.and_then(|et| {
+        let s: String = et
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .take(32)
+            .collect();
+        if s.is_empty() { None } else { Some(s) }
+    })
+}
+
+/// Build the evidence file path from a sanitized title and session ID.
+fn build_evidence_path(
+    session_dir: &std::path::Path,
+    document_title: &str,
+    session_id: &str,
+) -> std::path::PathBuf {
+    let safe_title: String = document_title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect();
+    session_dir.join(format!("{safe_title}_{session_id}.cpoe"))
+}
+
+/// Write the initial evidence file header via a temp file with restricted
+/// permissions to avoid a TOCTOU window where the file is world-readable.
+fn write_evidence_header(
+    session_dir: &std::path::Path,
+    evidence_path: &std::path::Path,
+    document_title: &str,
+    editor_type: Option<&str>,
+    prior_session_id: Option<&str>,
+) -> Result<(), Response> {
+    let safe_title_html = document_title
+        .replace("--", "\u{2014}")
+        .replace('>', "\u{203A}");
+
+    let mut tmp = tempfile::NamedTempFile::new_in(session_dir).map_err(|e| {
+        Response::Error {
+            message: format!("create temp evidence file: {e}"),
+            code: "IO_ERROR".into(),
+        }
+    })?;
+
+    cpoe::restrict_permissions(tmp.path(), 0o600).map_err(|e| Response::Error {
+        message: format!("chmod temp evidence file: {e}"),
+        code: "IO_ERROR".into(),
+    })?;
+
+    let mut header = format!("<!-- {safe_title_html} -->\n");
+    if let Some(et) = editor_type {
+        header.push_str(&format!("<!-- editor_type: {et} -->\n"));
+    }
+    if let Some(prior_id) = prior_session_id {
+        header.push_str(&format!("<!-- continues_from: {prior_id} -->\n"));
+    }
+
+    tmp.write_all(header.as_bytes()).map_err(|e| Response::Error {
+        message: format!("write evidence file: {e}"),
+        code: "IO_ERROR".into(),
+    })?;
+
+    tmp.persist(evidence_path).map_err(|e| Response::Error {
+        message: format!("persist evidence file: {e}"),
+        code: "IO_ERROR".into(),
+    })?;
+
+    Ok(())
+}
+
+/// Compute the genesis commitment hash for a new session.
+fn compute_genesis_hash(
+    session_id: &str,
+    session_nonce: &[u8; 16],
+    signing_key: Option<&ed25519_dalek::SigningKey>,
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(session_id.as_bytes());
+    hasher.update(session_nonce);
+    if let Some(sk) = signing_key {
+        hasher.update(sk.verifying_key().as_bytes());
+    }
+    hasher.update(b"genesis");
+    hasher.finalize().into()
+}
+
+/// Finalize any prior session by creating a final checkpoint.
+fn finalize_prior_session(
+    session_lock: &mut Option<Session>,
+) {
+    if let Some(prev) = session_lock.take() {
+        eprintln!(
+            "Finalizing previous session {} ('{}', {} checkpoints) before starting new session",
+            prev.id, prev.document_title, prev.checkpoint_count
+        );
+        let final_result = cpoe::ffi::ffi_create_checkpoint(
+            prev.evidence_path.display().to_string(),
+            format!(
+                "Browser session ended (superseded): {} ({} checkpoints)",
+                prev.document_title, prev.checkpoint_count
+            ),
+        );
+        if !final_result.success {
+            eprintln!(
+                "Warning: final checkpoint failed for previous session {}: {}",
+                prev.id,
+                final_result.error_message.as_deref().unwrap_or("unknown")
+            );
+        }
     }
 }
 
@@ -502,11 +579,10 @@ fn load_device_signing_key() -> Option<ed25519_dalek::SigningKey> {
     }
 
     // Fall back to flat file for legacy installs; migrate to keychain on success.
-    let dir = if let Ok(d) = std::env::var("CPOE_DATA_DIR") {
-        std::path::PathBuf::from(d)
-    } else {
-        dirs::home_dir()?.join(".writersproof")
-    };
+    let dir = dirs::home_dir()?.join(".writersproof");
+    if !is_safe_key_dir(&dir) {
+        return None;
+    }
     let key_path = dir.join("signing_key");
     let mut key_data = std::fs::read(&key_path).ok()?;
     if key_data.len() != 32 && key_data.len() != 64 {
@@ -527,6 +603,24 @@ fn load_device_signing_key() -> Option<ed25519_dalek::SigningKey> {
     let key = ed25519_dalek::SigningKey::from_bytes(&seed);
     seed.zeroize();
     Some(key)
+}
+
+/// Reject key directories that are not owned by us or are world-writable.
+#[cfg(unix)]
+fn is_safe_key_dir(dir: &std::path::Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let meta = match std::fs::symlink_metadata(dir) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    let owned_by_us = meta.uid() == unsafe { libc::getuid() };
+    let not_world_writable = meta.mode() & 0o002 == 0;
+    owned_by_us && not_world_writable
+}
+
+#[cfg(not(unix))]
+fn is_safe_key_dir(_dir: &std::path::Path) -> bool {
+    true
 }
 
 /// Compute commitment hash: H(prev_commitment || content_hash || ordinal || session_nonce).
@@ -594,17 +688,21 @@ pub(crate) fn handle_stop_session() -> Response {
         forensics.verdict
     });
 
-    let signature = session.signing_key.as_ref().map(|sk| {
+    let signature = session.signing_key.as_ref().and_then(|sk| {
         // Hash the entire evidence file before appending the seal.
         // This makes any modification (including stripping signature lines) detectable.
-        let file_hash = std::fs::read(&session.evidence_path)
-            .map(|data| {
+        let file_hash = match std::fs::read(&session.evidence_path) {
+            Ok(data) => {
                 let mut h = Sha256::new();
                 h.update(&data);
                 let result: [u8; 32] = h.finalize().into();
                 result
-            })
-            .unwrap_or([0u8; 32]);
+            }
+            Err(e) => {
+                eprintln!("Error: cannot read evidence file for seal: {e}");
+                return None;
+            }
+        };
 
         let mut payload = Vec::with_capacity(128);
         payload.extend_from_slice(b"cpoe-session-end-v1");
@@ -632,7 +730,7 @@ pub(crate) fn handle_stop_session() -> Response {
         {
             eprintln!("Warning: failed to write/sync session seal: {e}"); // intentional
         }
-        sig_hex
+        Some(sig_hex)
     });
 
     session_index::upsert_and_save(
@@ -680,7 +778,7 @@ pub(crate) fn handle_inject_jitter(intervals: Vec<u64>) -> Response {
     let count = intervals.len();
 
     if count == 0 {
-        return Response::JitterReceived { count: 0 };
+        return Response::JitterReceived { count: 0, dropped: 0 };
     }
 
     if count > MAX_BATCH_SIZE {
@@ -774,7 +872,8 @@ pub(crate) fn handle_inject_jitter(intervals: Vec<u64>) -> Response {
         session.jitter_intervals.len()
     );
 
-    Response::JitterReceived { count: stored }
+    let dropped = accepted.saturating_sub(stored);
+    Response::JitterReceived { count: stored, dropped }
 }
 
 pub(crate) fn handle_snapshot_save(
@@ -782,6 +881,12 @@ pub(crate) fn handle_snapshot_save(
     content_hash: String,
     char_count: u64,
 ) -> Response {
+    if document_url.len() > MAX_URL_LEN {
+        return Response::Error {
+            message: format!("document_url exceeds maximum length ({MAX_URL_LEN} bytes)"),
+            code: "URL_TOO_LONG".into(),
+        };
+    }
     if !is_domain_allowed(&document_url) {
         return Response::Error {
             message: "Unsupported domain".into(),

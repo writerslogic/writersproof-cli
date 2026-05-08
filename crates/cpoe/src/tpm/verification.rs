@@ -4,6 +4,7 @@ use super::{Binding, Quote, TpmError};
 use ed25519_dalek::Verifier as _;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::DecodePublicKey;
+use subtle::Choice;
 
 pub fn verify_binding_chain(
     bindings: &[Binding],
@@ -11,6 +12,11 @@ pub fn verify_binding_chain(
 ) -> Result<(), TpmError> {
     if bindings.is_empty() {
         return Ok(());
+    }
+    if trusted_keys.is_empty() {
+        return Err(TpmError::Verification(
+            "trusted_keys required for chain verification; self-trust is not permitted".into(),
+        ));
     }
 
     let mut last_counter: Option<u64> = None;
@@ -54,20 +60,22 @@ fn verify_binding_with_trusted(
     let payload = binding_payload(binding);
 
     // When trusted keys are provided, verify against them (ignoring the embedded key,
-    // which could be attacker-supplied). Uses signature verification, not byte equality,
-    // so different key encodings (compressed vs uncompressed) still match.
+    // which could be attacker-supplied). Verifies ALL keys to avoid leaking which key
+    // matched via timing side-channel.
     if !trusted_keys.is_empty() {
+        let mut any_valid = Choice::from(0u8);
         for key in trusted_keys {
-            if verify_signature_for_provider(
+            let valid = verify_signature_for_provider(
                 &binding.provider_type,
                 key,
                 &payload,
                 &binding.signature,
             )
-            .is_ok()
-            {
-                return Ok(());
-            }
+            .is_ok();
+            any_valid |= Choice::from(valid as u8);
+        }
+        if bool::from(any_valid) {
+            return Ok(());
         }
         return Err(TpmError::Verification(
             "signature did not match any trusted key".into(),
@@ -163,7 +171,7 @@ fn try_verify_ed25519(
     let vk = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes).ok()?;
     let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
     Some(
-        vk.verify(payload, &sig)
+        vk.verify_strict(payload, &sig)
             .map_err(|_| TpmError::InvalidSignature),
     )
 }

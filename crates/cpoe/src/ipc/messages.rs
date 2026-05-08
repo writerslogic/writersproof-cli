@@ -135,8 +135,13 @@ pub(crate) fn is_blocked_system_path(path: &Path) -> Result<bool, String> {
     #[cfg(unix)]
     {
         let s = path.to_string_lossy();
+        // HFS+ (macOS default) is case-insensitive; compare lowercased on macOS.
+        #[cfg(target_os = "macos")]
+        let s_cmp = s.to_lowercase();
+        #[cfg(not(target_os = "macos"))]
+        let s_cmp = s.as_ref().to_owned();
         for prefix in BLOCKED_UNIX_PREFIXES {
-            if s.starts_with(prefix) {
+            if s_cmp.starts_with(&prefix.to_lowercase()) {
                 return Ok(true);
             }
         }
@@ -311,27 +316,15 @@ impl IpcMessage {
         match self {
             IpcMessage::Handshake { version } => {
                 if version.len() > MAX_SHORT_STRING {
-                    return Err(format!(
-                        "Handshake version too long: {} bytes (max {})",
-                        version.len(),
-                        MAX_SHORT_STRING
-                    ));
+                    return Err("Handshake version too long".to_string());
                 }
             }
             IpcMessage::SystemAlert { level, message } => {
                 if level.len() > MAX_SHORT_STRING {
-                    return Err(format!(
-                        "SystemAlert level too long: {} bytes (max {})",
-                        level.len(),
-                        MAX_SHORT_STRING
-                    ));
+                    return Err("SystemAlert level too long".to_string());
                 }
                 if message.len() > MAX_ALERT_MESSAGE {
-                    return Err(format!(
-                        "SystemAlert message too long: {} bytes (max {})",
-                        message.len(),
-                        MAX_ALERT_MESSAGE
-                    ));
+                    return Err("SystemAlert message too long".to_string());
                 }
             }
             IpcMessage::StartWitnessing { file_path } => {
@@ -345,11 +338,7 @@ impl IpcMessage {
             } => {
                 validate_ipc_path(file_path)?;
                 if title.len() > MAX_ALERT_MESSAGE {
-                    return Err(format!(
-                        "ExportWithNonce title too long: {} bytes (max {})",
-                        title.len(),
-                        MAX_ALERT_MESSAGE
-                    ));
+                    return Err("ExportWithNonce title too long".to_string());
                 }
             }
             IpcMessage::VerifyWithNonce { evidence_path, .. } => {

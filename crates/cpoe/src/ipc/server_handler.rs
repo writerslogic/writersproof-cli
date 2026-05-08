@@ -92,6 +92,10 @@ pub(super) async fn handle_connection_inner<
 
     let mut peek_buf = [0u8; 2];
     if stream.read_exact(&mut peek_buf).await.is_err() {
+        log::warn!(
+            "IPC: connection on {} closed before sending protocol magic (probe or truncated connect)",
+            transport_label
+        );
         return;
     }
 
@@ -183,10 +187,7 @@ pub(super) async fn handle_connection_inner<
         let plaintext = if let Some(ref session) = secure_session {
             match session.decrypt(&msg_buf) {
                 Ok(pt) => pt,
-                // Coupled to the anyhow!("SequenceDesync: ...") string in
-                // SecureSession::decrypt (crypto.rs). Not a typed variant; update
-                // both sites together if the prefix changes.
-                Err(e) if e.to_string().starts_with("SequenceDesync:") => {
+                Err(e) if e.downcast_ref::<super::crypto::SequenceDesyncError>().is_some() => {
                     log::warn!(
                         "IPC: sequence desync on {}: {} (closing session)",
                         transport_label,

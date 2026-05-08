@@ -46,6 +46,15 @@ pub(crate) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Key confirmation token encrypted by both sides to verify key agreement.
 pub const KEY_CONFIRM_PLAINTEXT: &[u8] = b"cpoe-key-confirm-ok";
 
+/// Typed error for sequence number desynchronization, allowing callers to
+/// match on the variant instead of parsing error strings.
+#[derive(Debug, thiserror::Error)]
+#[error("SequenceDesync: expected {expected}, got {got} (client should retry)")]
+pub struct SequenceDesyncError {
+    pub expected: u64,
+    pub got: u64,
+}
+
 /// Per-connection AES-256-GCM session with sequence-based replay protection.
 /// Key material is zeroized on drop.
 pub struct SecureSession {
@@ -125,7 +134,7 @@ impl SecureSession {
         // the race between load and fetch_add.
         let seq = loop {
             let current = self.tx_sequence.load(Ordering::SeqCst);
-            if current > u64::MAX - 2 {
+            if current >= u64::MAX - 1 {
                 return Err(anyhow!(
                     "tx_sequence exhausted (would overflow); session must be rekeyed"
                 ));
@@ -177,11 +186,7 @@ impl SecureSession {
         let expected_seq = loop {
             let current = self.rx_sequence.load(Ordering::SeqCst);
             if seq.to_le_bytes().ct_eq(&current.to_le_bytes()).unwrap_u8() != 1 {
-                return Err(anyhow!(
-                    "SequenceDesync: expected {}, got {} (client should retry)",
-                    current,
-                    seq
-                ));
+                return Err(SequenceDesyncError { expected: current, got: seq }.into());
             }
             match self.rx_sequence.compare_exchange(
                 current,

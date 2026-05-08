@@ -23,9 +23,63 @@ struct ForensicCacheEntry {
     regions: Arc<std::collections::HashMap<i64, Vec<crate::forensics::RegionData>>>,
 }
 
-fn forensic_cache() -> &'static dashmap::DashMap<String, ForensicCacheEntry> {
-    static CACHE: OnceLock<dashmap::DashMap<String, ForensicCacheEntry>> = OnceLock::new();
-    CACHE.get_or_init(dashmap::DashMap::new)
+/// Bounded LRU cache for forensic results. Entries are evicted in least-recently-used
+/// order when the cache exceeds `MAX_FORENSIC_CACHE` entries. The `order` VecDeque
+/// tracks access recency (most recent at back); all mutations happen under a single
+/// Mutex, eliminating the evict-reinsert race from the prior DashMap/HashMap design.
+struct BoundedLruCache {
+    map: std::collections::HashMap<String, ForensicCacheEntry>,
+    order: std::collections::VecDeque<String>,
+}
+
+const MAX_FORENSIC_CACHE: usize = 10;
+
+impl BoundedLruCache {
+    fn new() -> Self {
+        Self {
+            map: std::collections::HashMap::with_capacity(MAX_FORENSIC_CACHE),
+            order: std::collections::VecDeque::with_capacity(MAX_FORENSIC_CACHE),
+        }
+    }
+
+    /// Look up an entry and promote it to most-recently-used if found.
+    fn get(
+        &mut self,
+        key: &str,
+    ) -> Option<&ForensicCacheEntry> {
+        if self.map.contains_key(key) {
+            // Promote to most-recently-used by moving to back of order queue.
+            if let Some(pos) = self.order.iter().position(|k| k == key) {
+                self.order.remove(pos);
+            }
+            self.order.push_back(key.to_string());
+            self.map.get(key)
+        } else {
+            None
+        }
+    }
+
+    /// Insert an entry, evicting the least-recently-used entry if at capacity.
+    fn insert(&mut self, key: String, value: ForensicCacheEntry) {
+        if self.map.contains_key(&key) {
+            // Update existing: remove old position, will re-add at back.
+            if let Some(pos) = self.order.iter().position(|k| k == &key) {
+                self.order.remove(pos);
+            }
+        } else if self.map.len() >= MAX_FORENSIC_CACHE {
+            // Evict least-recently-used (front of queue).
+            if let Some(evict_key) = self.order.pop_front() {
+                self.map.remove(&evict_key);
+            }
+        }
+        self.map.insert(key.clone(), value);
+        self.order.push_back(key);
+    }
+}
+
+fn forensic_cache() -> &'static std::sync::Mutex<BoundedLruCache> {
+    static CACHE: OnceLock<std::sync::Mutex<BoundedLruCache>> = OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(BoundedLruCache::new()))
 }
 
 #[allow(dead_code)] // fields used for future report sections
@@ -308,16 +362,21 @@ fn get_forensics_cached(
     Arc<std::collections::HashMap<i64, Vec<crate::forensics::RegionData>>>,
 ) {
     let cache_key = file_path_str.to_string();
-    let hit = forensic_cache()
-        .get(&cache_key)
-        .filter(|e| e.event_count == events.len())
-        .map(|e| {
-            (
-                Arc::clone(&e.profile),
-                Arc::clone(&e.metrics),
-                Arc::clone(&e.regions),
-            )
-        });
+    let hit = {
+        let mut cache = forensic_cache()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        cache
+            .get(&cache_key)
+            .filter(|e| e.event_count == events.len())
+            .map(|e| {
+                (
+                    Arc::clone(&e.profile),
+                    Arc::clone(&e.metrics),
+                    Arc::clone(&e.regions),
+                )
+            })
+    };
     match hit {
         Some(cached) => cached,
         None => {
@@ -328,15 +387,10 @@ fn get_forensics_cached(
             let (m_raw, r_raw) = crate::ffi::helpers::run_full_forensics(events);
             let m = Arc::new(m_raw);
             let r = Arc::new(r_raw);
-            const MAX_FORENSIC_CACHE: usize = 10;
-            if forensic_cache().len() >= MAX_FORENSIC_CACHE {
-                if let Some(entry) = forensic_cache().iter().next() {
-                    let evict_key = entry.key().clone();
-                    drop(entry);
-                    forensic_cache().remove(&evict_key);
-                }
-            }
-            forensic_cache().insert(
+            let mut cache = forensic_cache()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            cache.insert(
                 cache_key,
                 ForensicCacheEntry {
                     event_count: events.len(),
@@ -625,16 +679,11 @@ fn make_dimension(
     }
 }
 
-fn build_dimensions(
+fn build_temporal_dimension(
     stats: &EventStats,
-    process: &ProcessEvidence,
-    metrics: &crate::forensics::ForensicMetrics,
-    sessions: &[ReportSession],
-) -> Vec<DimensionScore> {
-    let event_count = process.swf_checkpoints.unwrap_or(0) as usize;
-
-    // 1. Temporal Proof Chain
-    let temporal_score: u32 = {
+    event_count: usize,
+) -> DimensionScore {
+    let score: u32 = {
         let has_vdf = stats.total_iterations > 0;
         let dense_enough = event_count >= 3;
         let long_enough = stats.total_min > 1.0;
@@ -650,9 +699,30 @@ fn build_dimensions(
         base.saturating_add(if stats.total_iterations > 1000 { 10 } else { 5 })
             .min(99)
     };
+    let kd = format!(
+        "{} checkpoints, {} VDF iterations",
+        event_count, stats.total_iterations
+    );
+    make_dimension(
+        "Temporal Proof Chain",
+        score,
+        if stats.total_iterations > 0 { 0.90 } else { 0.50 },
+        kd,
+        dimension_interpretation(
+            score,
+            "Checkpoint density and VDF chain establish a credible minimum elapsed time consistent with organic composition.",
+            "Chain is internally consistent but limited iterations reduce the provable elapsed-time bound.",
+            "Insufficient checkpoints or VDF proof to establish minimum elapsed time with confidence.",
+        ),
+    )
+}
 
-    // 2. Edit Pattern
-    let edit_score: u32 = {
+fn build_edit_dimension(
+    process: &ProcessEvidence,
+    metrics: &crate::forensics::ForensicMetrics,
+    event_count: usize,
+) -> DimensionScore {
+    let score: u32 = {
         let topo = finite_or(metrics.assessment_score.get(), 0.0);
         let ri = process
             .revision_intensity
@@ -667,9 +737,30 @@ fn build_dimensions(
         };
         ((topo * 0.6 + ri_score * 0.4) * 100.0).clamp(0.0, 99.0) as u32
     };
+    let kd = process
+        .revision_intensity
+        .filter(|v| v.is_finite())
+        .map(|v| format!("{:.0}% revision rate", v * 100.0))
+        .unwrap_or_else(|| "edit topology analyzed".to_string());
+    make_dimension(
+        "Edit Pattern Authenticity",
+        score,
+        if event_count >= 5 { 0.80 } else { 0.50 },
+        kd,
+        dimension_interpretation(
+            score,
+            "Revision patterns are consistent with iterative human composition including normal correction frequency and non-linear editing.",
+            "Some revision activity detected; patterns are ambiguous between original composition and light editing.",
+            "Low revision rate or anomalous editing patterns are inconsistent with typical human drafting behavior.",
+        ),
+    )
+}
 
-    // 3. Process Continuity
-    let continuity_score: u32 = {
+fn build_continuity_dimension(
+    stats: &EventStats,
+    sessions: &[ReportSession],
+) -> DimensionScore {
+    let score: u32 = {
         let session_count = sessions.len();
         let avg_duration = if session_count > 0 {
             stats.total_min / session_count as f64
@@ -686,9 +777,31 @@ fn build_dimensions(
         base.saturating_add(if avg_duration > 5.0 { 10 } else { 0 })
             .min(99)
     };
+    let kd = format!(
+        "{} session{}, {:.0} min total",
+        sessions.len(),
+        if sessions.len() == 1 { "" } else { "s" },
+        stats.total_min
+    );
+    make_dimension(
+        "Process Continuity",
+        score,
+        if sessions.len() >= 2 { 0.85 } else { 0.60 },
+        kd,
+        dimension_interpretation(
+            score,
+            "Multiple distinct writing sessions demonstrate sustained engagement consistent with extended human composition.",
+            "Session structure is present but limited; fewer sessions reduce confidence in sustained engagement.",
+            "Single or very short session may indicate rapid entry rather than organic multi-session composition.",
+        ),
+    )
+}
 
-    // 4. Content-Process Coherence
-    let coherence_score: u32 = {
+fn build_coherence_dimension(
+    stats: &EventStats,
+    metrics: &crate::forensics::ForensicMetrics,
+) -> DimensionScore {
+    let score: u32 = {
         let low_paste = stats.paste_ratio_pct.map(|p| p < 30.0).unwrap_or(true);
         let has_keystrokes = stats.keystroke_estimate > 10;
         let cv = finite_or(metrics.cadence.correction_ratio.get(), 0.0);
@@ -696,9 +809,28 @@ fn build_dimensions(
         base.saturating_add(if cv > 0.05 && cv < 0.4 { 15 } else { 0 })
             .min(99)
     };
+    let kd = stats
+        .paste_ratio_pct
+        .map(|p| format!("{:.1}% paste ratio", p))
+        .unwrap_or_else(|| format!("{} paste events", stats.paste_count));
+    make_dimension(
+        "Content-Process Coherence",
+        score,
+        0.75,
+        kd,
+        dimension_interpretation(
+            score,
+            "Content growth closely tracks keystroke activity with low paste ratio; process and content are well-aligned.",
+            "Moderate alignment between content growth and editing activity; some paste operations detected.",
+            "High paste ratio or poor keystroke-to-content alignment; process evidence is partially decoupled from content.",
+        ),
+    )
+}
 
-    // 5. Behavioral Signature
-    let behavioral_score: u32 = {
+fn build_behavioral_dimension(
+    metrics: &crate::forensics::ForensicMetrics,
+) -> DimensionScore {
+    let score: u32 = {
         let cv = if metrics.cadence.mean_iki_ns > 0.0
             && metrics.cadence.std_dev_iki_ns > 0.0
             && metrics.cadence.std_dev_iki_ns.is_finite()
@@ -718,9 +850,30 @@ fn build_dimensions(
         let biological = finite_or(metrics.biological_cadence_score.get(), 0.5);
         ((cv_score * 0.6 + biological * 0.4) * 100.0).clamp(0.0, 99.0) as u32
     };
+    let kd = format!(
+        "burst CV: {:.2}, correction rate: {:.1}%",
+        finite_or(metrics.cadence.burst_speed_cv, 0.0),
+        finite_or(metrics.cadence.correction_ratio.get(), 0.0) * 100.0
+    );
+    make_dimension(
+        "Behavioral Signature",
+        score,
+        if metrics.cadence.mean_iki_ns > 0.0 { 0.85 } else { 0.55 },
+        kd,
+        dimension_interpretation(
+            score,
+            "Inter-keystroke interval variability falls within human norms; cadence is consistent with biological typing.",
+            "Typing cadence shows some variability but the pattern is ambiguous; limited IKI data reduces certainty.",
+            "Keystroke cadence is atypical; may indicate automated input or transcription from an external source.",
+        ),
+    )
+}
 
-    // 6. Velocity Profile
-    let velocity_score: u32 = {
+fn build_velocity_dimension(
+    metrics: &crate::forensics::ForensicMetrics,
+    event_count: usize,
+) -> DimensionScore {
+    let score: u32 = {
         let mbps = finite_or(metrics.velocity.mean_bps, 0.0);
         let v_score = if mbps > 0.5 && mbps < 20.0 {
             0.85
@@ -733,109 +886,38 @@ fn build_dimensions(
         };
         (v_score * 100.0) as u32
     };
-
-    let kd_temporal = format!(
-        "{} checkpoints, {} VDF iterations",
-        event_count, stats.total_iterations
-    );
-    let kd_edit = process
-        .revision_intensity
-        .filter(|v| v.is_finite())
-        .map(|v| format!("{:.0}% revision rate", v * 100.0))
-        .unwrap_or_else(|| "edit topology analyzed".to_string());
-    let kd_continuity = format!(
-        "{} session{}, {:.0} min total",
-        sessions.len(),
-        if sessions.len() == 1 { "" } else { "s" },
-        stats.total_min
-    );
-    let kd_coherence = stats
-        .paste_ratio_pct
-        .map(|p| format!("{:.1}% paste ratio", p))
-        .unwrap_or_else(|| format!("{} paste events", stats.paste_count));
-    let kd_behavioral = format!(
-        "burst CV: {:.2}, correction rate: {:.1}%",
-        finite_or(metrics.cadence.burst_speed_cv, 0.0),
-        finite_or(metrics.cadence.correction_ratio.get(), 0.0) * 100.0
-    );
-    let kd_velocity = format!(
+    let kd = format!(
         "{:.1} bytes/sec mean velocity",
         finite_or(metrics.velocity.mean_bps, 0.0)
     );
+    make_dimension(
+        "Writing Velocity",
+        score,
+        if event_count >= 3 { 0.80 } else { 0.55 },
+        kd,
+        dimension_interpretation(
+            score,
+            "Mean content production rate falls within human prose writing norms (0.5\u{2013}15 B/s).",
+            "Content production velocity is plausible but falls outside the core human prose range.",
+            "Content production rate is inconsistent with natural human writing; may indicate batch insertion.",
+        ),
+    )
+}
 
+fn build_dimensions(
+    stats: &EventStats,
+    process: &ProcessEvidence,
+    metrics: &crate::forensics::ForensicMetrics,
+    sessions: &[ReportSession],
+) -> Vec<DimensionScore> {
+    let event_count = process.swf_checkpoints.unwrap_or(0) as usize;
     vec![
-        make_dimension(
-            "Temporal Proof Chain",
-            temporal_score,
-            if stats.total_iterations > 0 { 0.90 } else { 0.50 },
-            kd_temporal,
-            dimension_interpretation(
-                temporal_score,
-                "Checkpoint density and VDF chain establish a credible minimum elapsed time consistent with organic composition.",
-                "Chain is internally consistent but limited iterations reduce the provable elapsed-time bound.",
-                "Insufficient checkpoints or VDF proof to establish minimum elapsed time with confidence.",
-            ),
-        ),
-        make_dimension(
-            "Edit Pattern Authenticity",
-            edit_score,
-            if event_count >= 5 { 0.80 } else { 0.50 },
-            kd_edit,
-            dimension_interpretation(
-                edit_score,
-                "Revision patterns are consistent with iterative human composition including normal correction frequency and non-linear editing.",
-                "Some revision activity detected; patterns are ambiguous between original composition and light editing.",
-                "Low revision rate or anomalous editing patterns are inconsistent with typical human drafting behavior.",
-            ),
-        ),
-        make_dimension(
-            "Process Continuity",
-            continuity_score,
-            if sessions.len() >= 2 { 0.85 } else { 0.60 },
-            kd_continuity,
-            dimension_interpretation(
-                continuity_score,
-                "Multiple distinct writing sessions demonstrate sustained engagement consistent with extended human composition.",
-                "Session structure is present but limited; fewer sessions reduce confidence in sustained engagement.",
-                "Single or very short session may indicate rapid entry rather than organic multi-session composition.",
-            ),
-        ),
-        make_dimension(
-            "Content-Process Coherence",
-            coherence_score,
-            0.75,
-            kd_coherence,
-            dimension_interpretation(
-                coherence_score,
-                "Content growth closely tracks keystroke activity with low paste ratio; process and content are well-aligned.",
-                "Moderate alignment between content growth and editing activity; some paste operations detected.",
-                "High paste ratio or poor keystroke-to-content alignment; process evidence is partially decoupled from content.",
-            ),
-        ),
-        make_dimension(
-            "Behavioral Signature",
-            behavioral_score,
-            if metrics.cadence.mean_iki_ns > 0.0 { 0.85 } else { 0.55 },
-            kd_behavioral,
-            dimension_interpretation(
-                behavioral_score,
-                "Inter-keystroke interval variability falls within human norms; cadence is consistent with biological typing.",
-                "Typing cadence shows some variability but the pattern is ambiguous; limited IKI data reduces certainty.",
-                "Keystroke cadence is atypical; may indicate automated input or transcription from an external source.",
-            ),
-        ),
-        make_dimension(
-            "Writing Velocity",
-            velocity_score,
-            if event_count >= 3 { 0.80 } else { 0.55 },
-            kd_velocity,
-            dimension_interpretation(
-                velocity_score,
-                "Mean content production rate falls within human prose writing norms (0.5\u{2013}15 B/s).",
-                "Content production velocity is plausible but falls outside the core human prose range.",
-                "Content production rate is inconsistent with natural human writing; may indicate batch insertion.",
-            ),
-        ),
+        build_temporal_dimension(stats, event_count),
+        build_edit_dimension(process, metrics, event_count),
+        build_continuity_dimension(stats, sessions),
+        build_coherence_dimension(stats, metrics),
+        build_behavioral_dimension(metrics),
+        build_velocity_dimension(metrics, event_count),
     ]
 }
 
@@ -866,6 +948,58 @@ fn compute_provenance(
             })
             .collect(),
     })
+}
+
+fn verdict_description(verdict: Verdict) -> String {
+    match verdict {
+        Verdict::VerifiedHuman => "Strong evidence of human authorship with natural editing patterns, timing constraints, and behavioral consistency.".into(),
+        Verdict::LikelyHuman => "Moderate evidence of human authorship with generally consistent patterns.".into(),
+        Verdict::Inconclusive => "Insufficient evidence to make a determination about authorship.".into(),
+        Verdict::Suspicious => "Anomalous patterns detected that are inconsistent with typical human authorship.".into(),
+        Verdict::LikelySynthetic => "Strong indicators of synthetic or automated content generation.".into(),
+    }
+}
+
+fn compute_evidence_chain_hash(events: &[crate::store::SecureEvent]) -> String {
+    let mut h = Sha256::new();
+    for ev in events {
+        h.update(ev.content_hash);
+    }
+    hex::encode(h.finalize())
+}
+
+fn build_activity_contexts(sessions: &[ReportSession]) -> Vec<ActivityContext> {
+    sessions
+        .iter()
+        .map(|s| ActivityContext {
+            period_type: "writing_session".into(),
+            start: s.start,
+            end: s.start
+                + chrono::Duration::seconds(
+                    (s.duration_min.clamp(0.0, 525_960.0) * 60.0) as i64,
+                ),
+            duration_min: s.duration_min,
+            note: Some(s.summary.clone()),
+        })
+        .collect()
+}
+
+fn build_writing_flow(events: &[crate::store::SecureEvent]) -> Vec<FlowDataPoint> {
+    let first_ns = events.first().map(|e| e.timestamp_ns).unwrap_or(0);
+    let max_delta = events
+        .iter()
+        .map(|e| e.size_delta.max(0))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    events
+        .iter()
+        .map(|e| FlowDataPoint {
+            offset_min: e.timestamp_ns.saturating_sub(first_ns) as f64 / 60_000_000_000.0,
+            intensity: e.size_delta.max(0) as f64 / max_delta as f64,
+            phase: if e.size_delta > 0 { "active" } else { "pause" }.into(),
+        })
+        .collect()
 }
 
 /// Build the core WAR report data from stored events for a tracked file.
@@ -911,8 +1045,9 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     let (loaded_key, key_fp, guilloche_seed_hex) = load_signing_key_and_seed();
 
-    // Safe: events.is_empty() already returned Err above.
-    let last = events.last().expect("events non-empty checked above");
+    let last = events
+        .last()
+        .ok_or_else(|| "No events found for this file".to_string())?;
     // Intentional: device_id binds the evidence chain to a specific machine for
     // hardware attestation verification. It is a non-secret opaque identifier.
     let device_id = last.machine_id.clone();
@@ -961,53 +1096,10 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
     let forgery = compute_forgery_info(&events, &stats, ips, hardware_backed, &metrics);
     let dimensions = build_dimensions(&stats, &process, &metrics, &sessions);
 
-    let verdict_desc = match verdict {
-        Verdict::VerifiedHuman => "Strong evidence of human authorship with natural editing patterns, timing constraints, and behavioral consistency.".into(),
-        Verdict::LikelyHuman => "Moderate evidence of human authorship with generally consistent patterns.".into(),
-        Verdict::Inconclusive => "Insufficient evidence to make a determination about authorship.".into(),
-        Verdict::Suspicious => "Anomalous patterns detected that are inconsistent with typical human authorship.".into(),
-        Verdict::LikelySynthetic => "Strong indicators of synthetic or automated content generation.".into(),
-    };
-
-    let evidence_chain_hash: String = {
-        let mut h = Sha256::new();
-        for ev in &events {
-            h.update(ev.content_hash);
-        }
-        hex::encode(h.finalize())
-    };
-
-    let activity_contexts: Vec<ActivityContext> = sessions
-        .iter()
-        .map(|s| ActivityContext {
-            period_type: "writing_session".into(),
-            start: s.start,
-            end: s.start
-                + chrono::Duration::seconds(
-                    (s.duration_min.clamp(0.0, 525_960.0) * 60.0) as i64,
-                ),
-            duration_min: s.duration_min,
-            note: Some(s.summary.clone()),
-        })
-        .collect();
-
-    let writing_flow: Vec<FlowDataPoint> = {
-        let first_ns = events.first().map(|e| e.timestamp_ns).unwrap_or(0);
-        let max_delta = events
-            .iter()
-            .map(|e| e.size_delta.max(0))
-            .max()
-            .unwrap_or(1)
-            .max(1);
-        events
-            .iter()
-            .map(|e| FlowDataPoint {
-                offset_min: e.timestamp_ns.saturating_sub(first_ns) as f64 / 60_000_000_000.0,
-                intensity: e.size_delta.max(0) as f64 / max_delta as f64,
-                phase: if e.size_delta > 0 { "active" } else { "pause" }.into(),
-            })
-            .collect()
-    };
+    let verdict_desc = verdict_description(verdict);
+    let evidence_chain_hash = compute_evidence_chain_hash(&events);
+    let activity_contexts = build_activity_contexts(&sessions);
+    let writing_flow = build_writing_flow(&events);
 
     let mut war_report = WarReport {
         report_id: WarReport::generate_id(),

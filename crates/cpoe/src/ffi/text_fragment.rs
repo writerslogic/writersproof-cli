@@ -342,6 +342,11 @@ pub fn ffi_text_fragment_list_for_session(session_id: String) -> Vec<FfiTextFrag
 /// paste-char counter and keystroke context window are also updated.
 ///
 /// The pasted text itself is NOT stored — only the hash.
+///
+/// **Caller contract**: Swift must check `pasted_text.utf8.count <= 10_485_760`
+/// (10 MiB) before calling this function. UniFFI allocates the full String
+/// before any Rust-side size check runs, so oversized pastes allocate memory
+/// regardless of the guard below.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_record_paste(
     char_count: i64,
@@ -385,8 +390,9 @@ pub fn ffi_sentinel_record_paste(
     let mut store = match open_store() {
         Ok(s) => s,
         Err(e) => {
-            log::warn!("Cannot open store for paste recording: {e}");
-            return FfiPasteRecordResult::ok(text_hash_hex, None);
+            return FfiPasteRecordResult::err(format!(
+                "Cannot open store for paste recording: {e}"
+            ));
         }
     };
 

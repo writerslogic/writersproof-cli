@@ -1,8 +1,8 @@
 # Audit Todo
 
-**Last updated:** 2026-04-10 18:30:00 (7 new SYS tasks added for patterns with 3+ instances; 132 duplicate findings marked as closed)
+**Last updated:** 2026-05-07 (delta scan: 22 changed files, 5 batches; 8 new HIGH + 15 new MEDIUM added — H-201..208, M-129..143)
 **Scopes:** memory, async, performance, errors, security, concurrency, idiomatic, duplicates
-**Total findings:** 1206 | **Systemic tasks:** 31 (2 CRITICAL + 29 SYS) | **Per-site findings remaining:** ~574 (after SYS closes)
+**Total findings:** 1257 | **Systemic tasks:** 31 (2 CRITICAL + 29 SYS) | **Per-site findings remaining:** ~625 (after SYS closes)
 
 ## Execution Strategy
 
@@ -2109,3 +2109,527 @@ pub enum SecureChannelSendError {
 - **Severity:** MEDIUM | **Status:** fixed 2026-04-20 (added detailed doc comments with NIST SP 800-90B reference, typing speed derivation, and linear decay rationale)
 - **Description:** MIN_STD_DEV_THRESHOLD_US=50, MIN_IKI_STD_DEV_THRESHOLD_US=5000 (100x difference), CONFIDENCE_PENALTY_PER_ANOMALY=0.25 without justification.
 - **Fix:** Add detailed comments explaining threshold rationale and baseline references.
+
+---
+
+## New Findings — 2026-05-07 Full Re-Scan (Batches 1–7)
+
+### CRITICAL-010: WAL dictation payload panics on corrupt data
+
+- **Model:** Sonnet | **Scope:** errors
+- **Files:** `crates/cpoe/src/wal/types.rs:137-143`
+- **Severity:** CRITICAL | **Status:** open
+- **Description:** `DictationBeginPayload::from_bytes()`, `DictationFragmentPayload::from_bytes()`, and `DictationEndPayload::from_bytes()` use `.unwrap()` on `try_into()` slices. Corrupt or truncated WAL data causes panics that crash the daemon (DoS). Must propagate as `WalError::Serialization`.
+- **Fix:** Replace all `.try_into().unwrap()` in WAL dictation deserializers with `try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?`
+
+---
+
+### CRITICAL-011: Archive+delete not atomic — orphaned archive on partial failure
+
+- **Model:** Sonnet | **Scope:** errors
+- **Files:** `crates/cpoe/src/store/archive.rs:141-206`
+- **Severity:** CRITICAL | **Status:** open
+- **Description:** Archive DB is written first, then the DELETE runs in a separate transaction. If DELETE fails, the archive file exists but events remain in active DB — data is doubled and the archive is an inconsistent snapshot. Use SQLite `ATTACH` to run both operations in one transaction.
+- **Fix:** Open archive DB with `ATTACH DATABASE ? AS archive`; run `INSERT INTO archive.events SELECT ... FROM events WHERE ...` + `DELETE FROM events WHERE ...` in one `BEGIN ... COMMIT`. Remove the two-step pattern entirely.
+
+---
+
+### CRITICAL-012: FFI report.rs panics on empty events vector
+
+- **Model:** Haiku | **Scope:** errors
+- **Files:** `crates/cpoe/src/ffi/report.rs:915`
+- **Severity:** CRITICAL | **Status:** open
+- **Description:** `events.last().expect("events non-empty checked above")` — guard is 30 lines away from the `.expect()`. Any intermediate code path that empties `events` causes panic across FFI boundary (UB in Swift).
+- **Fix:** Replace with `events.last().ok_or_else(|| "events unexpectedly empty".to_string())?`; propagate via `FfiResult::err(...)`.
+
+---
+
+### CRITICAL-013: FFI ephemeral.rs — unbounded Swift-controlled allocation before validation
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/ffi/ephemeral.rs:320`
+- **Severity:** CRITICAL | **Status:** open
+- **Description:** `intervals: Vec<u64>` is allocated from Swift-provided data before any length check. A caller can pass 1B items (8 GB allocation) triggering OOM before validation occurs. The bound check happens after the collect.
+- **Fix:** Add `if intervals.len() > MAX_JITTER_INTERVALS * 2 { return FfiResult::err(...) }` as the very first statement in the FFI function before any iteration.
+
+---
+
+### CRITICAL-014: Forensic cache in report.rs has concurrent eviction race
+
+- **Model:** Sonnet | **Scope:** concurrency
+- **Files:** `crates/cpoe/src/ffi/report.rs:26-29`
+- **Severity:** CRITICAL | **Status:** open
+- **Description:** `forensic_cache()` is a static `DashMap`. Eviction logic (first-in-first-out at 10 entries) is not atomic with `get()`. Two concurrent FFI calls can evict + reinsert the same key interleaved, or one thread holds a reference while another evicts it. No LRU tracking.
+- **Fix:** Replace DashMap + manual eviction with a bounded `lru::LruCache` behind `Arc<Mutex<>>`, or use DashMap with `entry()` API for atomic get-or-insert.
+
+---
+
+### CRITICAL-015: WAR seal Ed25519 signature covers only H3 hash, not full content
+
+- **Model:** Opus | **Scope:** security
+- **Files:** `crates/cpoe/src/war/verification.rs:175-182`
+- **Severity:** CRITICAL | **Status:** rejected false-positive 2026-05-07 (hash-then-sign is cryptographically sound; H3 = SHA256(H2 || vdf_output || doc_hash) is a collision-resistant commitment to all inputs; forging H3 requires breaking SHA-256. SAFETY comment in war/mod.rs:176-178 documents this correctly.)
+- **Description:** The WAR seal signature's signed message is `DST || H3` where H3 is a 32-byte hash computed from intermediate hashes. An attacker who forges any one intermediate hash (document_hash, checkpoint_root, jitter_root) to produce the same H3 can forge a WAR without breaking Ed25519. The signature should cover the full seal preimage or each individual component hash, not just the final digest.
+- **Fix:** N/A — standard hash-then-sign; signing H3 = signing the full preimage given SHA-256 collision resistance.
+
+---
+
+### CRITICAL-016: CGEventTap TapCallback use-after-free on error path
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/platform/macos/keystroke.rs:107-149`
+- **Severity:** CRITICAL | **Status:** rejected false-positive 2026-05-07 (null-tap path: creation failed, no callback registered; null-source path: CFRelease(tap) releases it before returning and the tap was never enabled; SAFETY comment lines 108-113 documents lifetime invariants correctly. CGEventTap fires only when both enabled and added to a run loop, neither of which happens on error paths.)
+- **Description:** A raw pointer to a stack-allocated `TapCallback` is passed to `CGEventTapCreate`. If an error occurs after tap creation but before `CFRunLoopRun()` (lines 124-126), the function returns without disabling the tap. The tap remains registered pointing to a now-invalid stack frame. Subsequent OS events invoke the callback on freed stack memory.
+- **Fix:** N/A — code is safe; see SAFETY comment in keystroke.rs:108-113.
+
+---
+
+### H-193: IPC rate limiter bypassed by reconnecting
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/ipc/server.rs:59`
+- **Severity:** HIGH | **Status:** rejected false-positive 2026-05-07 (rate_limiter is Arc<Mutex<RateLimiter>> on IpcServer, Arc::clone'd to every handler — all connections share one instance. The per-connection doc comment on line 237 of crypto.rs is misleading but the code is server-wide.)
+- **Description:** Rate limiter is per-connection. A client can exhaust the per-connection limit, disconnect, reconnect, and get a fresh counter. Per-connection rate limiting provides no actual throttling for local adversaries.
+- **Fix:** N/A — rate limiter is already shared across all connections.
+
+---
+
+### H-194: IPC connection probing unlogged on partial read (1 byte)
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `crates/cpoe/src/ipc/server_handler.rs:94`
+- **Severity:** HIGH | **Status:** open
+- **Description:** `read_exact(&mut peek_buf)` failing with EOF (client sent 1 byte and disconnected) is silently dropped — no audit log entry, no counter increment. An attacker probing the IPC socket port can do so without triggering any detection.
+- **Fix:** Log at `warn!` level and increment a probe counter for any connection that closes before sending a valid 2-byte magic. Distinguish "EOF before magic" from "wrong magic" in log.
+
+---
+
+### H-195: FFI evidence_export divide-by-zero if ips == 0
+
+- **Model:** Haiku | **Scope:** errors
+- **Files:** `crates/cpoe/src/ffi/evidence_export.rs:201`
+- **Severity:** HIGH | **Status:** rejected false-positive 2026-05-07 (ips is loaded with `.max(1)` on line 100 and `.unwrap_or(1)` fallback — always ≥ 1; no divide-by-zero possible)
+- **Description:** `ev.vdf_iterations.saturating_mul(1000) / ips as u64` — if `ips == 0`, this is integer division by zero (panic). The elsewhere-present `if ips > 0` guard is missing here.
+- **Fix:** N/A — ips is always ≥ 1 per .max(1) on load.
+
+---
+
+### H-196: FFI ephemeral flush_session_state write race
+
+- **Model:** Sonnet | **Scope:** concurrency
+- **Files:** `crates/cpoe/src/ffi/ephemeral.rs:291`
+- **Severity:** HIGH | **Status:** open
+- **Description:** After DashMap guard is released (line 259), two concurrent threads handling the same session_id both call `flush_session_state()`. The writes race and one can partially overwrite the other's state file, leaving a corrupted state on disk.
+- **Fix:** Either hold the DashMap guard through the flush (no other lock needed), or use an `Arc<Mutex<()>>` per session for serializing flushes.
+
+---
+
+### H-197: TPM self-trust fallback allows attestation forgery
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/tpm/verification.rs:50-87`
+- **Severity:** HIGH | **Status:** open
+- **Description:** When `trusted_keys` is empty, the verifier falls back to trusting the binding's own embedded public key. In a remote verification context, an attacker supplies both the binding and the key — self-verification is trivially forgeable.
+- **Fix:** Remove the self-trust fallback entirely. Return `Err(TpmError::NoTrustedKeys)` when `trusted_keys.is_empty()`. All callers must supply at least one trusted key; the fallback in tests should supply the test key explicitly.
+
+---
+
+### H-198: WAL truncate/reopen inconsistency on file system error
+
+- **Model:** Sonnet | **Scope:** errors
+- **Files:** `crates/cpoe/src/wal/operations.rs:311-443`
+- **Severity:** HIGH | **Status:** open
+- **Description:** After `fs::rename()` succeeds (new file replaces old), if the subsequent `reopen()` fails, state is marked inconsistent but `last_hash` + `next_sequence` in memory are stale (they match the pre-truncate state). Subsequent appends after recovery will build an invalid hash chain.
+- **Fix:** After rename succeeds but reopen fails: call `state.recover_from_file()` to rebuild in-memory state from the new (already renamed) file before marking inconsistent.
+
+---
+
+### H-199: Checkpoint chain signature is length-only, no crypto verification
+
+- **Model:** Opus | **Scope:** security
+- **Files:** `crates/cpoe/src/checkpoint/chain_verification.rs:219-245`
+- **Severity:** HIGH | **Status:** open
+- **Description:** Chain verification performs only a length check on Ed25519 signatures (64 bytes) and defers actual cryptographic verification to callers. If a caller forgets to call `keyhierarchy::verify_checkpoint_signatures()`, a chain with forged signatures passes `verify_chain()`. This is a silent security bypass.
+- **Fix:** Perform cryptographic signature verification inside `chain_verification.rs` using the chain's embedded public key. Remove the "caller must verify" pattern. Make security the default, not opt-in.
+
+---
+
+### H-200: Beacon attestation signed message has no field delimiters
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/war/verification.rs:670-681`
+- **Severity:** HIGH | **Status:** open
+- **Description:** Beacon attestation signed message concatenates string fields (drand_randomness, nist_output_value, fetched_at) as raw UTF-8 bytes with no length prefixes or delimiters. A value containing the concatenation of two adjacent fields passes signature validation for either field order.
+- **Fix:** Use length-prefixed encoding: `extend_from_slice(&(field.len() as u32).to_be_bytes()); extend_from_slice(field.as_bytes())` for each string field. Apply the same pattern as the rest of the CBOR/COSE encoding in the codebase.
+
+---
+
+### M-115: Sentinel lock ordering: current_focus acquired before sessions
+
+- **Model:** Sonnet | **Scope:** concurrency
+- **Files:** `crates/cpoe/src/sentinel/core.rs:1030-1036`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `current_focus.read_recover()` acquired, then `sessions.read_recover()` within the same scope — violates documented lock ordering (AUD-041): sessions(2) must be acquired before current_focus(3).
+- **Fix:** Restructure the block to acquire sessions first, then current_focus. Or drop current_focus before acquiring sessions.
+
+---
+
+### M-116: Per-keystroke O(n) jitter scan in hot path
+
+- **Model:** Haiku | **Scope:** performance
+- **Files:** `crates/cpoe/src/sentinel/core.rs:620-634`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `session.jitter_samples.iter_mut().rev().find(|s| s.timestamp_ns == down_ts)` on every keyUp event. Buffer can hold up to 50,000 entries.
+- **Fix:** Maintain a `HashMap<u64 /*timestamp_ns*/, usize /*index*/>` alongside jitter_samples for O(1) lookup. Clear on buffer reset.
+
+---
+
+### M-117: FFI text_fragment 10 MiB paste allocation before check
+
+- **Model:** Haiku | **Scope:** performance
+- **Files:** `crates/cpoe/src/ffi/text_fragment.rs:365-371`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `pasted_text.len() > MAX_PASTE_SIZE` is checked after the String is already allocated. 1 GB paste from untrusted source allocates fully before rejection.
+- **Fix:** Enforce the limit in Swift before calling FFI. Document the invariant. Optionally add a separate Swift-side wrapper that checks length before calling the Rust FFI.
+
+---
+
+### M-118: WAR trust_bundle placeholder zero signing key deployed to production
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `crates/cpoe/src/war/trust_bundle.rs:39-40`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `MANIFEST_SIGNING_PUBKEY_HEX` is all zeros. If accidentally deployed, skips all manifest signature verification. Should panic or refuse to operate when key is zero.
+- **Fix:** Add `assert_ne!(MANIFEST_SIGNING_PUBKEY_HEX, "0000000000000000000000000000000000000000000000000000000000000000", "production deployment requires real signing key")` in the verifier init. Or use a compile-time check: `const _: () = assert!(!matches!(MANIFEST_SIGNING_PUBKEY_HEX.as_bytes(), [b'0'; 64]))`.
+
+---
+
+### M-119: Baseline update silently drops NaN/Inf values
+
+- **Model:** Haiku | **Scope:** errors
+- **Files:** `crates/cpoe/src/store/baselines.rs:56-94`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `if !value.is_finite() { return Ok(()) }` — callers cannot distinguish successful update from rejected non-finite value. Biometric baselines silently diverge from reality.
+- **Fix:** Return `Err(Error::invalid_input("baseline value is non-finite"))` instead of `Ok(())`. Or log at `warn!` level at minimum.
+
+---
+
+### M-120: Path validation case-sensitivity on HFS+ for blocked prefixes
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `crates/cpoe/src/ipc/messages.rs:134-166`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `is_blocked_system_path` uses case-sensitive `starts_with()` on macOS. HFS+ is case-insensitive: `/System` and `/system` refer to the same directory, but only `/System` is blocked.
+- **Fix:** On macOS, use `path.to_string_lossy().to_lowercase()` for comparison. Or use `std::fs::canonicalize()` which resolves to the real case-normalized path before prefix matching.
+
+---
+
+### M-121: Attestation forgery cost computation stores Infinity in report
+
+- **Model:** Haiku | **Scope:** architecture
+- **Files:** `crates/cpoe/src/forensics/forgery_cost.rs:308-321`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** When `has_infinite` (hardware attestation), code multiplies `f64::MAX * 100.0 = Infinity`. Stored in `overall_difficulty` and serialized to JSON as `null` or `Infinity` (non-standard JSON). Clients parsing the WAR may misinterpret or crash.
+- **Fix:** Use a sentinel constant `const HARDWARE_ATTESTATION_DIFFICULTY: f64 = 1e308` (near-max but finite) for "effectively infinite" hardware attestation cost. Or use a tagged enum `ForgeryDifficulty { Finite(f64) | HardwareAttestation }`.
+
+---
+
+### M-122: HMAC-unverified timestamp path in store
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/store/events.rs:365-372`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `get_all_event_timestamps()` returns timestamps without HMAC verification. Callers may use these in forensic analysis assuming integrity, but the data is unverified. A compromised DB could return forged timestamps.
+- **Fix:** Remove `get_all_event_timestamps()` or add a doc comment warning + make it `pub(crate)` with a strong "UNVERIFIED" name: `get_all_event_timestamps_unverified_do_not_use_in_reports()`. Add HMAC-verified variant.
+
+---
+
+### M-123: `update_file_path` silently bypasses HMAC on DB query failure
+
+- **Model:** Haiku | **Scope:** errors
+- **Files:** `crates/cpoe/src/store/events.rs:440`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `has_integrity` check uses `.unwrap_or(false)` — if the integrity table query fails, code proceeds as if integrity is absent and skips HMAC recomputation. File path update without re-HMAC corrupts event records silently.
+- **Fix:** Replace `.unwrap_or(false)` with `?` — propagate the error and abort the update. The operation should fail loudly if integrity cannot be determined.
+
+---
+
+### M-124: stdin read unbounded in `cmd_attest`
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `apps/cpoe_cli/src/cmd_attest.rs:34`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `io::stdin().read_to_string(&mut buf)` has no size limit. A malicious pipe can feed gigabytes of data causing OOM.
+- **Fix:** Wrap stdin with `.take(50_000_000)` (50 MB limit): `io::stdin().take(50_000_000).read_to_string(&mut buf)`. Return `Err` if buf exceeds limit after read.
+
+---
+
+### M-125: `handle_snapshot_save` and `handle_ai_content_copied` skip URL length check
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:784`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** These handlers don't validate `document_url` length before writing to JSONL file. Other handlers check `MAX_URL_LEN` but these don't. A 1 MB URL from the browser extension bypasses the check and is written to disk.
+- **Fix:** Add `if document_url.len() > MAX_URL_LEN { return Response::Error { ... } }` at the top of both handlers, matching the pattern in `handle_start_session`.
+
+---
+
+### M-126: Keyhierarchy session_id comparison non-constant-time
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `crates/cpoe/src/keyhierarchy/recovery.rs:21`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `recovery.certificate.session_id == [0u8; 32]` is a non-constant-time comparison of cryptographic material. Should use `subtle::ConstantTimeEq`.
+- **Fix:** `use subtle::ConstantTimeEq; if recovery.certificate.session_id.ct_eq(&[0u8; 32]).into() { ... }`
+
+---
+
+### M-127: Evidence packet `verify()` silently falls back to self-signed if no trusted key
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/evidence/packet.rs:52-311`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `verify(trusted_public_key: Option<[u8;32]>)` falls back to self-signed verification if `None` is passed. This means unintentional callers that pass `None` get a weaker verification guarantee without any compilation error.
+- **Fix:** Split into `verify_self_signed()` and `verify_with_trusted_key(key: [u8;32])`. Remove the `Option` parameter. Callers must explicitly choose which verification level they want.
+
+---
+
+### M-128: activity_analysis.rs is 1603 lines — split required
+
+- **Model:** Sonnet | **Scope:** maintainability
+- **Files:** `crates/cpoe/src/fingerprint/activity_analysis.rs`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** 1603-line file implements 10+ distribution types. Highest-churn area of fingerprint module. Hard to audit, test, and maintain.
+- **Fix:** Split into: `iki_analysis.rs` (IKI/interval stats), `zone_analysis.rs` (keyboard zone profiles), `pause_analysis.rs` (pause signatures), `session_analysis.rs` (SessionSignature, CircadianPattern), `distribution_helpers.rs` (shared stats utilities: percentile, pearson, etc.). Keep `mod.rs` as re-exports only.
+
+---
+
+## Delta Scan: 2026-05-07 (22 changed files, 15K lines)
+
+### H-201: TPM verification uses verify() instead of verify_strict() — inconsistent with WAR verification
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/tpm/verification.rs:171`
+- **Severity:** HIGH | **Status:** fixed 2026-05-07 (verify→verify_strict at tpm/verification.rs:171 and utils/crypto_helpers.rs:137; removed unused Verifier import)
+- **Description:** `tpm/verification.rs:171` uses `verify()` for Ed25519 signature verification, while `war/verification.rs:136,688` uses `verify_strict()`. Non-strict verification could accept malformed signatures (e.g., non-canonical S values). All signature verification in a security-critical engine should use the strict variant.
+- **Fix:** Replace `.verify()` with `.verify_strict()` in tpm/verification.rs. Add clippy-level lint or grep-based CI check to prevent reintroduction.
+
+---
+
+### H-202: TPM key verification loop leaks timing information via early return
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/tpm/verification.rs:66-72`
+- **Severity:** HIGH | **Status:** fixed 2026-05-08 (replaced early-return loop with subtle::Choice accumulation; all keys verified before branching)
+- **Description:** Loop over `trusted_keys` returns early on first successful verification. Timing side-channel: attacker can deduce which key in the ring succeeded or how many keys were tried before success. For a security-critical trust chain, all keys should be tested in constant time.
+- **Fix:** Verify against all keys, collect results, then check if any succeeded. Use `subtle::Choice` to avoid branching: `let any_valid = results.iter().fold(Choice::from(0), |acc, r| acc | r);`
+
+---
+
+### H-203: Signing key path controllable via CPOE_DATA_DIR environment variable
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:184,505-509`
+- **Severity:** HIGH | **Status:** fixed 2026-05-08 (removed CPOE_DATA_DIR from signing key path; always uses $HOME/.writersproof for flat-file fallback)
+- **Description:** `CPOE_DATA_DIR` env var controls the fallback path for loading the device signing key. On multi-user systems, if attacker sets `CPOE_DATA_DIR=/tmp`, signing key is loaded from unprotected `/tmp`. The env var is useful for testing but should not control signing key location in production.
+- **Fix:** Separate signing key path from data dir: always load signing key from `$HOME/.writersproof/signing_key` regardless of CPOE_DATA_DIR. Or validate CPOE_DATA_DIR ownership and permissions (owned by current user, not world-writable) before trusting it for key material.
+
+---
+
+### H-204: chmod failure on evidence temp file silently ignored — world-readable evidence window
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:147`
+- **Severity:** HIGH | **Status:** fixed 2026-05-07 (chmod failure now returns Response::Error instead of eprintln warning)
+- **Description:** If `restrict_permissions()` fails on the temp evidence file, the handler logs a warning but continues. Evidence file may be world-readable during the window between creation and persist. On shared systems, other users can read keystroke evidence.
+- **Fix:** Return `Response::Error` if chmod fails; do not persist world-readable evidence files. Check: `restrict_permissions(&tmp_path).map_err(|e| Response::Error { message: format!("chmod failed: {e}") })?;`
+
+---
+
+### H-205: Session seal uses all-zeros hash on evidence file read failure
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:607`
+- **Severity:** HIGH | **Status:** fixed 2026-05-07 (.map→.and_then; file read failure returns None for signature instead of sealing with zero-hash)
+- **Description:** `fs::read().unwrap_or([0u8; 32])` at session end. If evidence file read fails (deleted, permissions, disk full), seal hash is all-zeros. Verifier cannot distinguish invalid seal from legitimate; no error response sent to browser extension.
+- **Fix:** Return error if evidence file read fails: `let content = fs::read(&path).map_err(|e| Response::Error { message: format!("seal read: {e}") })?;` Log at error level.
+
+---
+
+### H-206: IPC SequenceDesync detection relies on fragile error string matching
+
+- **Model:** Sonnet | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/ipc/server_handler.rs:193`
+- **Severity:** HIGH | **Status:** fixed 2026-05-08 (added SequenceDesyncError typed error in crypto.rs; server_handler uses downcast_ref instead of string matching)
+- **Description:** `starts_with("SequenceDesync:")` string match to detect sequence desynchronization in encrypted IPC channel. If the error message in the crypto module changes, sequence desync goes undetected and the connection is improperly closed or left open.
+- **Fix:** Use a structured error type: `enum IpcCryptoError { SequenceDesync { expected: u64, got: u64 }, DecryptFailed, ... }`. Match on variant, not string prefix. Add test that verifies sequence desync is detected.
+
+---
+
+### H-207: FFI text_fragment store open failure returns success — paste events silently lost
+
+- **Model:** Haiku | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/ffi/text_fragment.rs:390-396`
+- **Severity:** HIGH | **Status:** fixed 2026-05-07 (store open failure now returns FfiPasteRecordResult::err; signing key failure left as-is since hash lookup already succeeded)
+- **Description:** `ffi_record_paste()` returns `FfiPasteRecordResult::ok(text_hash_hex, None)` when `open_store()` fails. Caller receives success with the hash but paste event is NOT persisted. The signing key failure at line 416 has the same pattern. Both break evidence chain integrity silently.
+- **Fix:** Return `FfiPasteRecordResult::err()` when store open fails. Similarly for signing key at line 416. Caller (Swift) should retry or surface the error to the user.
+
+---
+
+### H-208: store/events.rs silent overflow clamps on integrity-relevant data fields
+
+- **Model:** Sonnet | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/store/events.rs:77,87,99,102,313,328,333`
+- **Severity:** HIGH | **Status:** fixed 2026-05-08 (write path: added logging to silent clamps on hw_cosign fields; read path: replaced unwrap_or(0) with error propagation via InvalidColumnType)
+- **Description:** Seven instances of `unwrap_or(i64::MAX)` or `unwrap_or(0)` on `try_from()` conversions for `vdf_iterations`, `hardware_counter`, `hw_cosign_chain_index`, and `hw_cosign_entropy_bytes`. These silently clamp overflow values in integrity-relevant data. On the HOT PATH (every keystroke persistence), data loss is possible without error propagation.
+- **Fix:** Return `Err()` on conversion failure instead of silent fallback. Let caller decide how to handle overflow. At minimum, log at error level when clamping occurs.
+
+---
+
+### M-129: sentinel/core.rs nested lock on sessions + cached_store without documented ordering
+
+- **Model:** Sonnet | **Scope:** concurrency
+- **Files:** `crates/cpoe/src/sentinel/core.rs:855-859`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** Bundle monitor code acquires `sessions.write_recover()` then `cached_store_for_loop.lock_recover()` inside the write guard. AUD-041 documents ordering for `signing_key < sessions < current_focus` but does not cover `cached_store`. If other code acquires these locks in reverse order, deadlock.
+- **Fix:** Extend AUD-041 lock ordering documentation to include cached_store. Verify no reverse acquisition exists.
+
+---
+
+### M-130: sentinel/core.rs stop() discards spawn_blocking result silently
+
+- **Model:** Haiku | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/sentinel/core.rs:1522`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `let _ = tokio::task::spawn_blocking(...).await` discards result. If spawn_blocking fails during shutdown (runtime shutting down), final checkpoint is lost silently.
+- **Fix:** Log error: `if let Err(e) = tokio::task::spawn_blocking(...).await { log::error!("Final checkpoint failed: {e}"); }`
+
+---
+
+### M-131: sentinel/core.rs shutdown signal send result discarded
+
+- **Model:** Haiku | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/sentinel/core.rs:1545`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `let _ = tx.send(()).await` discards result. If receiver dropped, event loop won't exit gracefully; tokio task continues running.
+- **Fix:** Log and handle: `if tx.send(()).await.is_err() { log::warn!("Event loop receiver dropped"); }`
+
+---
+
+### M-132: war/verification.rs try_into().unwrap() on CA public key bytes at trust boundary
+
+- **Model:** Haiku | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/war/verification.rs:635,668`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** Two `try_into().unwrap()` calls on public key and signature byte conversions in CA attestation verification. Library code should not panic; these are at a trust boundary processing external attestation data.
+- **Fix:** Replace `.unwrap()` with `.map_err(|_| CheckResult::fail("invalid CA key length"))` or equivalent error propagation.
+
+---
+
+### M-133: checkpoint/chain_verification.rs genesis_prev_hash error silently accepted as legacy genesis
+
+- **Model:** Sonnet | **Scope:** security
+- **Files:** `crates/cpoe/src/checkpoint/chain_verification.rs:127-128,204-210`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** `genesis_prev_hash()` computation errors are swallowed via `unwrap_or(false)`. If hash computation fails, chain is incorrectly validated as legacy genesis (all-zeros). Could accept invalid chains.
+- **Fix:** Propagate hash computation errors. Return `Err()` instead of falling through to legacy check.
+
+---
+
+### M-134: WAL sync failure marks WAL permanently inconsistent with no recovery path
+
+- **Model:** Sonnet | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/wal/operations.rs:142-148`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** If `sync_data()` fails after successful write, WAL is marked `inconsistent = true` permanently. All future appends fail. No `recover()` or `reset()` method exists.
+- **Fix:** Add `Wal::recover()` that re-validates entries and clears inconsistent flag if data is sound. Or provide `clear_inconsistent()` with explicit operator acknowledgment.
+
+---
+
+### M-135: ffi/report.rs build_war_report_for_path is 208 lines with mixed business logic
+
+- **Model:** Sonnet | **Scope:** architecture
+- **Files:** `crates/cpoe/src/ffi/report.rs:880-1088`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** God function mixing stats computation, forensics analysis, VC building, and HTML rendering prep. FFI boundary should delegate to core, not contain business logic.
+- **Fix:** Extract: `compute_report_data()`, `build_report_claims()`, `format_report_outputs()` into core modules; FFI calls them.
+
+---
+
+### M-136: ffi/report.rs build_dimensions is 214 lines with deeply nested conditionals
+
+- **Model:** Sonnet | **Scope:** code_quality
+- **Files:** `crates/cpoe/src/ffi/report.rs:634`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** 214-line function computing 6 scoring dimensions with 4+ nesting levels. Hard to test individual dimensions.
+- **Fix:** Extract each dimension into its own function: `build_temporal_dimension()`, `build_edit_dimension()`, etc.
+
+---
+
+### M-137: native_messaging_host jitter buffer overflow returns success with truncated data
+
+- **Model:** Haiku | **Scope:** error_handling
+- **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:736-741`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** When jitter intervals exceed buffer capacity, data is silently truncated. `Response::JitterReceived` still returns success. Browser extension believes all intervals were stored.
+- **Fix:** Include `dropped_count` in JitterReceived response, or return error if truncation occurs.
+
+---
+
+### M-138: native_messaging_host handle_start_session is 231 lines
+
+- **Model:** Sonnet | **Scope:** code_quality
+- **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:25-255`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** Spans startup logic including dir creation, file I/O, key loading, session creation, prior session finalization. High churn (20 changes in 6 months).
+- **Fix:** Extract: session creation, prior session finalization, key loading into helper functions.
+
+---
+
+### M-139: war/trust_bundle.rs parse_and_validate returns Option instead of typed error
+
+- **Model:** Haiku | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/war/trust_bundle.rs:119-139`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** Returns None on multiple distinct errors (bad JSON, invalid version, bad signature, bad entries). Caller cannot distinguish transient from permanent failures for retry logic.
+- **Fix:** Return `Result<TrustBundle, TrustBundleError>` with variants: `ParseError`, `InvalidSignature`, `InvalidEntries`, `VersionMismatch`.
+
+---
+
+### M-140: store/archive.rs .ok() silently discards chain validation query errors
+
+- **Model:** Haiku | **Scope:** error_handling
+- **Files:** `crates/cpoe/src/store/archive.rs:136,558`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** Two instances of `.ok()` that silently discard errors when querying chain link data. If query fails for reasons other than "no rows", error is swallowed. Weak chain integrity checking.
+- **Fix:** Match explicitly: return Err for actual DB errors, Ok(None) only for QueryReturnedNoRows.
+
+---
+
+### M-141: ipc/messages.rs error responses leak field lengths to caller
+
+- **Model:** Haiku | **Scope:** security
+- **Files:** `crates/cpoe/src/ipc/messages.rs:318-323`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** validate_paths error messages include actual field lengths of oversized inputs. Attacker can infer buffer sizes from error responses.
+- **Fix:** Return generic "field too large" error; log exact lengths to server-side log only.
+
+---
+
+### M-142: forensics/forgery_cost.rs estimate_forgery_cost is 240+ lines with repetitive structure
+
+- **Model:** Sonnet | **Scope:** code_quality
+- **Files:** `crates/cpoe/src/forensics/forgery_cost.rs:117-357`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** 8 component cost blocks follow similar pattern. Function exceeds 100-line guideline by 2.4x. Adding new components requires editing deep in the function.
+- **Fix:** Extract component cost calculation into a builder pattern or vec of closures. Each component returns `CostComponent` struct.
+
+---
+
+### M-143: sentinel/core.rs event loop closure is 933 lines with 8+ nesting levels
+
+- **Model:** Opus | **Scope:** architecture
+- **Files:** `crates/cpoe/src/sentinel/core.rs:519-1451`
+- **Severity:** MEDIUM | **Status:** open
+- **Description:** The entire event loop is a single closure with tokio::select! branches for keystroke, mouse, focus, idle, checkpoint, and permission handling. 8+ levels of nesting. Maintenance cost is extreme (22 changes in 6 months).
+- **Fix:** Extract each select! branch into a dedicated handler method: `handle_keystroke()`, `handle_checkpoint_tick()`, `handle_idle_check()`, etc. Keep event loop as thin dispatcher.

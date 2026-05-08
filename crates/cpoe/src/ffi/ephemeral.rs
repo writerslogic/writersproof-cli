@@ -255,9 +255,9 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
     entry.last_checkpoint_at = Some(Instant::now());
     let checkpoint_num = entry.checkpoint_count;
 
-    // Drop DashMap guard before disk I/O to avoid blocking other sessions.
-    drop(entry);
-
+    // Perform disk I/O while holding the guard to prevent concurrent flushes
+    // for the same session_id from racing. The guard is per-entry (DashMap
+    // shard-level), so other sessions are not blocked.
     let ephemeral_path = format!("ephemeral://{session_id}");
     let persist_error = match open_store() {
         Ok(mut store) => {
@@ -285,11 +285,9 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
         }
     };
 
-    // Re-acquire briefly to update activity timestamp and flush state.
-    if let Some(mut entry) = sessions().get_mut(&session_id) {
-        entry.last_activity = Instant::now();
-        flush_session_state(&session_id, &entry);
-    }
+    entry.last_activity = Instant::now();
+    flush_session_state(&session_id, &entry);
+    drop(entry);
 
     let msg = format!(
         "Ephemeral checkpoint #{}: {}",
@@ -309,6 +307,13 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_inject_jitter(session_id: String, intervals: Vec<u64>) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    if intervals.len() > MAX_JITTER_INTERVALS * 10 {
+        return FfiResult::err(format!(
+            "intervals length {} exceeds maximum ({})",
+            intervals.len(),
+            MAX_JITTER_INTERVALS * 10
+        ));
+    }
     let mut entry = match sessions().get_mut(&session_id) {
         Some(e) => e,
         None => return FfiResult::err(format!("No ephemeral session: {session_id}")),
@@ -546,13 +551,10 @@ pub fn ffi_ephemeral_checkpoint_hash(
         .content_snapshots
         .last()
         .and_then(|s| s.message.clone());
-    // Extract fields needed for flush_session_state before releasing the DashMap guard.
-    let flush_context_label = entry.context_label.clone();
-    let flush_started_at_ns = entry.started_at_ns;
-    let flush_keystroke_count = entry.keystroke_count;
-    let flush_jitter_count = entry.jitter_intervals.len();
-    drop(entry); // Release DashMap guard before disk I/O
 
+    // Hold the guard through disk I/O and flush to prevent concurrent threads
+    // from racing on the same session's state file. The guard is per-entry
+    // (DashMap shard-level), so other sessions are not blocked.
     let ephemeral_path = format!("ephemeral://{session_id}");
     let persist_error = match open_store() {
         Ok(mut store) => {
@@ -580,14 +582,8 @@ pub fn ffi_ephemeral_checkpoint_hash(
         }
     };
 
-    flush_session_state_fields(
-        &session_id,
-        &flush_context_label,
-        flush_started_at_ns,
-        checkpoint_count,
-        flush_keystroke_count,
-        flush_jitter_count,
-    );
+    flush_session_state(&session_id, &entry);
+    drop(entry);
 
     let msg = format!(
         "Ephemeral checkpoint #{}: {}",
@@ -722,7 +718,14 @@ fn flush_session_state_fields(
     });
 
     let path = recovery_dir.join(format!("{session_id}.json"));
-    let tmp_path = recovery_dir.join(format!("{session_id}.json.tmp"));
+    // Use a per-invocation unique suffix to prevent concurrent writes for the
+    // same session_id from corrupting each other's temp file.
+    let tmp_suffix = {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+        TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    };
+    let tmp_path = recovery_dir.join(format!("{session_id}.{tmp_suffix}.json.tmp"));
     if let Ok(bytes) = serde_json::to_vec_pretty(&state) {
         if let Err(e) =
             std::fs::write(&tmp_path, &bytes).and_then(|_| std::fs::rename(&tmp_path, &path))

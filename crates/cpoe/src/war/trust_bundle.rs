@@ -7,6 +7,29 @@ use crate::config::TrustBundleConfig;
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use thiserror::Error;
+
+/// Typed errors from [`parse_and_validate`] so callers can distinguish transient
+/// from permanent failures.
+#[derive(Debug, Error)]
+pub enum TrustBundleError {
+    /// The JSON could not be deserialized into a [`CaBundleManifest`].
+    #[error("failed to parse manifest JSON: {0}")]
+    ParseError(#[from] serde_json::Error),
+
+    /// The manifest `version` field is zero or otherwise unsupported.
+    #[error("unsupported manifest version: {0}")]
+    VersionMismatch(u32),
+
+    /// Ed25519 signature over the manifest payload did not verify.
+    #[error("manifest signature verification failed")]
+    InvalidSignature,
+
+    /// One or more key entries are structurally invalid (empty kid, bad hex, bad
+    /// timestamps, or empty key list).
+    #[error("manifest contains invalid key entries")]
+    InvalidEntries,
+}
 
 /// A single CA key entry loaded from the trust bundle manifest.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -42,6 +65,11 @@ const MANIFEST_SIGNING_PUBKEY_HEX: &str =
 /// Verify the Ed25519 manifest signature over `payload`.
 fn verify_manifest_signature(manifest: &CaBundleManifest) -> bool {
     use ed25519_dalek::{Signature, VerifyingKey};
+
+    if MANIFEST_SIGNING_PUBKEY_HEX.bytes().all(|b| b == b'0') {
+        log::error!("MANIFEST_SIGNING_PUBKEY_HEX is all-zeros placeholder; rejecting manifest");
+        return false;
+    }
 
     let pubkey_bytes = match hex::decode(MANIFEST_SIGNING_PUBKEY_HEX) {
         Ok(b) if b.len() == 32 => b,
@@ -110,10 +138,10 @@ fn cache_is_fresh(path: &Path, max_age_secs: u64) -> bool {
 }
 
 /// Parse and validate a manifest JSON string.
-fn parse_and_validate(json: &str) -> Option<Vec<CaBundleEntry>> {
-    let manifest: CaBundleManifest = serde_json::from_str(json).ok()?;
+fn parse_and_validate(json: &str) -> Result<Vec<CaBundleEntry>, TrustBundleError> {
+    let manifest: CaBundleManifest = serde_json::from_str(json)?;
     if manifest.version == 0 {
-        return None;
+        return Err(TrustBundleError::VersionMismatch(manifest.version));
     }
     // When the manifest signing key is the all-zeros placeholder, skip signature
     // verification (development / testing mode). In production the key is non-zero
@@ -123,19 +151,19 @@ fn parse_and_validate(json: &str) -> Option<Vec<CaBundleEntry>> {
         .all(|b| b == b'0');
     if !key_is_placeholder && !verify_manifest_signature(&manifest) {
         log::warn!("trust_bundle: manifest signature verification failed");
-        return None;
+        return Err(TrustBundleError::InvalidSignature);
     }
     if !validate_bundle_entries(&manifest.keys) {
         log::warn!("trust_bundle: manifest contains invalid key entries");
-        return None;
+        return Err(TrustBundleError::InvalidEntries);
     }
-    Some(manifest.keys)
+    Ok(manifest.keys)
 }
 
 /// Try to load the bundle from the local cache file.
 fn load_from_cache(path: &Path) -> Option<Vec<CaBundleEntry>> {
     let json = std::fs::read_to_string(path).ok()?;
-    parse_and_validate(&json)
+    parse_and_validate(&json).ok()
 }
 
 /// Attempt a synchronous HTTPS fetch of the manifest (blocking).
@@ -189,7 +217,7 @@ pub fn load_bundle(config: &TrustBundleConfig) -> Vec<CaBundleEntry> {
 
     // 2. Remote fetch.
     if let Some(json) = fetch_from_url(&config.manifest_url, config.fetch_timeout_secs) {
-        if let Some(entries) = parse_and_validate(&json) {
+        if let Ok(entries) = parse_and_validate(&json) {
             // Best-effort cache write; non-fatal on failure.
             if let Some(parent) = config.local_cache_path.parent() {
                 let _ = std::fs::create_dir_all(parent);

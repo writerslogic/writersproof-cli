@@ -4,7 +4,7 @@
 //! Used by: text_fragments, clipboard, wal, beacon, credentials, dictation
 
 use crate::error::{Error, Result};
-use ed25519_dalek::{Verifier, VerifyingKey};
+use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
@@ -134,7 +134,7 @@ impl SignatureKey {
                 }
                 let sig = ed25519_dalek::Signature::from_slice(signature)
                     .map_err(|e| Error::validation(format!("signature parsing failed: {}", e)))?;
-                key.verify(payload, &sig)
+                key.verify_strict(payload, &sig)
                     .map_err(|_| Error::validation("signature verification failed"))?;
                 Ok(())
             }

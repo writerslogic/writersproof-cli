@@ -1303,6 +1303,7 @@ dependencies = [
  "hkdf 0.12.4",
  "hmac 0.12.1",
  "hostname",
+ "libc",
  "notify",
  "p256",
  "serde",

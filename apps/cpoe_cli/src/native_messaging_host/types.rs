@@ -169,6 +169,8 @@ pub(crate) enum Response {
     },
     JitterReceived {
         count: usize,
+        /// Number of valid intervals dropped due to buffer capacity limits.
+        dropped: usize,
     },
     Pong {
         version: String,

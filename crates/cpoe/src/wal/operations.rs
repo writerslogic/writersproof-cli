@@ -412,15 +412,32 @@ impl Wal {
 
         // Open the new file first. If this fails the rename already committed,
         // so mark the WAL inconsistent before returning to prevent further writes
-        // against the now-stale file handle.
+        // against the now-stale file handle. Retry once to handle transient OS errors
+        // (the file exists at state.path; it was just written and renamed).
         let mut reopened = match OpenOptions::new().read(true).write(true).open(&state.path) {
             Ok(f) => f,
-            Err(e) => {
-                state.inconsistent = true;
-                return Err(WalError::Io(e));
-            }
+            Err(_) => match OpenOptions::new().read(true).write(true).open(&state.path) {
+                Ok(f) => f,
+                Err(e) => {
+                    // Rename succeeded so the file on disk contains the truncated
+                    // entries. Update in-memory state to match before marking
+                    // inconsistent; otherwise last_hash / next_sequence remain
+                    // stale and any later recovery would build an invalid chain.
+                    state.last_hash = last_hash;
+                    state.cumulative_hasher = cumulative_hasher;
+                    state.next_sequence = next_seq;
+                    state.entry_count = retained_count;
+                    state.inconsistent = true;
+                    return Err(WalError::Io(e));
+                }
+            },
         };
         if let Err(e) = reopened.seek(SeekFrom::End(0)) {
+            state.file = reopened;
+            state.last_hash = last_hash;
+            state.cumulative_hasher = cumulative_hasher;
+            state.next_sequence = next_seq;
+            state.entry_count = retained_count;
             state.inconsistent = true;
             return Err(WalError::Io(e));
         }
@@ -618,6 +635,114 @@ impl Wal {
             truncated_at_sequence: expected_sequence,
             recovered_at: now_nanos(),
         })
+    }
+
+    /// Attempt non-destructive recovery of an inconsistent WAL.
+    ///
+    /// When a transient I/O failure (e.g. `sync_data()`) marks the WAL
+    /// inconsistent, all future appends are rejected. This method re-reads and
+    /// validates every entry on disk (hash chain + Ed25519 signatures). If all
+    /// entries are valid it rebuilds the in-memory state and clears the
+    /// `inconsistent` flag, returning `Ok(entry_count)`. If any entry fails
+    /// validation the flag remains set and `Err` is returned.
+    ///
+    /// Unlike [`recover`](Self::recover) this method never truncates the file;
+    /// it is safe to call speculatively after transient failures.
+    pub fn try_recover(&self) -> Result<u64, WalError> {
+        let mut state = self.inner.lock_recover();
+        if state.closed {
+            return Err(WalError::Closed);
+        }
+        if !state.inconsistent {
+            // Nothing to recover; already consistent.
+            return Ok(state.entry_count);
+        }
+
+        // Clone the file handle for a read-only scan.
+        let mut file = state.file.try_clone()?;
+        file.seek(SeekFrom::Start(0))?;
+
+        let mut header_buf = vec![0u8; HEADER_SIZE];
+        file.read_exact(&mut header_buf)?;
+        let header = deserialize_header(&header_buf)?;
+        file.seek(SeekFrom::Start(HEADER_SIZE as u64))?;
+
+        let verifying_key = state.signing_key.verifying_key();
+        let mut prev_hash = [0u8; 32];
+        let mut cumulative_hasher = Hasher::new();
+        let mut expected_sequence = header.last_checkpoint_seq;
+        let mut last_timestamp = 0i64;
+        let mut count: u64 = 0;
+        let mut offset: u64 = HEADER_SIZE as u64;
+
+        loop {
+            if count >= MAX_WAL_ENTRIES {
+                return Err(WalError::TooManyEntries(MAX_WAL_ENTRIES));
+            }
+
+            let mut len_buf = [0u8; 4];
+            match file.read_exact(&mut len_buf) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(WalError::Io(e)),
+            }
+
+            let entry_len = u32::from_be_bytes(len_buf);
+            if entry_len == 0 || entry_len > MAX_ENTRY_SIZE {
+                return Err(WalError::CorruptedEntry);
+            }
+
+            let mut entry_buf = vec![0u8; entry_len as usize];
+            file.read_exact(&mut entry_buf)?;
+            let entry = deserialize_entry(&entry_buf)?;
+
+            if entry.sequence != expected_sequence {
+                return Err(WalError::SequenceGap);
+            }
+            if entry.timestamp < last_timestamp {
+                return Err(WalError::TimestampRegression);
+            }
+            if entry.prev_hash.ct_eq(&prev_hash).unwrap_u8() == 0 {
+                return Err(WalError::BrokenChain);
+            }
+
+            let entry_hash = entry.compute_hash();
+            cumulative_hasher.update(&entry_hash);
+            let expected_cumulative = *cumulative_hasher.finalize().as_bytes();
+
+            if entry.cumulative_hash.ct_eq(&expected_cumulative).unwrap_u8() == 0 {
+                return Err(WalError::CumulativeMismatch);
+            }
+
+            let sig = Signature::from_bytes(&entry.signature);
+            if verifying_key.verify(&entry.cumulative_hash, &sig).is_err() {
+                return Err(WalError::InvalidSignature);
+            }
+
+            prev_hash = entry_hash;
+            expected_sequence += 1;
+            last_timestamp = entry.timestamp;
+            count += 1;
+            offset += (4 + entry_len) as u64;
+        }
+
+        // All entries validated. Rebuild in-memory state from the verified data.
+        // Seek the write handle to the end so future appends land in the right place.
+        state.file.seek(SeekFrom::Start(offset))?;
+        state.last_hash = prev_hash;
+        state.cumulative_hasher = cumulative_hasher;
+        state.next_sequence = expected_sequence;
+        state.entry_count = count;
+        state.byte_count = offset;
+        state.inconsistent = false;
+        state.pending_syncs = 0;
+
+        log::info!(
+            "wal_try_recover: cleared inconsistent flag, {} entries validated",
+            count,
+        );
+
+        Ok(count)
     }
 
     /// Return the filesystem path of the WAL file.

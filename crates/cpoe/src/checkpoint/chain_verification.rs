@@ -448,4 +448,48 @@ impl Chain {
         report
     }
 
+    /// Cryptographically verify all checkpoint signatures against the provided Ed25519 key.
+    ///
+    /// `verify_detailed` performs structural-only checks because `Chain` holds no key material.
+    /// Call this method when the session verifying key is available to perform full crypto.
+    pub fn verify_signatures_with_key(&self, verifying_key_bytes: &[u8]) -> Result<()> {
+        use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
+
+        let vk_bytes: &[u8; 32] = verifying_key_bytes.try_into().map_err(|_| {
+            Error::checkpoint(format!(
+                "invalid Ed25519 verifying key length: {} (expected 32)",
+                verifying_key_bytes.len()
+            ))
+        })?;
+        let vk = VerifyingKey::from_bytes(vk_bytes)
+            .map_err(|e| Error::checkpoint(format!("invalid Ed25519 verifying key: {e}")))?;
+
+        for (i, checkpoint) in self.checkpoints.iter().enumerate() {
+            match checkpoint.signature.as_ref() {
+                None => {
+                    if self.metadata.signature_policy == SignaturePolicy::Required {
+                        return Err(Error::checkpoint(format!(
+                            "checkpoint {i}: unsigned (signature required by policy)"
+                        )));
+                    }
+                }
+                Some(sig_bytes) => {
+                    let sig_arr: &[u8; 64] = sig_bytes.as_slice().try_into().map_err(|_| {
+                        Error::checkpoint(format!(
+                            "checkpoint {i}: invalid Ed25519 signature length {}",
+                            sig_bytes.len()
+                        ))
+                    })?;
+                    let sig = Signature::from_bytes(sig_arr);
+                    vk.verify(&checkpoint.hash, &sig).map_err(|_| {
+                        Error::checkpoint(format!(
+                            "checkpoint {i}: Ed25519 signature verification failed"
+                        ))
+                    })?;
+                }
+            }
+        }
+        Ok(())
+    }
+
 }

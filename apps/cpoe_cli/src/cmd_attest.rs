@@ -32,6 +32,7 @@ pub(crate) fn cmd_attest(
             eprintln!("Enter text to attest (Ctrl-D to finish):");
         }
         io::stdin()
+            .take(50_000_000)
             .read_to_string(&mut buf)
             .map_err(|e| anyhow!("read stdin: {e}"))?;
         buf
