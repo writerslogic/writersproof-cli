@@ -32,6 +32,9 @@ fn cmd_report_html(path: &str, out: &OutputMode) -> Result<()> {
 
     let html = result.html.unwrap_or_default();
 
+    if out.quiet {
+        return Ok(());
+    }
     if out.json {
         println!("{}", serde_json::json!({ "html": html }));
     } else {
@@ -57,8 +60,10 @@ fn cmd_report_json(path: &str, out: &OutputMode) -> Result<()> {
         .report
         .ok_or_else(|| anyhow!("Report was empty"))?;
 
-    if out.json || out.quiet {
-        // JSON mode: structured output
+    if out.quiet {
+        return Ok(());
+    }
+    if out.json {
         println!(
             "{}",
             serde_json::json!({

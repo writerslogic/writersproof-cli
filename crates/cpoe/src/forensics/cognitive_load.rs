@@ -300,6 +300,7 @@ fn compute_sentence_velocity_arcs(
 ///
 /// Uses Gaussian elimination with partial pivoting on the 3x3 normal equations
 /// to avoid catastrophic cancellation that Cramer's rule suffers from.
+#[allow(clippy::needless_range_loop)] // Matrix row/col indexing is clearer with explicit indices.
 fn quadratic_r_squared(values: &[f64]) -> f64 {
     let n = values.len();
     if n < 3 {
@@ -553,10 +554,15 @@ pub fn analyze_cognitive_load(
         return None;
     }
 
-    let iki_surprisal_rho = compute_iki_surprisal_correlation(text, samples).unwrap_or(0.0);
-    let sentence_arc_r_squared = compute_sentence_velocity_arcs(text, samples).unwrap_or(0.0);
-    let structural_pause_concentration =
-        compute_structural_pause_concentration(text, samples).unwrap_or(0.5);
+    let iki_surprisal_rho = compute_iki_surprisal_correlation(text, samples)
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.0);
+    let sentence_arc_r_squared = compute_sentence_velocity_arcs(text, samples)
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.0);
+    let structural_pause_concentration = compute_structural_pause_concentration(text, samples)
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.5);
 
     let deep_pause_count = samples
         .iter()
