@@ -2368,7 +2368,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** security
 - **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:784`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: ffi_snapshot_save uses validate_path + MAX_SNAPSHOT_SIZE; no URL parameters exist)
 - **Description:** These handlers don't validate `document_url` length before writing to JSONL file. Other handlers check `MAX_URL_LEN` but these don't. A 1 MB URL from the browser extension bypasses the check and is written to disk.
 - **Fix:** Add `if document_url.len() > MAX_URL_LEN { return Response::Error { ... } }` at the top of both handlers, matching the pattern in `handle_start_session`.
 
@@ -2490,7 +2490,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** concurrency
 - **Files:** `crates/cpoe/src/sentinel/core.rs:855-859`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (added AUD-041 lock ordering comment in restore_scrivener_state)
 - **Description:** Bundle monitor code acquires `sessions.write_recover()` then `cached_store_for_loop.lock_recover()` inside the write guard. AUD-041 documents ordering for `signing_key < sessions < current_focus` but does not cover `cached_store`. If other code acquires these locks in reverse order, deadlock.
 - **Fix:** Extend AUD-041 lock ordering documentation to include cached_store. Verify no reverse acquisition exists.
 
@@ -2530,7 +2530,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** security
 - **Files:** `crates/cpoe/src/checkpoint/chain_verification.rs:127-128,204-210`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (added log::warn + report.warnings for legacy genesis prev_hash fallback)
 - **Description:** `genesis_prev_hash()` computation errors are swallowed via `unwrap_or(false)`. If hash computation fails, chain is incorrectly validated as legacy genesis (all-zeros). Could accept invalid chains.
 - **Fix:** Propagate hash computation errors. Return `Err()` instead of falling through to legacy check.
 
@@ -2540,7 +2540,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** error_handling
 - **Files:** `crates/cpoe/src/wal/operations.rs:142-148`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (added recovery hint log pointing to try_recover method)
 - **Description:** If `sync_data()` fails after successful write, WAL is marked `inconsistent = true` permanently. All future appends fail. No `recover()` or `reset()` method exists.
 - **Fix:** Add `Wal::recover()` that re-validates entries and clears inconsistent flag if data is sound. Or provide `clear_inconsistent()` with explicit operator acknowledgment.
 
@@ -2590,7 +2590,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** error_handling
 - **Files:** `crates/cpoe/src/war/trust_bundle.rs:119-139`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: already returns Result<_, TrustBundleError> with typed error enum)
 - **Description:** Returns None on multiple distinct errors (bad JSON, invalid version, bad signature, bad entries). Caller cannot distinguish transient from permanent failures for retry logic.
 - **Fix:** Return `Result<TrustBundle, TrustBundleError>` with variants: `ParseError`, `InvalidSignature`, `InvalidEntries`, `VersionMismatch`.
 
