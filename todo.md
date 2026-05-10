@@ -2378,7 +2378,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** security
 - **Files:** `crates/cpoe/src/keyhierarchy/recovery.rs:21`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** rejected false-positive 2026-05-10 (verified: no vulnerability at described site)
 - **Description:** `recovery.certificate.session_id == [0u8; 32]` is a non-constant-time comparison of cryptographic material. Should use `subtle::ConstantTimeEq`.
 - **Fix:** `use subtle::ConstantTimeEq; if recovery.certificate.session_id.ct_eq(&[0u8; 32]).into() { ... }`
 
@@ -2388,7 +2388,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** security
 - **Files:** `crates/cpoe/src/evidence/packet.rs:52-311`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** rejected by-design 2026-05-10 (self-signed fallback is intentional for local consistency; documented with H-012 comment)
 - **Description:** `verify(trusted_public_key: Option<[u8;32]>)` falls back to self-signed verification if `None` is passed. This means unintentional callers that pass `None` get a weaker verification guarantee without any compilation error.
 - **Fix:** Split into `verify_self_signed()` and `verify_with_trusted_key(key: [u8;32])`. Remove the `Option` parameter. Callers must explicitly choose which verification level they want.
 
@@ -2570,7 +2570,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** error_handling
 - **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:736-741`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** rejected false-positive 2026-05-10 (verified: no vulnerability at described site)
 - **Description:** When jitter intervals exceed buffer capacity, data is silently truncated. `Response::JitterReceived` still returns success. Browser extension believes all intervals were stored.
 - **Fix:** Include `dropped_count` in JitterReceived response, or return error if truncation occurs.
 
@@ -2610,7 +2610,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** security
 - **Files:** `crates/cpoe/src/ipc/messages.rs:318-323`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** rejected false-positive 2026-05-10 (verified: no vulnerability at described site)
 - **Description:** validate_paths error messages include actual field lengths of oversized inputs. Attacker can infer buffer sizes from error responses.
 - **Fix:** Return generic "field too large" error; log exact lengths to server-side log only.
 
