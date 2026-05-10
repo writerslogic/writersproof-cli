@@ -203,15 +203,21 @@ fn check_content_growth_rate(input: &CrossModalInput<'_>) -> CrossModalCheck {
         .iter()
         .map(|e| (e.size_delta as i64).max(0))
         .sum();
-    // When gross_additions is 0 but document_length > 0, the event stream shows no
-    // recorded growth despite an existing document. This is a definitive inconsistency
-    // (AI-generated content or evidence fabrication), not merely suspicious, so score 0.0.
-    if gross_additions == 0 && input.document_length > 0 {
+    // Estimate initial file size from the first event: file_size before that event's delta.
+    let initial_file_size = input
+        .events
+        .first()
+        .map(|e| (e.file_size - e.size_delta as i64).max(0))
+        .unwrap_or(0);
+    // Only flag zero gross additions when the final document is *larger* than the initial.
+    // A pure-deletion session (user opens a doc and deletes a paragraph) legitimately has
+    // gross_additions == 0 with a non-empty document_length; that is not evidence fabrication.
+    if gross_additions == 0 && input.document_length > initial_file_size {
         return CrossModalCheck {
             name: "content_growth_rate".into(),
             passed: false,
             score: 0.0,
-            detail: "zero gross additions with non-empty document".into(),
+            detail: "zero gross additions with document growth".into(),
         };
     }
     let chars_per_sec = gross_additions as f64 / input.session_duration_sec;

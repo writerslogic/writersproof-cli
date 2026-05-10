@@ -142,6 +142,7 @@ windows = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Accessibility",
+    "Win32_System_Com",
     "Win32_System_Threading",
     "Win32_System_IO",
     "Win32_Security",
@@ -166,11 +167,16 @@ evdev = "0.12"
 input-linux = "0.6"
 libc = "0.2"
 x11rb = { version = "0.13", features = ["allow-unsafe-code"], optional = true }
+wayland-client = { version = "0.31", optional = true }
+wayland-protocols-wlr = { version = "0.3", optional = true, features = ["client"] }
+zbus = { version = "4", optional = true, default-features = false, features = ["tokio"] }
 
 [features]
 default = ["cpoe_jitter"]
 cpoe_jitter = ["dep:cpoe-jitter"]
 x11 = ["x11rb"]  # Enable X11 focus detection on Linux
+wayland = ["dep:wayland-client", "dep:wayland-protocols-wlr"]  # Wayland focus detection on Linux
+dbus = ["dep:zbus"]  # DBus focus detection on Linux (GNOME/KDE)
 ffi = ["dep:uniffi", "uniffi/cli"]  # UniFFI bindings for Swift (macOS GUI)
 test-utils = []  # Expose internal helpers for integration tests
 did-webvh = ["dep:didwebvh-rs", "dep:affinidi-data-integrity", "dep:affinidi-secrets-resolver"]

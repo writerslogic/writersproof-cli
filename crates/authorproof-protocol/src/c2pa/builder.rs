@@ -9,13 +9,14 @@ use super::jumbf::{
     build_assertion_jumbf_cbor, build_assertion_jumbf_json, ciborium_to_vec, encode_jumbf,
 };
 use super::types::{
-    Action, ActionParameters, ActionsAssertion, AssertionMetadata, AssetType, C2paClaim,
-    C2paManifest, ClaimGeneratorInfo, DataSource, ExternalReferenceAssertion, HashDataAssertion,
-    HashedExtUri, HashedUri, MetadataAssertion, ProcessAssertion, SoftwareAgent,
+    Action, ActionParameters, ActionsAssertion, AiDisclosureAssertion, AssertionMetadata,
+    AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo, DataSource,
+    ExternalReferenceAssertion, ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri,
+    MetadataAssertion, ProcessAssertion, SoftwareAgent,
 };
 use super::{
-    ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_CPOE, ASSERTION_LABEL_EXTERNAL_REF,
-    ASSERTION_LABEL_HASH_DATA, ASSERTION_LABEL_METADATA,
+    ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_AI_DISCLOSURE, ASSERTION_LABEL_CPOE,
+    ASSERTION_LABEL_EXTERNAL_REF, ASSERTION_LABEL_HASH_DATA, ASSERTION_LABEL_METADATA,
 };
 
 /// C2PA 2.4 spec version for claim_generator_info.
@@ -32,6 +33,10 @@ pub struct C2paManifestBuilder {
     evidence_url: Option<String>,
     manifest_label: String,
     cert_der: Option<Vec<u8>>,
+    forensic_signals: Option<ForensicSignalScores>,
+    composition_mode: Option<String>,
+    writing_mode: Option<String>,
+    ai_disclosure: Option<AiDisclosureAssertion>,
 }
 
 impl C2paManifestBuilder {
@@ -51,6 +56,10 @@ impl C2paManifestBuilder {
             evidence_url: None,
             manifest_label,
             cert_der: None,
+            forensic_signals: None,
+            composition_mode: None,
+            writing_mode: None,
+            ai_disclosure: None,
         }
     }
 
@@ -88,14 +97,36 @@ impl C2paManifestBuilder {
         self
     }
 
+    /// Set forensic signal scores for the process assertion.
+    pub fn forensic_signals(
+        mut self,
+        signals: ForensicSignalScores,
+        composition_mode: Option<String>,
+        writing_mode: Option<String>,
+    ) -> Self {
+        self.forensic_signals = Some(signals);
+        self.composition_mode = composition_mode;
+        self.writing_mode = writing_mode;
+        self
+    }
+
+    /// Set the AI disclosure assertion (c2pa.ai-disclosure).
+    pub fn ai_disclosure(mut self, disclosure: AiDisclosureAssertion) -> Self {
+        self.ai_disclosure = Some(disclosure);
+        self
+    }
+
     pub fn build_jumbf(self, signer: &dyn EvidenceSigner) -> Result<Vec<u8>> {
         let manifest = self.build_manifest(signer)?;
         encode_jumbf(&manifest)
     }
 
     pub fn build_manifest(self, signer: &dyn EvidenceSigner) -> Result<C2paManifest> {
-        let cpoe_assertion =
+        let mut cpoe_assertion =
             ProcessAssertion::from_evidence(&self.evidence_packet, &self.evidence_bytes);
+        cpoe_assertion.forensic_signals = self.forensic_signals;
+        cpoe_assertion.composition_mode = self.composition_mode;
+        cpoe_assertion.writing_mode = self.writing_mode;
 
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -209,6 +240,21 @@ impl C2paManifestBuilder {
                 alg: Some("sha256".to_string()),
             });
             assertion_boxes.push(ext_box);
+        }
+
+        // c2pa.ai-disclosure assertion (§12.8)
+        if let Some(ref disclosure) = self.ai_disclosure {
+            let ai_box =
+                build_assertion_jumbf_json(ASSERTION_LABEL_AI_DISCLOSURE, disclosure)?;
+            let ai_hash = Sha256::digest(&ai_box[8..]);
+            created_assertions.push(HashedUri {
+                url: format!(
+                    "self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_AI_DISCLOSURE}"
+                ),
+                hash: ai_hash.to_vec(),
+                alg: Some("sha256".to_string()),
+            });
+            assertion_boxes.push(ai_box);
         }
 
         let sig_url = format!("self#jumbf=/c2pa/{manifest_label}/c2pa.signature");

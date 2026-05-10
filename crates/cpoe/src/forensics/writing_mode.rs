@@ -589,6 +589,104 @@ fn compute_pause_burst_correlation(sorted: SortedEvents<'_>) -> f64 {
     ((rho + 1.0) / 2.0).clamp(0.0, 1.0)
 }
 
+/// Optional enhanced signal scores for writing mode enrichment.
+///
+/// When the new forensic modules produce results, their composite scores
+/// are blended into the writing mode classification to improve accuracy.
+#[derive(Debug)]
+pub struct EnhancedSignals {
+    /// Cognitive load-timing entanglement composite (0=transcriptive, 1=cognitive).
+    pub cognitive_load_score: Option<f64>,
+    /// Revision topology composite (0=transcriptive, 1=cognitive).
+    pub revision_topology_score: Option<f64>,
+    /// Error ecology composite (0=transcriptive, 1=cognitive).
+    pub error_ecology_score: Option<f64>,
+    /// Likelihood model posterior P(cognitive) (0=transcriptive, 1=cognitive).
+    pub likelihood_p_cognitive: Option<f64>,
+    /// Composition mode composite (0=AI-mediated, 1=pure composition).
+    pub composition_mode_score: Option<f64>,
+}
+
+/// Weight allocated to each enhanced signal when present.
+/// These are redistributed from the existing signal weights to keep
+/// the total weight at 1.0.
+const ENHANCED_COGNITIVE_LOAD_WEIGHT: f64 = 0.12;
+const ENHANCED_REVISION_TOPO_WEIGHT: f64 = 0.06;
+const ENHANCED_ERROR_ECOLOGY_WEIGHT: f64 = 0.06;
+const ENHANCED_LIKELIHOOD_WEIGHT: f64 = 0.10;
+const ENHANCED_COMPOSITION_WEIGHT: f64 = 0.06;
+
+/// Enrich an existing `WritingModeAnalysis` with enhanced signal scores.
+///
+/// The enhanced signals' total weight (up to 0.40) is redistributed
+/// from the base signals proportionally. When no enhanced signals are
+/// available, the original classification is returned unchanged.
+pub fn enrich_writing_mode(
+    analysis: &mut WritingModeAnalysis,
+    signals: &EnhancedSignals,
+) {
+    let mut enhanced_score = 0.0f64;
+    let mut enhanced_weight = 0.0f64;
+
+    if let Some(s) = signals.cognitive_load_score {
+        enhanced_score += s * ENHANCED_COGNITIVE_LOAD_WEIGHT;
+        enhanced_weight += ENHANCED_COGNITIVE_LOAD_WEIGHT;
+    }
+    if let Some(s) = signals.revision_topology_score {
+        enhanced_score += s * ENHANCED_REVISION_TOPO_WEIGHT;
+        enhanced_weight += ENHANCED_REVISION_TOPO_WEIGHT;
+    }
+    if let Some(s) = signals.error_ecology_score {
+        enhanced_score += s * ENHANCED_ERROR_ECOLOGY_WEIGHT;
+        enhanced_weight += ENHANCED_ERROR_ECOLOGY_WEIGHT;
+    }
+    if let Some(s) = signals.likelihood_p_cognitive {
+        enhanced_score += s * ENHANCED_LIKELIHOOD_WEIGHT;
+        enhanced_weight += ENHANCED_LIKELIHOOD_WEIGHT;
+    }
+    if let Some(s) = signals.composition_mode_score {
+        enhanced_score += s * ENHANCED_COMPOSITION_WEIGHT;
+        enhanced_weight += ENHANCED_COMPOSITION_WEIGHT;
+    }
+
+    if enhanced_weight < f64::EPSILON {
+        return;
+    }
+
+    // Blend: shrink the base score's effective weight and add enhanced.
+    let base_weight = 1.0 - enhanced_weight;
+    let blended = analysis.cognitive_score * base_weight + enhanced_score;
+    let blended = crate::utils::Probability::clamp(blended).get();
+
+    analysis.cognitive_score = blended;
+
+    // Reclassify mode from blended score.
+    analysis.mode = if blended >= COGNITIVE_THRESHOLD {
+        WritingMode::Cognitive
+    } else if blended <= TRANSCRIPTIVE_THRESHOLD {
+        WritingMode::Transcriptive
+    } else {
+        WritingMode::Mixed
+    };
+
+    // Recompute confidence.
+    analysis.confidence = match analysis.mode {
+        WritingMode::Cognitive => {
+            ((blended - COGNITIVE_THRESHOLD) / (1.0 - COGNITIVE_THRESHOLD)).min(1.0)
+        }
+        WritingMode::Transcriptive => {
+            ((TRANSCRIPTIVE_THRESHOLD - blended) / TRANSCRIPTIVE_THRESHOLD).min(1.0)
+        }
+        WritingMode::Mixed => {
+            let dist =
+                (blended - TRANSCRIPTIVE_THRESHOLD).min(COGNITIVE_THRESHOLD - blended);
+            let half_range = (COGNITIVE_THRESHOLD - TRANSCRIPTIVE_THRESHOLD) / 2.0;
+            (dist / half_range).min(1.0)
+        }
+        WritingMode::Insufficient => 0.0,
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

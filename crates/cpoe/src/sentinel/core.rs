@@ -168,6 +168,11 @@ pub struct Sentinel {
     bundle_monitors: Arc<Mutex<HashMap<String, super::bundle_monitor::BundleMonitor>>>,
     /// Sender into the main change-event channel; shared with bundle monitors.
     bundle_change_tx: Arc<Mutex<Option<mpsc::Sender<super::types::ChangeEvent>>>>,
+    /// Directory watcher for active document sessions (file-save correlation).
+    document_watcher: Arc<Mutex<Option<super::document_watcher::DocumentDirectoryWatcher>>>,
+    /// Content fingerprints for active sessions, used for cross-app linking.
+    content_fingerprints:
+        Arc<Mutex<Vec<(String, String, super::content_fingerprint::ContentFingerprint)>>>,
 }
 
 impl Sentinel {
@@ -252,6 +257,8 @@ impl Sentinel {
             clipboard_cancel: Arc::new(Mutex::new(None)),
             bundle_monitors: Arc::new(Mutex::new(HashMap::new())),
             bundle_change_tx: Arc::new(Mutex::new(None)),
+            document_watcher: Arc::new(Mutex::new(None)),
+            content_fingerprints: Arc::new(Mutex::new(Vec::new())),
         };
         mouse_stego_seed.zeroize();
         Ok(sentinel)
@@ -467,7 +474,17 @@ impl Sentinel {
                     return Err(e);
                 }
             };
-        *self.bundle_change_tx.lock_recover() = Some(change_tx_for_bundles);
+        *self.bundle_change_tx.lock_recover() = Some(change_tx_for_bundles.clone());
+
+        // Initialize the document directory watcher for file-save correlation.
+        match super::document_watcher::DocumentDirectoryWatcher::new(change_tx_for_bundles) {
+            Ok(dw) => {
+                *self.document_watcher.lock_recover() = Some(dw);
+            }
+            Err(e) => {
+                log::warn!("document_watcher: failed to initialize: {e}");
+            }
+        }
 
         // Reset bridge health and stopping flag on (re-)start.
         // running is already true from the compare_exchange above.
@@ -530,6 +547,8 @@ impl Sentinel {
         let mut session_events_rx = self.session_events_tx.subscribe();
         let bundle_monitors_for_loop = Arc::clone(&self.bundle_monitors);
         let bundle_change_tx_for_loop = Arc::clone(&self.bundle_change_tx);
+        let document_watcher_for_loop = Arc::clone(&self.document_watcher);
+        let content_fingerprints_for_loop = Arc::clone(&self.content_fingerprints);
 
         let event_loop_handle_ref = Arc::clone(&self.event_loop_handle);
         let handle = tokio::spawn(async move {
@@ -565,6 +584,8 @@ impl Sentinel {
                 platform: platform_for_loop,
                 bundle_monitors: bundle_monitors_for_loop,
                 bundle_change_tx: bundle_change_tx_for_loop,
+                document_watcher: document_watcher_for_loop,
+                content_fingerprints: content_fingerprints_for_loop,
                 last_keystroke_time: std::time::Instant::now(),
                 last_keydown_ts_ns: 0,
                 last_mouse_ts_ns: 0,
@@ -1161,6 +1182,9 @@ struct EventLoopCtx {
     bundle_monitors:
         Arc<Mutex<HashMap<String, super::bundle_monitor::BundleMonitor>>>,
     bundle_change_tx: Arc<Mutex<Option<mpsc::Sender<ChangeEvent>>>>,
+    document_watcher: Arc<Mutex<Option<super::document_watcher::DocumentDirectoryWatcher>>>,
+    content_fingerprints:
+        Arc<Mutex<Vec<(String, String, super::content_fingerprint::ContentFingerprint)>>>,
     // Per-loop mutable timing state
     last_keystroke_time: std::time::Instant,
     last_keydown_ts_ns: i64,
@@ -1207,6 +1231,20 @@ impl EventLoopCtx {
                 }
             }
             SessionEventType::Ended => {
+                // Unwatch document directory and remove content fingerprint.
+                let doc_path = std::path::Path::new(&event.document_path);
+                if doc_path.is_absolute() {
+                    {
+                        let mut guard = self.document_watcher.lock_recover();
+                        if let Some(ref mut dw) = *guard {
+                            dw.unwatch_document(doc_path);
+                        }
+                    }
+                }
+                self.content_fingerprints.lock_recover().retain(
+                    |(sid, _, _)| *sid != event.session_id,
+                );
+
                 if let Some(hash) = event.hash {
                     let sid = event.session_id;
                     let sid_hex = match crate::writersproof::Hex64::new(sid.clone()) {
@@ -1520,6 +1558,67 @@ impl EventLoopCtx {
                         }
                     }
                 }
+            }
+        }
+
+        // Register the focused document's directory for file-save correlation.
+        if let Some(ref path) = *self.current_focus.read_recover() {
+            let doc_path = std::path::Path::new(path.as_str());
+            if doc_path.is_absolute() && !path.starts_with("title://") && !path.starts_with("shadow://") {
+                {
+                    let mut guard = self.document_watcher.lock_recover();
+                    if let Some(ref mut dw) = *guard {
+                        if let Err(e) = dw.watch_document(doc_path) {
+                            log::debug!("document_watcher: watch failed for {path:?}: {e}");
+                        }
+                    }
+                }
+
+                // Compute content fingerprint for cross-app session linking.
+                // File I/O runs on the blocking pool to avoid stalling the event loop.
+                let fp_doc = doc_path.to_path_buf();
+                let fp_sessions = Arc::clone(&self.sessions);
+                let fp_store = Arc::clone(&self.content_fingerprints);
+                let fp_path = path.clone();
+                tokio::task::spawn_blocking(move || {
+                    // Reject files >10 MB to avoid memory exhaustion.
+                    match std::fs::metadata(&fp_doc) {
+                        Ok(m) if m.len() > 10 * 1024 * 1024 => return,
+                        Err(e) => {
+                            log::debug!("content_fingerprint: metadata failed for {fp_doc:?}: {e}");
+                            return;
+                        }
+                        _ => {}
+                    }
+                    let content = match std::fs::read_to_string(&fp_doc) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log::debug!("content_fingerprint: read failed for {fp_doc:?}: {e}");
+                            return;
+                        }
+                    };
+                    let fp = super::content_fingerprint::ContentFingerprint::from_text(&content);
+                    let sessions_guard = fp_sessions.read().unwrap_or_else(|p| p.into_inner());
+                    if let Some(session) = sessions_guard.get(fp_path.as_str()) {
+                        let sid = session.session_id.clone();
+                        let app = session.app_bundle_id.clone();
+                        drop(sessions_guard);
+
+                        // Single lock acquisition for read + write to avoid TOCTOU.
+                        let mut store = fp_store.lock().unwrap_or_else(|p| p.into_inner());
+                        if let Some(link) = super::content_fingerprint::find_cross_app_match(
+                            &sid, &app, &fp, &store,
+                        ) {
+                            log::info!(
+                                "cross-app link detected: {} ({}) <-> {} ({}) distance={}",
+                                link.app_a, link.session_a_id,
+                                link.app_b, link.session_b_id,
+                                link.fingerprint_distance,
+                            );
+                        }
+                        store.push((sid, app, fp));
+                    }
+                });
             }
         }
     }

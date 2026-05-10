@@ -11,6 +11,10 @@
 //! At checkpoint time, the accumulated data feeds into the protocol-level
 //! cognitive analyzer to produce `CognitiveLayerMetrics`.
 
+use std::collections::VecDeque;
+
+use zeroize::Zeroize;
+
 use authorproof_protocol::forensics::cognitive::{
     analyze_cognitive_content, analyze_error_fingerprint, CorrectionEvent, CorrectionType, EditOp,
     WordBoundaryEvent,
@@ -27,16 +31,20 @@ const MAX_TIMED_KEYSTROKES: usize = 20000;
 const MAX_CORRECTIONS: usize = 2000;
 
 /// Real-time accumulator for cognitive writing signals.
+///
+/// Uses `VecDeque` circular buffers so that when capacity is reached,
+/// the oldest entries are evicted. This ensures metrics always reflect
+/// the most recent behavior rather than silently ignoring late-session data.
 #[derive(Debug, Clone)]
 pub struct CognitiveAccumulator {
     /// Word boundary events (pause before each word).
-    word_boundaries: Vec<WordBoundaryEvent>,
+    word_boundaries: VecDeque<WordBoundaryEvent>,
     /// Sequence of edit operations.
-    edit_ops: Vec<EditOp>,
+    edit_ops: VecDeque<EditOp>,
     /// Timed keystrokes for temporal analysis (SID, bigram fluency, modality).
-    timed_keystrokes: Vec<TimedKeystroke>,
+    timed_keystrokes: VecDeque<TimedKeystroke>,
     /// Correction events for error fingerprinting.
-    corrections: Vec<CorrectionEvent>,
+    corrections: VecDeque<CorrectionEvent>,
 
     // Internal state for word boundary detection.
     current_word: String,
@@ -59,10 +67,10 @@ impl Default for CognitiveAccumulator {
 impl CognitiveAccumulator {
     pub fn new() -> Self {
         Self {
-            word_boundaries: Vec::with_capacity(256),
-            edit_ops: Vec::with_capacity(512),
-            timed_keystrokes: Vec::with_capacity(1024),
-            corrections: Vec::with_capacity(64),
+            word_boundaries: VecDeque::with_capacity(256),
+            edit_ops: VecDeque::with_capacity(512),
+            timed_keystrokes: VecDeque::with_capacity(1024),
+            corrections: VecDeque::with_capacity(64),
             current_word: String::with_capacity(32),
             word_start_pause_ms: 0,
             last_was_separator: true,
@@ -86,32 +94,37 @@ impl CognitiveAccumulator {
         let char_byte = char_value.map(|c| c as u8).unwrap_or(0);
 
         // Track timed keystroke for temporal analysis (SID + bigram + modality).
-        if self.timed_keystrokes.len() < MAX_TIMED_KEYSTROKES {
-            self.timed_keystrokes.push(TimedKeystroke {
-                iki_us,
-                char_byte,
-                after_sentence_end: self.last_was_sentence_end,
-            });
+        if self.timed_keystrokes.len() >= MAX_TIMED_KEYSTROKES {
+            self.timed_keystrokes.pop_front();
         }
+        self.timed_keystrokes.push_back(TimedKeystroke {
+            iki_us,
+            char_byte,
+            after_sentence_end: self.last_was_sentence_end,
+        });
 
         // Track edit operation type.
-        if self.edit_ops.len() < MAX_EDIT_OPS {
-            let op = classify_edit_op(size_delta, file_size, self.file_size_at_last_event);
-            self.edit_ops.push(op);
+        if self.edit_ops.len() >= MAX_EDIT_OPS {
+            self.edit_ops.pop_front();
+        }
+        let op = classify_edit_op(size_delta, file_size, self.file_size_at_last_event);
+        self.edit_ops.push_back(op);
 
-            // Track correction patterns.
-            if op == EditOp::Delete {
-                self.consecutive_deletes += 1;
-            } else {
-                if self.consecutive_deletes > 0 && self.corrections.len() < MAX_CORRECTIONS {
-                    let correction_type = classify_correction(self.consecutive_deletes);
-                    self.corrections.push(CorrectionEvent {
-                        correction_type,
-                        char_count: self.consecutive_deletes,
-                    });
+        // Track correction patterns.
+        if op == EditOp::Delete {
+            self.consecutive_deletes += 1;
+        } else {
+            if self.consecutive_deletes > 0 {
+                if self.corrections.len() >= MAX_CORRECTIONS {
+                    self.corrections.pop_front();
                 }
-                self.consecutive_deletes = 0;
+                let correction_type = classify_correction(self.consecutive_deletes);
+                self.corrections.push_back(CorrectionEvent {
+                    correction_type,
+                    char_count: self.consecutive_deletes,
+                });
             }
+            self.consecutive_deletes = 0;
         }
         self.file_size_at_last_event = file_size;
 
@@ -128,16 +141,17 @@ impl CognitiveAccumulator {
 
             if is_separator && !self.current_word.is_empty() {
                 // Word just completed — record boundary with pre-word pause.
-                if self.word_boundaries.len() < MAX_WORD_BOUNDARIES {
-                    let tier = authorproof_protocol::forensics::cognitive::word_frequency_tier(
-                        &self.current_word,
-                    );
-                    self.word_boundaries.push(WordBoundaryEvent {
-                        pre_word_pause_ms: self.word_start_pause_ms,
-                        frequency_tier: tier,
-                    });
+                if self.word_boundaries.len() >= MAX_WORD_BOUNDARIES {
+                    self.word_boundaries.pop_front();
                 }
-                self.current_word.clear();
+                let tier = authorproof_protocol::forensics::cognitive::word_frequency_tier(
+                    &self.current_word,
+                );
+                self.word_boundaries.push_back(WordBoundaryEvent {
+                    pre_word_pause_ms: self.word_start_pause_ms,
+                    frequency_tier: tier,
+                });
+                self.current_word.zeroize();
                 self.last_was_separator = true;
             } else if !is_separator {
                 if self.last_was_separator {
@@ -161,9 +175,15 @@ impl CognitiveAccumulator {
     /// Produce cognitive analysis results from accumulated data.
     /// Called at checkpoint time to enrich `WritingModeAnalysis`.
     pub fn analyze(&self) -> Option<super::writing_mode::CognitiveLayerMetrics> {
-        let temporal = analyze_cognitive_temporal(&self.timed_keystrokes);
-        let content = analyze_cognitive_content(&self.word_boundaries, &self.edit_ops);
-        let error_fp = analyze_error_fingerprint(&self.corrections);
+        // VecDeque may not be contiguous; collect to Vec for slice APIs.
+        let timed_ks: Vec<_> = self.timed_keystrokes.iter().cloned().collect();
+        let word_bs: Vec<_> = self.word_boundaries.iter().cloned().collect();
+        let edit_os: Vec<_> = self.edit_ops.iter().copied().collect();
+        let corrs: Vec<_> = self.corrections.iter().cloned().collect();
+
+        let temporal = analyze_cognitive_temporal(&timed_ks);
+        let content = analyze_cognitive_content(&word_bs, &edit_os);
+        let error_fp = analyze_error_fingerprint(&corrs);
 
         // Need at least temporal or content analysis to produce meaningful metrics.
         let t = temporal.as_ref();

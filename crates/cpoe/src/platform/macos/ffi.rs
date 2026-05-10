@@ -144,6 +144,17 @@ extern "C" {
     pub fn CGEventTapIsEnabled(tap: *mut std::ffi::c_void) -> bool;
     pub fn CGEventGetIntegerValueField(event: *mut std::ffi::c_void, field: u32) -> i64;
     pub fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
+    /// SAFETY: `unicode_string` must point to a buffer of at least
+    /// `max_string_length` u16 elements. The caller MUST clamp
+    /// `*actual_string_length` to `max_string_length` before using it
+    /// as a slice index, since the kernel may report a longer composed
+    /// string than the buffer can hold.
+    pub fn CGEventKeyboardGetUnicodeString(
+        event: *mut std::ffi::c_void,
+        max_string_length: libc::c_ulong,
+        actual_string_length: *mut libc::c_ulong,
+        unicode_string: *mut u16,
+    );
 }
 
 extern "C" {

@@ -173,7 +173,7 @@ pub struct EvidenceEvent {
 
 /// Returns `true` if the given bundle ID matches a known AI assistant app.
 pub fn is_ai_tool_bundle_id(bundle_id: &str) -> bool {
-    KNOWN_AI_APP_BUNDLE_IDS.iter().any(|&id| id == bundle_id)
+    KNOWN_AI_APP_BUNDLE_IDS.contains(&bundle_id)
 }
 
 /// Clipboard monitor for detecting copy events and generating evidence.

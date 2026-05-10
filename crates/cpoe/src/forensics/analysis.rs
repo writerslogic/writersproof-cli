@@ -341,6 +341,20 @@ pub fn analyze_forensics_ext_with_focus(
             metrics.cadence.fatigue_phase = Some(fatigue.dominant_phase);
             metrics.fatigue_trajectory = Some(fatigue);
         }
+
+        // Cognitive load-timing entanglement
+        metrics.cognitive_load =
+            super::cognitive_load::analyze_cognitive_load(document_text, samples);
+
+        // Error ecology classification
+        metrics.error_ecology = super::error_ecology::analyze_error_ecology(samples);
+
+        // Per-window generative likelihood model (personalized when fingerprint is mature)
+        metrics.likelihood_model =
+            super::likelihood_model::analyze_likelihood_model_with_priors(
+                samples,
+                metrics.behavioral.as_ref(),
+            );
     }
 
     metrics.velocity = super::velocity::analyze_velocity(sorted);
@@ -396,21 +410,54 @@ pub fn analyze_forensics_ext_with_focus(
         super::scoring::apply_attestation_tier_penalty(&mut metrics.assessment_score, tier);
     }
 
+    // Revision topology (depends on sorted events, needed before enrichment)
+    metrics.revision_topology = super::revision_topology::analyze_revision_topology(sorted);
+
+    // Apply enhanced signal adjustments to assessment score
+    super::assessment::apply_enhanced_signal_adjustments(
+        &mut metrics.assessment_score,
+        metrics.cognitive_load.as_ref(),
+        metrics.revision_topology.as_ref(),
+        metrics.error_ecology.as_ref(),
+        metrics.likelihood_model.as_ref(),
+    );
+
     metrics.risk_level = determine_risk_level(metrics.assessment_score.get(), events.len());
 
-    metrics.writing_mode = Some(super::writing_mode::classify_writing_mode(
+    // Base writing mode classification
+    let mut wm = super::writing_mode::classify_writing_mode(
         &metrics.primary,
         &metrics.cadence,
         sorted,
         events.len(),
-    ));
+    );
+
+    // Enrich with enhanced signals
+    let enhanced = super::writing_mode::EnhancedSignals {
+        cognitive_load_score: metrics.cognitive_load.as_ref().map(|c| c.composite_score),
+        revision_topology_score: metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| r.composite_score),
+        error_ecology_score: metrics.error_ecology.as_ref().map(|e| e.composite_score),
+        likelihood_p_cognitive: metrics.likelihood_model.as_ref().map(|l| l.composite_score),
+        composition_mode_score: metrics
+            .composition_mode
+            .as_ref()
+            .map(|c| c.composite_score),
+    };
+    super::writing_mode::enrich_writing_mode(&mut wm, &enhanced);
+    metrics.writing_mode = Some(wm);
 
     metrics
 }
 
 /// Analyze events partitioned by checkpoint boundaries.
+///
+/// Accepts `SortedEvents` to avoid redundant clone+sort when the caller
+/// already has sorted data (which is the common case in the forensics pipeline).
 pub fn per_checkpoint_flags(
-    events: &[EventData],
+    sorted_events: SortedEvents<'_>,
     checkpoints: &[CheckpointProof],
 ) -> PerCheckpointResult {
     if checkpoints.is_empty() {
@@ -420,9 +467,6 @@ pub fn per_checkpoint_flags(
             suspicious: false,
         };
     }
-
-    let mut sorted_events = events.to_vec();
-    sorted_events.sort_by_key(|e| e.timestamp_ns);
 
     let mut flags = Vec::with_capacity(checkpoints.len());
 

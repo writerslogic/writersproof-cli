@@ -410,7 +410,7 @@ pub fn apply_dictation_adjustment(
     let n = events.len() as f64;
     let mean_plausibility: f64 = events
         .iter()
-        .map(|e| score_dictation_plausibility(e))
+        .map(score_dictation_plausibility)
         .sum::<f64>()
         / n;
 

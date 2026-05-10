@@ -8,19 +8,35 @@
 //! for embedding in the COSE_Sign1 protected header.
 
 use crate::error::{Error, Result};
-use der::asn1::BitString;
+use der::asn1::{BitString, ObjectIdentifier, OctetString};
 use der::{Decode, Encode};
 use ed25519_dalek::SigningKey;
 use sha2::Digest;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 use x509_cert::certificate::{CertificateInner, TbsCertificateInner, Version};
+use x509_cert::ext::Extension;
 use x509_cert::name::RdnSequence;
 use x509_cert::serial_number::SerialNumber;
 use x509_cert::time::Validity;
 
 /// OID for Ed25519 (RFC 8410): 1.3.101.112
-const ED25519_OID: der::oid::ObjectIdentifier =
-    der::oid::ObjectIdentifier::new_unwrap("1.3.101.112");
+const ED25519_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
+
+/// C2PA claim signing EKU OID: 1.3.6.1.4.1.62558.2.1
+const C2PA_CLAIM_SIGNING_OID: ObjectIdentifier =
+    ObjectIdentifier::new_unwrap("1.3.6.1.4.1.62558.2.1");
+
+/// Basic Constraints OID: 2.5.29.19
+const BASIC_CONSTRAINTS_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.19");
+
+/// Key Usage OID: 2.5.29.15
+const KEY_USAGE_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.15");
+
+/// Extended Key Usage OID: 2.5.29.37
+const EKU_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.37");
+
+/// Subject Key Identifier OID: 2.5.29.14
+const SKI_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.14");
 
 /// Subject and Issuer DN for self-signed CPoE certificates.
 const CERT_DN: &str = "CN=WritersProof CPoE Signer,O=WritersLogic";
@@ -68,6 +84,13 @@ pub fn generate_self_signed_cert(signing_key: &SigningKey) -> Result<Vec<u8>> {
             .map_err(|e| Error::Crypto(format!("failed to encode public key: {e}")))?,
     };
 
+    // Build X.509 v3 extensions required by C2PA Trust Model:
+    // 1. BasicConstraints (critical): cA=FALSE (end-entity)
+    // 2. KeyUsage (critical): digitalSignature
+    // 3. ExtendedKeyUsage: c2pa-kp-claimSigning (1.3.6.1.4.1.62558.2.1)
+    // 4. SubjectKeyIdentifier: SHA-256(publicKey)[..20]
+    let extensions = build_c2pa_extensions(&pk_hash)?;
+
     let tbs = TbsCertificateInner {
         version: Version::V3,
         serial_number: serial,
@@ -78,7 +101,7 @@ pub fn generate_self_signed_cert(signing_key: &SigningKey) -> Result<Vec<u8>> {
         subject_public_key_info: spki,
         issuer_unique_id: None,
         subject_unique_id: None,
-        extensions: None,
+        extensions: Some(extensions),
     };
 
     // DER-encode the TBS certificate for signing.
@@ -134,6 +157,61 @@ pub fn extract_public_key_from_cert(cert_der: &[u8]) -> Result<[u8; 32]> {
     let mut key = [0u8; 32];
     key.copy_from_slice(raw_bytes);
     Ok(key)
+}
+
+/// Build X.509 v3 extensions required by the C2PA Trust Model.
+fn build_c2pa_extensions(
+    pk_hash: &[u8],
+) -> Result<x509_cert::ext::Extensions> {
+    // 1. BasicConstraints (critical): cA=FALSE
+    // DER: SEQUENCE { BOOLEAN FALSE } → 30 03 01 01 00
+    let basic_constraints_value = OctetString::new(vec![0x30, 0x03, 0x01, 0x01, 0x00])
+        .map_err(|e| Error::Crypto(format!("BasicConstraints encoding: {e}")))?;
+    let basic_constraints = Extension {
+        extn_id: BASIC_CONSTRAINTS_OID,
+        critical: true,
+        extn_value: basic_constraints_value,
+    };
+
+    // 2. KeyUsage (critical): digitalSignature (bit 0)
+    // DER: BIT STRING { 03 02 07 80 } → 07 unused bits, 0x80 = bit 0 set
+    let key_usage_value = OctetString::new(vec![0x03, 0x02, 0x07, 0x80])
+        .map_err(|e| Error::Crypto(format!("KeyUsage encoding: {e}")))?;
+    let key_usage = Extension {
+        extn_id: KEY_USAGE_OID,
+        critical: true,
+        extn_value: key_usage_value,
+    };
+
+    // 3. ExtendedKeyUsage: c2pa-kp-claimSigning (1.3.6.1.4.1.62558.2.1)
+    // DER-encode the OID inside a SEQUENCE.
+    let eku_oid_der = C2PA_CLAIM_SIGNING_OID
+        .to_der()
+        .map_err(|e| Error::Crypto(format!("EKU OID encoding: {e}")))?;
+    let mut eku_seq = vec![0x30, eku_oid_der.len() as u8];
+    eku_seq.extend_from_slice(&eku_oid_der);
+    let eku_value = OctetString::new(eku_seq)
+        .map_err(|e| Error::Crypto(format!("EKU encoding: {e}")))?;
+    let eku = Extension {
+        extn_id: EKU_OID,
+        critical: false,
+        extn_value: eku_value,
+    };
+
+    // 4. SubjectKeyIdentifier: first 20 bytes of SHA-256(publicKey)
+    // DER: OCTET STRING wrapping the 20-byte key ID
+    let ski_bytes = &pk_hash[..20.min(pk_hash.len())];
+    let mut ski_der = vec![0x04, ski_bytes.len() as u8];
+    ski_der.extend_from_slice(ski_bytes);
+    let ski_value = OctetString::new(ski_der)
+        .map_err(|e| Error::Crypto(format!("SKI encoding: {e}")))?;
+    let ski = Extension {
+        extn_id: SKI_OID,
+        critical: false,
+        extn_value: ski_value,
+    };
+
+    Ok(vec![basic_constraints, key_usage, eku, ski])
 }
 
 #[cfg(test)]

@@ -18,6 +18,36 @@ pub struct ProcessAssertion {
     pub evidence_id: String,
     pub evidence_hash: String,
     pub jitter_seals: Vec<JitterSeal>,
+    /// Forensic signal scores from the 5 analysis dimensions.
+    /// Each is a composite [0.0, 1.0] where 1.0 = strongly cognitive.
+    #[serde(rename = "forensicSignals", skip_serializing_if = "Option::is_none")]
+    pub forensic_signals: Option<ForensicSignalScores>,
+    /// Dominant composition mode during authoring.
+    #[serde(rename = "compositionMode", skip_serializing_if = "Option::is_none")]
+    pub composition_mode: Option<String>,
+    /// Writing mode classification: "cognitive", "transcriptive", "mixed".
+    #[serde(rename = "writingMode", skip_serializing_if = "Option::is_none")]
+    pub writing_mode: Option<String>,
+}
+
+/// Per-dimension forensic signal scores projected into C2PA assertions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForensicSignalScores {
+    /// Cognitive load-timing entanglement (IKI-surprisal correlation).
+    #[serde(rename = "cognitiveLoad")]
+    pub cognitive_load: f64,
+    /// Revision topology and semantic delta (DAG non-linearity).
+    #[serde(rename = "revisionTopology")]
+    pub revision_topology: f64,
+    /// Error ecology (motor vs visual error distribution).
+    #[serde(rename = "errorEcology")]
+    pub error_ecology: f64,
+    /// Per-window generative likelihood model posterior P(cognitive).
+    #[serde(rename = "likelihoodModel")]
+    pub likelihood_model: f64,
+    /// Composition mode (pure composition vs AI-mediated).
+    #[serde(rename = "compositionMode")]
+    pub composition_mode: f64,
 }
 
 /// Per-checkpoint jitter seal binding a checkpoint to its temporal proof (C2PA §12).
@@ -48,6 +78,9 @@ impl ProcessAssertion {
             evidence_id: hex::encode(&packet.packet_id),
             evidence_hash: hex::encode(hash),
             jitter_seals,
+            forensic_signals: None,
+            composition_mode: None,
+            writing_mode: None,
         }
     }
 }
@@ -243,6 +276,31 @@ impl ValidationResult {
     pub fn is_valid(&self) -> bool {
         self.errors.is_empty()
     }
+}
+
+/// C2PA AI disclosure assertion per §12.8 and AIDisclosure.adoc.
+///
+/// Declares AI involvement in content creation, including the level of
+/// human oversight during the authoring process.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiDisclosureAssertion {
+    /// Type of AI model involved (e.g., "language_model", "none").
+    #[serde(rename = "modelType")]
+    pub model_type: String,
+    /// Human-readable name of the AI tool (if detected).
+    #[serde(rename = "modelName", skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
+    /// Level of human oversight during creation.
+    #[serde(rename = "contentProfile", skip_serializing_if = "Option::is_none")]
+    pub content_profile: Option<AiContentProfile>,
+}
+
+/// Content profile describing human oversight level.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiContentProfile {
+    /// One of: "fully_autonomous", "prompt_guided", "human_validated".
+    #[serde(rename = "humanOversightLevel")]
+    pub human_oversight_level: String,
 }
 
 /// Summary of a parsed JUMBF superbox structure (ISO 19566-5).

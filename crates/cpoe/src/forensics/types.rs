@@ -389,6 +389,21 @@ pub struct ForensicMetrics {
     /// `is_prose: false` and excluded from the aggregate behavioral authenticity score.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segment_profiles: Vec<SegmentVelocityProfile>,
+    /// Cognitive load-timing entanglement metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cognitive_load: Option<super::cognitive_load::CognitiveLoadMetrics>,
+    /// Revision topology and semantic delta metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision_topology: Option<super::revision_topology::RevisionTopologyMetrics>,
+    /// Error ecology classification metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_ecology: Option<super::error_ecology::ErrorEcologyMetrics>,
+    /// Composition mode state machine metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composition_mode: Option<super::composition_mode::CompositionModeMetrics>,
+    /// Per-window generative likelihood model metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub likelihood_model: Option<super::likelihood_model::LikelihoodModelMetrics>,
 }
 
 /// Per-segment velocity and prose-classification metrics for bundle documents.
@@ -438,6 +453,20 @@ impl ForensicMetrics {
         // High ratio of unverified sourced content is suspicious
         if let Some(ref prov) = self.provenance {
             if prov.sourced_unknown_ratio > 0.5 && prov.source_trustworthiness < 0.3 {
+                return ForensicVerdict::V3Suspicious;
+            }
+        }
+
+        // Likelihood model: strong transcriptive posterior across all windows
+        if let Some(ref lm) = self.likelihood_model {
+            if lm.session_p_cognitive < 0.15 && lm.window_count >= 3 {
+                return ForensicVerdict::V3Suspicious;
+            }
+        }
+
+        // Composition mode: dominant AI-mediated or paste-veneer
+        if let Some(ref cm) = self.composition_mode {
+            if cm.composite_score < 0.15 && cm.ai_cycle_count >= 3 {
                 return ForensicVerdict::V3Suspicious;
             }
         }

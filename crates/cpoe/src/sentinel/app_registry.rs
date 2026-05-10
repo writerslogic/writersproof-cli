@@ -60,9 +60,11 @@ pub enum StoragePattern {
 /// window title so the sentinel can extract the document name or path without
 /// falling through to the generic separator loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TitleParserVariant {
     /// Generic separator-based extraction (default).
+    #[default]
     Generic,
     /// BBEdit: `"filename — /full/path/to/file"` — the right segment is the absolute path.
     BBEdit,
@@ -74,11 +76,6 @@ pub enum TitleParserVariant {
     Nova,
 }
 
-impl Default for TitleParserVariant {
-    fn default() -> Self {
-        Self::Generic
-    }
-}
 
 /// Confidence level from auto-discovery probing.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]

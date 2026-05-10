@@ -247,8 +247,28 @@ pub fn ffi_export_c2pa_manifest(
         builder = builder.format(mime);
     }
 
+    // Load CA-signed or self-signed X.509 cert for the x5chain COSE header.
     let provider = crate::tpm::detect_provider();
     let signer = crate::tpm::TpmSigner::new(provider);
+    if let Ok(sk) = crate::ffi::helpers::load_signing_key() {
+        if let Ok(cert_der) = crate::ffi::helpers::load_or_generate_cert(&sk) {
+            builder = builder.cert_der(cert_der);
+        }
+    }
+
+    // Enrich C2PA manifest with forensic signals.
+    // Run forensics on stored events to populate signal scores.
+    let doc_path_string = doc_file.to_string_lossy().to_string();
+    let stored_events = crate::ffi::helpers::open_store()
+        .and_then(|s| {
+            s.get_events_for_file(&doc_path_string)
+                .map_err(|e| format!("{e}"))
+        })
+        .unwrap_or_default();
+    if !stored_events.is_empty() {
+        let (metrics, _) = crate::ffi::helpers::run_full_forensics(&stored_events);
+        builder = enrich_c2pa_builder(builder, &metrics);
+    }
 
     let jumbf = match builder.build_jumbf(&signer) {
         Ok(j) => j,
@@ -400,4 +420,71 @@ fn decode_evidence_for_c2pa(
         attestation_tier: None,
         baseline_verification: None,
     })
+}
+
+/// Enrich a C2PA manifest builder with forensic signal scores from computed metrics.
+///
+/// Shared by FFI and CLI export paths to avoid duplication.
+pub fn enrich_c2pa_builder(
+    builder: authorproof_protocol::c2pa::C2paManifestBuilder,
+    metrics: &crate::forensics::ForensicMetrics,
+) -> authorproof_protocol::c2pa::C2paManifestBuilder {
+    let signals = authorproof_protocol::c2pa::ForensicSignalScores {
+        cognitive_load: metrics
+            .cognitive_load
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
+        revision_topology: metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| r.composite_score)
+            .unwrap_or(0.0),
+        error_ecology: metrics
+            .error_ecology
+            .as_ref()
+            .map(|e| e.composite_score)
+            .unwrap_or(0.0),
+        likelihood_model: metrics
+            .likelihood_model
+            .as_ref()
+            .map(|l| l.session_p_cognitive)
+            .unwrap_or(0.0),
+        composition_mode: metrics
+            .composition_mode
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
+    };
+    let writing_mode = metrics
+        .writing_mode
+        .as_ref()
+        .map(|wm| wm.mode.to_string());
+    let comp_mode = metrics
+        .composition_mode
+        .as_ref()
+        .and_then(|c| c.dominant_mode)
+        .map(|m| m.to_string());
+
+    let mut builder = builder.forensic_signals(signals, comp_mode, writing_mode);
+
+    // Add AI disclosure if AI-mediated composition detected.
+    if let Some(ref cm) = metrics.composition_mode {
+        if cm.ai_cycle_count > 0 || cm.distribution.ai_mediated > 0.1 {
+            let oversight = if cm.distribution.ai_mediated > 0.5 {
+                "prompt_guided"
+            } else {
+                "human_validated"
+            };
+            builder = builder.ai_disclosure(authorproof_protocol::c2pa::AiDisclosureAssertion {
+                model_type: "language_model".to_string(),
+                model_name: None,
+                content_profile: Some(authorproof_protocol::c2pa::AiContentProfile {
+                    human_oversight_level: oversight.to_string(),
+                }),
+            });
+        }
+    }
+
+    builder
 }

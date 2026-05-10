@@ -140,6 +140,53 @@ pub(crate) fn load_signing_key() -> Result<ed25519_dalek::SigningKey, String> {
     Ok(signing_key)
 }
 
+/// Load a cached CA-signed X.509 certificate, or fall back to self-signed.
+///
+/// Checks for `{DATA_DIR}/ca_cert.der`. If present, returns the cached DER bytes.
+/// If absent, generates a self-signed cert with C2PA-compliant extensions.
+/// The CA-provisioned cert is populated asynchronously by `provision_ca_cert()`
+/// after successful enrollment with the WritersProof CA.
+pub(crate) fn load_or_generate_cert(
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Result<Vec<u8>, String> {
+    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+    let cert_path = data_dir.join("ca_cert.der");
+
+    // Prefer CA-signed cert if cached.
+    if cert_path.is_file() {
+        match std::fs::read(&cert_path) {
+            Ok(der) if der.len() > 100 => return Ok(der),
+            Ok(_) => log::warn!("Cached CA cert too small; regenerating self-signed"),
+            Err(e) => log::warn!("Failed to read cached CA cert: {e}; using self-signed"),
+        }
+    }
+
+    // Fall back to self-signed with C2PA extensions.
+    authorproof_protocol::c2pa::cert::generate_self_signed_cert(signing_key)
+        .map_err(|e| format!("Failed to generate self-signed cert: {e}"))
+}
+
+/// Cache a CA-signed certificate from WritersProof CA.
+///
+/// Called after successful enrollment. Writes the DER-encoded cert to
+/// `{DATA_DIR}/ca_cert.der` via atomic rename.
+pub(crate) fn cache_ca_cert(cert_der: &[u8]) -> Result<(), String> {
+    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+    let cert_path = data_dir.join("ca_cert.der");
+
+    let parent = cert_path.parent().unwrap_or(std::path::Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| format!("Failed to create temp file for cert: {e}"))?;
+    std::io::Write::write_all(&mut tmp, cert_der)
+        .map_err(|e| format!("Failed to write cert: {e}"))?;
+    tmp.as_file()
+        .sync_all()
+        .map_err(|e| format!("Failed to sync cert: {e}"))?;
+    tmp.persist(&cert_path)
+        .map_err(|e| format!("Failed to persist cert: {e}"))?;
+    Ok(())
+}
+
 /// Load the DID string from identity.json.
 pub(crate) fn load_did() -> Result<String, String> {
     let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;

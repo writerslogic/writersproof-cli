@@ -354,14 +354,14 @@ fn aggregate_costs(
             0.0
         }
     } else {
-        // Guard: clamp subnormals to MIN_POSITIVE before ln() to avoid collapse.
+        // Clamp to a realistic physical lower bound (0.001 CPU-seconds) rather than
+        // f64::MIN_POSITIVE. With MIN_POSITIVE, a single near-zero component drags
+        // the geometric mean to zero via ln(-708), defeating the entire cost model.
+        const MIN_ATTACK_COST: f64 = 0.001;
         let log_sum: f64 = finite_costs
             .iter()
-            .map(|c| c.max(f64::MIN_POSITIVE).ln())
+            .map(|c| c.max(MIN_ATTACK_COST).ln())
             .sum();
-        // exp() of a finite value is always finite and positive, but guard
-        // against NaN from an empty log_sum (len==0 prevented above) or
-        // platform quirks.
         let raw = (log_sum / finite_costs.len() as f64).exp();
         let geo_mean = if raw.is_finite() {
             raw

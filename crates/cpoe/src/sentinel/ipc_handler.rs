@@ -776,7 +776,9 @@ impl IpcMessageHandler for SentinelIpcHandler {
 
             IpcMessage::Pulse(_)
             | IpcMessage::CheckpointCreated { .. }
-            | IpcMessage::SystemAlert { .. } => IpcMessage::Error {
+            | IpcMessage::SystemAlert { .. }
+            | IpcMessage::BrowserKeystroke { .. }
+            | IpcMessage::BrowserKeystrokeBatch { .. } => IpcMessage::Error {
                 code: IpcErrorCode::InvalidMessage,
                 message: "Push events cannot be sent to the server".into(),
             },

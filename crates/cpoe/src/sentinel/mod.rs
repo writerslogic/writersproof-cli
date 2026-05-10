@@ -39,9 +39,16 @@ pub mod ipc_handler;
 pub mod relationships;
 pub mod shadow;
 pub mod types;
+pub mod process_files;
+pub mod content_fingerprint;
+pub mod document_watcher;
+pub mod terminal_editors;
 
 #[cfg(target_os = "macos")]
 pub mod macos_focus;
+
+#[cfg(target_os = "linux")]
+pub mod linux_focus;
 
 #[cfg(not(target_os = "macos"))]
 pub mod stub_focus;

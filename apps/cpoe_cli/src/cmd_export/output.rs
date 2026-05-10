@@ -361,6 +361,17 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 builder = builder.format(mime);
             }
 
+            // Enrich C2PA manifest with forensic signals from the event data.
+            {
+                let event_data = cpoe::forensics::EventData::from_secure_events(events);
+                let regions = cpoe::forensics::build_edit_regions(events);
+                let analysis_ctx = cpoe::forensics::AnalysisContext::default();
+                let metrics = cpoe::forensics::analyze_forensics_ext(
+                    &event_data, &regions, None, None, None, &analysis_ctx,
+                );
+                builder = cpoe::ffi::evidence_derivative::enrich_c2pa_builder(builder, &metrics);
+            }
+
             let jumbf_bytes = builder
                 .build_jumbf(ctx.signer)
                 .map_err(|e| anyhow!("C2PA JUMBF build failed: {}", e))?;

@@ -55,7 +55,114 @@ pub struct FfiForensicBreakdown {
     pub dictation_ratio: f64,
     /// Whether multiple speakers were detected in dictation segments.
     pub multi_speaker_detected: bool,
+    /// Enhanced cognitive/transcriptive signal analysis (5 new dimensions).
+    pub enhanced_signals: Option<FfiEnhancedSignals>,
     pub error_message: Option<String>,
+}
+
+/// Enhanced forensic signal metrics grouped by analysis dimension.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiEnhancedSignals {
+    pub cognitive_load: Option<FfiCognitiveLoadSignals>,
+    pub revision_topology: Option<FfiRevisionTopologySignals>,
+    pub error_ecology: Option<FfiErrorEcologySignals>,
+    pub likelihood_model: Option<FfiLikelihoodSignals>,
+    pub composition_mode: Option<FfiCompositionModeSignals>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiCognitiveLoadSignals {
+    /// Composite score (0=transcriptive, 1=cognitive).
+    pub score: f64,
+    /// IKI-surprisal Spearman rho (cognitive: 0.3-0.6, transcriptive: ~0).
+    pub iki_surprisal_rho: f64,
+    /// Per-sentence velocity arc R² (cognitive: >0.3, transcriptive: <0.1).
+    pub sentence_arc_r_squared: f64,
+    /// Deep pauses at structural boundaries (cognitive: >0.6, transcriptive: <0.3).
+    pub structural_pause_concentration: f64,
+    /// Number of deep pauses analyzed.
+    pub deep_pause_count: u32,
+    /// Number of sentences analyzed.
+    pub sentence_count: u32,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiRevisionTopologySignals {
+    pub score: f64,
+    /// DAG branching factor (cognitive: >2, transcriptive: ~1).
+    pub branching_factor: f64,
+    /// Mean region revisit depth (cognitive: 2-4, transcriptive: 0-1).
+    pub revisit_depth: f64,
+    /// Mean distance from edit position to frontier (cognitive: 0.3-0.6).
+    pub frontier_distance: f64,
+    /// Semantic revision ratio (substitution + restructuring + insertion).
+    pub semantic_revision_ratio: f64,
+    /// Total classified revision events.
+    pub total_revisions: u32,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiErrorEcologySignals {
+    pub score: f64,
+    /// Rapid self-correction fraction (cognitive: >0.3).
+    pub rapid_correction_pct: f64,
+    /// Bulk correction fraction (transcriptive: >0.3).
+    pub bulk_correction_pct: f64,
+    /// False start fraction (cognitive: >0.15).
+    pub false_start_pct: f64,
+    /// Overall correction rate (corrections / total keystrokes).
+    pub correction_rate: f64,
+    /// Total correction events.
+    pub total_corrections: u32,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiLikelihoodSignals {
+    /// Session posterior P(cognitive).
+    pub p_cognitive: f64,
+    /// Mean per-window LLR.
+    pub mean_llr: f64,
+    /// LLR standard deviation (high = mixed session).
+    pub llr_std_dev: f64,
+    /// Fraction of windows classified as cognitive.
+    pub cognitive_window_fraction: f64,
+    /// Total windows analyzed.
+    pub window_count: u32,
+    /// Timestamped per-window cognitive probability timeline.
+    /// Each point has a seconds-since-session-start and P(cognitive).
+    pub timeline: Vec<FfiTimelinePoint>,
+}
+
+/// A single point on the cognitive probability timeline.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiTimelinePoint {
+    /// Seconds since the start of the session.
+    pub seconds_from_start: f64,
+    /// Posterior P(cognitive) for this window.
+    pub p_cognitive: f64,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiCompositionModeSignals {
+    pub score: f64,
+    /// Dominant mode: "pure_composition", "reference_assisted", "paste_domesticate",
+    /// "paste_veneer", or "ai_mediated".
+    pub dominant_mode: String,
+    /// Number of AI-mediated cycles detected.
+    pub ai_cycle_count: u32,
+    /// Per-mode probability distribution.
+    pub pure_composition_pct: f64,
+    pub reference_assisted_pct: f64,
+    pub paste_domesticate_pct: f64,
+    pub paste_veneer_pct: f64,
+    pub ai_mediated_pct: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +210,7 @@ impl FfiForensicBreakdown {
             dictation_plausibility: 0.0,
             dictation_ratio: 0.0,
             multi_speaker_detected: false,
+            enhanced_signals: None,
             error_message: Some(msg),
         }
     }
@@ -264,7 +372,288 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
         dictation_plausibility,
         dictation_ratio,
         multi_speaker_detected,
+        enhanced_signals: build_enhanced_signals(&metrics, &path),
         error_message: None,
     }
     })
+}
+
+fn build_enhanced_signals(
+    metrics: &crate::forensics::ForensicMetrics,
+    path: &str,
+) -> Option<FfiEnhancedSignals> {
+    let has_any = metrics.cognitive_load.is_some()
+        || metrics.revision_topology.is_some()
+        || metrics.error_ecology.is_some()
+        || metrics.likelihood_model.is_some()
+        || metrics.composition_mode.is_some();
+    if !has_any {
+        return None;
+    }
+
+    let cognitive_load = metrics.cognitive_load.as_ref().map(|c| FfiCognitiveLoadSignals {
+        score: c.composite_score,
+        iki_surprisal_rho: c.iki_surprisal_rho,
+        sentence_arc_r_squared: c.sentence_arc_r_squared,
+        structural_pause_concentration: c.structural_pause_concentration,
+        deep_pause_count: c.deep_pause_count as u32,
+        sentence_count: c.sentence_count as u32,
+    });
+
+    let revision_topology =
+        metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| FfiRevisionTopologySignals {
+                score: r.composite_score,
+                branching_factor: r.graph.mean_branching_factor,
+                revisit_depth: r.graph.mean_revisit_depth,
+                frontier_distance: r.graph.mean_frontier_distance,
+                semantic_revision_ratio: r.revision_types.word_substitution_pct
+                    + r.revision_types.clause_restructuring_pct
+                    + r.revision_types.positional_insertion_pct,
+                total_revisions: r.revision_types.total_revisions as u32,
+            });
+
+    let error_ecology = metrics.error_ecology.as_ref().map(|e| FfiErrorEcologySignals {
+        score: e.composite_score,
+        rapid_correction_pct: e.rapid_self_correction_pct,
+        bulk_correction_pct: e.bulk_correction_pct,
+        false_start_pct: e.false_start_pct,
+        correction_rate: e.correction_rate,
+        total_corrections: e.total_corrections as u32,
+    });
+
+    let likelihood_model = metrics.likelihood_model.as_ref().map(|lm| {
+        FfiLikelihoodSignals {
+            p_cognitive: lm.session_p_cognitive,
+            mean_llr: lm.mean_window_llr,
+            llr_std_dev: lm.llr_std_dev,
+            cognitive_window_fraction: if lm.window_count > 0 {
+                lm.cognitive_window_count as f64 / lm.window_count as f64
+            } else {
+                0.0
+            },
+            window_count: lm.window_count as u32,
+            timeline: lm
+                .window_timeline
+                .iter()
+                .map(|&(secs, p)| FfiTimelinePoint {
+                    seconds_from_start: secs,
+                    p_cognitive: p,
+                })
+                .collect(),
+        }
+    });
+
+    // Populate composition mode from live sentinel session data.
+    let composition_mode = metrics
+        .composition_mode
+        .as_ref()
+        .map(build_composition_ffi)
+        .or_else(|| {
+            // Fall back to computing from sentinel if the pipeline didn't populate it.
+            let sentinel = super::sentinel::get_sentinel()?;
+            let sessions = sentinel.sessions();
+            let session = sessions.iter().find(|s| s.path == path)?;
+            let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
+            let pastes: Vec<_> = session
+                .paste_context
+                .iter()
+                .cloned()
+                .collect();
+            let event_count = session.cognitive.keystroke_count();
+            let cm = crate::forensics::composition_mode::analyze_composition_mode(
+                &switches, &pastes, event_count,
+            )?;
+            Some(build_composition_ffi(&cm))
+        });
+
+    Some(FfiEnhancedSignals {
+        cognitive_load,
+        revision_topology,
+        error_ecology,
+        likelihood_model,
+        composition_mode,
+    })
+}
+
+fn build_composition_ffi(
+    cm: &crate::forensics::composition_mode::CompositionModeMetrics,
+) -> FfiCompositionModeSignals {
+    FfiCompositionModeSignals {
+        score: cm.composite_score,
+        dominant_mode: cm
+            .dominant_mode
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        ai_cycle_count: cm.ai_cycle_count as u32,
+        pure_composition_pct: cm.distribution.pure_composition,
+        reference_assisted_pct: cm.distribution.reference_assisted,
+        paste_domesticate_pct: cm.distribution.paste_domesticate,
+        paste_veneer_pct: cm.distribution.paste_veneer,
+        ai_mediated_pct: cm.distribution.ai_mediated,
+    }
+}
+
+/// Lightweight live scores for dashboard polling.
+///
+/// Reads the last-computed metrics from the sentinel session cache
+/// without re-running the forensics pipeline. O(1) cost, safe to call
+/// at 1Hz from the UI refresh loop.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiLiveScores {
+    pub success: bool,
+    /// Writing mode: "cognitive", "transcriptive", "mixed", "insufficient".
+    pub writing_mode: String,
+    /// Composite cognitive score (0.0-1.0).
+    pub cognitive_score: f64,
+    /// Assessment score (0.0-1.0, higher = more human-like).
+    pub assessment_score: f64,
+    /// Risk level: "low", "medium", "high", "insufficient data".
+    pub risk_level: String,
+    /// Total keystrokes in the current session.
+    pub keystroke_count: u32,
+    /// Session duration in seconds.
+    pub session_duration_sec: f64,
+    /// Real-time cadence score (0.0-1.0).
+    pub cadence_score: f64,
+    /// Current composition mode (if available).
+    pub composition_mode: String,
+    pub error_message: Option<String>,
+}
+
+/// Fast live score polling for the dashboard.
+///
+/// Returns cached metrics from the sentinel session for the given path.
+/// Does NOT re-run the forensics pipeline. Call `ffi_get_forensic_breakdown`
+/// for full analysis.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
+    let sentinel = match super::sentinel::get_sentinel() {
+        Some(s) => s,
+        None => {
+            return FfiLiveScores {
+                success: false,
+                writing_mode: "insufficient".into(),
+                cognitive_score: 0.0,
+                assessment_score: 0.0,
+                risk_level: "insufficient data".into(),
+                keystroke_count: 0,
+                session_duration_sec: 0.0,
+                cadence_score: 0.0,
+                composition_mode: "unknown".into(),
+                error_message: Some("Sentinel not running".into()),
+            };
+        }
+    };
+
+    let sessions = sentinel.sessions();
+    let session = match sessions.iter().find(|s| s.path == path) {
+        Some(s) => s,
+        None => {
+            return FfiLiveScores {
+                success: false,
+                writing_mode: "insufficient".into(),
+                cognitive_score: 0.0,
+                assessment_score: 0.0,
+                risk_level: "insufficient data".into(),
+                keystroke_count: 0,
+                session_duration_sec: 0.0,
+                cadence_score: 0.0,
+                composition_mode: "unknown".into(),
+                error_message: Some("No active session for this path".into()),
+            };
+        }
+    };
+
+    let keystroke_count = session.cognitive.keystroke_count() as u32;
+    let duration = session
+        .start_time
+        .elapsed()
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+
+    // Cadence score from live jitter samples.
+    let cadence_score = crate::forensics::scoring::cadence_score_from_samples(
+        &session.jitter_samples,
+    );
+
+    // Composition mode from cached focus/paste data.
+    let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
+    let pastes: Vec<_> = session.paste_context.iter().cloned().collect();
+    let comp_mode = crate::forensics::composition_mode::analyze_composition_mode(
+        &switches,
+        &pastes,
+        keystroke_count as usize,
+    );
+
+    let (writing_mode, cognitive_score) = if keystroke_count < 20 {
+        ("insufficient".to_string(), 0.0)
+    } else if cadence_score > 0.7 {
+        ("cognitive".to_string(), cadence_score)
+    } else if cadence_score < 0.3 {
+        ("transcriptive".to_string(), cadence_score)
+    } else {
+        ("mixed".to_string(), cadence_score)
+    };
+
+    let risk_level = if cadence_score >= 0.7 {
+        "low"
+    } else if cadence_score >= 0.4 {
+        "medium"
+    } else if keystroke_count < 10 {
+        "insufficient data"
+    } else {
+        "high"
+    };
+
+    FfiLiveScores {
+        success: true,
+        writing_mode,
+        cognitive_score,
+        assessment_score: cadence_score,
+        risk_level: risk_level.to_string(),
+        keystroke_count,
+        session_duration_sec: duration,
+        cadence_score,
+        composition_mode: comp_mode
+            .and_then(|c| c.dominant_mode)
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        error_message: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_scores_no_sentinel_returns_error() {
+        // In test context, sentinel is never initialized.
+        let result = ffi_get_live_scores("/tmp/nonexistent.txt".to_string());
+        assert!(!result.success);
+        assert_eq!(result.writing_mode, "insufficient");
+        assert_eq!(result.risk_level, "insufficient data");
+        assert_eq!(result.keystroke_count, 0);
+        assert!(result.error_message.is_some());
+        assert!(
+            result.error_message.as_ref().unwrap().contains("Sentinel"),
+            "Error should mention sentinel: {:?}",
+            result.error_message,
+        );
+    }
+
+    #[test]
+    fn live_scores_default_numeric_fields_are_zero() {
+        let result = ffi_get_live_scores("/tmp/no_session.txt".to_string());
+        assert!(!result.success);
+        assert_eq!(result.cognitive_score, 0.0);
+        assert_eq!(result.assessment_score, 0.0);
+        assert_eq!(result.session_duration_sec, 0.0);
+        assert_eq!(result.cadence_score, 0.0);
+        assert_eq!(result.composition_mode, "unknown");
+    }
 }

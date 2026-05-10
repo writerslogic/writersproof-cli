@@ -5,7 +5,8 @@ use super::types::*;
 use crate::config::SentinelConfig;
 use crate::crypto::ObfuscatedString;
 use objc::runtime::Object;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 /// Bundle IDs of system UI processes that briefly become frontmost during
@@ -91,6 +92,16 @@ impl MacOSFocusMonitor {
                 } else {
                     None
                 }
+            });
+
+            // Last resort: enumerate open file descriptors to find documents.
+            let doc_path = doc_path.or_else(|| {
+                let open_docs =
+                    super::process_files::open_documents_for_pid(pid as u32);
+                open_docs
+                    .into_iter()
+                    .find(|f| f.writable)
+                    .map(|f| f.path.to_string_lossy().into_owned())
             });
 
             Some(WindowInfo {
@@ -352,6 +363,306 @@ unsafe fn ax_release(ptr: *mut std::ffi::c_void) {
     if !ptr.is_null() {
         CFRelease(ptr);
     }
+}
+
+// ---------------------------------------------------------------------------
+// AXObserver-based push notification focus provider.
+// ---------------------------------------------------------------------------
+
+#[link(name = "ApplicationServices", kind = "framework")]
+extern "C" {
+    fn AXObserverCreate(
+        application: i32,
+        callback: AXObserverCallback,
+        observer: *mut *mut std::ffi::c_void,
+    ) -> i32;
+    fn AXObserverAddNotification(
+        observer: *mut std::ffi::c_void,
+        element: *mut std::ffi::c_void,
+        notification: core_foundation::string::CFStringRef,
+        refcon: *mut std::ffi::c_void,
+    ) -> i32;
+    fn AXObserverRemoveNotification(
+        observer: *mut std::ffi::c_void,
+        element: *mut std::ffi::c_void,
+        notification: core_foundation::string::CFStringRef,
+    ) -> i32;
+    fn AXObserverGetRunLoopSource(
+        observer: *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
+}
+
+type AXObserverCallback = extern "C" fn(
+    *mut std::ffi::c_void,  // observer
+    *mut std::ffi::c_void,  // element
+    core_foundation::string::CFStringRef, // notification
+    *mut std::ffi::c_void,  // refcon
+);
+
+/// Shared state passed through the AXObserver callback refcon pointer.
+struct AXObserverRefcon {
+    provider: Arc<MacOSFocusMonitor>,
+    tx: std::sync::mpsc::Sender<FocusEvent>,
+}
+
+extern "C" fn ax_observer_callback(
+    _observer: *mut std::ffi::c_void,
+    _element: *mut std::ffi::c_void,
+    _notification: core_foundation::string::CFStringRef,
+    refcon: *mut std::ffi::c_void,
+) {
+    if refcon.is_null() {
+        return;
+    }
+    // SAFETY: refcon is a raw pointer to a leaked Box<AXObserverRefcon> that
+    // outlives the observer. We borrow it immutably here; the Box is only
+    // reclaimed when the observer thread is torn down.
+    let ctx = unsafe { &*(refcon as *const AXObserverRefcon) };
+    if let Some(info) = ctx.provider.get_active_window() {
+        let event = FocusEvent {
+            event_type: FocusEventType::FocusGained,
+            path: info.path.clone().unwrap_or_default(),
+            shadow_id: String::new(),
+            app_bundle_id: info.application.clone(),
+            app_name: info.application.clone(),
+            window_title: info.title.clone(),
+            timestamp: SystemTime::now(),
+            window_id: info.window_number,
+        };
+        let _ = ctx.tx.send(event);
+    }
+}
+
+/// AXObserver-based focus provider that receives push notifications from
+/// the Accessibility subsystem instead of polling.
+#[derive(Debug)]
+pub struct AXObserverFocusProvider {
+    provider: Arc<MacOSFocusMonitor>,
+    running: Arc<AtomicBool>,
+    tx: std::sync::mpsc::Sender<FocusEvent>,
+    rx: Mutex<Option<std::sync::mpsc::Receiver<FocusEvent>>>,
+    thread_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+impl AXObserverFocusProvider {
+    /// Try to create an AXObserver provider. Returns `None` if accessibility
+    /// is not available or the frontmost app cannot be observed.
+    pub fn try_new(provider: Arc<MacOSFocusMonitor>) -> Option<Self> {
+        if !check_accessibility_permissions() {
+            log::info!("AXObserver: accessibility not granted, skipping");
+            return None;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        Some(Self {
+            provider,
+            running: Arc::new(AtomicBool::new(false)),
+            tx,
+            rx: Mutex::new(Some(rx)),
+            thread_handle: Mutex::new(None),
+        })
+    }
+
+    /// Take the receiver end of the focus event channel. Can only be called once.
+    pub fn take_receiver(&self) -> Option<std::sync::mpsc::Receiver<FocusEvent>> {
+        self.rx.lock().ok()?.take()
+    }
+
+    /// Start the AXObserver run loop thread. Subscribes to workspace
+    /// activation notifications and creates/tears down per-app AXObservers.
+    pub fn start(&self) -> bool {
+        if self.running.swap(true, Ordering::AcqRel) {
+            return true; // already running
+        }
+
+        let running = Arc::clone(&self.running);
+        let provider = Arc::clone(&self.provider);
+        let tx = self.tx.clone();
+
+        let handle = std::thread::Builder::new()
+            .name("ax-observer".into())
+            .spawn(move || {
+                ax_observer_run_loop(running, provider, tx);
+            });
+
+        match handle {
+            Ok(h) => {
+                if let Ok(mut guard) = self.thread_handle.lock() {
+                    *guard = Some(h);
+                }
+                true
+            }
+            Err(e) => {
+                log::warn!("AXObserver: failed to spawn thread: {e}");
+                self.running.store(false, Ordering::Release);
+                false
+            }
+        }
+    }
+
+    pub fn stop(&self) {
+        self.running.store(false, Ordering::Release);
+        // The run loop thread will exit when it sees running=false.
+        // We wake the CFRunLoop so it does not block indefinitely.
+        // The thread checks `running` after each CFRunLoopRunInMode interval.
+    }
+}
+
+impl Drop for AXObserverFocusProvider {
+    fn drop(&mut self) {
+        self.stop();
+        if let Ok(mut guard) = self.thread_handle.lock() {
+            if let Some(h) = guard.take() {
+                let _ = h.join();
+            }
+        }
+    }
+}
+
+/// Main run loop for the AXObserver thread. Monitors NSWorkspace for app
+/// activation changes and maintains an AXObserver for the frontmost app.
+fn ax_observer_run_loop(
+    running: Arc<AtomicBool>,
+    provider: Arc<MacOSFocusMonitor>,
+    tx: std::sync::mpsc::Sender<FocusEvent>,
+) {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+
+    let kax_focused_window = CFString::from_static_string("AXFocusedWindowChanged");
+    let kax_title_changed = CFString::from_static_string("AXTitleChanged");
+
+    let mut current_pid: i32 = -1;
+    let mut current_observer: *mut std::ffi::c_void = std::ptr::null_mut();
+    let mut current_app_element: *mut std::ffi::c_void = std::ptr::null_mut();
+    let mut current_refcon: *mut AXObserverRefcon = std::ptr::null_mut();
+
+    // Tear down the current observer (if any).
+    let teardown = |observer: &mut *mut std::ffi::c_void,
+                        app_el: &mut *mut std::ffi::c_void,
+                        refcon: &mut *mut AXObserverRefcon| {
+        if !observer.is_null() && !app_el.is_null() {
+            unsafe {
+                // Best-effort removal; errors are non-fatal.
+                let _ = AXObserverRemoveNotification(
+                    *observer,
+                    *app_el,
+                    kax_focused_window.as_concrete_TypeRef(),
+                );
+                let _ = AXObserverRemoveNotification(
+                    *observer,
+                    *app_el,
+                    kax_title_changed.as_concrete_TypeRef(),
+                );
+            }
+        }
+        if !observer.is_null() {
+            unsafe { CFRelease(*observer); }
+        }
+        if !app_el.is_null() {
+            unsafe { CFRelease(*app_el); }
+        }
+        if !refcon.is_null() {
+            // SAFETY: We leaked this Box in setup; reclaim it now.
+            let _ = unsafe { Box::from_raw(*refcon) };
+        }
+        *observer = std::ptr::null_mut();
+        *app_el = std::ptr::null_mut();
+        *refcon = std::ptr::null_mut();
+    };
+
+    while running.load(Ordering::Acquire) {
+        // Determine frontmost app PID via NSWorkspace.
+        let pid = unsafe {
+            let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+            let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+            let app: *mut Object = msg_send![workspace, frontmostApplication];
+            let p: i32 = if app.is_null() { -1 } else { msg_send![app, processIdentifier] };
+            let _: () = msg_send![pool, drain];
+            p
+        };
+
+        if pid > 0 && pid != current_pid {
+            // Frontmost app changed; tear down old observer and create new one.
+            teardown(&mut current_observer, &mut current_app_element, &mut current_refcon);
+            current_pid = pid;
+
+            let refcon_box = Box::new(AXObserverRefcon {
+                provider: Arc::clone(&provider),
+                tx: tx.clone(),
+            });
+            current_refcon = Box::into_raw(refcon_box);
+
+            let mut observer: *mut std::ffi::c_void = std::ptr::null_mut();
+            // SAFETY: AXObserverCreate writes to `observer` on success (return 0).
+            let err = unsafe {
+                AXObserverCreate(pid, ax_observer_callback, &mut observer)
+            };
+            if err != 0 || observer.is_null() {
+                log::debug!("AXObserver: cannot observe pid {pid} (err={err})");
+                // Reclaim the refcon we just leaked.
+                let _ = unsafe { Box::from_raw(current_refcon) };
+                current_refcon = std::ptr::null_mut();
+                current_pid = -1;
+                // Sleep briefly before retrying to avoid busy-looping.
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                continue;
+            }
+
+            // SAFETY: AXUIElementCreateApplication returns a retained CF object.
+            let app_element = unsafe { AXUIElementCreateApplication(pid) };
+            if app_element.is_null() {
+                log::debug!("AXObserver: cannot create element for pid {pid}");
+                unsafe { CFRelease(observer); }
+                let _ = unsafe { Box::from_raw(current_refcon) };
+                current_refcon = std::ptr::null_mut();
+                current_pid = -1;
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                continue;
+            }
+
+            unsafe {
+                AXObserverAddNotification(
+                    observer,
+                    app_element,
+                    kax_focused_window.as_concrete_TypeRef(),
+                    current_refcon as *mut std::ffi::c_void,
+                );
+                AXObserverAddNotification(
+                    observer,
+                    app_element,
+                    kax_title_changed.as_concrete_TypeRef(),
+                    current_refcon as *mut std::ffi::c_void,
+                );
+
+                let source = AXObserverGetRunLoopSource(observer);
+                if !source.is_null() {
+                    core_foundation_sys::runloop::CFRunLoopAddSource(
+                        core_foundation_sys::runloop::CFRunLoopGetCurrent(),
+                        source as core_foundation_sys::runloop::CFRunLoopSourceRef,
+                        core_foundation_sys::runloop::kCFRunLoopDefaultMode,
+                    );
+                }
+            }
+
+            current_observer = observer;
+            current_app_element = app_element;
+            log::debug!("AXObserver: now observing pid {pid}");
+        }
+
+        // Run the CFRunLoop for a short interval, then check for app changes.
+        // SAFETY: CFRunLoopRunInMode is safe to call on the current thread's run loop.
+        unsafe {
+            core_foundation_sys::runloop::CFRunLoopRunInMode(
+                core_foundation_sys::runloop::kCFRunLoopDefaultMode,
+                0.5, // 500ms
+                0,   // returnAfterSourceHandled = false
+            );
+        }
+    }
+
+    // Clean up on exit.
+    teardown(&mut current_observer, &mut current_app_element, &mut current_refcon);
+    log::debug!("AXObserver: run loop exited");
 }
 
 unsafe fn nsstring_to_string(ns_str: *mut Object) -> String {

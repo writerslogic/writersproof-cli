@@ -19,6 +19,10 @@ pub struct KeystrokeEvent {
     pub zone: u8,
     pub event_type: KeyEventType,
     pub char_value: Option<char>,
+    /// Multi-character composed text from IME input (CJK, accented, emoji).
+    /// Populated when an input method commits text spanning multiple characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composed_text: Option<String>,
     pub is_hardware: bool,
     pub device_id: Option<Arc<str>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -34,6 +38,7 @@ impl KeystrokeEvent {
             zone,
             event_type: KeyEventType::Down,
             char_value: None,
+            composed_text: None,
             is_hardware: true,
             device_id: None,
             transport_type: None,
@@ -48,6 +53,7 @@ impl KeystrokeEvent {
             zone,
             event_type: KeyEventType::Down,
             char_value: None,
+            composed_text: None,
             is_hardware,
             device_id: None,
             transport_type: None,
@@ -69,6 +75,7 @@ impl KeystrokeEvent {
             zone,
             event_type: KeyEventType::Down,
             char_value: None,
+            composed_text: None,
             is_hardware,
             device_id,
             transport_type,

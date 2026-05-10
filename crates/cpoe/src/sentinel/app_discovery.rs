@@ -620,6 +620,181 @@ fn platform_probe(bundle_id: &str) -> ProbeResult {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime text-editing detection
+// ---------------------------------------------------------------------------
+
+/// Result of probing a running app for editable text elements.
+#[derive(Debug, Clone)]
+pub struct RuntimeTextProbe {
+    /// Whether the app has at least one editable text area.
+    pub has_editable_text: bool,
+    /// Number of editable text elements found.
+    pub text_area_count: usize,
+}
+
+/// Cache of negative probe results to avoid re-probing non-writing apps.
+/// Maps bundle_id → expiry time.
+static NEGATIVE_CACHE: std::sync::Mutex<Option<std::collections::HashMap<String, SystemTime>>> =
+    std::sync::Mutex::new(None);
+
+/// Duration to cache negative probe results (5 minutes).
+const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Probe a running application for editable text elements via accessibility APIs.
+///
+/// On macOS, walks the accessibility tree looking for AXTextArea / AXTextField roles.
+/// Returns `None` if the app was recently probed and found to have no editable text
+/// (negative cache hit), or if probing fails.
+pub fn probe_runtime_text_editing(
+    bundle_id: &str,
+    pid: u32,
+) -> Option<RuntimeTextProbe> {
+    // Check negative cache.
+    {
+        let mut guard = match NEGATIVE_CACHE.lock() {
+            Ok(g) => g,
+            Err(p) => {
+                log::warn!("probe_runtime: negative cache poisoned, recovering");
+                p.into_inner()
+            }
+        };
+        let cache = guard.get_or_insert_with(std::collections::HashMap::new);
+        if let Some(&expiry) = cache.get(bundle_id) {
+            if SystemTime::now() < expiry {
+                return None;
+            }
+            cache.remove(bundle_id);
+        }
+    }
+
+    let result = platform_probe_text_editing(pid);
+
+    // Cache negative results.
+    if !result.has_editable_text {
+        if let Ok(mut guard) = NEGATIVE_CACHE.lock() {
+            let cache = guard.get_or_insert_with(std::collections::HashMap::new);
+            if let Some(expiry) = SystemTime::now().checked_add(NEGATIVE_CACHE_TTL) {
+                cache.insert(bundle_id.to_string(), expiry);
+            }
+            // Bound cache size to prevent unbounded growth.
+            if cache.len() > 500 {
+                let now = SystemTime::now();
+                cache.retain(|_, v| *v > now);
+            }
+        }
+        return None;
+    }
+
+    Some(result)
+}
+
+#[cfg(target_os = "macos")]
+fn platform_probe_text_editing(pid: u32) -> RuntimeTextProbe {
+    use objc::runtime::Object;
+
+    let mut count = 0usize;
+
+    unsafe {
+        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+
+        let app_element = AXUIElementCreateApplication(pid as i32);
+        if app_element.is_null() {
+            let _: () = msg_send![pool, drain];
+            return RuntimeTextProbe {
+                has_editable_text: false,
+                text_area_count: 0,
+            };
+        }
+
+        // Get the focused window.
+        let mut focused_window: core_foundation_sys::base::CFTypeRef = std::ptr::null();
+        let attr_name = core_foundation::string::CFString::new("AXFocusedWindow");
+        let err = AXUIElementCopyAttributeValue(
+            app_element,
+            attr_name.as_concrete_TypeRef(),
+            &mut focused_window,
+        );
+
+        let element_to_check = if err == 0 && !focused_window.is_null() {
+            focused_window as *mut std::ffi::c_void
+        } else {
+            app_element
+        };
+
+        // Check the role of the focused UI element.
+        let mut focused_element: core_foundation_sys::base::CFTypeRef = std::ptr::null();
+        let focused_attr = core_foundation::string::CFString::new("AXFocusedUIElement");
+        let err2 = AXUIElementCopyAttributeValue(
+            element_to_check,
+            focused_attr.as_concrete_TypeRef(),
+            &mut focused_element,
+        );
+
+        if err2 == 0 && !focused_element.is_null() {
+            if is_editable_text_role(focused_element as *mut std::ffi::c_void) {
+                count += 1;
+            }
+            core_foundation_sys::base::CFRelease(focused_element);
+        }
+
+        if !focused_window.is_null()
+            && !std::ptr::eq(focused_window, app_element as *const std::ffi::c_void)
+        {
+            core_foundation_sys::base::CFRelease(focused_window);
+        }
+        core_foundation_sys::base::CFRelease(app_element as _);
+        let _: () = msg_send![pool, drain];
+    }
+
+    RuntimeTextProbe {
+        has_editable_text: count > 0,
+        text_area_count: count,
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn is_editable_text_role(element: *mut std::ffi::c_void) -> bool {
+    let mut role_value: core_foundation_sys::base::CFTypeRef = std::ptr::null();
+    let role_attr = core_foundation::string::CFString::new("AXRole");
+    let err = AXUIElementCopyAttributeValue(
+        element,
+        role_attr.as_concrete_TypeRef(),
+        &mut role_value,
+    );
+    if err != 0 || role_value.is_null() {
+        return false;
+    }
+
+    let type_id = core_foundation_sys::base::CFGetTypeID(role_value);
+    let string_type_id = core_foundation_sys::string::CFStringGetTypeID();
+    if type_id != string_type_id {
+        core_foundation_sys::base::CFRelease(role_value);
+        return false;
+    }
+
+    let cf_str = core_foundation::string::CFString::wrap_under_get_rule(
+        role_value as core_foundation_sys::string::CFStringRef,
+    );
+    let role = cf_str.to_string();
+    core_foundation_sys::base::CFRelease(role_value);
+
+    matches!(
+        role.as_str(),
+        "AXTextArea" | "AXTextField" | "AXWebArea" | "AXStaticText"
+    )
+}
+
+// AX FFI: reuses declarations from the existing extern block above (line ~454).
+
+#[cfg(not(target_os = "macos"))]
+fn platform_probe_text_editing(_pid: u32) -> RuntimeTextProbe {
+    RuntimeTextProbe {
+        has_editable_text: false,
+        text_area_count: 0,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Recent document discovery
 // ---------------------------------------------------------------------------
 

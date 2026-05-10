@@ -514,3 +514,125 @@ fn validate_manifest_catches_bad_signature() {
         result.errors
     );
 }
+
+#[test]
+fn process_assertion_forensic_signals_json_roundtrip() {
+    let packet = test_evidence_packet();
+    let mut assertion = ProcessAssertion::from_evidence(&packet, b"test bytes");
+
+    let signals = ForensicSignalScores {
+        cognitive_load: 0.82,
+        revision_topology: 0.65,
+        error_ecology: 0.91,
+        likelihood_model: 0.74,
+        composition_mode: 0.88,
+    };
+    assertion.forensic_signals = Some(signals);
+    assertion.composition_mode = Some("pure_composition".to_string());
+    assertion.writing_mode = Some("cognitive".to_string());
+
+    let json = serde_json::to_string(&assertion).expect("serialize");
+    let roundtrip: ProcessAssertion = serde_json::from_str(&json).expect("deserialize");
+
+    let rt_signals = roundtrip.forensic_signals.expect("forensic_signals present");
+    assert!((rt_signals.cognitive_load - 0.82).abs() < f64::EPSILON);
+    assert!((rt_signals.revision_topology - 0.65).abs() < f64::EPSILON);
+    assert!((rt_signals.error_ecology - 0.91).abs() < f64::EPSILON);
+    assert!((rt_signals.likelihood_model - 0.74).abs() < f64::EPSILON);
+    assert!((rt_signals.composition_mode - 0.88).abs() < f64::EPSILON);
+    assert_eq!(roundtrip.composition_mode.as_deref(), Some("pure_composition"));
+    assert_eq!(roundtrip.writing_mode.as_deref(), Some("cognitive"));
+
+    // Verify camelCase serde field names in JSON output.
+    assert!(json.contains("\"cognitiveLoad\""), "should use camelCase: {json}");
+    assert!(json.contains("\"revisionTopology\""), "should use camelCase: {json}");
+    assert!(json.contains("\"errorEcology\""), "should use camelCase: {json}");
+    assert!(json.contains("\"likelihoodModel\""), "should use camelCase: {json}");
+    assert!(json.contains("\"compositionMode\""), "should use camelCase: {json}");
+    assert!(json.contains("\"writingMode\""), "should use camelCase: {json}");
+    assert!(json.contains("\"forensicSignals\""), "should use camelCase: {json}");
+}
+
+#[test]
+fn process_assertion_without_signals_omits_fields() {
+    let packet = test_evidence_packet();
+    let assertion = ProcessAssertion::from_evidence(&packet, b"test bytes");
+
+    let json = serde_json::to_string(&assertion).expect("serialize");
+    assert!(!json.contains("forensicSignals"), "None fields should be skipped: {json}");
+    assert!(!json.contains("compositionMode"), "None fields should be skipped: {json}");
+    assert!(!json.contains("writingMode"), "None fields should be skipped: {json}");
+}
+
+#[test]
+fn manifest_with_forensic_signals_and_ai_disclosure() {
+    let packet = test_evidence_packet();
+    let key = test_signing_key();
+
+    let signals = ForensicSignalScores {
+        cognitive_load: 0.75,
+        revision_topology: 0.60,
+        error_ecology: 0.85,
+        likelihood_model: 0.70,
+        composition_mode: 0.90,
+    };
+
+    let disclosure = AiDisclosureAssertion {
+        model_type: "none".to_string(),
+        model_name: None,
+        content_profile: Some(AiContentProfile {
+            human_oversight_level: "human_validated".to_string(),
+        }),
+    };
+
+    let manifest = C2paManifestBuilder::new(packet, b"evidence".to_vec(), [0xAB; 32])
+        .forensic_signals(
+            signals,
+            Some("pure_composition".to_string()),
+            Some("cognitive".to_string()),
+        )
+        .ai_disclosure(disclosure)
+        .build_manifest(&key)
+        .unwrap();
+
+    // Forensic signals and AI disclosure each add an assertion box.
+    // Core: hash_data + actions + cpoe = 3, plus ai_disclosure = 4.
+    assert_eq!(
+        manifest.assertion_boxes.len(),
+        manifest.claim.created_assertions.len(),
+        "assertion box count must match claim references"
+    );
+    assert!(
+        manifest.assertion_boxes.len() >= 4,
+        "Should have at least 4 assertions (3 core + ai_disclosure), got {}",
+        manifest.assertion_boxes.len()
+    );
+
+    // Verify AI disclosure assertion is present.
+    let has_ai = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .any(|a| a.url.contains(ASSERTION_LABEL_AI_DISCLOSURE));
+    assert!(has_ai, "AI disclosure assertion should be present");
+
+    // Verify CPoE assertion contains forensic signals by finding and decoding it.
+    let cpoe_idx = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .position(|a| a.url.contains(ASSERTION_LABEL_CPOE))
+        .expect("CPoE assertion should exist");
+    let cpoe_box = &manifest.assertion_boxes[cpoe_idx];
+    // The box has an 8-byte jumb header, then a jumd child, then a json child.
+    // Search for our signal value in the raw bytes as a sanity check.
+    let box_str = String::from_utf8_lossy(cpoe_box);
+    assert!(
+        box_str.contains("cognitiveLoad"),
+        "CPoE assertion box should contain forensic signals"
+    );
+
+    // Validate the full manifest structure.
+    let result = validate_manifest(&manifest);
+    assert!(result.is_valid(), "Manifest with signals should validate: {:?}", result.errors);
+}

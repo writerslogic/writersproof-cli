@@ -1328,7 +1328,7 @@ pub fn infer_document_path_from_title_with_bundle(
         .unwrap_or(false);
 
     let title_parser = bundle_id
-        .and_then(|b| super::app_registry::lookup(b))
+        .and_then(super::app_registry::lookup)
         .map(|a| a.title_parser)
         .unwrap_or(super::app_registry::TitleParserVariant::Generic);
 

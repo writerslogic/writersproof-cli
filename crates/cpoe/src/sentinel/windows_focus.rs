@@ -15,6 +15,13 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
 };
+use windows::Win32::UI::Accessibility::{
+    CUIAutomation, IUIAutomation, IUIAutomationValuePattern, UIA_ValuePatternId,
+};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+};
+use windows::Win32::Foundation::HWND;
 
 pub struct WindowsFocusMonitor {
     config: Arc<SentinelConfig>,
@@ -52,7 +59,9 @@ impl WindowProvider for WindowsFocusMonitor {
             let len = GetWindowTextW(hwnd, &mut title_buf);
             let title = String::from_utf16_lossy(&title_buf[..len as usize]);
 
-            let doc_path = super::types::infer_document_path_from_title(&title);
+            // Try UI Automation first for reliable document path detection.
+            let doc_path = uia_get_document_path(hwnd)
+                .or_else(|| super::types::infer_document_path_from_title(&title));
 
             Some(WindowInfo {
                 is_document: doc_path.is_some(),
@@ -66,6 +75,51 @@ impl WindowProvider for WindowsFocusMonitor {
                 window_number: None,
             })
         }
+    }
+}
+
+/// Query the focused element's Value pattern for a document file path via UI Automation.
+///
+/// Many editors (Word, Notepad++, Visual Studio) expose the current file path
+/// through `IUIAutomationValuePattern`. This is more reliable than parsing
+/// window titles, which vary by app and locale.
+/// Ensure COM is initialized once per thread (no matching CoUninitialize needed
+/// because the polling thread runs for the sentinel's lifetime).
+fn ensure_com_initialized() {
+    use std::cell::Cell;
+    thread_local! { static COM_INIT: Cell<bool> = const { Cell::new(false) }; }
+    COM_INIT.with(|init| {
+        if !init.get() {
+            unsafe { let _ = CoInitializeEx(None, COINIT_MULTITHREADED); }
+            init.set(true);
+        }
+    });
+}
+
+fn uia_get_document_path(hwnd: HWND) -> Option<String> {
+    unsafe {
+        ensure_com_initialized();
+
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+        let element = automation.ElementFromHandle(hwnd).ok()?;
+        let pattern = element
+            .GetCurrentPattern(UIA_ValuePatternId)
+            .ok()?;
+        let value_pattern: IUIAutomationValuePattern = pattern.cast().ok()?;
+        let value = value_pattern.CurrentValue().ok()?;
+        let text = value.to_string();
+        if text.is_empty() {
+            return None;
+        }
+        // Only accept values that look like file paths.
+        if text.contains('\\') || text.contains('/') || text.contains(':') {
+            let path = Path::new(&text);
+            if path.is_absolute() {
+                return Some(text);
+            }
+        }
+        None
     }
 }
 

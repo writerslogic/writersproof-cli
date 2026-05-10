@@ -130,3 +130,38 @@ pub(crate) fn analyze_browser_jitter(intervals: &[u64]) -> Option<BrowserJitterF
         verdict,
     })
 }
+
+/// Dual-source validation: compare browser keystroke count against native
+/// (jitter interval) count to detect injection or replay attacks.
+///
+/// Returns a verdict string and the ratio of browser/native counts.
+/// A healthy session has a ratio near 1.0 (each native keystroke has a
+/// matching browser keystroke). Significant divergence indicates either
+/// keystroke injection (native >> browser) or a capture gap.
+pub(crate) fn validate_dual_source(
+    browser_count: u64,
+    native_count: u64,
+) -> (&'static str, f64) {
+    if native_count == 0 {
+        return ("insufficient_data", 0.0);
+    }
+    let ratio = browser_count as f64 / native_count as f64;
+
+    let verdict = if ratio < 0.5 {
+        // Browser sees far fewer keystrokes than native — possible keystroke
+        // injection at the OS level, or the browser extension isn't running.
+        "native_excess"
+    } else if ratio > 2.0 {
+        // Browser sees far more keystrokes than native — unusual; possibly
+        // DOM-level key injection or CGEventTap failure.
+        "browser_excess"
+    } else if (ratio - 1.0).abs() < 0.2 {
+        // Within 20% — strong dual-source agreement.
+        "corroborated"
+    } else {
+        // Moderate divergence — plausible with tab switching or partial capture.
+        "partial"
+    };
+
+    (verdict, ratio)
+}

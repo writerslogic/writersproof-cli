@@ -128,11 +128,12 @@ pub fn handle_focus_event_sync(
                 let raw_path = event.path.clone();
                 let needs_title_inf =
                     super::app_registry::needs_title_inference(&event.app_bundle_id);
-                if needs_title_inf
-                    && raw_path.starts_with("title://")
-                    && event.window_id.is_some()
-                {
-                    format!("{}#w{}", raw_path, event.window_id.unwrap())
+                if let Some(wid) = event.window_id {
+                    if needs_title_inf && raw_path.starts_with("title://") {
+                        format!("{}#w{}", raw_path, wid)
+                    } else {
+                        raw_path
+                    }
                 } else {
                     raw_path
                 }

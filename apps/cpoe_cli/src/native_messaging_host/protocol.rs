@@ -67,6 +67,7 @@ pub(crate) fn request_type_name(req: &Request) -> &'static str {
         Request::OpenView { .. } => "OpenView",
         Request::TextAttestation { .. } => "TextAttestation",
         Request::ResumeSession { .. } => "ResumeSession",
+        Request::BrowserKeystrokeBatch { .. } => "BrowserKeystrokeBatch",
     }
 }
 

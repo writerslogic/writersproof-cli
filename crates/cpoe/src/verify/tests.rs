@@ -185,6 +185,11 @@ fn test_verdict_invalid_declaration_caps_to_v2() {
         fatigue_trajectory: None,
         provenance: None,
         segment_profiles: vec![],
+        cognitive_load: None,
+        revision_topology: None,
+        error_ecology: None,
+        composition_mode: None,
+        likelihood_model: None,
     };
 
     let v = verdict::compute_verdict(
@@ -291,6 +296,11 @@ fn test_verdict_overlapping_caps_both_apply() {
         fatigue_trajectory: None,
         provenance: None,
         segment_profiles: vec![],
+        cognitive_load: None,
+        revision_topology: None,
+        error_ecology: None,
+        composition_mode: None,
+        likelihood_model: None,
     };
 
     let v = verdict::compute_verdict(

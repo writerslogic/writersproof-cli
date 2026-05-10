@@ -148,6 +148,7 @@ pub(crate) fn handle_start_session(
         signing_key,
         editor_type: safe_editor_type,
         prior_session_id,
+        browser_keystroke_count: std::sync::atomic::AtomicU64::new(0),
     });
 
     Response::SessionStarted {
@@ -669,6 +670,24 @@ pub(crate) fn handle_stop_session() -> Response {
         );
     }
 
+    // Dual-source validation: compare browser vs native keystroke counts.
+    let browser_count = session
+        .browser_keystroke_count
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let native_count = session.jitter_intervals.len() as u64 + 1; // intervals = keystrokes - 1
+    let (dual_verdict, dual_ratio) =
+        super::jitter::validate_dual_source(browser_count, native_count);
+    if dual_verdict == "native_excess" || dual_verdict == "browser_excess" {
+        let line = format!(
+            "<!-- dual-source: browser={} native={} ratio={:.2} verdict={} -->\n",
+            browser_count, native_count, dual_ratio, dual_verdict,
+        );
+        let _ = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&session.evidence_path)
+            .and_then(|mut f| f.write_all(line.as_bytes()));
+    }
+
     let jitter_verdict = analyze_browser_jitter(&session.jitter_intervals).map(|forensics| {
         let line = format!(
             "<!-- jitter-forensics: samples={} cv={:.3} regularity={:.3} rounding={:.3} verdict={} -->\n",
@@ -1133,4 +1152,39 @@ pub(crate) fn handle_open_view(view: String) -> Response {
     Response::ViewOpened {
         message: format!("Opening {view}"),
     }
+}
+
+/// Handle a batch of browser keystrokes for dual-source validation.
+///
+/// Each entry is (timestamp_ms, key, code) from the content script's keydown
+/// listener. These are correlated with native CGEventTap/hook keystrokes by
+/// the sentinel to detect injection or replay attacks.
+pub(crate) fn handle_browser_keystroke_batch(
+    keystrokes: Vec<(f64, String, String)>,
+    _tab_id: u32,
+) -> Response {
+    let session_lock = session().lock().unwrap_or_else(|p| {
+        eprintln!("Session mutex poisoned in browser_keystroke_batch, recovering");
+        p.into_inner()
+    });
+    let sess = match session_lock.as_ref() {
+        Some(s) => s,
+        None => {
+            return Response::Error {
+                message: "No active session".into(),
+                code: "NO_SESSION".into(),
+            };
+        }
+    };
+
+    let count = keystrokes.len();
+    if count == 0 {
+        return Response::BrowserKeystrokesReceived { count: 0 };
+    }
+
+    // Record the browser keystroke count on the session for dual-source stats.
+    sess.browser_keystroke_count
+        .fetch_add(count as u64, std::sync::atomic::Ordering::Relaxed);
+
+    Response::BrowserKeystrokesReceived { count }
 }

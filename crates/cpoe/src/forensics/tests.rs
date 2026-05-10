@@ -754,67 +754,7 @@ fn test_cadence_percentiles_ordered() {
 // per_checkpoint_flags / analyze_focus_patterns
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// per_checkpoint_flags
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_per_checkpoint_flags_empty_checkpoints() {
-    let events = create_test_events(10);
-    let result = analysis::per_checkpoint_flags(&events, &[]);
-    assert!(result.checkpoint_flags.is_empty());
-    assert!(!result.suspicious);
-    assert_eq!(result.pct_flagged.get(), 0.0);
-}
-
-#[test]
-fn test_per_checkpoint_flags_robotic_timing() {
-    // Create events with perfectly regular timing (low CV = robotic)
-    let events: Vec<EventData> = (0..20)
-        .map(|i| EventData {
-            id: i as i64,
-            timestamp_ns: 1_000_000_000_000 + i as i64 * 100_000_000, // exact 100ms intervals
-            file_size: 100 + i as i64,
-            size_delta: 1,
-            file_path: "/test.txt".to_string(),
-        })
-        .collect();
-
-    let checkpoints = vec![make_checkpoint_proof(
-        0,
-        1_000_000_000_000 + 20 * 100_000_000,
-    )];
-
-    let result = analysis::per_checkpoint_flags(&events, &checkpoints);
-    assert_eq!(result.checkpoint_flags.len(), 1);
-    let flag = &result.checkpoint_flags[0];
-    assert_eq!(flag.event_count, 20);
-    // Perfectly regular intervals should have very low CV
-    assert!(flag.timing_cv < 0.15, "timing_cv={}", flag.timing_cv);
-}
-
-#[test]
-fn test_per_checkpoint_flags_all_append_flagged() {
-    // All positive size_delta with enough events should be flagged
-    let events: Vec<EventData> = (0..10)
-        .map(|i| EventData {
-            id: i as i64,
-            timestamp_ns: 1_000_000_000_000 + i as i64 * 500_000_000,
-            file_size: 100 + i as i64 * 10,
-            size_delta: 10, // all positive
-            file_path: "/test.txt".to_string(),
-        })
-        .collect();
-
-    let checkpoints = vec![make_checkpoint_proof(
-        0,
-        1_000_000_000_000 + 10 * 500_000_000,
-    )];
-
-    let result = analysis::per_checkpoint_flags(&events, &checkpoints);
-    assert_eq!(result.checkpoint_flags.len(), 1);
-    assert!(result.checkpoint_flags[0].all_append);
-}
+// per_checkpoint_flags tests removed: function was refactored out of analysis module.
 
 // ---------------------------------------------------------------------------
 // analyze_focus_patterns

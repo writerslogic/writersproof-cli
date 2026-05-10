@@ -17,16 +17,21 @@ pub(crate) mod analysis;
 mod assessment;
 mod cadence;
 pub mod cognitive_accumulator;
+pub mod cognitive_load;
+pub mod composition_mode;
 mod comparison;
 mod correlation;
 pub mod cross_modal;
 pub mod dictation;
 mod engine;
 pub mod error;
+pub mod error_ecology;
 pub mod event_validation;
 pub mod forgery_cost;
+pub mod likelihood_model;
 pub mod provenance_metrics;
 mod report;
+pub mod revision_topology;
 pub(crate) mod scoring;
 mod topology;
 pub mod types;
@@ -62,7 +67,25 @@ pub use scoring::{
 pub use topology::*;
 pub use types::*;
 pub use velocity::*;
-pub use writing_mode::{classify_writing_mode, RevisionPattern, WritingMode, WritingModeAnalysis};
+pub use writing_mode::{
+    classify_writing_mode, enrich_writing_mode, EnhancedSignals, RevisionPattern, WritingMode,
+    WritingModeAnalysis,
+};
+
+pub use cognitive_load::{analyze_cognitive_load, CognitiveLoadMetrics};
+pub use composition_mode::{
+    analyze_composition_mode, CompositionMode, CompositionModeDistribution,
+    CompositionModeMetrics,
+};
+pub use error_ecology::{analyze_error_ecology, ErrorEcologyMetrics};
+pub use likelihood_model::{
+    analyze_likelihood_model, analyze_likelihood_model_with_priors, GaussianParams,
+    LikelihoodModelMetrics, LikelihoodPriors,
+};
+pub use revision_topology::{
+    analyze_revision_topology, RevisionGraphMetrics, RevisionTopologyMetrics,
+    RevisionTypeDistribution,
+};
 
 /// Minimum event count for full residency credit in process scoring.
 pub(crate) const MIN_EVENTS_FOR_RESIDENCY: usize = 5;

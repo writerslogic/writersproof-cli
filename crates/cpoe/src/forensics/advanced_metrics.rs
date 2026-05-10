@@ -3,7 +3,6 @@
 //! Advanced forensic metrics: CLC, repair locality, and fatigue trajectory.
 
 use super::types::{ClcMetrics, FatigueTrajectoryMetrics, RepairLocalityMetrics};
-use crate::analysis::stats::linear_regression_y_only;
 use crate::jitter::SimpleJitterSample;
 use crate::utils::stats::{coefficient_of_variation, mean, mean_and_variance, std_dev};
 
@@ -225,6 +224,13 @@ pub fn analyze_fatigue_trajectory(
         return None;
     }
 
+    // Cap to most recent samples to bound the O(N²) breakpoint search.
+    let samples = if samples.len() > MAX_FATIGUE_ANALYSIS_SAMPLES {
+        &samples[samples.len() - MAX_FATIGUE_ANALYSIS_SAMPLES..]
+    } else {
+        samples
+    };
+
     let ikis: Vec<f64> = samples
         .windows(2)
         .map(|w| (w[1].timestamp_ns.saturating_sub(w[0].timestamp_ns)).max(0) as f64)
@@ -278,19 +284,126 @@ pub fn analyze_fatigue_trajectory(
     })
 }
 
-/// Fit three-phase linear model to IKI sequence using a simple greedy approach.
+/// Maximum samples for fatigue analysis. Fatigue is a localized phenomenon;
+/// analyzing more than ~10 minutes of heavy typing yields diminishing returns
+/// while making the O(N²) breakpoint search expensive. Capping N to 2500
+/// bounds the worst case to ~375k iterations (<1ms on modern hardware).
+const MAX_FATIGUE_ANALYSIS_SAMPLES: usize = 2500;
+
+/// Prefix sums for O(1) segment regression queries.
+///
+/// Precomputing Σx, Σy, Σxy, Σx² allows computing linear regression SSE
+/// for any sub-segment [a..b] in constant time, reducing the breakpoint
+/// search from O(N³) to O(N²).
+struct PrefixSums {
+    /// prefix_y[i] = Σ y[0..i]
+    y: Vec<f64>,
+    /// prefix_xy[i] = Σ (j * y[j]) for j in 0..i
+    xy: Vec<f64>,
+    /// prefix_x[i] = Σ j for j in 0..i
+    x: Vec<f64>,
+    /// prefix_x2[i] = Σ j² for j in 0..i
+    x2: Vec<f64>,
+    /// prefix_y2[i] = Σ y[j]² for j in 0..i
+    y2: Vec<f64>,
+}
+
+impl PrefixSums {
+    fn build(ikis: &[f64]) -> Self {
+        let n = ikis.len() + 1;
+        let mut y = vec![0.0; n];
+        let mut xy = vec![0.0; n];
+        let mut x = vec![0.0; n];
+        let mut x2 = vec![0.0; n];
+        let mut y2 = vec![0.0; n];
+
+        for (i, &val) in ikis.iter().enumerate() {
+            let xi = i as f64;
+            y[i + 1] = y[i] + val;
+            xy[i + 1] = xy[i] + xi * val;
+            x[i + 1] = x[i] + xi;
+            x2[i + 1] = x2[i] + xi * xi;
+            y2[i + 1] = y2[i] + val * val;
+        }
+
+        Self { y, xy, x, x2, y2 }
+    }
+
+    /// SSE of a linear regression fit to segment [a..b).
+    /// Uses closed-form: SSE = Σy² - b̂·Σy - m̂·Σxy where m̂,b̂ are OLS coefficients.
+    fn segment_linear_sse(&self, a: usize, b: usize) -> f64 {
+        let n = b - a;
+        if n < 2 {
+            return 0.0;
+        }
+        let nf = n as f64;
+        // Sums are relative to segment start; x values are 0..n-1 within segment.
+        // Translate: for the segment [a..b), x_local = x_global - a.
+        let af = a as f64;
+        let sum_y = self.y[b] - self.y[a];
+        // sum_x_local = Σ(i-a) for i in a..b = Σi - a*n
+        let sx = self.x[b] - self.x[a] - af * nf;
+        // sum_x2_local = Σ(i-a)² = Σi² - 2a·Σi + a²·n
+        let sx2 = self.x2[b] - self.x2[a] - 2.0 * af * (self.x[b] - self.x[a]) + af * af * nf;
+        // sum_xy_local = Σ(i-a)·y[i] = Σ(i·y[i]) - a·Σy[i]
+        let sxy = (self.xy[b] - self.xy[a]) - af * sum_y;
+        let sy2 = self.y2[b] - self.y2[a];
+
+        let denom = nf * sx2 - sx * sx;
+        if denom.abs() < f64::EPSILON {
+            // Degenerate: all x values equal; SSE = variance * n.
+            let mean_y = sum_y / nf;
+            return sy2 - 2.0 * mean_y * sum_y + mean_y * mean_y * nf;
+        }
+
+        let m = (nf * sxy - sx * sum_y) / denom;
+        let b_coeff = (sum_y - m * sx) / nf;
+
+        // SSE = Σy² - b·Σy - m·Σxy (where sums are local)
+        // More robust: SSE = Σy² - 2m·Σxy - 2b·Σy + m²·Σx² + 2mb·Σx + nb²
+        let sse = sy2 - 2.0 * m * sxy - 2.0 * b_coeff * sum_y
+            + m * m * sx2
+            + 2.0 * m * b_coeff * sx
+            + nf * b_coeff * b_coeff;
+
+        sse.max(0.0) // Guard floating-point rounding.
+    }
+
+    /// SSE of a constant (mean) fit to segment [a..b).
+    fn segment_constant_sse(&self, a: usize, b: usize) -> f64 {
+        let n = b - a;
+        if n < 1 {
+            return 0.0;
+        }
+        let nf = n as f64;
+        let sum_y = self.y[b] - self.y[a];
+        let sy2 = self.y2[b] - self.y2[a];
+        let mean_y = sum_y / nf;
+        (sy2 - 2.0 * mean_y * sum_y + mean_y * mean_y * nf).max(0.0)
+    }
+}
+
+/// Fit three-phase linear model to IKI sequence using prefix-sum-accelerated
+/// exhaustive breakpoint search.
 ///
 /// Returns (phase1_end_index, phase2_end_index, residual_sse).
+/// O(N²) with O(1) per-candidate evaluation via precomputed prefix sums.
 fn fit_three_phase_model(ikis: &[f64]) -> (usize, usize, f64) {
     let n = ikis.len();
+    let ps = PrefixSums::build(ikis);
+
     let mut best_residual = f64::INFINITY;
     let mut best_p1 = 0;
     let mut best_p2 = 0;
 
-    // Try all breakpoint combinations (O(n²) but acceptable for ~100-1000 samples).
     for p1 in (n / 5)..(n / 2) {
+        let sse1 = ps.segment_linear_sse(0, p1);
+
         for p2 in (p1 + n / 5)..(4 * n / 5) {
-            let residual = compute_three_phase_residual(ikis, p1, p2);
+            let sse2 = ps.segment_constant_sse(p1, p2);
+            let sse3 = ps.segment_linear_sse(p2, n);
+            let residual = sse1 + sse2 + sse3;
+
             if residual < best_residual {
                 best_residual = residual;
                 best_p1 = p1;
@@ -300,42 +413,6 @@ fn fit_three_phase_model(ikis: &[f64]) -> (usize, usize, f64) {
     }
 
     (best_p1, best_p2, best_residual)
-}
-
-/// Compute SSE of three-phase linear fit at given breakpoints.
-fn compute_three_phase_residual(ikis: &[f64], p1_end: usize, p2_end: usize) -> f64 {
-    let mut sse = 0.0;
-
-    // Phase 1 (warmup): fit linear trend downward.
-    if p1_end >= 2 {
-        let phase1 = &ikis[..p1_end];
-        let (m1, b1) = linear_regression_y_only(phase1);
-        for (i, &val) in phase1.iter().enumerate() {
-            let pred = m1 * i as f64 + b1;
-            sse += (val - pred).powi(2);
-        }
-    }
-
-    // Phase 2 (plateau): constant (m ≈ 0).
-    if p2_end > p1_end && p2_end - p1_end >= 2 {
-        let phase2 = &ikis[p1_end..p2_end];
-        let mean2 = mean(phase2);
-        for &val in phase2 {
-            sse += (val - mean2).powi(2);
-        }
-    }
-
-    // Phase 3 (fatigue): fit linear trend upward.
-    if ikis.len() > p2_end && ikis.len() - p2_end >= 2 {
-        let phase3 = &ikis[p2_end..];
-        let (m3, b3) = linear_regression_y_only(phase3);
-        for (i, &val) in phase3.iter().enumerate() {
-            let pred = m3 * i as f64 + b3;
-            sse += (val - pred).powi(2);
-        }
-    }
-
-    sse
 }
 
 #[cfg(test)]

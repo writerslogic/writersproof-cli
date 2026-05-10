@@ -103,7 +103,7 @@ pub fn calibrate_roughtime_tolerance(
     let std_dev = variance.sqrt();
 
     let raw_tolerance = (mean + 3.0 * std_dev).ceil() as u64;
-    let recommended_tolerance_secs = raw_tolerance.min(180).max(1);
+    let recommended_tolerance_secs = raw_tolerance.clamp(1, 180);
 
     RoughtimeCalibration {
         mean_skew_secs: mean,

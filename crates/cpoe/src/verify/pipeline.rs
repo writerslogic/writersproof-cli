@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::evidence::Packet;
 use crate::forensics::{
     analyze_forensics_ext, per_checkpoint_flags, AnalysisContext, EventData, ForensicMetrics,
-    PerCheckpointResult, RegionData, PER_CHECKPOINT_SUSPICIOUS_THRESHOLD,
+    PerCheckpointResult, RegionData, SortedEvents, PER_CHECKPOINT_SUSPICIOUS_THRESHOLD,
 };
 use crate::jitter::SimpleJitterSample;
 
@@ -123,7 +123,9 @@ pub(super) fn run_forensics(
     // meaningless results. Only run when keystroke data provides real timestamps.
     let events_have_timestamps = events.iter().any(|e| e.timestamp_ns > 0);
     let per_cp = if packet.checkpoints.len() >= 2 && events_have_timestamps {
-        let result = per_checkpoint_flags(&events, &packet.checkpoints);
+        let mut sorted_ev = events.clone();
+        sorted_ev.sort_unstable_by_key(|e| e.timestamp_ns);
+        let result = per_checkpoint_flags(SortedEvents::new(&sorted_ev), &packet.checkpoints);
         if result.suspicious {
             warnings.push(format!(
                 "Per-checkpoint analysis: {:.0}% of checkpoints flagged (threshold: {:.0}%)",

@@ -454,6 +454,7 @@ mod tests {
             zone: 0,
             event_type: KeyEventType::Down,
             char_value: None,
+            composed_text: None,
             is_hardware,
             device_id: None,
             transport_type: None,

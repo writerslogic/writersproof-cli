@@ -67,6 +67,27 @@ pub struct ProcessAttestation {
     pub chain_duration: Option<String>,
     #[serde(rename = "attestationTier", skip_serializing_if = "Option::is_none")]
     pub attestation_tier: Option<String>,
+    #[serde(rename = "writingMode", skip_serializing_if = "Option::is_none")]
+    pub writing_mode: Option<String>,
+    #[serde(rename = "compositionMode", skip_serializing_if = "Option::is_none")]
+    pub composition_mode: Option<String>,
+    #[serde(rename = "forensicSignals", skip_serializing_if = "Option::is_none")]
+    pub forensic_signals: Option<VcForensicSignals>,
+}
+
+/// Forensic signal scores in the VC credential subject.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcForensicSignals {
+    #[serde(rename = "cognitiveLoadScore")]
+    pub cognitive_load_score: f64,
+    #[serde(rename = "revisionTopologyScore")]
+    pub revision_topology_score: f64,
+    #[serde(rename = "errorEcologyScore")]
+    pub error_ecology_score: f64,
+    #[serde(rename = "likelihoodPCognitive")]
+    pub likelihood_p_cognitive: f64,
+    #[serde(rename = "compositionModeScore")]
+    pub composition_mode_score: f64,
 }
 
 /// Evidence entry in the VC.
@@ -158,6 +179,9 @@ fn build_vc_core(ear: &EarToken, author_did: &str) -> Result<VerifiableCredentia
                 document_ref,
                 chain_duration,
                 attestation_tier: tier_str,
+                writing_mode: None,
+                composition_mode: None,
+                forensic_signals: None,
             },
         },
         evidence: Some(evidence),
@@ -298,6 +322,23 @@ pub fn from_cose_secured_vc(bytes: &[u8]) -> Result<VerifiableCredential> {
 
     serde_json::from_value(json_value)
         .map_err(|e| Error::evidence(format!("VC deserialization failed: {e}")))
+}
+
+impl VerifiableCredential {
+    /// Enrich the VC with forensic signal scores from the engine's analysis.
+    ///
+    /// Called after VC construction to project the 5 forensic dimensions
+    /// and composition/writing mode into the credential subject.
+    pub fn enrich_forensic_signals(
+        &mut self,
+        writing_mode: Option<String>,
+        composition_mode: Option<String>,
+        signals: Option<VcForensicSignals>,
+    ) {
+        self.credential_subject.process_attestation.writing_mode = writing_mode;
+        self.credential_subject.process_attestation.composition_mode = composition_mode;
+        self.credential_subject.process_attestation.forensic_signals = signals;
+    }
 }
 
 #[cfg(test)]
@@ -444,5 +485,53 @@ mod tests {
             proof.proof_value.is_empty(),
             "unsigned VC should have empty proofValue"
         );
+    }
+
+    #[test]
+    fn test_enrich_forensic_signals() {
+        let (ear, _dir) = create_test_ear();
+        let did = "did:key:z6MkEnrich";
+
+        let mut vc = to_verifiable_credential(&ear, did).expect("VC");
+
+        // Before enrichment, forensic fields should be None.
+        assert!(vc.credential_subject.process_attestation.writing_mode.is_none());
+        assert!(vc.credential_subject.process_attestation.composition_mode.is_none());
+        assert!(vc.credential_subject.process_attestation.forensic_signals.is_none());
+
+        let signals = VcForensicSignals {
+            cognitive_load_score: 0.82,
+            revision_topology_score: 0.65,
+            error_ecology_score: 0.91,
+            likelihood_p_cognitive: 0.74,
+            composition_mode_score: 0.88,
+        };
+
+        vc.enrich_forensic_signals(
+            Some("cognitive".to_string()),
+            Some("pure_composition".to_string()),
+            Some(signals),
+        );
+
+        // Verify the enriched VC serializes with expected field names.
+        let json = serde_json::to_string(&vc).expect("serialize");
+        assert!(json.contains("\"writingMode\""), "should contain writingMode: {json}");
+        assert!(json.contains("\"compositionMode\""), "should contain compositionMode: {json}");
+        assert!(json.contains("\"forensicSignals\""), "should contain forensicSignals: {json}");
+        assert!(json.contains("\"cognitiveLoadScore\""), "should contain cognitiveLoadScore: {json}");
+        assert!(json.contains("\"revisionTopologyScore\""), "should contain revisionTopologyScore");
+        assert!(json.contains("\"errorEcologyScore\""), "should contain errorEcologyScore");
+        assert!(json.contains("\"likelihoodPCognitive\""), "should contain likelihoodPCognitive");
+        assert!(json.contains("\"compositionModeScore\""), "should contain compositionModeScore");
+
+        // Verify roundtrip preserves values.
+        let roundtrip: VerifiableCredential = serde_json::from_str(&json).expect("deserialize");
+        let pa = &roundtrip.credential_subject.process_attestation;
+        assert_eq!(pa.writing_mode.as_deref(), Some("cognitive"));
+        assert_eq!(pa.composition_mode.as_deref(), Some("pure_composition"));
+        let fs = pa.forensic_signals.as_ref().expect("signals present");
+        assert!((fs.cognitive_load_score - 0.82).abs() < f64::EPSILON);
+        assert!((fs.likelihood_p_cognitive - 0.74).abs() < f64::EPSILON);
+        assert!((fs.composition_mode_score - 0.88).abs() < f64::EPSILON);
     }
 }

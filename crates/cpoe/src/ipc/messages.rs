@@ -50,6 +50,15 @@ fn validate_ipc_path(path: &Path) -> Result<(), String> {
         }
     }
 
+    // Reject Windows UNC paths which can embed traversal sequences.
+    #[cfg(target_os = "windows")]
+    {
+        let s = path.to_string_lossy();
+        if s.starts_with("\\\\") {
+            return Err(format!("UNC paths rejected: '{}'", path.display()));
+        }
+    }
+
     // Canonicalize to resolve symlinks before the prefix check. Fall back to a
     // logically-resolved path (collapsing any `.` and `..` components) when the
     // target does not exist yet (e.g. a new document path). Using the raw path
@@ -306,6 +315,26 @@ pub enum IpcMessage {
         hash: Option<String>,
         error: Option<String>,
     },
+
+    /// Browser keystroke event from content script via native messaging.
+    /// Used for dual-source validation (browser + OS-level keystroke correlation).
+    BrowserKeystroke {
+        /// Keystroke timestamp from `performance.now()` (milliseconds, browser-relative).
+        timestamp_ms: f64,
+        /// The `key` property from the browser KeyboardEvent (e.g., "a", "Enter").
+        key: String,
+        /// The `code` property from the browser KeyboardEvent (e.g., "KeyA", "Enter").
+        code: String,
+        /// Browser tab ID for session correlation.
+        tab_id: u32,
+    },
+    /// Batch of browser keystroke events (sent every 500ms to avoid flooding).
+    BrowserKeystrokeBatch {
+        /// Array of (timestamp_ms, key, code) tuples.
+        keystrokes: Vec<(f64, String, String)>,
+        /// Browser tab ID for session correlation.
+        tab_id: u32,
+    },
 }
 
 impl IpcMessage {
@@ -390,7 +419,8 @@ impl IpcMessage {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_nanos() as i64)
                         .unwrap_or(0);
-                    if (sample.timestamp_ns - now_ns).abs() > MAX_PULSE_CLOCK_SKEW_NS {
+                    let skew = (sample.timestamp_ns as i128 - now_ns as i128).unsigned_abs();
+                    if skew > MAX_PULSE_CLOCK_SKEW_NS as u128 {
                         return Err(format!(
                             "Pulse timestamp_ns too far from wall clock: {}",
                             sample.timestamp_ns
@@ -402,6 +432,27 @@ impl IpcMessage {
                         "Pulse duration_since_last_ns out of bounds: {}",
                         sample.duration_since_last_ns
                     ));
+                }
+            }
+            IpcMessage::BrowserKeystroke { key, code, .. } => {
+                if key.len() > MAX_SHORT_STRING {
+                    return Err("BrowserKeystroke key too long".to_string());
+                }
+                if code.len() > MAX_SHORT_STRING {
+                    return Err("BrowserKeystroke code too long".to_string());
+                }
+            }
+            IpcMessage::BrowserKeystrokeBatch { keystrokes, .. } => {
+                if keystrokes.len() > 200 {
+                    return Err(format!(
+                        "BrowserKeystrokeBatch too large: {} (max 200)",
+                        keystrokes.len()
+                    ));
+                }
+                for (_, key, code) in keystrokes {
+                    if key.len() > MAX_SHORT_STRING || code.len() > MAX_SHORT_STRING {
+                        return Err("BrowserKeystrokeBatch entry too long".to_string());
+                    }
                 }
             }
             _ => {}

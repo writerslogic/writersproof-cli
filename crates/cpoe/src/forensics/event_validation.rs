@@ -128,26 +128,36 @@ pub fn compute_cv(values: &[i64]) -> f64 {
 }
 
 /// Shannon entropy (bits) of the keycode distribution in the window.
+///
+/// Uses stack-allocated sort + run-length counting instead of a heap-allocated
+/// HashMap, since the window is small (ROBOTIC_CV_WINDOW = 20). This keeps
+/// the entire operation within L1 cache on the CGEventTap hot path.
 pub fn compute_keycode_entropy(keycodes: &VecDeque<u16>) -> f64 {
-    if keycodes.is_empty() {
+    let len = keycodes.len();
+    if len == 0 {
         return 0.0;
     }
-    let mut counts = std::collections::HashMap::<u16, usize>::new();
-    for &k in keycodes {
-        *counts.entry(k).or_insert(0) += 1;
+    // Copy to a stack-allocated buffer, sort, and count contiguous runs.
+    let mut buf = [0u16; 64]; // ROBOTIC_CV_WINDOW is 20; 64 is generous headroom.
+    let n = len.min(buf.len());
+    for (i, &k) in keycodes.iter().take(n).enumerate() {
+        buf[i] = k;
     }
-    let n = keycodes.len() as f64;
-    counts
-        .values()
-        .map(|&c| {
-            let p = c as f64 / n;
-            if p > 0.0 {
-                -p * p.log2()
-            } else {
-                0.0
-            }
-        })
-        .sum()
+    buf[..n].sort_unstable();
+
+    let n_f = n as f64;
+    let mut entropy = 0.0f64;
+    let mut run_start = 0;
+    while run_start < n {
+        let mut run_end = run_start + 1;
+        while run_end < n && buf[run_end] == buf[run_start] {
+            run_end += 1;
+        }
+        let p = (run_end - run_start) as f64 / n_f;
+        entropy -= p * p.log2();
+        run_start = run_end;
+    }
+    entropy
 }
 
 // ---------------------------------------------------------------------------

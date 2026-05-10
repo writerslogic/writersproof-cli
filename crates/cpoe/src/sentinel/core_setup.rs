@@ -25,17 +25,36 @@ impl Sentinel {
         mpsc::Sender<ChangeEvent>,
     )> {
         #[cfg(target_os = "macos")]
-        let focus_monitor: Box<dyn SentinelFocusTracker> =
-            super::macos_focus::MacOSFocusMonitor::new_monitor(self.config.clone());
+        let focus_monitor: Box<dyn SentinelFocusTracker> = {
+            match super::focus::HybridFocusTracker::try_new(self.config.clone()) {
+                Some(hybrid) => {
+                    log::info!("Using hybrid AXObserver + polling focus tracker");
+                    Box::new(hybrid)
+                }
+                None => {
+                    log::info!("AXObserver unavailable, using polling focus tracker");
+                    super::macos_focus::MacOSFocusMonitor::new_monitor(self.config.clone())
+                }
+            }
+        };
 
         #[cfg(target_os = "windows")]
         let focus_monitor: Box<dyn SentinelFocusTracker> =
             super::windows_focus::WindowsFocusMonitor::new_monitor(self.config.clone());
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let focus_monitor: Box<dyn SentinelFocusTracker> = Box::new(
-            super::stub_focus::StubSentinelFocusTracker::new(self.config.clone()),
-        );
+        let focus_monitor: Box<dyn SentinelFocusTracker> = {
+            #[cfg(target_os = "linux")]
+            {
+                super::linux_focus::LinuxFocusMonitor::new_monitor(self.config.clone())
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                Box::new(
+                    super::stub_focus::StubSentinelFocusTracker::new(self.config.clone()),
+                )
+            }
+        };
 
         let (available, reason) = focus_monitor.available();
         if !available {

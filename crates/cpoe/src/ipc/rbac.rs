@@ -53,7 +53,9 @@ pub fn required_role(msg: &IpcMessage) -> IpcRole {
         | IpcMessage::Pulse(_)
         | IpcMessage::CheckpointCreated { .. }
         | IpcMessage::CreateFileCheckpoint { .. }
-        | IpcMessage::SystemAlert { .. } => IpcRole::User,
+        | IpcMessage::SystemAlert { .. }
+        | IpcMessage::BrowserKeystroke { .. }
+        | IpcMessage::BrowserKeystrokeBatch { .. } => IpcRole::User,
     }
 }
 

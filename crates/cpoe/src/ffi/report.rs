@@ -628,6 +628,83 @@ fn compute_forgery_info(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Dimension scoring constants (replacing hardcoded magic numbers)
+// ---------------------------------------------------------------------------
+
+// Temporal dimension
+const TEMPORAL_BASE_FULL: u32 = 75;
+const TEMPORAL_BASE_DENSE: u32 = 60;
+const TEMPORAL_BASE_VDF_ONLY: u32 = 45;
+const TEMPORAL_BASE_NONE: u32 = 30;
+const TEMPORAL_HIGH_ITERATIONS: u64 = 1000;
+const TEMPORAL_BONUS_HIGH: u32 = 10;
+const TEMPORAL_BONUS_LOW: u32 = 5;
+const TEMPORAL_CONFIDENCE_VDF: f64 = 0.90;
+const TEMPORAL_CONFIDENCE_NO_VDF: f64 = 0.50;
+const TEMPORAL_MIN_EVENTS: usize = 3;
+const TEMPORAL_MIN_DURATION: f64 = 1.0;
+
+// Edit dimension
+const EDIT_TOPOLOGY_WEIGHT: f64 = 0.6;
+const EDIT_REVISION_WEIGHT: f64 = 0.4;
+const EDIT_RI_OPTIMAL_LOW: f64 = 0.05;
+const EDIT_RI_OPTIMAL_HIGH: f64 = 0.65;
+const EDIT_RI_SCORE_OPTIMAL: f64 = 0.8;
+const EDIT_RI_SCORE_PRESENT: f64 = 0.5;
+const EDIT_RI_SCORE_ABSENT: f64 = 0.3;
+const EDIT_CONFIDENCE_SUFFICIENT: f64 = 0.80;
+const EDIT_CONFIDENCE_SPARSE: f64 = 0.50;
+const EDIT_MIN_EVENTS: usize = 5;
+
+// Continuity dimension
+const CONTINUITY_BASE_MULTI: u32 = 80;
+const CONTINUITY_BASE_TWO: u32 = 70;
+const CONTINUITY_BASE_SINGLE: u32 = 55;
+const CONTINUITY_DURATION_BONUS_THRESHOLD: f64 = 5.0;
+const CONTINUITY_DURATION_BONUS: u32 = 10;
+const CONTINUITY_CONFIDENCE_MULTI: f64 = 0.85;
+const CONTINUITY_CONFIDENCE_SINGLE: f64 = 0.60;
+const CONTINUITY_MIN_MULTI_SESSIONS: usize = 3;
+
+// Coherence dimension
+const COHERENCE_PASTE_THRESHOLD_PCT: f64 = 30.0;
+const COHERENCE_MIN_KEYSTROKES: u64 = 10;
+const COHERENCE_BASE_CLEAN: u32 = 75;
+const COHERENCE_BASE_PASTY: u32 = 50;
+const COHERENCE_CR_OPTIMAL_LOW: f64 = 0.05;
+const COHERENCE_CR_OPTIMAL_HIGH: f64 = 0.4;
+const COHERENCE_CR_BONUS: u32 = 15;
+const COHERENCE_CONFIDENCE: f64 = 0.75;
+
+// Behavioral dimension
+const BEHAVIORAL_CV_OPTIMAL_LOW: f64 = 0.2;
+const BEHAVIORAL_CV_OPTIMAL_HIGH: f64 = 1.8;
+const BEHAVIORAL_CV_MARGINAL: f64 = 0.1;
+const BEHAVIORAL_CV_SCORE_OPTIMAL: f64 = 0.85;
+const BEHAVIORAL_CV_SCORE_MARGINAL: f64 = 0.55;
+const BEHAVIORAL_CV_SCORE_POOR: f64 = 0.25;
+const BEHAVIORAL_CV_WEIGHT: f64 = 0.6;
+const BEHAVIORAL_BIO_WEIGHT: f64 = 0.4;
+const BEHAVIORAL_CONFIDENCE_DATA: f64 = 0.85;
+const BEHAVIORAL_CONFIDENCE_NO_DATA: f64 = 0.55;
+
+// Velocity dimension
+const VELOCITY_HUMAN_LOW_BPS: f64 = 0.5;
+const VELOCITY_HUMAN_HIGH_BPS: f64 = 20.0;
+const VELOCITY_PLAUSIBLE_MAX_BPS: f64 = 50.0;
+const VELOCITY_SCORE_OPTIMAL: f64 = 0.85;
+const VELOCITY_SCORE_PLAUSIBLE: f64 = 0.60;
+const VELOCITY_SCORE_NONE: f64 = 0.40;
+const VELOCITY_SCORE_ANOMALOUS: f64 = 0.20;
+const VELOCITY_CONFIDENCE_DATA: f64 = 0.80;
+const VELOCITY_CONFIDENCE_SPARSE: f64 = 0.55;
+const VELOCITY_MIN_EVENTS: usize = 3;
+
+// Enhanced dimension thresholds
+const ENHANCED_COGNITIVE_THRESHOLD: f64 = 0.7;
+const ENHANCED_MIXED_THRESHOLD: f64 = 0.4;
+
 fn score_color(s: u32) -> String {
     if s >= 80 {
         "#2e7d32".to_string()
@@ -685,19 +762,23 @@ fn build_temporal_dimension(
 ) -> DimensionScore {
     let score: u32 = {
         let has_vdf = stats.total_iterations > 0;
-        let dense_enough = event_count >= 3;
-        let long_enough = stats.total_min > 1.0;
+        let dense_enough = event_count >= TEMPORAL_MIN_EVENTS;
+        let long_enough = stats.total_min > TEMPORAL_MIN_DURATION;
         let base = if has_vdf && dense_enough && long_enough {
-            75u32
+            TEMPORAL_BASE_FULL
         } else if has_vdf && dense_enough {
-            60
+            TEMPORAL_BASE_DENSE
         } else if has_vdf {
-            45
+            TEMPORAL_BASE_VDF_ONLY
         } else {
-            30
+            TEMPORAL_BASE_NONE
         };
-        base.saturating_add(if stats.total_iterations > 1000 { 10 } else { 5 })
-            .min(99)
+        base.saturating_add(if stats.total_iterations > TEMPORAL_HIGH_ITERATIONS {
+            TEMPORAL_BONUS_HIGH
+        } else {
+            TEMPORAL_BONUS_LOW
+        })
+        .min(99)
     };
     let kd = format!(
         "{} checkpoints, {} VDF iterations",
@@ -706,7 +787,7 @@ fn build_temporal_dimension(
     make_dimension(
         "Temporal Proof Chain",
         score,
-        if stats.total_iterations > 0 { 0.90 } else { 0.50 },
+        if stats.total_iterations > 0 { TEMPORAL_CONFIDENCE_VDF } else { TEMPORAL_CONFIDENCE_NO_VDF },
         kd,
         dimension_interpretation(
             score,
@@ -728,14 +809,15 @@ fn build_edit_dimension(
             .revision_intensity
             .filter(|v| v.is_finite())
             .unwrap_or(0.0);
-        let ri_score = if ri > 0.05 && ri < 0.65 {
-            0.8
+        let ri_score = if ri > EDIT_RI_OPTIMAL_LOW && ri < EDIT_RI_OPTIMAL_HIGH {
+            EDIT_RI_SCORE_OPTIMAL
         } else if ri > 0.0 {
-            0.5
+            EDIT_RI_SCORE_PRESENT
         } else {
-            0.3
+            EDIT_RI_SCORE_ABSENT
         };
-        ((topo * 0.6 + ri_score * 0.4) * 100.0).clamp(0.0, 99.0) as u32
+        ((topo * EDIT_TOPOLOGY_WEIGHT + ri_score * EDIT_REVISION_WEIGHT) * 100.0)
+            .clamp(0.0, 99.0) as u32
     };
     let kd = process
         .revision_intensity
@@ -745,7 +827,7 @@ fn build_edit_dimension(
     make_dimension(
         "Edit Pattern Authenticity",
         score,
-        if event_count >= 5 { 0.80 } else { 0.50 },
+        if event_count >= EDIT_MIN_EVENTS { EDIT_CONFIDENCE_SUFFICIENT } else { EDIT_CONFIDENCE_SPARSE },
         kd,
         dimension_interpretation(
             score,
@@ -767,15 +849,19 @@ fn build_continuity_dimension(
         } else {
             stats.total_min
         };
-        let base: u32 = if session_count >= 3 {
-            80
+        let base: u32 = if session_count >= CONTINUITY_MIN_MULTI_SESSIONS {
+            CONTINUITY_BASE_MULTI
         } else if session_count == 2 {
-            70
+            CONTINUITY_BASE_TWO
         } else {
-            55
+            CONTINUITY_BASE_SINGLE
         };
-        base.saturating_add(if avg_duration > 5.0 { 10 } else { 0 })
-            .min(99)
+        base.saturating_add(if avg_duration > CONTINUITY_DURATION_BONUS_THRESHOLD {
+            CONTINUITY_DURATION_BONUS
+        } else {
+            0
+        })
+        .min(99)
     };
     let kd = format!(
         "{} session{}, {:.0} min total",
@@ -786,7 +872,7 @@ fn build_continuity_dimension(
     make_dimension(
         "Process Continuity",
         score,
-        if sessions.len() >= 2 { 0.85 } else { 0.60 },
+        if sessions.len() >= 2 { CONTINUITY_CONFIDENCE_MULTI } else { CONTINUITY_CONFIDENCE_SINGLE },
         kd,
         dimension_interpretation(
             score,
@@ -802,12 +888,25 @@ fn build_coherence_dimension(
     metrics: &crate::forensics::ForensicMetrics,
 ) -> DimensionScore {
     let score: u32 = {
-        let low_paste = stats.paste_ratio_pct.map(|p| p < 30.0).unwrap_or(true);
-        let has_keystrokes = stats.keystroke_estimate > 10;
+        let low_paste = stats
+            .paste_ratio_pct
+            .map(|p| p < COHERENCE_PASTE_THRESHOLD_PCT)
+            .unwrap_or(true);
+        let has_keystrokes = stats.keystroke_estimate > COHERENCE_MIN_KEYSTROKES;
         let cv = finite_or(metrics.cadence.correction_ratio.get(), 0.0);
-        let base: u32 = if low_paste && has_keystrokes { 75 } else { 50 };
-        base.saturating_add(if cv > 0.05 && cv < 0.4 { 15 } else { 0 })
-            .min(99)
+        let base: u32 = if low_paste && has_keystrokes {
+            COHERENCE_BASE_CLEAN
+        } else {
+            COHERENCE_BASE_PASTY
+        };
+        base.saturating_add(
+            if cv > COHERENCE_CR_OPTIMAL_LOW && cv < COHERENCE_CR_OPTIMAL_HIGH {
+                COHERENCE_CR_BONUS
+            } else {
+                0
+            },
+        )
+        .min(99)
     };
     let kd = stats
         .paste_ratio_pct
@@ -816,7 +915,7 @@ fn build_coherence_dimension(
     make_dimension(
         "Content-Process Coherence",
         score,
-        0.75,
+        COHERENCE_CONFIDENCE,
         kd,
         dimension_interpretation(
             score,
@@ -840,15 +939,16 @@ fn build_behavioral_dimension(
         } else {
             finite_or(metrics.cadence.burst_speed_cv, 0.5)
         };
-        let cv_score = if cv > 0.2 && cv < 1.8 {
-            0.85
-        } else if cv > 0.1 {
-            0.55
+        let cv_score = if cv > BEHAVIORAL_CV_OPTIMAL_LOW && cv < BEHAVIORAL_CV_OPTIMAL_HIGH {
+            BEHAVIORAL_CV_SCORE_OPTIMAL
+        } else if cv > BEHAVIORAL_CV_MARGINAL {
+            BEHAVIORAL_CV_SCORE_MARGINAL
         } else {
-            0.25
+            BEHAVIORAL_CV_SCORE_POOR
         };
         let biological = finite_or(metrics.biological_cadence_score.get(), 0.5);
-        ((cv_score * 0.6 + biological * 0.4) * 100.0).clamp(0.0, 99.0) as u32
+        ((cv_score * BEHAVIORAL_CV_WEIGHT + biological * BEHAVIORAL_BIO_WEIGHT) * 100.0)
+            .clamp(0.0, 99.0) as u32
     };
     let kd = format!(
         "burst CV: {:.2}, correction rate: {:.1}%",
@@ -858,7 +958,7 @@ fn build_behavioral_dimension(
     make_dimension(
         "Behavioral Signature",
         score,
-        if metrics.cadence.mean_iki_ns > 0.0 { 0.85 } else { 0.55 },
+        if metrics.cadence.mean_iki_ns > 0.0 { BEHAVIORAL_CONFIDENCE_DATA } else { BEHAVIORAL_CONFIDENCE_NO_DATA },
         kd,
         dimension_interpretation(
             score,
@@ -875,14 +975,14 @@ fn build_velocity_dimension(
 ) -> DimensionScore {
     let score: u32 = {
         let mbps = finite_or(metrics.velocity.mean_bps, 0.0);
-        let v_score = if mbps > 0.5 && mbps < 20.0 {
-            0.85
-        } else if mbps > 0.0 && mbps < 50.0 {
-            0.60
+        let v_score = if mbps > VELOCITY_HUMAN_LOW_BPS && mbps < VELOCITY_HUMAN_HIGH_BPS {
+            VELOCITY_SCORE_OPTIMAL
+        } else if mbps > 0.0 && mbps < VELOCITY_PLAUSIBLE_MAX_BPS {
+            VELOCITY_SCORE_PLAUSIBLE
         } else if mbps == 0.0 {
-            0.40
+            VELOCITY_SCORE_NONE
         } else {
-            0.20
+            VELOCITY_SCORE_ANOMALOUS
         };
         (v_score * 100.0) as u32
     };
@@ -893,7 +993,7 @@ fn build_velocity_dimension(
     make_dimension(
         "Writing Velocity",
         score,
-        if event_count >= 3 { 0.80 } else { 0.55 },
+        if event_count >= VELOCITY_MIN_EVENTS { VELOCITY_CONFIDENCE_DATA } else { VELOCITY_CONFIDENCE_SPARSE },
         kd,
         dimension_interpretation(
             score,
@@ -904,6 +1004,22 @@ fn build_velocity_dimension(
     )
 }
 
+fn build_enhanced_dimension(
+    name: &str,
+    composite_score: f64,
+    key_discriminator: &str,
+) -> DimensionScore {
+    let score = (composite_score * 100.0).round().clamp(0.0, 100.0) as u32;
+    let interpretation = if composite_score >= ENHANCED_COGNITIVE_THRESHOLD {
+        "Consistent with cognitive authorship"
+    } else if composite_score >= ENHANCED_MIXED_THRESHOLD {
+        "Mixed signals; ambiguous"
+    } else {
+        "Consistent with transcriptive or synthetic patterns"
+    };
+    make_dimension(name, score, composite_score, key_discriminator.to_string(), interpretation.to_string())
+}
+
 fn build_dimensions(
     stats: &EventStats,
     process: &ProcessEvidence,
@@ -911,14 +1027,55 @@ fn build_dimensions(
     sessions: &[ReportSession],
 ) -> Vec<DimensionScore> {
     let event_count = process.swf_checkpoints.unwrap_or(0) as usize;
-    vec![
+    let mut dims = vec![
         build_temporal_dimension(stats, event_count),
         build_edit_dimension(process, metrics, event_count),
         build_continuity_dimension(stats, sessions),
         build_coherence_dimension(stats, metrics),
         build_behavioral_dimension(metrics),
         build_velocity_dimension(metrics, event_count),
-    ]
+    ];
+
+    // Enhanced signal dimensions (populated when new analysis modules ran).
+    if let Some(ref cl) = metrics.cognitive_load {
+        dims.push(build_enhanced_dimension(
+            "Cognitive Load",
+            cl.composite_score,
+            &format!("IKI-surprisal rho={:.2}", cl.iki_surprisal_rho),
+        ));
+    }
+    if let Some(ref rt) = metrics.revision_topology {
+        dims.push(build_enhanced_dimension(
+            "Revision Topology",
+            rt.composite_score,
+            &format!("branching={:.1}", rt.graph.mean_branching_factor),
+        ));
+    }
+    if let Some(ref ee) = metrics.error_ecology {
+        dims.push(build_enhanced_dimension(
+            "Error Ecology",
+            ee.composite_score,
+            &format!("rapid={:.0}%", ee.rapid_self_correction_pct * 100.0),
+        ));
+    }
+    if let Some(ref lm) = metrics.likelihood_model {
+        dims.push(build_enhanced_dimension(
+            "Likelihood Model",
+            lm.session_p_cognitive,
+            &format!("LLR={:.1}", lm.mean_window_llr),
+        ));
+    }
+    if let Some(ref cm) = metrics.composition_mode {
+        dims.push(build_enhanced_dimension(
+            "Composition Mode",
+            cm.composite_score,
+            &cm.dominant_mode
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+        ));
+    }
+
+    dims
 }
 
 fn compute_provenance(
@@ -1105,7 +1262,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         report_id: WarReport::generate_id(),
         algorithm_version: format!("v{}", env!("CARGO_PKG_VERSION")),
         generated_at: chrono::Utc::now(),
-        schema_version: "WAR-v1.4".into(),
+        schema_version: format!("WAR-v{}", env!("CARGO_PKG_VERSION")),
         is_sample: false,
         score,
         verdict,
@@ -1124,7 +1281,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         document_chars: Some(stats.doc_size.max(0) as u64),
         document_sentences: None,
         document_paragraphs: None,
-        evidence_bundle_version: format!("Signed v1.4 (T{})", tier_num),
+        evidence_bundle_version: format!("Signed v{} (T{})", env!("CARGO_PKG_VERSION"), tier_num),
         session_count: sessions.len(),
         total_duration_min: stats.total_min,
         revision_events: events.len() as u64,
@@ -1166,7 +1323,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         provenance_breakdown: None,
     };
 
-    war_report.verifiable_credential_json = build_vc_json(&war_report, loaded_key.as_ref());
+    war_report.verifiable_credential_json = build_vc_json(&war_report, loaded_key.as_ref(), &metrics);
     war_report.provenance_breakdown = compute_provenance(&store);
 
     Ok((war_report, guilloche_seed_hex))
@@ -1557,6 +1714,7 @@ fn collect_warnings(report: &WarReport) -> Vec<String> {
 fn build_vc_json(
     report: &WarReport,
     signing_key: Option<&ed25519_dalek::SigningKey>,
+    metrics: &crate::forensics::ForensicMetrics,
 ) -> Option<String> {
     use std::collections::BTreeMap;
 
@@ -1621,12 +1779,65 @@ fn build_vc_json(
     };
 
     match crate::war::profiles::vc::to_verifiable_credential(&ear, &author_did) {
-        Ok(vc) => serde_json::to_string_pretty(&vc)
-            .map_err(|e| log::warn!("VC JSON serialization failed: {e}"))
-            .ok(),
+        Ok(mut vc) => {
+            let writing_mode = metrics
+                .writing_mode
+                .as_ref()
+                .map(|wm| wm.mode.to_string());
+            let comp_mode = metrics
+                .composition_mode
+                .as_ref()
+                .and_then(|c| c.dominant_mode)
+                .map(|m| m.to_string());
+            let signals = build_vc_forensic_signals(metrics);
+            vc.enrich_forensic_signals(writing_mode, comp_mode, signals);
+            serde_json::to_string_pretty(&vc)
+                .map_err(|e| log::warn!("VC JSON serialization failed: {e}"))
+                .ok()
+        }
         Err(e) => {
             log::warn!("VC construction failed: {e}");
             None
         }
     }
+}
+
+fn build_vc_forensic_signals(
+    metrics: &crate::forensics::ForensicMetrics,
+) -> Option<crate::war::profiles::vc::VcForensicSignals> {
+    let has_any = metrics.cognitive_load.is_some()
+        || metrics.revision_topology.is_some()
+        || metrics.error_ecology.is_some()
+        || metrics.likelihood_model.is_some()
+        || metrics.composition_mode.is_some();
+    if !has_any {
+        return None;
+    }
+    Some(crate::war::profiles::vc::VcForensicSignals {
+        cognitive_load_score: metrics
+            .cognitive_load
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
+        revision_topology_score: metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| r.composite_score)
+            .unwrap_or(0.0),
+        error_ecology_score: metrics
+            .error_ecology
+            .as_ref()
+            .map(|e| e.composite_score)
+            .unwrap_or(0.0),
+        likelihood_p_cognitive: metrics
+            .likelihood_model
+            .as_ref()
+            .map(|l| l.session_p_cognitive)
+            .unwrap_or(0.0),
+        composition_mode_score: metrics
+            .composition_mode
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
+    })
 }

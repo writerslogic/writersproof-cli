@@ -567,6 +567,31 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                 .unwrap_or(0xFF);
                 let zone = crate::jitter::keycode_to_zone(keycode);
 
+                // Extract composed Unicode text from the key event.
+                let mut uni_buf = [0u16; 8];
+                let mut uni_len: libc::c_ulong = 0;
+                // SAFETY: event is a valid CGEventRef; buffer is stack-allocated.
+                unsafe {
+                    CGEventKeyboardGetUnicodeString(
+                        event,
+                        uni_buf.len() as libc::c_ulong,
+                        &mut uni_len,
+                        uni_buf.as_mut_ptr(),
+                    );
+                }
+                let uni_len = (uni_len as usize).min(uni_buf.len());
+                let (char_value, composed_text) = if uni_len > 0 {
+                    let decoded = String::from_utf16_lossy(&uni_buf[..uni_len]);
+                    let first_char = decoded.chars().next();
+                    if decoded.chars().count() > 1 {
+                        (first_char, Some(decoded))
+                    } else {
+                        (first_char, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
                 let keystroke = KeystrokeEvent {
                     timestamp_ns: now,
                     keycode,
@@ -576,7 +601,8 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                     } else {
                         crate::platform::KeyEventType::Up
                     },
-                    char_value: None,
+                    char_value,
+                    composed_text,
                     is_hardware: true,
                     device_id: None,
                     transport_type: None,

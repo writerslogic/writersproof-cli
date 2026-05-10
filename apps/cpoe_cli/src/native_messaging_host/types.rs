@@ -113,6 +113,11 @@ pub(crate) enum Request {
         attested_at: String,
         app_bundle_id: String,
     },
+    BrowserKeystrokeBatch {
+        keystrokes: Vec<(f64, String, String)>,
+        #[serde(default)]
+        tab_id: u32,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -189,6 +194,9 @@ pub(crate) enum Response {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
+    BrowserKeystrokesReceived {
+        count: usize,
+    },
     Error {
         message: String,
         code: String,
@@ -222,6 +230,8 @@ pub(crate) struct Session {
     /// Session ID of the most recent prior session for the same URL, if within MAX_AGE_NS.
     #[allow(dead_code)]
     pub(crate) prior_session_id: Option<String>,
+    /// Count of browser-side keystrokes received for dual-source validation.
+    pub(crate) browser_keystroke_count: std::sync::atomic::AtomicU64,
 }
 
 impl Drop for Session {

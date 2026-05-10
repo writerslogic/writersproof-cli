@@ -121,6 +121,10 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
             // and full-screen transitions.
             let mut pending_loss: Option<(String, Instant)> = None;
 
+            // Apps discovered at runtime via accessibility probing.
+            let mut discovered_apps: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+
             // Probe the currently focused window immediately on startup so
             // the sentinel knows what document is active before keystrokes
             // arrive.  This is critical after a stop/restart cycle where the
@@ -209,13 +213,37 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     }
                     continue;
                 }
-                let info = info.unwrap();
+                let mut info = info.unwrap();
 
                 let current_app = if !info.application.is_empty() {
                     info.application.clone()
                 } else {
                     "unknown".to_string()
                 };
+
+                // Terminal editor detection: override path/app when an editor
+                // is running inside a terminal, regardless of app-switch state.
+                let is_terminal = super::terminal_editors::is_terminal_emulator_bundle(&current_app)
+                    || super::terminal_editors::is_terminal_emulator_name(&current_app);
+                if is_terminal {
+                    if let Some(pid) = info.pid {
+                        if let Some(editor_info) = super::terminal_editors::detect_editor_in_terminal(pid) {
+                            info.application = format!("terminal.editor.{}", editor_info.editor);
+                            if let Some(ref fp) = editor_info.file_path {
+                                info.path = Some(fp.clone());
+                            }
+                        }
+                    } else {
+                        let title_revealed = info.title.reveal();
+                        if let Some((editor, file)) = super::terminal_editors::parse_terminal_title_for_editor(&title_revealed) {
+                            let p = std::path::Path::new(&file);
+                            if !p.is_absolute() || p.exists() {
+                                info.application = format!("terminal.editor.{}", editor);
+                                info.path = Some(file);
+                            }
+                        }
+                    }
+                }
 
                 if current_app == last_app {
                     // Same app — cancel any pending loss (was a transient bounce).
@@ -228,7 +256,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         && info.path != last_path
                     {
                         let app_name = info.application.clone();
-                        if config.is_app_allowed(&info.application, &app_name) {
+                        if is_terminal || config.is_app_allowed(&info.application, &app_name) {
                             if let Some(ref old_path) = last_path {
                                 send_or_break!(FocusEvent {
                                     event_type: FocusEventType::FocusLost,
@@ -258,7 +286,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         // App unchanged but document path changed (intra-app document switch
                         // or AX query latency resolving the path for the first time).
                         let app_name = info.application.clone();
-                        if config.is_app_allowed(&info.application, &app_name) {
+                        if is_terminal || config.is_app_allowed(&info.application, &app_name) {
                             if let Some(ref old_path) = last_path {
                                 send_or_break!(FocusEvent {
                                     event_type: FocusEventType::FocusLost,
@@ -313,19 +341,48 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                             }
                             pending_loss = None;
 
-                            let app_name = info.application.clone();
-                            if config.is_app_allowed(&info.application, &app_name) {
+                            // info.application and info.path are already
+                            // overridden by terminal editor detection above.
+                            let effective_path = info.path.clone();
+                            let effective_app = info.application.clone();
+                            let effective_app_name = effective_app.clone();
+
+                            let app_allowed = if config.is_app_allowed(&effective_app, &effective_app_name)
+                                || discovered_apps.contains(&current_app)
+                                || discovered_apps.contains(&effective_app)
+                            {
+                                true
+                            } else if is_terminal {
+                                effective_path.is_some()
+                            } else if let Some(pid) = info.pid {
+                                if super::app_discovery::probe_runtime_text_editing(
+                                    &current_app, pid,
+                                ).is_some() {
+                                    discovered_apps.insert(current_app.clone());
+                                    log::info!(
+                                        "auto-discovered writing app: {}",
+                                        current_app,
+                                    );
+                                    true
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            };
+
+                            if app_allowed {
                                 send_or_break!(FocusEvent {
                                     event_type: FocusEventType::FocusGained,
-                                    path: info.path.clone().unwrap_or_default(),
+                                    path: effective_path.clone().unwrap_or_default(),
                                     shadow_id: String::new(),
-                                    app_bundle_id: info.application.clone(),
-                                    app_name: info.application.clone(),
+                                    app_bundle_id: effective_app,
+                                    app_name: effective_app_name,
                                     window_title: info.title.clone(),
                                     timestamp: SystemTime::now(),
                                     window_id: info.window_number,
                                 });
-                                last_path = info.path.clone();
+                                last_path = effective_path;
                             } else {
                                 last_path = None;
                             }
@@ -378,6 +435,207 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
 
     fn change_sender(&self) -> mpsc::Sender<ChangeEvent> {
         self.change_tx.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HybridFocusTracker: AXObserver push + reduced-frequency polling watchdog.
+// ---------------------------------------------------------------------------
+
+/// Focus tracker that combines AXObserver push notifications with a low-frequency
+/// polling watchdog. AX notifications provide near-instant focus detection while
+/// the polling fallback catches apps that do not emit AX events.
+#[cfg(target_os = "macos")]
+pub struct HybridFocusTracker {
+    ax_provider: super::macos_focus::AXObserverFocusProvider,
+    poller: PollingSentinelFocusTracker<dyn WindowProvider>,
+    running: Arc<AtomicBool>,
+    focus_tx: mpsc::Sender<FocusEvent>,
+    focus_rx: Arc<Mutex<Option<mpsc::Receiver<FocusEvent>>>>,
+    change_tx: mpsc::Sender<ChangeEvent>,
+    change_rx: Arc<Mutex<Option<mpsc::Receiver<ChangeEvent>>>>,
+    merge_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    bridge_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
+}
+
+#[cfg(target_os = "macos")]
+impl std::fmt::Debug for HybridFocusTracker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HybridFocusTracker")
+            .field("running", &self.running.load(Ordering::Relaxed))
+            .finish()
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl HybridFocusTracker {
+    /// Attempt to create a hybrid tracker. Returns `None` if AXObserver cannot
+    /// be initialized (falls back to pure polling in the caller).
+    pub fn try_new(config: Arc<SentinelConfig>) -> Option<Self> {
+        let window_provider = Arc::new(super::macos_focus::MacOSFocusMonitor::new(
+            Arc::clone(&config),
+        ));
+
+        let ax_provider =
+            super::macos_focus::AXObserverFocusProvider::try_new(Arc::clone(&window_provider))?;
+
+        // Watchdog poller at 2000ms instead of the default 100ms.
+        let watchdog_config = Arc::new(SentinelConfig {
+            poll_interval_ms: 2000,
+            ..(*config).clone()
+        });
+        let poller = PollingSentinelFocusTracker::new(
+            window_provider as Arc<dyn WindowProvider>,
+            watchdog_config,
+        );
+
+        let (focus_tx, focus_rx) = mpsc::channel(100);
+        let (change_tx, change_rx) = mpsc::channel(100);
+
+        Some(Self {
+            ax_provider,
+            poller,
+            running: Arc::new(AtomicBool::new(false)),
+            focus_tx,
+            focus_rx: Arc::new(Mutex::new(Some(focus_rx))),
+            change_tx,
+            change_rx: Arc::new(Mutex::new(Some(change_rx))),
+            merge_handle: Arc::new(Mutex::new(None)),
+            bridge_handle: Arc::new(Mutex::new(None)),
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl SentinelFocusTracker for HybridFocusTracker {
+    fn start(&self) -> Result<()> {
+        if self.running.swap(true, Ordering::AcqRel) {
+            return Err(SentinelError::AlreadyRunning);
+        }
+
+        // Start the AXObserver push provider.
+        self.ax_provider.start();
+
+        // Start the polling watchdog.
+        self.poller.start()?;
+
+        // Take receivers from both sources.
+        let ax_rx = self.ax_provider.take_receiver();
+        let mut poll_rx = self.poller.focus_events()?;
+
+        let focus_tx = self.focus_tx.clone();
+        let running = Arc::clone(&self.running);
+
+        // Bridge AX events (std::sync::mpsc) into a tokio channel so we can
+        // select! over both sources in the merge task.
+        let (ax_bridge_tx, mut ax_bridge_rx) = mpsc::channel::<FocusEvent>(100);
+        if let Some(ax_rx) = ax_rx {
+            let bridge_running = Arc::clone(&running);
+            let handle = std::thread::Builder::new()
+                .name("ax-bridge".into())
+                .spawn(move || {
+                    while bridge_running.load(Ordering::Acquire) {
+                        match ax_rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                            Ok(event) => {
+                                if ax_bridge_tx.blocking_send(event).is_err() {
+                                    break;
+                                }
+                            }
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                        }
+                    }
+                })
+                .ok();
+            if let Some(h) = handle {
+                *self.bridge_handle.lock_recover() = Some(h);
+            }
+        }
+
+        // Merge task: deduplicates events from AX and polling by timestamp proximity.
+        let merge_handle = tokio::spawn(async move {
+            // Track last emitted event timestamp to suppress duplicates.
+            let mut last_emitted: Option<SystemTime> = None;
+            const DEDUP_WINDOW: Duration = Duration::from_millis(200);
+
+            loop {
+                if !running.load(Ordering::Acquire) {
+                    break;
+                }
+
+                let event = tokio::select! {
+                    Some(e) = ax_bridge_rx.recv() => e,
+                    Some(e) = poll_rx.recv() => e,
+                    else => break,
+                };
+
+                // Deduplicate: if the event timestamp is within DEDUP_WINDOW of
+                // the last emitted event for the same event type, skip it.
+                let dominated = last_emitted
+                    .and_then(|prev| event.timestamp.duration_since(prev).ok())
+                    .map(|d| d < DEDUP_WINDOW)
+                    .unwrap_or(false);
+
+                if !dominated {
+                    last_emitted = Some(event.timestamp);
+                    if focus_tx.send(event).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+
+        *self.merge_handle.lock_recover() = Some(merge_handle);
+        Ok(())
+    }
+
+    fn stop(&self) -> Result<()> {
+        if !self.running.swap(false, Ordering::AcqRel) {
+            return Ok(());
+        }
+        self.ax_provider.stop();
+        let _ = self.poller.stop();
+        if let Some(handle) = self.merge_handle.lock_recover().take() {
+            handle.abort();
+        }
+        Ok(())
+    }
+
+    fn active_window(&self) -> Option<WindowInfo> {
+        self.poller.active_window()
+    }
+
+    fn available(&self) -> (bool, String) {
+        (true, "Hybrid AXObserver + polling monitor".to_string())
+    }
+
+    fn focus_events(&self) -> Result<mpsc::Receiver<FocusEvent>> {
+        self.focus_rx
+            .lock_recover()
+            .take()
+            .ok_or_else(|| SentinelError::Channel("focus receiver already consumed".to_string()))
+    }
+
+    fn change_events(&self) -> Result<mpsc::Receiver<ChangeEvent>> {
+        self.change_rx
+            .lock_recover()
+            .take()
+            .ok_or_else(|| SentinelError::Channel("change receiver already consumed".to_string()))
+    }
+
+    fn change_sender(&self) -> mpsc::Sender<ChangeEvent> {
+        self.change_tx.clone()
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for HybridFocusTracker {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::SeqCst);
+        self.ax_provider.stop();
+        if let Some(handle) = self.merge_handle.lock_recover().take() {
+            handle.abort();
+        }
     }
 }
 

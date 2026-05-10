@@ -448,6 +448,51 @@ pub fn apply_cross_window_penalties(
     *score = Probability::clamp(score.get() - total_penalty);
 }
 
+/// Apply enhanced forensic signal adjustments to the assessment score.
+///
+/// Each enhanced signal shifts the assessment score toward its own verdict:
+/// high composite scores (cognitive) reward, low scores (transcriptive) penalize.
+/// The effect is bounded to avoid overwhelming the base assessment.
+pub fn apply_enhanced_signal_adjustments(
+    score: &mut Probability,
+    cognitive_load: Option<&super::cognitive_load::CognitiveLoadMetrics>,
+    revision_topology: Option<&super::revision_topology::RevisionTopologyMetrics>,
+    error_ecology: Option<&super::error_ecology::ErrorEcologyMetrics>,
+    likelihood_model: Option<&super::likelihood_model::LikelihoodModelMetrics>,
+) {
+    /// Maximum total adjustment from enhanced signals.
+    const MAX_TOTAL_ADJUSTMENT: f64 = 0.20;
+    /// Neutral point: scores above this reward, below penalize.
+    const NEUTRAL: f64 = 0.5;
+
+    let mut adjustment = 0.0f64;
+    let mut signal_count = 0u32;
+
+    if let Some(cl) = cognitive_load {
+        adjustment += (cl.composite_score - NEUTRAL) * 0.08;
+        signal_count += 1;
+    }
+    if let Some(rt) = revision_topology {
+        adjustment += (rt.composite_score - NEUTRAL) * 0.05;
+        signal_count += 1;
+    }
+    if let Some(ee) = error_ecology {
+        adjustment += (ee.composite_score - NEUTRAL) * 0.05;
+        signal_count += 1;
+    }
+    if let Some(lm) = likelihood_model {
+        adjustment += (lm.composite_score - NEUTRAL) * 0.10;
+        signal_count += 1;
+    }
+
+    if signal_count == 0 {
+        return;
+    }
+
+    let clamped = adjustment.clamp(-MAX_TOTAL_ADJUSTMENT, MAX_TOTAL_ADJUSTMENT);
+    *score = Probability::clamp(score.get() + clamped);
+}
+
 /// Map assessment score to risk level.
 pub fn determine_risk_level(score: f64, event_count: usize) -> RiskLevel {
     if event_count < MIN_EVENTS_FOR_ANALYSIS {

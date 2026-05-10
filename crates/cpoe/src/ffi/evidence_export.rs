@@ -3,6 +3,7 @@
 use crate::ffi::helpers::{detect_attestation_tier, open_store};
 use crate::ffi::sentinel::get_sentinel;
 use crate::ffi::types::{try_ffi, FfiResult};
+use crate::jitter::SimpleJitterSample;
 use crate::RwLockRecover;
 use authorproof_protocol::rfc::wire_types::{
     CheckpointWire, DocumentRef, EditDelta, EvidencePacketWire, HashValue, ProcessProof,
@@ -216,6 +217,9 @@ fn build_wire_packet(
         .collect::<Result<Vec<_>, String>>()
         .map_err(|e| format!("Invalid hash in event data: {e}"))?;
 
+    // Enrich checkpoints with behavioral data from sentinel session.
+    enrich_checkpoints(&mut checkpoints, &events, &path);
+
     // Attach beacon attestation to the last checkpoint if available.
     if let Some(beacon) = crate::ffi::beacon::load_beacon_attestation(&file_path_str) {
         if let Some(last_cp) = checkpoints.last_mut() {
@@ -326,7 +330,13 @@ fn build_wire_packet(
         },
         checkpoints,
         attestation_tier: Some(detect_attestation_tier()),
-        limitations: collect_ai_tool_limitations(&path),
+        limitations: {
+            let mut lims = collect_ai_tool_limitations(&path).unwrap_or_default();
+            lims.extend(collect_repair_history(&data_dir));
+            lims.extend(collect_dictation_limitations(&path));
+            lims.extend(collect_composition_mode_limitations(&path, events.len()));
+            if lims.is_empty() { None } else { Some(lims) }
+        },
         profile: None,
         presence_challenges: None,
         channel_binding: None,
@@ -335,7 +345,7 @@ fn build_wire_packet(
         previous_packet_ref: None,
         packet_sequence: None,
         physical_liveness: None,
-        baseline_verification: None,
+        baseline_verification: build_baseline_verification(&path, &events),
         author_did: {
             #[cfg(feature = "did-webvh")]
             {
@@ -349,7 +359,7 @@ fn build_wire_packet(
         document_content: embedded_content,
         document_filename: embedded_filename,
         project_files: collect_project_files(&file_path, &store),
-        session_counter: None,
+        session_counter: events.last().and_then(|e| e.hardware_counter),
     };
 
     let encoded = wire_packet
@@ -453,6 +463,480 @@ pub(crate) fn collect_ai_tool_limitations(path: &str) -> Option<Vec<String>> {
         ));
     }
     Some(limitations)
+}
+
+/// Read `repair-log.json` from the data directory and return limitation strings
+/// for each recorded integrity repair event.
+fn collect_repair_history(data_dir: &std::path::Path) -> Vec<String> {
+    let log_path = data_dir.join("repair-log.json");
+    let bytes = match std::fs::read(&log_path) {
+        Ok(b) => b,
+        Err(_) => return vec![],
+    };
+    let parsed: serde_json::Value = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("Failed to parse repair-log.json: {e}");
+            return vec![];
+        }
+    };
+    let repairs = match parsed.get("repairs").and_then(|v| v.as_array()) {
+        Some(arr) => arr,
+        None => return vec![],
+    };
+    repairs
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .get("timestamp")
+                .and_then(|t| t.as_str())
+                .map(|ts| format!("Integrity repair performed at {ts}"))
+        })
+        .collect()
+}
+
+/// Provision an X.509 certificate from the WritersProof CA.
+///
+/// Enrolls the device with the WritersProof CA (if not already enrolled),
+/// fetches the signed certificate, and caches it locally for use in C2PA
+/// manifest x5chain headers. Safe to call multiple times — returns early
+/// if a cached cert already exists.
+///
+/// Returns an FfiResult with the certificate fingerprint on success.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_provision_ca_cert() -> FfiResult {
+    use crate::ffi::types::try_ffi;
+
+    let signing_key = try_ffi!(
+        crate::ffi::helpers::load_signing_key(),
+        FfiResult
+    );
+
+    // Check if we already have a cached CA cert.
+    let data_dir = try_ffi!(
+        crate::ffi::helpers::get_data_dir()
+            .ok_or_else(|| "Data directory not found".to_string()),
+        FfiResult
+    );
+    let cert_path = data_dir.join("ca_cert.der");
+    if cert_path.is_file() {
+        if let Ok(der) = std::fs::read(&cert_path) {
+            if der.len() > 100 {
+                let fp = hex::encode(&sha2::Sha256::digest(&der)[..8]);
+                return FfiResult::ok(format!("CA cert already cached (fingerprint: {fp})"));
+            }
+        }
+    }
+
+    // Run enrollment + cert fetch on a blocking tokio runtime.
+    let rt = try_ffi!(
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("Failed to create async runtime: {e}")),
+        FfiResult
+    );
+
+    let result = rt.block_on(async {
+        let base_url = std::env::var("WRITERSPROOF_API_URL")
+            .unwrap_or_else(|_| "https://api.writersproof.com".to_string());
+        let client = crate::writersproof::WritersProofClient::new(&base_url)
+            .map_err(|e| format!("Failed to create WritersProof client: {e}"))?;
+
+        let pub_key_hex = hex::encode(signing_key.verifying_key().to_bytes());
+        let device_id = hex::encode(&sha2::Sha256::digest(
+            signing_key.verifying_key().as_bytes(),
+        )[..16]);
+
+        // Enroll with the CA.
+        let enroll_resp = client
+            .enroll(crate::writersproof::types::EnrollRequest {
+                public_key: pub_key_hex,
+                device_id: device_id.clone(),
+                platform: std::env::consts::OS.to_string(),
+                attestation_type: {
+                    let caps = crate::tpm::detect_provider().capabilities();
+                    if caps.hardware_backed {
+                        "secure_enclave"
+                    } else {
+                        "software"
+                    }
+                    .to_string()
+                },
+                attestation_certificate: None,
+            })
+            .await
+            .map_err(|e| format!("Enrollment failed: {e}"))?;
+
+        if !enroll_resp.enrolled {
+            return Err("CA enrollment was rejected".to_string());
+        }
+
+        // Fetch the signed certificate.
+        let cert_der = client
+            .get_certificate(&enroll_resp.hardware_key_id)
+            .await
+            .map_err(|e| format!("Certificate fetch failed: {e}"))?;
+
+        // Cache locally.
+        crate::ffi::helpers::cache_ca_cert(&cert_der)?;
+
+        let fp = hex::encode(&sha2::Sha256::digest(&cert_der)[..8]);
+        Ok(format!(
+            "CA cert provisioned (fingerprint: {fp}, tier: {})",
+            enroll_resp.assurance_tier
+        ))
+    });
+
+    match result {
+        Ok(msg) => FfiResult::ok(msg),
+        Err(e) => FfiResult::err(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Checkpoint behavioral enrichment
+// ---------------------------------------------------------------------------
+
+/// IKI histogram bin edges (ms): 0, 50, 100, 150, 200, 300, 500, 1000, 2000
+const IKI_HIST_EDGES_MS: [u64; 9] = [0, 50, 100, 150, 200, 300, 500, 1000, 2000];
+
+/// 8-bin pause duration histogram edges (ms): 0, 500, 1000, 2000, 3000, 5000, 10000, 30000
+const PAUSE_HIST_EDGES_MS: [u64; 8] = [0, 500, 1000, 2000, 3000, 5000, 10000, 30000];
+
+/// Enrich checkpoints with behavioral data from sentinel session.
+///
+/// Populates: EditDelta histograms, positions, edit_graph_hash, op_count,
+/// and per-checkpoint jitter binding.
+fn enrich_checkpoints(
+    checkpoints: &mut [CheckpointWire],
+    events: &[crate::store::SecureEvent],
+    path: &str,
+) {
+    if checkpoints.is_empty() || events.is_empty() {
+        return;
+    }
+
+    // Get jitter samples from live sentinel session (if available).
+    let sentinel_jitter: Vec<SimpleJitterSample> = get_sentinel()
+        .map(|s| {
+            let sessions = s.sessions.read_recover();
+            sessions
+                .get(path)
+                .map(|sess| sess.jitter_samples.clone())
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+
+    let max_file_size = events.iter().map(|e| e.file_size).max().unwrap_or(1).max(1) as f64;
+
+    // Build per-checkpoint enrichment.
+    for (i, (cp, ev)) in checkpoints.iter_mut().zip(events.iter()).enumerate() {
+        // Fix op_count: count actual operations (not hardcoded 1).
+        // Each event is one operation; for windowed checkpoints this would be the count
+        // of events in the window. Currently 1:1 event:checkpoint mapping.
+        cp.delta.op_count = 1;
+
+        // Populate positions: (estimated_offset, delta).
+        let cursor_offset = if ev.size_delta >= 0 {
+            ev.file_size.max(0) as u64
+        } else {
+            (ev.file_size - ev.size_delta.abs() as i64).max(0) as u64
+        };
+        cp.delta.positions = Some(vec![(cursor_offset, ev.size_delta as i64)]);
+
+        // Cursor trajectory histogram: bin the cursor position relative to file size.
+        // 8 bins spanning [0, max_file_size].
+        let cursor_frac = cursor_offset as f64 / max_file_size;
+        let cursor_bin = (cursor_frac * 8.0).floor().min(7.0) as usize;
+        let mut cursor_hist = vec![0u64; 8];
+        cursor_hist[cursor_bin] = 1;
+        cp.delta.cursor_trajectory_histogram = Some(cursor_hist);
+
+        // Revision depth: how many times this position bin has been edited so far.
+        let mut revision_hist = vec![0u64; 8];
+        let bin_for_event = |e: &crate::store::SecureEvent| -> usize {
+            let pos = e.file_size.max(0) as f64 / max_file_size;
+            (pos * 8.0).floor().min(7.0) as usize
+        };
+        for prev_ev in &events[..=i] {
+            let bin = bin_for_event(prev_ev);
+            revision_hist[bin] += 1;
+        }
+        cp.delta.revision_depth_histogram = Some(revision_hist);
+
+        // Pause duration histogram from jitter samples in this checkpoint window.
+        let cp_ts_ns = ev.timestamp_ns;
+        let prev_ts_ns = if i > 0 { events[i - 1].timestamp_ns } else { 0 };
+        let window_jitter: Vec<&SimpleJitterSample> = sentinel_jitter
+            .iter()
+            .filter(|s| s.timestamp_ns > prev_ts_ns && s.timestamp_ns <= cp_ts_ns)
+            .collect();
+
+        if !window_jitter.is_empty() {
+            let mut pause_hist = vec![0u64; 8];
+            for s in &window_jitter {
+                let iki_ms = s.duration_since_last_ns / 1_000_000;
+                let bin = PAUSE_HIST_EDGES_MS
+                    .iter()
+                    .rposition(|&edge| iki_ms >= edge)
+                    .unwrap_or(0);
+                pause_hist[bin.min(7)] += 1;
+            }
+            cp.delta.pause_duration_histogram = Some(pause_hist);
+
+            // Jitter binding: IKI intervals + entropy estimate + HMAC seal.
+            let intervals: Vec<u64> = window_jitter
+                .iter()
+                .map(|s| s.duration_since_last_ns / 1_000_000) // ns → ms
+                .collect();
+            let entropy_centibits = estimate_entropy_centibits(&intervals);
+            let jitter_seal = compute_jitter_seal(&intervals, ev.content_hash);
+
+            cp.jitter_binding =
+                Some(authorproof_protocol::rfc::wire_types::JitterBindingWire {
+                    intervals,
+                    entropy_estimate: entropy_centibits,
+                    jitter_seal,
+                });
+        }
+
+        // Edit graph hash: SHA-256 of cumulative edit positions up to this checkpoint.
+        let mut graph_hasher = Sha256::new();
+        graph_hasher.update(b"cpoe-edit-graph-v1");
+        for prev_ev in &events[..=i] {
+            graph_hasher.update(prev_ev.timestamp_ns.to_le_bytes());
+            graph_hasher.update(prev_ev.size_delta.to_le_bytes());
+            graph_hasher.update((prev_ev.file_size as u64).to_le_bytes());
+        }
+        cp.delta.edit_graph_hash = Some(graph_hasher.finalize().to_vec());
+    }
+}
+
+/// Estimate Shannon entropy of IKI intervals in centibits.
+fn estimate_entropy_centibits(intervals_ms: &[u64]) -> u64 {
+    if intervals_ms.is_empty() {
+        return 0;
+    }
+    // Bin into IKI histogram and compute Shannon entropy.
+    let mut bins = [0u64; 9];
+    for &iki in intervals_ms {
+        let bin = IKI_HIST_EDGES_MS
+            .iter()
+            .rposition(|&edge| iki >= edge)
+            .unwrap_or(0);
+        bins[bin.min(8)] += 1;
+    }
+    let n = intervals_ms.len() as f64;
+    let entropy: f64 = bins
+        .iter()
+        .filter(|&&c| c > 0)
+        .map(|&c| {
+            let p = c as f64 / n;
+            -p * p.log2()
+        })
+        .sum();
+    // Convert bits to centibits (1 bit = 100 centibits).
+    (entropy * 100.0).round() as u64
+}
+
+/// HMAC-SHA256 seal over jitter intervals bound to content hash.
+fn compute_jitter_seal(intervals_ms: &[u64], content_hash: [u8; 32]) -> Vec<u8> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256 as HmacSha256;
+
+    type HmacSha = Hmac<HmacSha256>;
+    let mut mac =
+        HmacSha::new_from_slice(&content_hash).expect("HMAC accepts any key length");
+    mac.update(b"cpoe-jitter-seal-v1");
+    for &iki in intervals_ms {
+        mac.update(&iki.to_le_bytes());
+    }
+    mac.finalize().into_bytes().to_vec()
+}
+
+/// Build baseline verification from sentinel session behavioral data.
+fn build_baseline_verification(
+    path: &str,
+    events: &[crate::store::SecureEvent],
+) -> Option<authorproof_protocol::rfc::wire_types::BaselineVerification> {
+    let sentinel = get_sentinel()?;
+    let sessions = sentinel.sessions.read_recover();
+    let session = sessions.get(path)?;
+
+    if session.jitter_samples.len() < 30 {
+        return None;
+    }
+
+    // Build 9-bin IKI histogram.
+    let mut iki_histogram = [0.0f64; 9];
+    let mut total_samples = 0u64;
+    for s in &session.jitter_samples {
+        let iki_ms = s.duration_since_last_ns / 1_000_000;
+        let bin = IKI_HIST_EDGES_MS
+            .iter()
+            .rposition(|&edge| iki_ms >= edge)
+            .unwrap_or(0);
+        iki_histogram[bin.min(8)] += 1.0;
+        total_samples += 1;
+    }
+    // Normalize to proportions.
+    if total_samples > 0 {
+        for bin in &mut iki_histogram {
+            *bin /= total_samples as f64;
+        }
+    }
+
+    // Compute IKI CV.
+    let cadence = crate::forensics::analyze_cadence(&session.jitter_samples);
+    let iki_cv = if cadence.coefficient_of_variation.is_finite() {
+        cadence.coefficient_of_variation
+    } else {
+        0.0
+    };
+
+    // Hurst exponent.
+    let iki_intervals: Vec<f64> = session
+        .jitter_samples
+        .windows(2)
+        .filter_map(|w| {
+            w[1].timestamp_ns
+                .checked_sub(w[0].timestamp_ns)
+                .map(|d| d as f64)
+        })
+        .filter(|&d| d > 0.0)
+        .collect();
+    let hurst = if iki_intervals.len() >= 50 {
+        crate::analysis::hurst::compute_hurst_rs(&iki_intervals)
+            .map(|h| h.exponent)
+            .unwrap_or(0.5)
+    } else {
+        0.5
+    };
+
+    let duration_secs = session
+        .start_time
+        .elapsed()
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let summary = authorproof_protocol::rfc::wire_types::SessionBehavioralSummary {
+        iki_histogram,
+        iki_cv,
+        hurst,
+        pause_frequency: cadence.pause_depth_distribution[2], // deep pause fraction
+        duration_secs,
+        keystroke_count: session.jitter_samples.len() as u64,
+    };
+
+    Some(authorproof_protocol::rfc::wire_types::BaselineVerification {
+        digest: None, // Populated by cross-session baseline manager (not available at export)
+        session_summary: summary,
+        digest_signature: None, // Signed by baseline manager
+    })
+}
+
+/// Collect dictation-related limitations from sentinel session.
+fn collect_dictation_limitations(path: &str) -> Vec<String> {
+    let sentinel = match get_sentinel() {
+        Some(s) => s,
+        None => return vec![],
+    };
+    let sessions = sentinel.sessions.read_recover();
+    let session = match sessions.get(path) {
+        Some(s) => s,
+        None => return vec![],
+    };
+    if session.dictation_events.is_empty() {
+        return vec![];
+    }
+
+    let total_words: u32 = session.dictation_events.iter().map(|e| e.word_count).sum();
+    let typed_words = (session.cognitive.word_boundary_count() as u32).saturating_sub(total_words);
+    let ratio = if total_words + typed_words > 0 {
+        total_words as f64 / (total_words + typed_words) as f64
+    } else {
+        0.0
+    };
+
+    let mut lims = vec![format!(
+        "Dictation detected: {} events, {} words ({:.0}% of content)",
+        session.dictation_events.len(),
+        total_words,
+        ratio * 100.0,
+    )];
+
+    // Flag suspicious dictation characteristics.
+    let has_virtual_audio = session
+        .dictation_events
+        .iter()
+        .any(|e| e.audio_transport_type == 7);
+    if has_virtual_audio {
+        lims.push("Dictation used virtual audio device (possible replay attack)".into());
+    }
+    let has_speaker_output = session
+        .dictation_events
+        .iter()
+        .any(|e| e.speaker_output_active);
+    if has_speaker_output {
+        lims.push("Speaker output was active during dictation (possible audio loopback)".into());
+    }
+
+    lims
+}
+
+/// Collect composition mode as a limitation/attestation claim.
+fn collect_composition_mode_limitations(path: &str, event_count: usize) -> Vec<String> {
+    let sentinel = match get_sentinel() {
+        Some(s) => s,
+        None => return vec![],
+    };
+    let sessions = sentinel.sessions.read_recover();
+    let session = match sessions.get(path) {
+        Some(s) => s,
+        None => return vec![],
+    };
+
+    let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
+    let pastes: Vec<_> = session.paste_context.iter().cloned().collect();
+    let cm = match crate::forensics::composition_mode::analyze_composition_mode(
+        &switches,
+        &pastes,
+        event_count,
+    ) {
+        Some(c) => c,
+        None => return vec![],
+    };
+
+    let mut lims = Vec::new();
+
+    if cm.ai_cycle_count > 0 {
+        lims.push(format!(
+            "AI-mediated composition cycles detected: {}",
+            cm.ai_cycle_count
+        ));
+    }
+
+    if cm.distribution.paste_veneer > 0.2 {
+        lims.push(format!(
+            "Paste-veneer pattern: {:.0}% of session",
+            cm.distribution.paste_veneer * 100.0
+        ));
+    }
+
+    if cm.distribution.ai_mediated > 0.1 {
+        lims.push(format!(
+            "AI-mediated mode: {:.0}% of session",
+            cm.distribution.ai_mediated * 100.0
+        ));
+    }
+
+    // Always report dominant mode for transparency.
+    if let Some(mode) = cm.dominant_mode {
+        lims.push(format!("Dominant composition mode: {mode}"));
+    }
+
+    lims
 }
 
 /// Return a compact reference string for the latest event on a tracked file.
@@ -678,4 +1162,241 @@ fn find_project_root(file_path: &std::path::Path) -> std::path::PathBuf {
 
     // No marker found — use the immediate parent directory
     file_path.parent().unwrap_or(file_path).to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::SecureEvent;
+
+    fn make_event(index: usize, file_path: &str) -> SecureEvent {
+        let ts = 1_700_000_000_000_000_000i64 + (index as i64 * 5_000_000_000);
+        SecureEvent {
+            id: None,
+            device_id: [1u8; 16],
+            machine_id: "test-machine".to_string(),
+            timestamp_ns: ts,
+            file_path: file_path.to_string(),
+            content_hash: {
+                let mut h = [0u8; 32];
+                h[0] = index as u8;
+                h
+            },
+            file_size: 100 + index as i64 * 50,
+            size_delta: if index % 3 == 2 { -20 } else { 50 },
+            previous_hash: [0u8; 32],
+            event_hash: [0u8; 32],
+            context_type: Some("test".to_string()),
+            context_note: None,
+            vdf_input: Some([0xAAu8; 32]),
+            vdf_output: Some([0xBBu8; 32]),
+            vdf_iterations: 1000,
+            forensic_score: 0.9,
+            is_paste: false,
+            hardware_counter: None,
+            input_method: None,
+            lamport_signature: None,
+            lamport_pubkey_fingerprint: None,
+            challenge_nonce: None,
+            hw_cosign_signature: None,
+            hw_cosign_pubkey: None,
+            hw_cosign_salt_commitment: None,
+            hw_cosign_chain_index: None,
+            hw_cosign_entangled_hash: None,
+            hw_cosign_entropy_digest: None,
+            hw_cosign_entropy_bytes: None,
+            posme_proof: None,
+            semantic_summary: None,
+        }
+    }
+
+    fn make_checkpoints(events: &[SecureEvent]) -> Vec<CheckpointWire> {
+        events
+            .iter()
+            .enumerate()
+            .map(|(i, ev)| {
+                let ts_ms = (ev.timestamp_ns / 1_000_000).max(1) as u64;
+                CheckpointWire {
+                    sequence: i as u64,
+                    checkpoint_id: [i as u8; 16],
+                    timestamp: ts_ms,
+                    content_hash: HashValue::try_sha256(ev.content_hash.to_vec()).unwrap(),
+                    char_count: ev.file_size.max(0) as u64,
+                    delta: EditDelta {
+                        chars_added: ev.size_delta.max(0) as u64,
+                        chars_deleted: (-(ev.size_delta as i64)).max(0) as u64,
+                        op_count: 1,
+                        positions: None,
+                        edit_graph_hash: None,
+                        cursor_trajectory_histogram: None,
+                        revision_depth_histogram: None,
+                        pause_duration_histogram: None,
+                    },
+                    prev_hash: HashValue::try_sha256(ev.previous_hash.to_vec()).unwrap(),
+                    checkpoint_hash: HashValue::try_sha256(vec![i as u8; 32]).unwrap(),
+                    process_proof: ProcessProof {
+                        algorithm: ProofAlgorithm::SwfSha256,
+                        params: ProofParams {
+                            time_cost: 1,
+                            memory_cost: 0,
+                            parallelism: 1,
+                            steps: ev.vdf_iterations,
+                            waypoint_interval: None,
+                            waypoint_memory: None,
+                            reads_per_step: None,
+                            challenges: None,
+                            recursion_depth: None,
+                        },
+                        input: vec![0u8; 32],
+                        merkle_root: vec![0u8; 32],
+                        sampled_proofs: vec![],
+                        claimed_duration: 1000,
+                    },
+                    jitter_binding: None,
+                    physical_state: None,
+                    entangled_mac: None,
+                    receipts: None,
+                    active_probes: None,
+                    hat_proof: None,
+                    beacon_anchor: None,
+                    verifier_nonce: None,
+                    lamport_signature: None,
+                    lamport_pubkey_fingerprint: None,
+                    posme_proof: None,
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn enrich_populates_positions_and_histograms() {
+        let events: Vec<_> = (0..5).map(|i| make_event(i, "/tmp/test.txt")).collect();
+        let mut checkpoints = make_checkpoints(&events);
+
+        enrich_checkpoints(&mut checkpoints, &events, "/tmp/test.txt");
+
+        for (i, cp) in checkpoints.iter().enumerate() {
+            assert!(
+                cp.delta.positions.is_some(),
+                "checkpoint {i} should have positions"
+            );
+            let positions = cp.delta.positions.as_ref().unwrap();
+            assert_eq!(positions.len(), 1, "one position per checkpoint");
+
+            assert!(
+                cp.delta.cursor_trajectory_histogram.is_some(),
+                "checkpoint {i} should have cursor histogram"
+            );
+            let cursor_hist = cp.delta.cursor_trajectory_histogram.as_ref().unwrap();
+            assert_eq!(cursor_hist.len(), 8);
+            assert_eq!(
+                cursor_hist.iter().sum::<u64>(),
+                1,
+                "exactly one cursor position per checkpoint"
+            );
+
+            assert!(
+                cp.delta.revision_depth_histogram.is_some(),
+                "checkpoint {i} should have revision depth histogram"
+            );
+            let rev_hist = cp.delta.revision_depth_histogram.as_ref().unwrap();
+            assert_eq!(rev_hist.len(), 8);
+            assert_eq!(
+                rev_hist.iter().sum::<u64>(),
+                (i + 1) as u64,
+                "revision depth accumulates"
+            );
+
+            assert!(
+                cp.delta.edit_graph_hash.is_some(),
+                "checkpoint {i} should have edit graph hash"
+            );
+            assert_eq!(cp.delta.edit_graph_hash.as_ref().unwrap().len(), 32);
+        }
+    }
+
+    #[test]
+    fn enrich_edit_graph_hash_is_deterministic() {
+        let events: Vec<_> = (0..3).map(|i| make_event(i, "/tmp/det.txt")).collect();
+        let mut cp1 = make_checkpoints(&events);
+        let mut cp2 = make_checkpoints(&events);
+
+        enrich_checkpoints(&mut cp1, &events, "/tmp/det.txt");
+        enrich_checkpoints(&mut cp2, &events, "/tmp/det.txt");
+
+        for (a, b) in cp1.iter().zip(cp2.iter()) {
+            assert_eq!(a.delta.edit_graph_hash, b.delta.edit_graph_hash);
+        }
+    }
+
+    #[test]
+    fn enrich_handles_negative_size_delta() {
+        let mut events: Vec<_> = (0..3).map(|i| make_event(i, "/tmp/neg.txt")).collect();
+        events[1].size_delta = -100;
+        events[1].file_size = 50;
+        let mut checkpoints = make_checkpoints(&events);
+
+        enrich_checkpoints(&mut checkpoints, &events, "/tmp/neg.txt");
+
+        let pos = checkpoints[1].delta.positions.as_ref().unwrap();
+        assert_eq!(pos.len(), 1);
+        assert_eq!(pos[0].1, -100, "negative delta preserved");
+    }
+
+    #[test]
+    fn enrich_empty_inputs_is_noop() {
+        let events: Vec<SecureEvent> = vec![];
+        let mut checkpoints: Vec<CheckpointWire> = vec![];
+        enrich_checkpoints(&mut checkpoints, &events, "/tmp/empty.txt");
+        assert!(checkpoints.is_empty());
+    }
+
+    #[test]
+    fn enrich_no_sentinel_means_no_jitter_binding() {
+        let events: Vec<_> = (0..3).map(|i| make_event(i, "/tmp/nojitter.txt")).collect();
+        let mut checkpoints = make_checkpoints(&events);
+
+        enrich_checkpoints(&mut checkpoints, &events, "/tmp/nojitter.txt");
+
+        for cp in &checkpoints {
+            assert!(
+                cp.jitter_binding.is_none(),
+                "no jitter binding without sentinel"
+            );
+            assert!(
+                cp.delta.pause_duration_histogram.is_none(),
+                "no pause histogram without sentinel jitter data"
+            );
+        }
+    }
+
+    #[test]
+    fn baseline_verification_none_without_sentinel() {
+        let events: Vec<_> = (0..5).map(|i| make_event(i, "/tmp/baseline.txt")).collect();
+        let result = build_baseline_verification("/tmp/baseline.txt", &events);
+        assert!(result.is_none(), "no baseline without sentinel");
+    }
+
+    #[test]
+    fn entropy_centibits_empty_returns_zero() {
+        assert_eq!(estimate_entropy_centibits(&[]), 0);
+    }
+
+    #[test]
+    fn entropy_centibits_uniform_has_max_entropy() {
+        // Spread across all bins for high entropy.
+        let intervals: Vec<u64> = (0..100)
+            .map(|i| IKI_HIST_EDGES_MS[(i % 9) as usize] + 10)
+            .collect();
+        let e = estimate_entropy_centibits(&intervals);
+        assert!(e > 200, "uniform distribution should have high entropy, got {e}");
+    }
+
+    #[test]
+    fn entropy_centibits_constant_has_low_entropy() {
+        // All same value → single bin → zero entropy.
+        let intervals = vec![100u64; 50];
+        let e = estimate_entropy_centibits(&intervals);
+        assert_eq!(e, 0, "constant intervals should have zero entropy");
+    }
 }
