@@ -112,54 +112,7 @@ fn compute_word_surprisals(text: &str) -> Vec<(String, f64)> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Spearman rank correlation
-// ---------------------------------------------------------------------------
-
-/// Compute Spearman rank correlation between two equal-length sequences.
-fn spearman_correlation(xs: &[f64], ys: &[f64]) -> f64 {
-    let n = xs.len();
-    if n < 3 || n != ys.len() {
-        return 0.0;
-    }
-
-    let rank = |vals: &[f64]| -> Vec<f64> {
-        let mut indices: Vec<usize> = (0..n).collect();
-        indices.sort_unstable_by(|&a, &b| {
-            vals[a]
-                .partial_cmp(&vals[b])
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        let mut ranks = vec![0.0f64; n];
-        for (rank, &idx) in indices.iter().enumerate() {
-            ranks[idx] = rank as f64;
-        }
-        ranks
-    };
-
-    let x_ranks = rank(xs);
-    let y_ranks = rank(ys);
-    let mean = (n - 1) as f64 / 2.0;
-
-    let num: f64 = (0..n)
-        .map(|i| (x_ranks[i] - mean) * (y_ranks[i] - mean))
-        .sum();
-    let denom_x: f64 = (0..n)
-        .map(|i| (x_ranks[i] - mean).powi(2))
-        .sum::<f64>()
-        .sqrt();
-    let denom_y: f64 = (0..n)
-        .map(|i| (y_ranks[i] - mean).powi(2))
-        .sum::<f64>()
-        .sqrt();
-
-    let denom = denom_x * denom_y;
-    if denom < f64::EPSILON {
-        return 0.0;
-    }
-
-    (num / denom).clamp(-1.0, 1.0)
-}
+use crate::utils::stats::spearman_correlation;
 
 // ---------------------------------------------------------------------------
 // Word-scale: IKI-surprisal correlation
@@ -540,6 +493,46 @@ pub struct CognitiveLoadMetrics {
 
     /// Number of sentences analyzed for velocity arcs.
     pub sentence_count: usize,
+}
+
+/// Detected cognitive mode for adaptive checkpoint scheduling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CognitiveMode {
+    /// Active creative composition — checkpoint less frequently to reduce interruption.
+    Creative,
+    /// Editing/revising existing text — normal checkpoint frequency.
+    Editing,
+    /// Transcription-like pattern — checkpoint aggressively to collect more evidence.
+    Transcription,
+    /// Insufficient data to classify.
+    Unknown,
+}
+
+impl CognitiveLoadMetrics {
+    /// Classify the cognitive mode from the composite score.
+    pub fn cognitive_mode(&self) -> CognitiveMode {
+        if self.composite_score >= 0.6 {
+            CognitiveMode::Creative
+        } else if self.composite_score >= 0.3 {
+            CognitiveMode::Editing
+        } else {
+            CognitiveMode::Transcription
+        }
+    }
+
+    /// Suggest a checkpoint interval multiplier based on cognitive mode.
+    ///
+    /// - Creative (1.5x): reduce checkpoint frequency during flow states
+    /// - Editing (1.0x): normal frequency
+    /// - Transcription (0.5x): aggressive checkpointing for more evidence
+    pub fn checkpoint_interval_multiplier(&self) -> f64 {
+        match self.cognitive_mode() {
+            CognitiveMode::Creative => 1.5,
+            CognitiveMode::Editing => 1.0,
+            CognitiveMode::Transcription => 0.5,
+            CognitiveMode::Unknown => 1.0,
+        }
+    }
 }
 
 /// Analyze cognitive load-timing entanglement.

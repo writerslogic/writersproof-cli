@@ -461,17 +461,7 @@ fn compute_burst_length_cv(sorted: SortedEvents<'_>) -> f64 {
     if burst_lengths.len() < 3 {
         return 0.0;
     }
-    let n = burst_lengths.len() as f64;
-    let mean = burst_lengths.iter().sum::<f64>() / n;
-    if mean < f64::EPSILON {
-        return 0.0;
-    }
-    let variance = burst_lengths
-        .iter()
-        .map(|x| (x - mean).powi(2))
-        .sum::<f64>()
-        / n;
-    variance.sqrt() / mean
+    crate::utils::stats::coefficient_of_variation(&burst_lengths)
 }
 
 /// Score based on where backspace/deletion events are distributed across the session.
@@ -558,33 +548,9 @@ fn compute_pause_burst_correlation(sorted: SortedEvents<'_>) -> f64 {
         return 0.5;
     }
 
-    // Spearman: rank both vectors, then compute Pearson on the ranks.
-    let n = pairs.len();
-    let mut pause_order: Vec<usize> = (0..n).collect();
-    pause_order.sort_unstable_by(|&a, &b| pairs[a].0.partial_cmp(&pairs[b].0).unwrap_or(std::cmp::Ordering::Equal));
-    let mut burst_order: Vec<usize> = (0..n).collect();
-    burst_order.sort_unstable_by(|&a, &b| pairs[a].1.partial_cmp(&pairs[b].1).unwrap_or(std::cmp::Ordering::Equal));
-
-    let mut pause_ranks = vec![0.0f64; n];
-    let mut burst_ranks = vec![0.0f64; n];
-    for (rank, &idx) in pause_order.iter().enumerate() {
-        pause_ranks[idx] = rank as f64;
-    }
-    for (rank, &idx) in burst_order.iter().enumerate() {
-        burst_ranks[idx] = rank as f64;
-    }
-
-    let mean_r = (n - 1) as f64 / 2.0;
-    let num: f64 = (0..n).map(|i| (pause_ranks[i] - mean_r) * (burst_ranks[i] - mean_r)).sum();
-    let denom_p: f64 = (0..n).map(|i| (pause_ranks[i] - mean_r).powi(2)).sum::<f64>().sqrt();
-    let denom_b: f64 = (0..n).map(|i| (burst_ranks[i] - mean_r).powi(2)).sum::<f64>().sqrt();
-    let denom = denom_p * denom_b;
-
-    if denom < f64::EPSILON {
-        return 0.5;
-    }
-
-    let rho = (num / denom).clamp(-1.0, 1.0);
+    let pauses: Vec<f64> = pairs.iter().map(|p| p.0).collect();
+    let bursts: Vec<f64> = pairs.iter().map(|p| p.1).collect();
+    let rho = crate::utils::stats::spearman_correlation(&pauses, &bursts);
     // Map [-1, 1] → [0, 1]: correlation ≥ 0.1 is cognitive, near 0 is suspicious.
     ((rho + 1.0) / 2.0).clamp(0.0, 1.0)
 }

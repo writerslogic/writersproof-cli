@@ -123,6 +123,54 @@ pub fn median(values: &[f64]) -> f64 {
     }
 }
 
+/// Spearman rank correlation between two equal-length sequences.
+///
+/// Returns 0.0 for sequences shorter than 3 or mismatched lengths.
+/// Result is clamped to [-1.0, 1.0].
+pub fn spearman_correlation(xs: &[f64], ys: &[f64]) -> f64 {
+    let n = xs.len();
+    if n < 3 || n != ys.len() {
+        return 0.0;
+    }
+
+    let rank = |vals: &[f64]| -> Vec<f64> {
+        let mut indices: Vec<usize> = (0..n).collect();
+        indices.sort_unstable_by(|&a, &b| {
+            vals[a]
+                .partial_cmp(&vals[b])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let mut ranks = vec![0.0f64; n];
+        for (rank, &idx) in indices.iter().enumerate() {
+            ranks[idx] = rank as f64;
+        }
+        ranks
+    };
+
+    let x_ranks = rank(xs);
+    let y_ranks = rank(ys);
+    let mean = (n - 1) as f64 / 2.0;
+
+    let num: f64 = (0..n)
+        .map(|i| (x_ranks[i] - mean) * (y_ranks[i] - mean))
+        .sum();
+    let denom_x: f64 = (0..n)
+        .map(|i| (x_ranks[i] - mean).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    let denom_y: f64 = (0..n)
+        .map(|i| (y_ranks[i] - mean).powi(2))
+        .sum::<f64>()
+        .sqrt();
+
+    let denom = denom_x * denom_y;
+    if denom < f64::EPSILON {
+        return 0.0;
+    }
+
+    (num / denom).clamp(-1.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
