@@ -36,30 +36,7 @@ const AI_MAX_AWAY_SEC: f64 = 120.0;
 /// Minimum AI-mediated cycles to flag the pattern.
 const AI_CYCLE_MIN_COUNT: usize = 2;
 
-/// Bundle IDs of known AI applications.
-const AI_BUNDLE_PATTERNS: &[&str] = &[
-    "openai",
-    "chatgpt",
-    "anthropic",
-    "claude",
-    "copilot",
-    "cursor",
-    "codeium",
-    "tabnine",
-    "bard",
-    "gemini",
-    "perplexity",
-];
-
-/// Browser bundle IDs (may host AI chat).
-const BROWSER_BUNDLES: &[&str] = &[
-    "com.apple.safari",
-    "com.google.chrome",
-    "org.mozilla.firefox",
-    "com.microsoft.edgemac",
-    "com.brave.browser",
-    "company.thebrowser.browser",
-];
+use super::constants::{AI_APP_PATTERNS, BROWSER_BUNDLE_IDS};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,11 +116,11 @@ fn classify_focus_switch(switch: &FocusSwitchRecord) -> FocusSwitchClass {
     let bid_lower = switch.target_bundle_id.to_lowercase();
     let app_lower = switch.target_app.to_lowercase();
 
-    let is_ai = AI_BUNDLE_PATTERNS
+    let is_ai = AI_APP_PATTERNS
         .iter()
         .any(|pat| bid_lower.contains(pat) || app_lower.contains(pat));
 
-    let is_browser = BROWSER_BUNDLES
+    let is_browser = BROWSER_BUNDLE_IDS
         .iter()
         .any(|b| bid_lower.eq_ignore_ascii_case(b));
 
