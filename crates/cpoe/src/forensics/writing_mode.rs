@@ -28,53 +28,41 @@ const PURE_APPEND_MIN_LENGTH: usize = 10;
 /// (filters single-character typo fixes).
 const MIN_REVISION_DEPTH_FRACTION: f64 = 0.05;
 
-// --- Signal thresholds ---
-// Each signal maps to a 0.0 (transcriptive) to 1.0 (cognitive) score via linear
-// interpolation between a low anchor and a high anchor.
+// --- Signal scoring profiles ---
+// Each signal maps a raw metric to [0.0, 1.0] via lerp_score(value, low, high).
+// When `invert` is true, high raw values indicate transcriptive (score is flipped).
 
-const CORRECTION_RATIO_LOW: f64 = 0.02;
-const CORRECTION_RATIO_HIGH: f64 = 0.05;
-const CORRECTION_RATIO_WEIGHT: f64 = 0.20;
+struct ScoringSignal {
+    low: f64,
+    high: f64,
+    weight: f64,
+    invert: bool,
+}
 
-const BURST_SPEED_CV_LOW: f64 = 0.15;
-const BURST_SPEED_CV_HIGH: f64 = 0.25;
-const BURST_SPEED_CV_WEIGHT: f64 = 0.15;
+impl ScoringSignal {
+    const fn new(low: f64, high: f64, weight: f64) -> Self {
+        Self { low, high, weight, invert: false }
+    }
+    const fn inverted(low: f64, high: f64, weight: f64) -> Self {
+        Self { low, high, weight, invert: true }
+    }
+    fn score(&self, value: f64) -> f64 {
+        let s = lerp_score(value, self.low, self.high);
+        if self.invert { 1.0 - s } else { s }
+    }
+}
 
-const ZERO_VAR_WINDOWS_LOW: f64 = 0.0; // cognitive ideal
-const ZERO_VAR_WINDOWS_HIGH: f64 = 5.0; // transcriptive
-const ZERO_VAR_WINDOWS_WEIGHT: f64 = 0.15;
-
-const IKI_AUTOCORR_LOW: f64 = 0.15; // cognitive
-const IKI_AUTOCORR_HIGH: f64 = 0.40; // transcriptive
-const IKI_AUTOCORR_WEIGHT: f64 = 0.10;
-
-const POST_PAUSE_CV_LOW: f64 = 0.10; // transcriptive
-const POST_PAUSE_CV_HIGH: f64 = 0.30; // cognitive
-const POST_PAUSE_CV_WEIGHT: f64 = 0.10;
-
-const DEEP_PAUSE_LOW: f64 = 0.0;
-const DEEP_PAUSE_HIGH: f64 = 0.10;
-const DEEP_PAUSE_WEIGHT: f64 = 0.10;
-
-const POS_NEG_RATIO_LOW: f64 = 0.85; // cognitive (has deletions)
-const POS_NEG_RATIO_HIGH: f64 = 0.98; // transcriptive (almost none)
-const POS_NEG_RATIO_WEIGHT: f64 = 0.05;
-
-const MONOTONIC_APPEND_LOW: f64 = 0.70; // cognitive
-const MONOTONIC_APPEND_HIGH: f64 = 0.90; // transcriptive
-const MONOTONIC_APPEND_WEIGHT: f64 = 0.05;
-
-const REVISION_FRACTION_LOW: f64 = 0.02; // transcriptive
-const REVISION_FRACTION_HIGH: f64 = 0.15; // cognitive
-const REVISION_FRACTION_WEIGHT: f64 = 0.07;
-
-const THINKING_PAUSE_RATIO_LOW: f64 = 0.0; // transcriptive: no thinking pauses
-const THINKING_PAUSE_RATIO_HIGH: f64 = 0.08; // cognitive: ~8% of events follow a thinking pause
-const THINKING_PAUSE_RATIO_WEIGHT: f64 = 0.05;
-
-const BURST_LENGTH_CV_LOW: f64 = 0.20; // transcriptive: uniform burst lengths
-const BURST_LENGTH_CV_HIGH: f64 = 0.60; // cognitive: highly variable burst lengths
-const BURST_LENGTH_CV_WEIGHT: f64 = 0.05;
+const CORRECTION_RATIO: ScoringSignal = ScoringSignal::new(0.02, 0.05, 0.20);
+const BURST_SPEED_CV: ScoringSignal = ScoringSignal::new(0.15, 0.25, 0.15);
+const ZERO_VAR_WINDOWS: ScoringSignal = ScoringSignal::inverted(0.0, 5.0, 0.15);
+const IKI_AUTOCORR: ScoringSignal = ScoringSignal::inverted(0.15, 0.40, 0.10);
+const POST_PAUSE_CV: ScoringSignal = ScoringSignal::new(0.10, 0.30, 0.10);
+const DEEP_PAUSE: ScoringSignal = ScoringSignal::new(0.0, 0.10, 0.10);
+const POS_NEG_RATIO: ScoringSignal = ScoringSignal::inverted(0.85, 0.98, 0.05);
+const MONOTONIC_APPEND: ScoringSignal = ScoringSignal::inverted(0.70, 0.90, 0.05);
+const REVISION_FRACTION: ScoringSignal = ScoringSignal::new(0.02, 0.15, 0.07);
+const THINKING_PAUSE_RATIO: ScoringSignal = ScoringSignal::new(0.0, 0.08, 0.05);
+const BURST_LENGTH_CV: ScoringSignal = ScoringSignal::new(0.20, 0.60, 0.05);
 
 /// Pause before a burst, in nanoseconds, that separates distinct typing events.
 const BURST_SEPARATOR_NS: i64 = 1_000_000_000;
@@ -205,91 +193,18 @@ pub fn classify_writing_mode(
     let pause_burst_corr = compute_pause_burst_correlation(sorted);
 
     // Score each signal: 0.0 = transcriptive, 1.0 = cognitive.
-    let scores = [
-        (
-            lerp_score(
-                cadence.correction_ratio.get(),
-                CORRECTION_RATIO_LOW,
-                CORRECTION_RATIO_HIGH,
-            ),
-            CORRECTION_RATIO_WEIGHT,
-        ),
-        (
-            lerp_score(
-                cadence.burst_speed_cv,
-                BURST_SPEED_CV_LOW,
-                BURST_SPEED_CV_HIGH,
-            ),
-            BURST_SPEED_CV_WEIGHT,
-        ),
-        (
-            // Inverted: more windows = more transcriptive.
-            1.0 - lerp_score(
-                cadence.zero_variance_windows as f64,
-                ZERO_VAR_WINDOWS_LOW,
-                ZERO_VAR_WINDOWS_HIGH,
-            ),
-            ZERO_VAR_WINDOWS_WEIGHT,
-        ),
-        (
-            // Inverted: higher autocorrelation = more transcriptive.
-            1.0 - lerp_score(
-                cadence.iki_autocorrelation,
-                IKI_AUTOCORR_LOW,
-                IKI_AUTOCORR_HIGH,
-            ),
-            IKI_AUTOCORR_WEIGHT,
-        ),
-        (
-            lerp_score(cadence.post_pause_cv, POST_PAUSE_CV_LOW, POST_PAUSE_CV_HIGH),
-            POST_PAUSE_CV_WEIGHT,
-        ),
-        (
-            lerp_score(
-                cadence.pause_depth_distribution[2],
-                DEEP_PAUSE_LOW,
-                DEEP_PAUSE_HIGH,
-            ),
-            DEEP_PAUSE_WEIGHT,
-        ),
-        (
-            // Inverted: higher ratio (fewer deletions) = more transcriptive.
-            1.0 - lerp_score(
-                primary.positive_negative_ratio.get(),
-                POS_NEG_RATIO_LOW,
-                POS_NEG_RATIO_HIGH,
-            ),
-            POS_NEG_RATIO_WEIGHT,
-        ),
-        (
-            // Inverted: higher append ratio = more transcriptive.
-            1.0 - lerp_score(
-                primary.monotonic_append_ratio.get(),
-                MONOTONIC_APPEND_LOW,
-                MONOTONIC_APPEND_HIGH,
-            ),
-            MONOTONIC_APPEND_WEIGHT,
-        ),
-        (
-            lerp_score(
-                revision.revision_fraction,
-                REVISION_FRACTION_LOW,
-                REVISION_FRACTION_HIGH,
-            ),
-            REVISION_FRACTION_WEIGHT,
-        ),
-        (
-            lerp_score(
-                thinking_pause_ratio,
-                THINKING_PAUSE_RATIO_LOW,
-                THINKING_PAUSE_RATIO_HIGH,
-            ),
-            THINKING_PAUSE_RATIO_WEIGHT,
-        ),
-        (
-            lerp_score(burst_length_cv, BURST_LENGTH_CV_LOW, BURST_LENGTH_CV_HIGH),
-            BURST_LENGTH_CV_WEIGHT,
-        ),
+    let scores: [(f64, f64); 13] = [
+        (CORRECTION_RATIO.score(cadence.correction_ratio.get()), CORRECTION_RATIO.weight),
+        (BURST_SPEED_CV.score(cadence.burst_speed_cv), BURST_SPEED_CV.weight),
+        (ZERO_VAR_WINDOWS.score(cadence.zero_variance_windows as f64), ZERO_VAR_WINDOWS.weight),
+        (IKI_AUTOCORR.score(cadence.iki_autocorrelation), IKI_AUTOCORR.weight),
+        (POST_PAUSE_CV.score(cadence.post_pause_cv), POST_PAUSE_CV.weight),
+        (DEEP_PAUSE.score(cadence.pause_depth_distribution[2]), DEEP_PAUSE.weight),
+        (POS_NEG_RATIO.score(primary.positive_negative_ratio.get()), POS_NEG_RATIO.weight),
+        (MONOTONIC_APPEND.score(primary.monotonic_append_ratio.get()), MONOTONIC_APPEND.weight),
+        (REVISION_FRACTION.score(revision.revision_fraction), REVISION_FRACTION.weight),
+        (THINKING_PAUSE_RATIO.score(thinking_pause_ratio), THINKING_PAUSE_RATIO.weight),
+        (BURST_LENGTH_CV.score(burst_length_cv), BURST_LENGTH_CV.weight),
         (revision_scatter, REVISION_SCATTER_WEIGHT),
         (pause_burst_corr, PAUSE_BURST_CORR_WEIGHT),
     ];
