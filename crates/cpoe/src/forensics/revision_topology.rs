@@ -299,23 +299,25 @@ pub fn analyze_revision_topology(sorted: SortedEvents<'_>) -> Option<RevisionTop
     let revision_types = classify_revisions(sorted);
 
     // Composite score from graph metrics and revision type distribution.
-    // Branching factor: >2 is cognitive, ~1 is transcriptive.
-    let branching_score = ((graph.mean_branching_factor - 1.0) / 2.0).clamp(0.0, 1.0);
+    use crate::utils::stats::lerp_score;
 
-    // Revisit depth: >2 is cognitive, 1 is transcriptive.
-    let revisit_score = ((graph.mean_revisit_depth - 1.0) / 3.0).clamp(0.0, 1.0);
+    let branching_score = lerp_score(graph.mean_branching_factor, 1.0, 3.0);
+    let revisit_score = lerp_score(graph.mean_revisit_depth, 1.0, 4.0);
+    let frontier_score = lerp_score(graph.mean_frontier_distance, 0.0, 0.5);
 
-    // Frontier distance: >0.2 is cognitive (edits behind frontier).
-    let frontier_score = (graph.mean_frontier_distance / 0.5).clamp(0.0, 1.0);
-
-    // Semantic revision ratio: clause restructuring + word substitution + positional insertion.
     let semantic_ratio = revision_types.word_substitution_pct
         + revision_types.clause_restructuring_pct
         + revision_types.positional_insertion_pct;
-    let semantic_score = (semantic_ratio / 0.6).clamp(0.0, 1.0);
+    let semantic_score = lerp_score(semantic_ratio, 0.0, 0.6);
 
-    let composite_score =
-        0.25 * branching_score + 0.20 * revisit_score + 0.25 * frontier_score + 0.30 * semantic_score;
+    const W_BRANCHING: f64 = 0.25;
+    const W_REVISIT: f64 = 0.20;
+    const W_FRONTIER: f64 = 0.25;
+    const W_SEMANTIC: f64 = 0.30;
+    let composite_score = W_BRANCHING * branching_score
+        + W_REVISIT * revisit_score
+        + W_FRONTIER * frontier_score
+        + W_SEMANTIC * semantic_score;
 
     Some(RevisionTopologyMetrics {
         graph,

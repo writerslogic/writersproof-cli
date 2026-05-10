@@ -37,7 +37,17 @@ pub const DEFAULT_SESSION_GAP_SEC: f64 = 1800.0;
 /// Above this append ratio, AI generation is suspected.
 pub const THRESHOLD_MONOTONIC_APPEND: f64 = 0.85;
 
+/// Per-type entropy thresholds from draft-condrey-rats-pop-appraisal.
+/// These are NOT yet enforced per-type — the codebase currently only checks
+/// `THRESHOLD_LOW_ENTROPY` as a general floor. Implementing per-type entropy
+/// metrics (timing, revision, pause) and checking each against its own
+/// threshold is a spec compliance gap.
+pub const THRESHOLD_TIMING_ENTROPY: f64 = 3.0;
+pub const THRESHOLD_REVISION_ENTROPY: f64 = 3.0;
+pub const THRESHOLD_PAUSE_ENTROPY: f64 = 2.0;
+
 /// Below this edit entropy, non-human editing is suspected.
+/// General floor; see per-type thresholds above for spec-compliant checking.
 pub const THRESHOLD_LOW_ENTROPY: f64 = 2.0;
 
 /// Bytes/sec above which velocity is flagged as anomalous.
@@ -405,6 +415,11 @@ pub struct ForensicMetrics {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcription_suspicion:
         Option<super::error_ecology::TranscriptionSuspicion>,
+    /// Pre-computed unified typing metrics (BPS, IKI percentiles, CV).
+    /// Computed once from IKI intervals, available for downstream consumers
+    /// to avoid redundant percentile calculations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typing_metrics: Option<TypingMetrics>,
 }
 
 /// Bitfield tracking which forensic analyses completed successfully.
@@ -549,7 +564,7 @@ pub struct SegmentVelocityProfile {
 ///
 /// Computed once from raw IKI intervals, consumed by multiple downstream analyses
 /// to avoid redundant BPS/percentile calculations.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct TypingMetrics {
     /// Mean bytes per second across prose segments.
     pub bps_mean: f64,
@@ -669,7 +684,11 @@ impl ForensicMetrics {
 
         match self.risk_level {
             RiskLevel::Low => {
-                if self.assessment_score > 0.9 {
+                // V1 requires high confidence AND sufficient analysis coverage.
+                // If >25% of attempted analyses failed, cap at V2.
+                if self.assessment_score > 0.9
+                    && self.analysis_status.success_ratio() >= 0.75
+                {
                     ForensicVerdict::V1VerifiedHuman
                 } else {
                     ForensicVerdict::V2LikelyHuman

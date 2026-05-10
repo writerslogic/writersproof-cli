@@ -16,31 +16,31 @@ use crate::utils::stats::mean_and_std_dev;
 // ---------------------------------------------------------------------------
 
 /// Minimum plausible inter-key interval (10 ms).
-pub const MIN_HUMAN_IKI_NS: i64 = 10_000_000;
+const MIN_HUMAN_IKI_NS: i64 = 10_000_000;
 
 /// Number of recent events used for coefficient-of-variation analysis.
-pub const ROBOTIC_CV_WINDOW: usize = 20;
+const ROBOTIC_CV_WINDOW: usize = 20;
 
 /// CV below this threshold indicates robotic periodicity.
-pub const ROBOTIC_CV_LIMIT: f64 = 0.05;
+const ROBOTIC_CV_LIMIT: f64 = 0.05;
 
 /// Maximum tolerable forward jump between consecutive timestamps (1 s).
-pub const CLOCK_JUMP_LIMIT_NS: i64 = 1_000_000_000;
+const CLOCK_JUMP_LIMIT_NS: i64 = 1_000_000_000;
 
 /// Window for burst detection (1 s).
-pub const BURST_WINDOW_NS: i64 = 1_000_000_000;
+const BURST_WINDOW_NS: i64 = 1_000_000_000;
 
 /// Maximum keys allowed within [`BURST_WINDOW_NS`].
-pub const BURST_MAX_KEYS: usize = 15;
+const BURST_MAX_KEYS: usize = 15;
 
 /// Minimum Shannon entropy (bits) over the recent keycode window.
-pub const UNIFORM_KEYCODE_ENTROPY_MIN: f64 = 2.0;
+const UNIFORM_KEYCODE_ENTROPY_MIN: f64 = 2.0;
 
 /// IKI below which a large zone jump is suspicious (50 ms).
-pub const ZONE_RAPID_IKI_NS: i64 = 50_000_000;
+const ZONE_RAPID_IKI_NS: i64 = 50_000_000;
 
 /// Minimum zone distance that counts as a large jump.
-pub const ZONE_DISTANCE_THRESHOLD: i8 = 5;
+const ZONE_DISTANCE_THRESHOLD: i8 = 5;
 
 // ---------------------------------------------------------------------------
 // Result types

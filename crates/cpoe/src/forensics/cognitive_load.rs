@@ -112,7 +112,7 @@ fn compute_word_surprisals(text: &str) -> Vec<(String, f64)> {
         .collect()
 }
 
-use crate::utils::stats::spearman_correlation;
+use crate::utils::stats::{lerp_score, spearman_correlation};
 
 // ---------------------------------------------------------------------------
 // Word-scale: IKI-surprisal correlation
@@ -578,11 +578,15 @@ pub fn analyze_cognitive_load(
 
     // Composite score: weighted combination of three scales.
     // Word-scale (surprisal correlation) is the strongest signal.
-    let word_score = ((iki_surprisal_rho + 0.1) / 0.7).clamp(0.0, 1.0); // -0.1→0, 0.6→1
-    let clause_score = (sentence_arc_r_squared / 0.4).clamp(0.0, 1.0); // 0→0, 0.4→1
+    let word_score = lerp_score(iki_surprisal_rho, -0.1, 0.6);
+    let clause_score = lerp_score(sentence_arc_r_squared, 0.0, 0.4);
     let doc_score = structural_pause_concentration; // Already [0, 1]
 
-    let composite_score = 0.50 * word_score + 0.30 * clause_score + 0.20 * doc_score;
+    const WORD_WEIGHT: f64 = 0.50;
+    const CLAUSE_WEIGHT: f64 = 0.30;
+    const DOC_WEIGHT: f64 = 0.20;
+    let composite_score =
+        WORD_WEIGHT * word_score + CLAUSE_WEIGHT * clause_score + DOC_WEIGHT * doc_score;
 
     Some(CognitiveLoadMetrics {
         iki_surprisal_rho,
