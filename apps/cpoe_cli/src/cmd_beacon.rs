@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::cli::BeaconAction;
 use crate::output::OutputMode;
+use crate::util::{check_ffi_result, path_str};
 
 pub(crate) fn cmd_beacon(action: BeaconAction, out: &OutputMode) -> Result<()> {
     match action {
@@ -44,17 +45,10 @@ fn print_beacon(b: &cpoe::ffi::beacon::FfiBeaconResult) {
 }
 
 fn cmd_beacon_submit(path: &PathBuf, timeout: u64, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let result = cpoe::ffi::beacon::ffi_submit_beacon(path_str, timeout);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
         println!("{}", beacon_to_json(&result));
@@ -72,17 +66,10 @@ fn cmd_beacon_submit(path: &PathBuf, timeout: u64, out: &OutputMode) -> Result<(
 }
 
 fn cmd_beacon_status(path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let result = cpoe::ffi::beacon::ffi_check_beacon_status(path_str);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
         println!("{}", beacon_to_json(&result));
@@ -101,17 +88,10 @@ fn cmd_beacon_status(path: &PathBuf, out: &OutputMode) -> Result<()> {
 }
 
 fn cmd_beacon_list(path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let result = cpoe::ffi::beacon::ffi_list_beacons(path_str);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
         let items: Vec<serde_json::Value> =

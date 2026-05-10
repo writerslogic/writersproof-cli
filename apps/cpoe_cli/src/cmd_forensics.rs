@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::cli::ForensicsAction;
 use crate::output::OutputMode;
+use crate::util::{check_ffi_result, path_str};
 
 pub(crate) fn cmd_forensics(action: ForensicsAction, out: &OutputMode) -> Result<()> {
     match action {
@@ -15,17 +16,10 @@ pub(crate) fn cmd_forensics(action: ForensicsAction, out: &OutputMode) -> Result
 }
 
 fn cmd_forensics_breakdown(path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let result = cpoe::ffi::forensics_detail::ffi_get_forensic_breakdown(path_str);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
         println!(
@@ -119,17 +113,10 @@ fn cmd_forensics_breakdown(path: &PathBuf, out: &OutputMode) -> Result<()> {
 }
 
 fn cmd_forensics_score(path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let result = cpoe::ffi::forensics::ffi_compute_process_score(path_str);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
         println!(
@@ -169,17 +156,10 @@ fn cmd_forensics_score(path: &PathBuf, out: &OutputMode) -> Result<()> {
 }
 
 fn cmd_forensics_provenance(path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let result = cpoe::ffi::forensics::ffi_get_provenance_metrics_for_document(path_str);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
         let sources: Vec<serde_json::Value> = result

@@ -311,6 +311,23 @@ pub fn parse_yes_no(input: &str) -> Option<bool> {
     }
 }
 
+/// Convert a path to a String for FFI calls.
+pub(crate) fn path_str(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+/// Check an FFI result with `success` and `error_message` fields.
+pub(crate) fn check_ffi_result(success: bool, error_message: &Option<String>) -> Result<()> {
+    if success {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "{}",
+            error_message.as_deref().unwrap_or("Unknown error")
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

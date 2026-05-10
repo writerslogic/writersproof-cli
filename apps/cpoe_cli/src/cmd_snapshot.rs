@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use crate::cli::SnapshotAction;
 use crate::output::OutputMode;
+use crate::util::{check_ffi_result, path_str};
 
 pub(crate) fn cmd_snapshot(action: SnapshotAction, out: &OutputMode) -> Result<()> {
     match action {
@@ -16,20 +17,13 @@ pub(crate) fn cmd_snapshot(action: SnapshotAction, out: &OutputMode) -> Result<(
 }
 
 fn cmd_snapshot_save(path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let plaintext = std::fs::read_to_string(path)
         .map_err(|e| anyhow!("Failed to read file: {}", e))?;
 
     let result = cpoe::ffi::snapshot::ffi_snapshot_save(path_str, plaintext);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
         println!(
@@ -55,7 +49,7 @@ fn cmd_snapshot_save(path: &PathBuf, out: &OutputMode) -> Result<()> {
 }
 
 fn cmd_snapshot_list(path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
     let entries = cpoe::ffi::snapshot::ffi_snapshot_list(path_str);
 
     if out.json {
@@ -116,14 +110,7 @@ fn cmd_snapshot_list(path: &PathBuf, out: &OutputMode) -> Result<()> {
 fn cmd_snapshot_get(id: i64, out: &OutputMode) -> Result<()> {
     let result = cpoe::ffi::snapshot::ffi_snapshot_get(id);
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     let text = result.plaintext.unwrap_or_default();
 

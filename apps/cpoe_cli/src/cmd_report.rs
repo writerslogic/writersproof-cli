@@ -4,9 +4,10 @@ use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 
 use crate::output::OutputMode;
+use crate::util::{check_ffi_result, path_str};
 
 pub(crate) fn cmd_report(path: &PathBuf, format: &str, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
 
     match format {
         "html" => cmd_report_html(&path_str, out),
@@ -21,14 +22,7 @@ pub(crate) fn cmd_report(path: &PathBuf, format: &str, out: &OutputMode) -> Resu
 fn cmd_report_html(path: &str, out: &OutputMode) -> Result<()> {
     let result = cpoe::ffi::report::ffi_render_war_html(path.to_string());
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     let html = result.html.unwrap_or_default();
 
@@ -47,14 +41,7 @@ fn cmd_report_html(path: &str, out: &OutputMode) -> Result<()> {
 fn cmd_report_json(path: &str, out: &OutputMode) -> Result<()> {
     let result = cpoe::ffi::report::ffi_build_war_report(path.to_string());
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     let report = result
         .report

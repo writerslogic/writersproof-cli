@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use crate::cli::CredentialAction;
 use crate::output::OutputMode;
+use crate::util::{check_ffi_result, path_str};
 
 pub(crate) fn cmd_credential(action: CredentialAction, out: &OutputMode) -> Result<()> {
     match action {
@@ -17,7 +18,7 @@ pub(crate) fn cmd_credential(action: CredentialAction, out: &OutputMode) -> Resu
 }
 
 fn cmd_credential_create(path: &PathBuf, session_id: &str, out: &OutputMode) -> Result<()> {
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path_str(path);
 
     let score = cpoe::ffi::forensics::ffi_compute_process_score(path_str);
     if !score.success {
@@ -50,14 +51,7 @@ fn cmd_credential_create(path: &PathBuf, session_id: &str, out: &OutputMode) -> 
         score.composite,
     );
 
-    if !result.success {
-        return Err(anyhow!(
-            "{}",
-            result
-                .error_message
-                .unwrap_or_else(|| "Unknown error".to_string())
-        ));
-    }
+    check_ffi_result(result.success, &result.error_message)?;
 
     let cbor_hex = result.credential_cbor_hex.unwrap_or_default();
 
