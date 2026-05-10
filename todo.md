@@ -2268,7 +2268,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** concurrency
 - **Files:** `crates/cpoe/src/sentinel/core.rs:1030-1036`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `current_focus.read_recover()` acquired, then `sessions.read_recover()` within the same scope — violates documented lock ordering (AUD-041): sessions(2) must be acquired before current_focus(3).
 - **Fix:** Restructure the block to acquire sessions first, then current_focus. Or drop current_focus before acquiring sessions.
 
@@ -2278,7 +2278,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** performance
 - **Files:** `crates/cpoe/src/sentinel/core.rs:620-634`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `session.jitter_samples.iter_mut().rev().find(|s| s.timestamp_ns == down_ts)` on every keyUp event. Buffer can hold up to 50,000 entries.
 - **Fix:** Maintain a `HashMap<u64 /*timestamp_ns*/, usize /*index*/>` alongside jitter_samples for O(1) lookup. Clear on buffer reset.
 
@@ -2288,7 +2288,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** performance
 - **Files:** `crates/cpoe/src/ffi/text_fragment.rs:365-371`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `pasted_text.len() > MAX_PASTE_SIZE` is checked after the String is already allocated. 1 GB paste from untrusted source allocates fully before rejection.
 - **Fix:** Enforce the limit in Swift before calling FFI. Document the invariant. Optionally add a separate Swift-side wrapper that checks length before calling the Rust FFI.
 
@@ -2298,7 +2298,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** security
 - **Files:** `crates/cpoe/src/war/trust_bundle.rs:39-40`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `MANIFEST_SIGNING_PUBKEY_HEX` is all zeros. If accidentally deployed, skips all manifest signature verification. Should panic or refuse to operate when key is zero.
 - **Fix:** Add `assert_ne!(MANIFEST_SIGNING_PUBKEY_HEX, "0000000000000000000000000000000000000000000000000000000000000000", "production deployment requires real signing key")` in the verifier init. Or use a compile-time check: `const _: () = assert!(!matches!(MANIFEST_SIGNING_PUBKEY_HEX.as_bytes(), [b'0'; 64]))`.
 
@@ -2318,7 +2318,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** security
 - **Files:** `crates/cpoe/src/ipc/messages.rs:134-166`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `is_blocked_system_path` uses case-sensitive `starts_with()` on macOS. HFS+ is case-insensitive: `/System` and `/system` refer to the same directory, but only `/System` is blocked.
 - **Fix:** On macOS, use `path.to_string_lossy().to_lowercase()` for comparison. Or use `std::fs::canonicalize()` which resolves to the real case-normalized path before prefix matching.
 
@@ -2338,7 +2338,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** security
 - **Files:** `crates/cpoe/src/store/events.rs:365-372`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `get_all_event_timestamps()` returns timestamps without HMAC verification. Callers may use these in forensic analysis assuming integrity, but the data is unverified. A compromised DB could return forged timestamps.
 - **Fix:** Remove `get_all_event_timestamps()` or add a doc comment warning + make it `pub(crate)` with a strong "UNVERIFIED" name: `get_all_event_timestamps_unverified_do_not_use_in_reports()`. Add HMAC-verified variant.
 
@@ -2348,7 +2348,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** errors
 - **Files:** `crates/cpoe/src/store/events.rs:440`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `has_integrity` check uses `.unwrap_or(false)` — if the integrity table query fails, code proceeds as if integrity is absent and skips HMAC recomputation. File path update without re-HMAC corrupts event records silently.
 - **Fix:** Replace `.unwrap_or(false)` with `?` — propagate the error and abort the update. The operation should fail loudly if integrity cannot be determined.
 
@@ -2500,7 +2500,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** error_handling
 - **Files:** `crates/cpoe/src/sentinel/core.rs:1522`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `let _ = tokio::task::spawn_blocking(...).await` discards result. If spawn_blocking fails during shutdown (runtime shutting down), final checkpoint is lost silently.
 - **Fix:** Log error: `if let Err(e) = tokio::task::spawn_blocking(...).await { log::error!("Final checkpoint failed: {e}"); }`
 
@@ -2510,7 +2510,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** error_handling
 - **Files:** `crates/cpoe/src/sentinel/core.rs:1545`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** `let _ = tx.send(()).await` discards result. If receiver dropped, event loop won't exit gracefully; tokio task continues running.
 - **Fix:** Log and handle: `if tx.send(()).await.is_err() { log::warn!("Event loop receiver dropped"); }`
 
@@ -2520,7 +2520,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** error_handling
 - **Files:** `crates/cpoe/src/war/verification.rs:635,668`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: resolved in prior sessions)
 - **Description:** Two `try_into().unwrap()` calls on public key and signature byte conversions in CA attestation verification. Library code should not panic; these are at a trust boundary processing external attestation data.
 - **Fix:** Replace `.unwrap()` with `.map_err(|_| CheckResult::fail("invalid CA key length"))` or equivalent error propagation.
 
