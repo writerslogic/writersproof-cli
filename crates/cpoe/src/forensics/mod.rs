@@ -17,6 +17,7 @@ pub(crate) mod analysis;
 mod assessment;
 mod cadence;
 pub mod cognitive_accumulator;
+pub mod constants;
 pub mod cognitive_load;
 pub mod composition_mode;
 mod comparison;
@@ -62,22 +63,27 @@ pub use provenance_metrics::{ProvenanceMetrics, SourceSessionInfo};
 pub use report::*;
 pub use scoring::{
     apply_segment_velocity_penalty, cadence_score_from_samples, compute_focus_penalty,
-    session_forensic_score,
+    compute_jitter_quality, session_forensic_score,
 };
 pub use topology::*;
-pub use types::*;
+pub use types::{
+    AnalysisKind, AnalysisStatus, ForensicGateVerdict, JitterQuality, TypingMetrics, *,
+};
 pub use velocity::*;
 pub use writing_mode::{
     classify_writing_mode, enrich_writing_mode, EnhancedSignals, RevisionPattern, WritingMode,
     WritingModeAnalysis,
 };
 
-pub use cognitive_load::{analyze_cognitive_load, CognitiveLoadMetrics};
+pub use cognitive_load::{analyze_cognitive_load, CognitiveLoadMetrics, CognitiveMode};
 pub use composition_mode::{
     analyze_composition_mode, CompositionMode, CompositionModeDistribution,
     CompositionModeMetrics,
 };
-pub use error_ecology::{analyze_error_ecology, ErrorEcologyMetrics};
+pub use error_ecology::{
+    analyze_error_ecology, assess_transcription_suspicion, ErrorEcologyMetrics,
+    TranscriptionSuspicion,
+};
 pub use likelihood_model::{
     analyze_likelihood_model, analyze_likelihood_model_with_priors, GaussianParams,
     LikelihoodModelMetrics, LikelihoodPriors,

@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::jitter::SimpleJitterSample;
 
+use super::constants::CORRECTION_ZONE;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -32,9 +34,6 @@ const MIN_CORRECTIONS: usize = 5;
 
 /// Minimum total samples.
 const MIN_SAMPLES: usize = 20;
-
-/// Zone value indicating backspace/delete/correction keys.
-const CORRECTION_ZONE: u8 = 0xFF;
 
 /// Maximum IKI (ns) for rapid self-correction (500ms).
 const RAPID_CORRECTION_NS: u64 = 500_000_000;
@@ -204,6 +203,102 @@ pub struct ErrorEcologyMetrics {
 
     /// Composite score: 0.0 = transcriptive, 1.0 = cognitive.
     pub composite_score: f64,
+}
+
+/// Real-time transcription suspicion signal for sentinel integration.
+///
+/// Computed from a lightweight streaming assessment of correction patterns
+/// during live capture. When `is_suspicious` is true, the sentinel should:
+/// - Increase checkpoint frequency (more evidence collection)
+/// - Annotate the next checkpoint with the suspicion flag
+/// - Capture higher-resolution timing data
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TranscriptionSuspicion {
+    /// Whether the correction pattern is suspicious enough to trigger gating.
+    pub is_suspicious: bool,
+    /// Ratio of unexplained corrections to total keystrokes.
+    pub unexplained_correction_ratio: f64,
+    /// Current composite error ecology score (0.0 = transcriptive, 1.0 = cognitive).
+    /// Only meaningful when `sample_count >= MIN_SAMPLES`.
+    pub ecology_score: f64,
+    /// Number of samples assessed so far.
+    pub sample_count: usize,
+}
+
+/// Threshold for unexplained-corrections-to-keystrokes ratio above which
+/// the sentinel raises a transcription suspicion flag.
+const TRANSCRIPTION_SUSPICION_THRESHOLD: f64 = 0.15;
+
+/// Lightweight streaming assessment of correction patterns for real-time use.
+///
+/// Unlike `analyze_error_ecology` which produces full metrics, this function
+/// is designed for incremental evaluation during live capture. It counts
+/// correction keystrokes that don't fit the cognitive error profile (not rapid,
+/// not small) and flags sessions where the ratio exceeds the threshold.
+pub fn assess_transcription_suspicion(
+    samples: &[SimpleJitterSample],
+) -> TranscriptionSuspicion {
+    let sample_count = samples.len();
+    if sample_count < MIN_SAMPLES {
+        return TranscriptionSuspicion {
+            sample_count,
+            ..Default::default()
+        };
+    }
+
+    let total_keystrokes = sample_count;
+    let mut unexplained_corrections: usize = 0;
+    let mut total_corrections: usize = 0;
+
+    let mut consecutive_corrections: usize = 0;
+    for i in 0..samples.len() {
+        if samples[i].zone == CORRECTION_ZONE {
+            total_corrections += 1;
+            consecutive_corrections += 1;
+
+            // Check if this correction fits cognitive patterns
+            let is_rapid = if i > 0 {
+                let iki = samples[i]
+                    .timestamp_ns
+                    .saturating_sub(samples[i - 1].timestamp_ns) as u64;
+                iki < RAPID_CORRECTION_NS
+            } else {
+                false
+            };
+
+            // If not rapid and part of a bulk deletion, it's unexplained
+            if !is_rapid && consecutive_corrections >= BULK_CORRECTION_MIN {
+                unexplained_corrections += 1;
+            }
+        } else {
+            consecutive_corrections = 0;
+        }
+    }
+
+    let unexplained_correction_ratio = if total_keystrokes > 0 {
+        unexplained_corrections as f64 / total_keystrokes as f64
+    } else {
+        0.0
+    };
+
+    // Compute ecology score if we have enough corrections
+    let ecology_score = if total_corrections >= MIN_CORRECTIONS {
+        analyze_error_ecology(samples)
+            .map(|m| m.composite_score)
+            .unwrap_or(0.5)
+    } else {
+        0.5
+    };
+
+    let is_suspicious = unexplained_correction_ratio > TRANSCRIPTION_SUSPICION_THRESHOLD
+        || (total_corrections >= MIN_CORRECTIONS && ecology_score < 0.3);
+
+    TranscriptionSuspicion {
+        is_suspicious,
+        unexplained_correction_ratio,
+        ecology_score,
+        sample_count,
+    }
 }
 
 /// Analyze error ecology from jitter samples.

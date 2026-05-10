@@ -22,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use crate::analysis::BehavioralFingerprint;
 use crate::jitter::SimpleJitterSample;
 
+use super::constants::{BURST_THRESHOLD_NS, CORRECTION_ZONE, PAUSE_THRESHOLD_NS};
+
 // ---------------------------------------------------------------------------
 // Bayesian calibration
 // ---------------------------------------------------------------------------
@@ -121,14 +123,6 @@ const WINDOW_OVERLAP: usize = 100;
 /// Minimum samples for any analysis.
 const MIN_SAMPLES: usize = 30;
 
-/// Correction zone marker.
-const CORRECTION_ZONE: u8 = 0xFF;
-
-/// Pause threshold (2 seconds).
-const PAUSE_THRESHOLD_NS: u64 = 2_000_000_000;
-
-/// Burst threshold (200ms).
-const BURST_THRESHOLD_NS: u64 = 200_000_000;
 
 // ---------------------------------------------------------------------------
 // Distributional parameters

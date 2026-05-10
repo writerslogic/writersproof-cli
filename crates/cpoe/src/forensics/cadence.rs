@@ -5,13 +5,16 @@
 use crate::jitter::SimpleJitterSample;
 use crate::utils::stats::{coefficient_of_variation, mean, mean_and_std_dev, median, std_dev};
 
+use super::constants::CORRECTION_ZONE;
 use super::types::{CadenceMetrics, ROBOTIC_CV_THRESHOLD};
 
 /// IKI threshold in nanoseconds for fast-burst detection (200 ms).
-const BURST_THRESHOLD_NS: f64 = 200_000_000.0;
+/// f64 version of constants::BURST_THRESHOLD_NS for direct f64 arithmetic.
+const BURST_THRESHOLD_NS_F64: f64 = 200_000_000.0;
 
 /// IKI threshold in nanoseconds for pause detection (2 seconds).
-const PAUSE_THRESHOLD_NS: f64 = 2_000_000_000.0;
+/// f64 version of constants::PAUSE_THRESHOLD_NS for direct f64 arithmetic.
+const PAUSE_THRESHOLD_NS_F64: f64 = 2_000_000_000.0;
 
 /// IKI threshold in nanoseconds for cognitive pause detection (1 second).
 const COGNITIVE_PAUSE_THRESHOLD_NS: f64 = 1_000_000_000.0;
@@ -24,9 +27,6 @@ const PARAGRAPH_PAUSE_UPPER_NS: f64 = 10_000_000_000.0;
 
 /// Number of post-pause keystrokes to analyze.
 const POST_PAUSE_WINDOW: usize = 5;
-
-/// Zone value for unmapped keys (backspace, delete, etc.).
-const CORRECTION_ZONE: u8 = 0xFF;
 
 /// Minimum consecutive fast keystrokes to qualify as a burst.
 const MIN_BURST_LENGTH: usize = 3;
@@ -312,7 +312,7 @@ fn detect_bursts_and_pauses(ikis: &[f64]) -> (Vec<TypingBurst>, Vec<f64>) {
     let mut burst_sum = 0.0;
 
     for (i, &iki) in ikis.iter().enumerate() {
-        if iki < BURST_THRESHOLD_NS {
+        if iki < BURST_THRESHOLD_NS_F64 {
             if burst_start.is_none() {
                 burst_start = Some(i);
                 burst_sum = 0.0;
@@ -331,7 +331,7 @@ fn detect_bursts_and_pauses(ikis: &[f64]) -> (Vec<TypingBurst>, Vec<f64>) {
                 burst_start = None;
             }
 
-            if iki > PAUSE_THRESHOLD_NS {
+            if iki > PAUSE_THRESHOLD_NS_F64 {
                 pauses.push(iki);
             }
         }
@@ -388,7 +388,7 @@ pub fn compute_structural_homogeneity_score(ikis: &[f64]) -> f64 {
     let pause_positions: Vec<f64> = ikis
         .iter()
         .enumerate()
-        .filter(|(_, &iki)| iki > PAUSE_THRESHOLD_NS)
+        .filter(|(_, &iki)| iki > PAUSE_THRESHOLD_NS_F64)
         .map(|(i, _)| i as f64)
         .collect();
 
