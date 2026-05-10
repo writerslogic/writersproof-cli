@@ -21,9 +21,6 @@ pub const MIN_ENTROPY_BITS_DEFAULT: f64 = 1.5;
 /// Named constant for entropy sample window size (recent keystrokes to analyze).
 pub const ENTROPY_SAMPLE_WINDOW_DEFAULT: usize = 50;
 
-/// Named constant for inter-keystroke interval in milliseconds (typical human typing).
-pub const IKI_MEAN_TYPICAL_MS: f64 = 150.0;
-
 /// Named constant for minimum inter-keystroke variance coefficient (CV).
 pub const IKI_MIN_VARIANCE_CV: f64 = 0.15;
 

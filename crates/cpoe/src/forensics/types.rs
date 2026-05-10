@@ -37,14 +37,7 @@ pub const DEFAULT_SESSION_GAP_SEC: f64 = 1800.0;
 /// Above this append ratio, AI generation is suspected.
 pub const THRESHOLD_MONOTONIC_APPEND: f64 = 0.85;
 
-/// Minimum timing entropy (bits/sample) per draft-condrey-rats-pop-appraisal.
-pub const THRESHOLD_TIMING_ENTROPY: f64 = 3.0;
-/// Minimum revision entropy (bits) per draft-condrey-rats-pop-appraisal.
-pub const THRESHOLD_REVISION_ENTROPY: f64 = 3.0;
-/// Minimum pause entropy (bits) per draft-condrey-rats-pop-appraisal.
-pub const THRESHOLD_PAUSE_ENTROPY: f64 = 2.0;
 /// Below this edit entropy, non-human editing is suspected.
-/// Uses the minimum of the per-type thresholds as a general floor.
 pub const THRESHOLD_LOW_ENTROPY: f64 = 2.0;
 
 /// Bytes/sec above which velocity is flagged as anomalous.
@@ -404,6 +397,135 @@ pub struct ForensicMetrics {
     /// Per-window generative likelihood model metrics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub likelihood_model: Option<super::likelihood_model::LikelihoodModelMetrics>,
+    /// Tracks which analyses completed successfully vs. failed/skipped.
+    #[serde(default)]
+    pub analysis_status: AnalysisStatus,
+    /// Real-time transcription suspicion assessment from error ecology streaming.
+    /// Present when the sentinel evaluated correction patterns during live capture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcription_suspicion:
+        Option<super::error_ecology::TranscriptionSuspicion>,
+}
+
+/// Bitfield tracking which forensic analyses completed successfully.
+///
+/// When an analysis fails or is skipped (insufficient data, computation error),
+/// the corresponding bit remains unset. Consumers can use this to:
+/// - Lower confidence when key analyses were unavailable
+/// - Distinguish "metric is zero because input was clean" from "metric was never computed"
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AnalysisStatus {
+    /// Bitfield of completed analyses. Each bit corresponds to an [`AnalysisKind`].
+    pub completed: u32,
+    /// Bitfield of analyses that failed (error, not just skipped for insufficient data).
+    pub failed: u32,
+}
+
+/// Individual analysis types tracked by [`AnalysisStatus`].
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnalysisKind {
+    Perplexity = 0,
+    PrimaryMetrics = 1,
+    Cadence = 2,
+    Hurst = 3,
+    BiologicalCadence = 4,
+    Behavioral = 5,
+    Snr = 6,
+    Lyapunov = 7,
+    IkiCompression = 8,
+    Labyrinth = 9,
+    Clc = 10,
+    RepairLocality = 11,
+    Fatigue = 12,
+    CognitiveLoad = 13,
+    ErrorEcology = 14,
+    LikelihoodModel = 15,
+    CrossModal = 16,
+    RevisionTopology = 17,
+    Velocity = 18,
+}
+
+impl AnalysisStatus {
+    /// Mark an analysis as successfully completed.
+    pub fn mark_completed(&mut self, kind: AnalysisKind) {
+        self.completed |= 1 << (kind as u8);
+    }
+
+    /// Mark an analysis as failed (error during computation).
+    pub fn mark_failed(&mut self, kind: AnalysisKind) {
+        self.failed |= 1 << (kind as u8);
+    }
+
+    /// Check if an analysis completed successfully.
+    pub fn is_completed(&self, kind: AnalysisKind) -> bool {
+        self.completed & (1 << (kind as u8)) != 0
+    }
+
+    /// Check if an analysis failed.
+    pub fn is_failed(&self, kind: AnalysisKind) -> bool {
+        self.failed & (1 << (kind as u8)) != 0
+    }
+
+    /// Count how many analyses completed successfully.
+    pub fn completed_count(&self) -> u32 {
+        self.completed.count_ones()
+    }
+
+    /// Count how many analyses failed.
+    pub fn failed_count(&self) -> u32 {
+        self.failed.count_ones()
+    }
+
+    /// Fraction of attempted analyses that succeeded (0.0-1.0).
+    /// Returns 1.0 if no analyses were attempted.
+    pub fn success_ratio(&self) -> f64 {
+        let attempted = self.completed | self.failed;
+        let total = attempted.count_ones();
+        if total == 0 {
+            return 1.0;
+        }
+        self.completed.count_ones() as f64 / total as f64
+    }
+}
+
+/// Jitter-derived entropy quality metrics for evidence confidence scaling.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct JitterQuality {
+    /// Shannon entropy of IKI intervals (bits). Higher = more random = more human.
+    pub entropy_bits: f64,
+    /// Fraction of keyboard zones observed (0.0-1.0). Higher = more coverage.
+    pub zone_coverage: f64,
+    /// Number of jitter samples contributing to this assessment.
+    pub sample_count: usize,
+}
+
+impl JitterQuality {
+    /// Compute a confidence scaling factor in [0.0, 1.0] based on jitter quality.
+    /// Used by the evidence builder to modulate packet confidence.
+    pub fn confidence_factor(&self) -> f64 {
+        const MIN_ACCEPTABLE_ENTROPY: f64 = 3.0;
+        const MIN_ACCEPTABLE_SAMPLES: usize = 20;
+        const MIN_ACCEPTABLE_ZONE_COVERAGE: f64 = 0.3;
+
+        if self.sample_count < MIN_ACCEPTABLE_SAMPLES {
+            return 0.5; // Insufficient data — partial confidence
+        }
+        let entropy_factor = (self.entropy_bits / MIN_ACCEPTABLE_ENTROPY).min(1.0);
+        let zone_factor = (self.zone_coverage / MIN_ACCEPTABLE_ZONE_COVERAGE).min(1.0);
+        (entropy_factor * 0.7 + zone_factor * 0.3).clamp(0.0, 1.0)
+    }
+}
+
+/// Forensic gate result for checkpoint creation decisions.
+#[derive(Debug, Clone)]
+pub enum ForensicGateVerdict {
+    /// Proceed normally with checkpoint creation.
+    Proceed,
+    /// Checkpoint allowed but flagged as low-confidence.
+    LowConfidence { reason: String },
+    /// Increase VDF cost multiplier before creating checkpoint.
+    IncreaseCost { multiplier: u32, reason: String },
 }
 
 /// Per-segment velocity and prose-classification metrics for bundle documents.
@@ -421,6 +543,80 @@ pub struct SegmentVelocityProfile {
     pub keystroke_count: u64,
     /// Number of velocity bursts exceeding `THRESHOLD_HIGH_VELOCITY_BPS`.
     pub high_velocity_bursts: usize,
+}
+
+/// Pre-computed typing metrics shared across scoring, cadence, and velocity modules.
+///
+/// Computed once from raw IKI intervals, consumed by multiple downstream analyses
+/// to avoid redundant BPS/percentile calculations.
+#[derive(Debug, Clone, Default)]
+pub struct TypingMetrics {
+    /// Mean bytes per second across prose segments.
+    pub bps_mean: f64,
+    /// 95th percentile BPS.
+    pub bps_p95: f64,
+    /// Inter-keystroke interval percentiles: p25, p50, p75.
+    pub iki_p25: f64,
+    pub iki_p50: f64,
+    pub iki_p75: f64,
+    /// Coefficient of variation of IKI intervals.
+    pub cv: f64,
+    /// Number of IKI samples used for computation.
+    pub sample_count: usize,
+}
+
+impl TypingMetrics {
+    /// Compute unified typing metrics from raw IKI intervals (nanoseconds).
+    pub fn from_iki_ns(ikis: &[f64]) -> Self {
+        if ikis.len() < 2 {
+            return Self::default();
+        }
+
+        let n = ikis.len();
+        let mean = ikis.iter().sum::<f64>() / n as f64;
+        let variance = ikis.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+        let std_dev = variance.sqrt();
+        let cv = if mean > 0.0 { std_dev / mean } else { 0.0 };
+
+        // Percentiles via partial sort
+        let mut buf = ikis.to_vec();
+        let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal);
+        let pct_idx = |p: usize| -> usize {
+            ((p as f64 / 100.0 * (n - 1) as f64).round() as usize).min(n - 1)
+        };
+
+        let i25 = pct_idx(25);
+        let i50 = pct_idx(50);
+        let i75 = pct_idx(75);
+        let i95 = pct_idx(95);
+
+        buf.select_nth_unstable_by(i95, cmp);
+        let bps_p95_ns = buf[i95];
+        buf.select_nth_unstable_by(i75, cmp);
+        let iki_p75 = buf[i75];
+        buf.select_nth_unstable_by(i50, cmp);
+        let iki_p50 = buf[i50];
+        buf.select_nth_unstable_by(i25, cmp);
+        let iki_p25 = buf[i25];
+
+        // Convert mean IKI (ns) to BPS: 1 keystroke per mean_iki_ns
+        let bps_mean = if mean > 0.0 { 1e9 / mean } else { 0.0 };
+        let bps_p95 = if bps_p95_ns > 0.0 {
+            1e9 / bps_p95_ns
+        } else {
+            0.0
+        };
+
+        Self {
+            bps_mean,
+            bps_p95,
+            iki_p25,
+            iki_p50,
+            iki_p75,
+            cv,
+            sample_count: n,
+        }
+    }
 }
 
 impl ForensicMetrics {
