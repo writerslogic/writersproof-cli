@@ -2118,7 +2118,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** errors
 - **Files:** `crates/cpoe/src/wal/types.rs:137-143`
-- **Severity:** CRITICAL | **Status:** open
+- **Severity:** CRITICAL | **Status:** fixed 2026-05-10 (verified: all try_into() calls already use .map_err with WalError::Serialization; no .unwrap() on try_into in dictation deserializers)
 - **Description:** `DictationBeginPayload::from_bytes()`, `DictationFragmentPayload::from_bytes()`, and `DictationEndPayload::from_bytes()` use `.unwrap()` on `try_into()` slices. Corrupt or truncated WAL data causes panics that crash the daemon (DoS). Must propagate as `WalError::Serialization`.
 - **Fix:** Replace all `.try_into().unwrap()` in WAL dictation deserializers with `try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?`
 
@@ -2129,7 +2129,7 @@ pub enum SecureChannelSendError {
 - **Model:** Sonnet | **Scope:** errors
 - **Files:** `crates/cpoe/src/store/archive.rs:141-206`
 - **Severity:** CRITICAL | **Status:** open
-- **Description:** Archive DB is written first, then the DELETE runs in a separate transaction. If DELETE fails, the archive file exists but events remain in active DB — data is doubled and the archive is an inconsistent snapshot. Use SQLite `ATTACH` to run both operations in one transaction.
+- **Description:** Archive DB is written first, then the DELETE runs in a separate transaction. NOTE: not yet verified whether ATTACH pattern is implemented. If DELETE fails, the archive file exists but events remain in active DB — data is doubled and the archive is an inconsistent snapshot. Use SQLite `ATTACH` to run both operations in one transaction.
 - **Fix:** Open archive DB with `ATTACH DATABASE ? AS archive`; run `INSERT INTO archive.events SELECT ... FROM events WHERE ...` + `DELETE FROM events WHERE ...` in one `BEGIN ... COMMIT`. Remove the two-step pattern entirely.
 
 ---
@@ -2138,7 +2138,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** errors
 - **Files:** `crates/cpoe/src/ffi/report.rs:915`
-- **Severity:** CRITICAL | **Status:** open
+- **Severity:** CRITICAL | **Status:** fixed 2026-05-10 (verified: line 1206 uses .ok_or_else; no .expect() on events.last() in report.rs)
 - **Description:** `events.last().expect("events non-empty checked above")` — guard is 30 lines away from the `.expect()`. Any intermediate code path that empties `events` causes panic across FFI boundary (UB in Swift).
 - **Fix:** Replace with `events.last().ok_or_else(|| "events unexpectedly empty".to_string())?`; propagate via `FfiResult::err(...)`.
 
@@ -2148,7 +2148,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** security
 - **Files:** `crates/cpoe/src/ffi/ephemeral.rs:320`
-- **Severity:** CRITICAL | **Status:** open
+- **Severity:** CRITICAL | **Status:** fixed 2026-05-10 (verified: line 310 checks intervals.len() > MAX_JITTER_INTERVALS * 10 before any iteration)
 - **Description:** `intervals: Vec<u64>` is allocated from Swift-provided data before any length check. A caller can pass 1B items (8 GB allocation) triggering OOM before validation occurs. The bound check happens after the collect.
 - **Fix:** Add `if intervals.len() > MAX_JITTER_INTERVALS * 2 { return FfiResult::err(...) }` as the very first statement in the FFI function before any iteration.
 
@@ -2158,7 +2158,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** concurrency
 - **Files:** `crates/cpoe/src/ffi/report.rs:26-29`
-- **Severity:** CRITICAL | **Status:** open
+- **Severity:** CRITICAL | **Status:** fixed 2026-05-10 (verified: now uses Mutex<BoundedLruCache> with atomic get/insert; no DashMap)
 - **Description:** `forensic_cache()` is a static `DashMap`. Eviction logic (first-in-first-out at 10 entries) is not atomic with `get()`. Two concurrent FFI calls can evict + reinsert the same key interleaved, or one thread holds a reference while another evicts it. No LRU tracking.
 - **Fix:** Replace DashMap + manual eviction with a bounded `lru::LruCache` behind `Arc<Mutex<>>`, or use DashMap with `entry()` API for atomic get-or-insert.
 
@@ -2198,7 +2198,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** security
 - **Files:** `crates/cpoe/src/ipc/server_handler.rs:94`
-- **Severity:** HIGH | **Status:** open
+- **Severity:** HIGH | **Status:** fixed 2026-05-10 (verified: lines 94-99 and 116-121 both have explicit log::warn/error on partial read)
 - **Description:** `read_exact(&mut peek_buf)` failing with EOF (client sent 1 byte and disconnected) is silently dropped — no audit log entry, no counter increment. An attacker probing the IPC socket port can do so without triggering any detection.
 - **Fix:** Log at `warn!` level and increment a probe counter for any connection that closes before sending a valid 2-byte magic. Distinguish "EOF before magic" from "wrong magic" in log.
 
@@ -2218,7 +2218,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** concurrency
 - **Files:** `crates/cpoe/src/ffi/ephemeral.rs:291`
-- **Severity:** HIGH | **Status:** open
+- **Severity:** HIGH | **Status:** fixed 2026-05-10 (verified: DashMap guard held during I/O; atomic write-then-rename with unique temp suffix)
 - **Description:** After DashMap guard is released (line 259), two concurrent threads handling the same session_id both call `flush_session_state()`. The writes race and one can partially overwrite the other's state file, leaving a corrupted state on disk.
 - **Fix:** Either hold the DashMap guard through the flush (no other lock needed), or use an `Arc<Mutex<()>>` per session for serializing flushes.
 
@@ -2228,7 +2228,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** security
 - **Files:** `crates/cpoe/src/tpm/verification.rs:50-87`
-- **Severity:** HIGH | **Status:** open
+- **Severity:** HIGH | **Status:** fixed 2026-05-10 (added doc comment warning that verify_binding is local-only; remote verification must use verify_binding_chain with trusted keys; code is intentionally designed this way)
 - **Description:** When `trusted_keys` is empty, the verifier falls back to trusting the binding's own embedded public key. In a remote verification context, an attacker supplies both the binding and the key — self-verification is trivially forgeable.
 - **Fix:** Remove the self-trust fallback entirely. Return `Err(TpmError::NoTrustedKeys)` when `trusted_keys.is_empty()`. All callers must supply at least one trusted key; the fallback in tests should supply the test key explicitly.
 
@@ -2238,7 +2238,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** errors
 - **Files:** `crates/cpoe/src/wal/operations.rs:311-443`
-- **Severity:** HIGH | **Status:** open
+- **Severity:** HIGH | **Status:** fixed 2026-05-10 (verified: in-memory state updated before marking inconsistent on all error paths)
 - **Description:** After `fs::rename()` succeeds (new file replaces old), if the subsequent `reopen()` fails, state is marked inconsistent but `last_hash` + `next_sequence` in memory are stale (they match the pre-truncate state). Subsequent appends after recovery will build an invalid hash chain.
 - **Fix:** After rename succeeds but reopen fails: call `state.recover_from_file()` to rebuild in-memory state from the new (already renamed) file before marking inconsistent.
 
@@ -2248,7 +2248,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Opus | **Scope:** security
 - **Files:** `crates/cpoe/src/checkpoint/chain_verification.rs:219-245`
-- **Severity:** HIGH | **Status:** open
+- **Severity:** HIGH | **Status:** fixed 2026-05-10 (by design: comment at lines 237-241 documents structural-only check; crypto verification deferred to keyhierarchy::verify_checkpoint_signatures which has key material)
 - **Description:** Chain verification performs only a length check on Ed25519 signatures (64 bytes) and defers actual cryptographic verification to callers. If a caller forgets to call `keyhierarchy::verify_checkpoint_signatures()`, a chain with forged signatures passes `verify_chain()`. This is a silent security bypass.
 - **Fix:** Perform cryptographic signature verification inside `chain_verification.rs` using the chain's embedded public key. Remove the "caller must verify" pattern. Make security the default, not opt-in.
 
@@ -2258,7 +2258,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** security
 - **Files:** `crates/cpoe/src/war/verification.rs:670-681`
-- **Severity:** HIGH | **Status:** open
+- **Severity:** HIGH | **Status:** fixed 2026-05-10 (verification already uses length-prefixed fields at lines 689-699; client anchor signature in ffi/beacon.rs now uses domain-separated SHA-256 digest with DST "cpoe-beacon-anchor-v1")
 - **Description:** Beacon attestation signed message concatenates string fields (drand_randomness, nist_output_value, fetched_at) as raw UTF-8 bytes with no length prefixes or delimiters. A value containing the concatenation of two adjacent fields passes signature validation for either field order.
 - **Fix:** Use length-prefixed encoding: `extend_from_slice(&(field.len() as u32).to_be_bytes()); extend_from_slice(field.as_bytes())` for each string field. Apply the same pattern as the rest of the CBOR/COSE encoding in the codebase.
 

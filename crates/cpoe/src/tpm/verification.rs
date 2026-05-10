@@ -38,6 +38,13 @@ pub fn verify_binding_chain(
     Ok(())
 }
 
+/// Verify a TPM binding against its own embedded key (self-trust).
+///
+/// SECURITY: This path is for local-only verification (e.g., checking that
+/// the binding was self-consistent when it was created). It does NOT guard
+/// against forgery — an attacker who controls the binding can embed their
+/// own key. For remote or adversarial verification, use
+/// [`verify_binding_chain`] with a list of trusted public keys.
 pub fn verify_binding(binding: &Binding) -> Result<(), TpmError> {
     verify_binding_with_trusted(binding, &[])
 }

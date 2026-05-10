@@ -162,7 +162,15 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
     let (signature, verifying_key_bytes) = {
         let signing_key = try_ffi!(load_signing_key(), FfiBeaconResult);
         use ed25519_dalek::Signer;
-        let sig = hex::encode(signing_key.sign(latest.event_hash.as_slice()).to_bytes());
+        use sha2::{Digest, Sha256};
+        // Domain-separated signing: hash(DST || event_hash || content_hash) prevents
+        // replay across contexts and binds the signature to both hashes.
+        let mut msg = Sha256::new();
+        msg.update(b"cpoe-beacon-anchor-v1");
+        msg.update(latest.event_hash.as_slice());
+        msg.update(latest.content_hash.as_slice());
+        let digest = msg.finalize();
+        let sig = hex::encode(signing_key.sign(&digest).to_bytes());
         let vk = *signing_key.verifying_key().as_bytes();
         (sig, vk)
         // signing_key drops and zeroizes here
