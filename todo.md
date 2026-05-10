@@ -2308,7 +2308,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** errors
 - **Files:** `crates/cpoe/src/store/baselines.rs:56-94`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: digest.rs has comprehensive is_finite guards on all inputs)
 - **Description:** `if !value.is_finite() { return Ok(()) }` — callers cannot distinguish successful update from rejected non-finite value. Biometric baselines silently diverge from reality.
 - **Fix:** Return `Err(Error::invalid_input("baseline value is non-finite"))` instead of `Ok(())`. Or log at `warn!` level at minimum.
 
@@ -2328,7 +2328,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** architecture
 - **Files:** `crates/cpoe/src/forensics/forgery_cost.rs:308-321`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (replaced f64::INFINITY with INFEASIBLE_COST (1e308) for JSON-safe serialization)
 - **Description:** When `has_infinite` (hardware attestation), code multiplies `f64::MAX * 100.0 = Infinity`. Stored in `overall_difficulty` and serialized to JSON as `null` or `Infinity` (non-standard JSON). Clients parsing the WAR may misinterpret or crash.
 - **Fix:** Use a sentinel constant `const HARDWARE_ATTESTATION_DIFFICULTY: f64 = 1e308` (near-max but finite) for "effectively infinite" hardware attestation cost. Or use a tagged enum `ForgeryDifficulty { Finite(f64) | HardwareAttestation }`.
 
@@ -2358,7 +2358,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** security
 - **Files:** `apps/cpoe_cli/src/cmd_attest.rs:34`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: line 35 uses .take(50_000_000) to bound stdin to 50MB)
 - **Description:** `io::stdin().read_to_string(&mut buf)` has no size limit. A malicious pipe can feed gigabytes of data causing OOM.
 - **Fix:** Wrap stdin with `.take(50_000_000)` (50 MB limit): `io::stdin().take(50_000_000).read_to_string(&mut buf)`. Return `Err` if buf exceeds limit after read.
 
@@ -2600,7 +2600,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Haiku | **Scope:** error_handling
 - **Files:** `crates/cpoe/src/store/archive.rs:136,558`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: archive.rs uses try_ffi!() with proper error propagation; no .ok() on chain validation)
 - **Description:** Two instances of `.ok()` that silently discard errors when querying chain link data. If query fails for reasons other than "no rows", error is swallowed. Weak chain integrity checking.
 - **Fix:** Match explicitly: return Err for actual DB errors, Ok(None) only for QueryReturnedNoRows.
 
