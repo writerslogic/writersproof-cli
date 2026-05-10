@@ -240,10 +240,7 @@ fn extract_window_features(samples: &[SimpleJitterSample]) -> WindowFeatures {
         .collect();
 
     let (mean_log_iki, std_log_iki) = if log_ikis.len() >= 2 {
-        let mean = log_ikis.iter().sum::<f64>() / log_ikis.len() as f64;
-        let variance = log_ikis.iter().map(|x| (x - mean).powi(2)).sum::<f64>()
-            / (log_ikis.len() - 1) as f64;
-        (mean, variance.sqrt())
+        crate::utils::stats::mean_and_sample_std_dev(&log_ikis)
     } else {
         (18.5, 0.5)
     };
@@ -267,22 +264,18 @@ fn extract_window_features(samples: &[SimpleJitterSample]) -> WindowFeatures {
             burst_ikis.push(s.duration_since_last_ns as f64);
         } else {
             if burst_ikis.len() >= 3 {
-                let mean = burst_ikis.iter().sum::<f64>() / burst_ikis.len() as f64;
-                if mean > 0.0 {
-                    let var = burst_ikis.iter().map(|x| (x - mean).powi(2)).sum::<f64>()
-                        / burst_ikis.len() as f64;
-                    burst_cvs.push(var.sqrt() / mean);
+                let cv = crate::utils::stats::coefficient_of_variation(&burst_ikis);
+                if cv > 0.0 {
+                    burst_cvs.push(cv);
                 }
             }
             burst_ikis.clear();
         }
     }
     if burst_ikis.len() >= 3 {
-        let mean = burst_ikis.iter().sum::<f64>() / burst_ikis.len() as f64;
-        if mean > 0.0 {
-            let var = burst_ikis.iter().map(|x| (x - mean).powi(2)).sum::<f64>()
-                / burst_ikis.len() as f64;
-            burst_cvs.push(var.sqrt() / mean);
+        let cv = crate::utils::stats::coefficient_of_variation(&burst_ikis);
+        if cv > 0.0 {
+            burst_cvs.push(cv);
         }
     }
     let burst_speed_cv = if burst_cvs.is_empty() {
@@ -303,17 +296,8 @@ fn extract_window_features(samples: &[SimpleJitterSample]) -> WindowFeatures {
         }
     }
     let post_pause_cv = if post_pause_ikis.len() >= 3 {
-        let mean = post_pause_ikis.iter().sum::<f64>() / post_pause_ikis.len() as f64;
-        if mean > 0.0 {
-            let var = post_pause_ikis
-                .iter()
-                .map(|x| (x - mean).powi(2))
-                .sum::<f64>()
-                / post_pause_ikis.len() as f64;
-            var.sqrt() / mean
-        } else {
-            0.2
-        }
+        let cv = crate::utils::stats::coefficient_of_variation(&post_pause_ikis);
+        if cv > 0.0 { cv } else { 0.2 }
     } else {
         0.2
     };
