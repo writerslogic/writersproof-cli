@@ -236,6 +236,39 @@ pub enum Commands {
         action: ConfigAction,
     },
 
+    /// Detailed forensic analysis
+    Forensics {
+        #[command(subcommand)]
+        action: ForensicsAction,
+    },
+
+    /// Temporal beacon attestation
+    Beacon {
+        #[command(subcommand)]
+        action: BeaconAction,
+    },
+
+    /// Generate WAR (Written Authorship Report)
+    Report {
+        /// Document to report on
+        file: PathBuf,
+        /// Output format (html, json)
+        #[arg(short = 'f', long, default_value = "json")]
+        format: String,
+    },
+
+    /// Manage document snapshots
+    Snapshot {
+        #[command(subcommand)]
+        action: SnapshotAction,
+    },
+
+    /// Manage authorship credentials
+    Credential {
+        #[command(subcommand)]
+        action: CredentialAction,
+    },
+
     /// Display the user manual
     #[command(alias = "manual")]
     Man,
@@ -370,4 +403,90 @@ pub enum AppAction {
         /// Display name or bundle ID
         name: String,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ForensicsAction {
+    /// Detailed forensic breakdown (timing, behavioral, anomalies)
+    Breakdown {
+        /// Document to analyze
+        path: PathBuf,
+    },
+    /// Compute process score (residency, sequence, behavioral)
+    Score {
+        /// Document to score
+        path: PathBuf,
+    },
+    /// Provenance metrics (composition origin, source trust)
+    Provenance {
+        /// Document to analyze
+        path: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum BeaconAction {
+    /// Submit a temporal beacon for a document
+    Submit {
+        /// Document to anchor
+        path: PathBuf,
+        /// Beacon fetch timeout in seconds
+        #[arg(long, default_value = "5", value_parser = clap::value_parser!(u64).range(1..=300))]
+        timeout: u64,
+    },
+    /// Check beacon status for a document
+    Status {
+        /// Document to check
+        path: PathBuf,
+    },
+    /// List all beacons for a document
+    List {
+        /// Document to list beacons for
+        path: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SnapshotAction {
+    /// Save a document snapshot
+    Save {
+        /// Document to snapshot
+        path: PathBuf,
+    },
+    /// List snapshots for a document
+    List {
+        /// Document to list snapshots for
+        path: PathBuf,
+    },
+    /// Get snapshot content by ID
+    Get {
+        /// Snapshot ID
+        id: i64,
+    },
+    /// Diff a snapshot against the current document
+    Diff {
+        /// Snapshot ID to diff
+        id: i64,
+        /// Current document path
+        path: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CredentialAction {
+    /// Create an authorship credential from a tracked session
+    Create {
+        /// Document path
+        path: PathBuf,
+        /// Session ID (from 'cpoe track show')
+        #[arg(long)]
+        session: String,
+    },
+    /// Verify a credential file (hex-encoded CBOR)
+    Verify {
+        /// Credential file to verify
+        file: PathBuf,
+    },
+    /// Show device attestation info
+    Info,
 }

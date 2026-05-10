@@ -9,16 +9,21 @@ use clap::{CommandFactory, Parser};
 
 mod cli;
 mod cmd_attest;
+mod cmd_beacon;
 mod cmd_commit;
 mod cmd_config;
+mod cmd_credential;
 mod cmd_daemon;
 mod cmd_export;
 mod cmd_fingerprint;
+mod cmd_forensics;
 mod cmd_identity;
 mod cmd_init;
 mod cmd_link;
 mod cmd_log;
 mod cmd_presence;
+mod cmd_report;
+mod cmd_snapshot;
 mod cmd_status;
 mod cmd_track;
 mod cmd_verify;
@@ -106,6 +111,11 @@ async fn run() -> Result<()> {
             non_interactive,
         }) => cmd_attest::cmd_attest(&format, input, output, non_interactive, &out)?,
         Some(Commands::Config { action }) => cmd_config::cmd_config(action)?,
+        Some(Commands::Forensics { action }) => cmd_forensics::cmd_forensics(action, &out)?,
+        Some(Commands::Beacon { action }) => cmd_beacon::cmd_beacon(action, &out)?,
+        Some(Commands::Report { file, format }) => cmd_report::cmd_report(&file, &format, &out)?,
+        Some(Commands::Snapshot { action }) => cmd_snapshot::cmd_snapshot(action, &out)?,
+        Some(Commands::Credential { action }) => cmd_credential::cmd_credential(action, &out)?,
         Some(Commands::Completions { shell }) => {
             clap_complete::generate(shell, &mut Cli::command(), "cpoe", &mut std::io::stdout());
         }
@@ -168,6 +178,11 @@ fn maybe_auto_init(cli: &Cli, out: &OutputMode) -> Result<()> {
             | Some(Commands::Fingerprint { .. })
             | Some(Commands::Attest { .. })
             | Some(Commands::Presence { .. })
+            | Some(Commands::Forensics { .. })
+            | Some(Commands::Beacon { .. })
+            | Some(Commands::Report { .. })
+            | Some(Commands::Snapshot { .. })
+            | Some(Commands::Credential { .. })
     ) || cli.path.is_some();
 
     if needs_init {
