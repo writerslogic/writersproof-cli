@@ -249,6 +249,48 @@ pub fn analyze_forensics_ext_with_focus(
             })
             .filter(|&d| d > 0.0)
             .collect();
+        if iki_intervals.len() >= 2 {
+            metrics.typing_metrics =
+                Some(super::types::TypingMetrics::from_iki_ns(&iki_intervals));
+        }
+
+        // Per-type entropy (draft-condrey-rats-pop spec compliance).
+        if iki_intervals.len() >= 10 {
+            // Timing entropy: bin IKIs into 20 log-spaced bins (10ms to 30s).
+            let mut timing_hist = [0usize; 20];
+            for &iki_ns in &iki_intervals {
+                let iki_ms = iki_ns / 1_000_000.0;
+                let bin = if iki_ms <= 0.0 {
+                    0
+                } else {
+                    // Log-space: log2(iki_ms / 10) mapped to [0, 19]
+                    ((iki_ms / 10.0).log2() * 2.0).floor().clamp(0.0, 19.0) as usize
+                };
+                timing_hist[bin] += 1;
+            }
+            metrics.primary.timing_entropy =
+                super::topology::shannon_entropy(&timing_hist);
+
+            // Pause entropy: bin pause durations (IKI >= 1s) into 10 bins.
+            let pause_threshold_ns = 1_000_000_000.0;
+            let pauses: Vec<f64> = iki_intervals
+                .iter()
+                .copied()
+                .filter(|&d| d >= pause_threshold_ns)
+                .collect();
+            if pauses.len() >= 3 {
+                let mut pause_hist = [0usize; 10];
+                for &p in &pauses {
+                    let p_sec = p / 1_000_000_000.0;
+                    // Linear bins: 1-2s, 2-3s, ..., 9-10s, 10s+
+                    let bin = ((p_sec - 1.0).floor() as usize).min(9);
+                    pause_hist[bin] += 1;
+                }
+                metrics.primary.pause_entropy =
+                    super::topology::shannon_entropy(&pause_hist);
+            }
+        }
+
         if iki_intervals.len() >= MIN_IKI_FOR_HURST {
             if let Ok(hurst) = crate::analysis::hurst::compute_hurst_rs(&iki_intervals) {
                 metrics.hurst_exponent = Some(hurst.exponent);

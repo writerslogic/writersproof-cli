@@ -9,7 +9,8 @@ use super::types::{
     Anomaly, AnomalyType, Assessment, CadenceMetrics, FocusMetrics, PrimaryMetrics, RegionData,
     RiskLevel, Severity, SortedEvents, ALERT_THRESHOLD, MIN_EVENTS_FOR_ANALYSIS,
     MIN_EVENTS_FOR_ASSESSMENT, THRESHOLD_GAP_HOURS, THRESHOLD_HIGH_VELOCITY_BPS,
-    THRESHOLD_LOW_ENTROPY, THRESHOLD_MONOTONIC_APPEND,
+    THRESHOLD_LOW_ENTROPY, THRESHOLD_MONOTONIC_APPEND, THRESHOLD_PAUSE_ENTROPY,
+    THRESHOLD_TIMING_ENTROPY,
 };
 use crate::utils::Probability;
 
@@ -89,12 +90,6 @@ const DEEP_PAUSE_REWARD: f64 = 0.05;
 const CROSS_HAND_UNIFORM_THRESHOLD: f64 = 1.1;
 /// Penalty for uniform cross-hand timing.
 const CROSS_HAND_PENALTY: f64 = 0.1;
-/// Penalty for reading pattern detected in focus metrics.
-const FOCUS_READING_PENALTY: f64 = 0.15;
-/// AI app switch count above which penalty applies.
-const FOCUS_AI_SWITCH_THRESHOLD: usize = 3;
-/// Penalty for excessive AI app switches.
-const FOCUS_AI_SWITCH_PENALTY: f64 = 0.1;
 /// Out-of-focus ratio above which penalty applies.
 const FOCUS_OUT_OF_FOCUS_THRESHOLD: f64 = 0.5;
 /// Penalty for excessive out-of-focus time.
@@ -126,9 +121,30 @@ pub fn detect_anomalies(
         anomalies.push(Anomaly {
             timestamp: None,
             anomaly_type: AnomalyType::LowEntropy,
-            description: "Low edit entropy indicates concentrated editing patterns".to_string(),
+            description: "Low revision entropy indicates concentrated editing patterns".to_string(),
             severity: Severity::Warning,
-            context: Some(format!("Entropy: {:.3}", metrics.edit_entropy)),
+            context: Some(format!("Revision entropy: {:.3}", metrics.edit_entropy)),
+        });
+    }
+
+    if metrics.timing_entropy > 0.0 && metrics.timing_entropy < THRESHOLD_TIMING_ENTROPY {
+        anomalies.push(Anomaly {
+            timestamp: None,
+            anomaly_type: AnomalyType::LowEntropy,
+            description: "Low timing entropy: inter-keystroke intervals lack natural variation"
+                .to_string(),
+            severity: Severity::Warning,
+            context: Some(format!("Timing entropy: {:.3}", metrics.timing_entropy)),
+        });
+    }
+
+    if metrics.pause_entropy > 0.0 && metrics.pause_entropy < THRESHOLD_PAUSE_ENTROPY {
+        anomalies.push(Anomaly {
+            timestamp: None,
+            anomaly_type: AnomalyType::LowEntropy,
+            description: "Low pause entropy: pause durations are unnaturally uniform".to_string(),
+            severity: Severity::Warning,
+            context: Some(format!("Pause entropy: {:.3}", metrics.pause_entropy)),
         });
     }
 
@@ -408,12 +424,9 @@ pub fn compute_cadence_score(cadence: &CadenceMetrics) -> f64 {
 /// Call after `compute_assessment_score` when `FocusMetrics` are available.
 pub fn apply_focus_penalties(score: &mut Probability, focus: &FocusMetrics) {
     let mut s = score.get();
-    if focus.reading_pattern_detected {
-        s -= FOCUS_READING_PENALTY;
-    }
-    if focus.ai_app_switch_count > FOCUS_AI_SWITCH_THRESHOLD {
-        s -= FOCUS_AI_SWITCH_PENALTY;
-    }
+    // Delegate reading-pattern and AI-switch penalties to the canonical implementation
+    // in scoring.rs, which applies mid_typing_switch_ratio modulation.
+    s -= super::scoring::compute_focus_penalty(focus);
     if focus.out_of_focus_ratio > FOCUS_OUT_OF_FOCUS_THRESHOLD {
         s -= FOCUS_OUT_OF_FOCUS_PENALTY;
     }

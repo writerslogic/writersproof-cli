@@ -38,10 +38,7 @@ pub const DEFAULT_SESSION_GAP_SEC: f64 = 1800.0;
 pub const THRESHOLD_MONOTONIC_APPEND: f64 = 0.85;
 
 /// Per-type entropy thresholds from draft-condrey-rats-pop-appraisal.
-/// These are NOT yet enforced per-type — the codebase currently only checks
-/// `THRESHOLD_LOW_ENTROPY` as a general floor. Implementing per-type entropy
-/// metrics (timing, revision, pause) and checking each against its own
-/// threshold is a spec compliance gap.
+/// Each is checked against its corresponding metric in assessment.rs.
 pub const THRESHOLD_TIMING_ENTROPY: f64 = 3.0;
 pub const THRESHOLD_REVISION_ENTROPY: f64 = 3.0;
 pub const THRESHOLD_PAUSE_ENTROPY: f64 = 2.0;
@@ -190,7 +187,16 @@ pub struct PrimaryMetrics {
     /// Fraction of edits at document end (>0.95 position).
     pub monotonic_append_ratio: Probability,
     /// Shannon entropy of edit positions (20-bin histogram).
+    /// This is the spec's "revision entropy".
     pub edit_entropy: f64,
+    /// Shannon entropy of inter-keystroke intervals (timing diversity).
+    /// Per draft-condrey-rats-pop; threshold: 3.0 bits.
+    #[serde(default)]
+    pub timing_entropy: f64,
+    /// Shannon entropy of pause durations (pause diversity).
+    /// Per draft-condrey-rats-pop; threshold: 2.0 bits.
+    #[serde(default)]
+    pub pause_entropy: f64,
     /// Median inter-event interval (seconds).
     pub median_interval: f64,
     /// `insertions / (insertions + deletions)`.

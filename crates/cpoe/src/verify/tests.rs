@@ -191,6 +191,8 @@ fn test_verdict_invalid_declaration_caps_to_v2() {
         composition_mode: None,
         likelihood_model: None,
         analysis_status: Default::default(),
+        transcription_suspicion: None,
+        typing_metrics: None,
     };
 
     let v = verdict::compute_verdict(
@@ -303,6 +305,8 @@ fn test_verdict_overlapping_caps_both_apply() {
         composition_mode: None,
         likelihood_model: None,
         analysis_status: Default::default(),
+        transcription_suspicion: None,
+        typing_metrics: None,
     };
 
     let v = verdict::compute_verdict(

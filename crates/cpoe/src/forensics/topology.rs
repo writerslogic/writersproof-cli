@@ -35,6 +35,7 @@ pub fn compute_primary_metrics(
             &all_regions,
         )),
         deletion_clustering: deletion_clustering_coef(&all_regions),
+        ..Default::default()
     };
 
     // Sanitize non-finite values and log when clamping occurs.
@@ -111,7 +112,7 @@ pub fn edit_entropy(regions: &[RegionData], bins: usize) -> f64 {
 }
 
 /// Shannon entropy from a frequency histogram.
-fn shannon_entropy(histogram: &[usize]) -> f64 {
+pub(crate) fn shannon_entropy(histogram: &[usize]) -> f64 {
     let n: usize = histogram.iter().sum();
     if n == 0 {
         return 0.0;
