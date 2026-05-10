@@ -2128,8 +2128,8 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** errors
 - **Files:** `crates/cpoe/src/store/archive.rs:141-206`
-- **Severity:** CRITICAL | **Status:** open
-- **Description:** Archive DB is written first, then the DELETE runs in a separate transaction. NOTE: not yet verified whether ATTACH pattern is implemented. If DELETE fails, the archive file exists but events remain in active DB — data is doubled and the archive is an inconsistent snapshot. Use SQLite `ATTACH` to run both operations in one transaction.
+- **Severity:** CRITICAL | **Status:** fixed 2026-05-10 (verified: uses ATTACH DATABASE + single transaction for atomic INSERT+DELETE; .tmp rename pattern prevents orphans)
+- **Description:** Archive DB is written first, then the DELETE runs in a separate transaction. If DELETE fails, the archive file exists but events remain in active DB — data is doubled and the archive is an inconsistent snapshot. Use SQLite `ATTACH` to run both operations in one transaction.
 - **Fix:** Open archive DB with `ATTACH DATABASE ? AS archive`; run `INSERT INTO archive.events SELECT ... FROM events WHERE ...` + `DELETE FROM events WHERE ...` in one `BEGIN ... COMMIT`. Remove the two-step pattern entirely.
 
 ---
