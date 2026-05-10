@@ -190,6 +190,7 @@ fn test_verdict_invalid_declaration_caps_to_v2() {
         error_ecology: None,
         composition_mode: None,
         likelihood_model: None,
+        analysis_status: Default::default(),
     };
 
     let v = verdict::compute_verdict(
@@ -301,6 +302,7 @@ fn test_verdict_overlapping_caps_both_apply() {
         error_ecology: None,
         composition_mode: None,
         likelihood_model: None,
+        analysis_status: Default::default(),
     };
 
     let v = verdict::compute_verdict(
