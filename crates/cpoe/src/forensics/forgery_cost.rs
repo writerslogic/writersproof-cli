@@ -30,6 +30,10 @@ const ENTANGLEMENT_DURATION_MULTIPLIER: f64 = 2.0;
 /// Boost factor for overall difficulty when hardware-bound components exist.
 const HARDWARE_DIFFICULTY_BOOST: f64 = 100.0;
 
+/// Near-maximum finite f64 representing computationally infeasible cost.
+/// Used instead of f64::INFINITY so the value serializes to valid JSON.
+const INFEASIBLE_COST: f64 = 1e308;
+
 /// Tier threshold: above this (seconds) = High resistance.
 const TIER_HIGH_THRESHOLD_SEC: f64 = 86400.0;
 
@@ -221,7 +225,7 @@ fn compute_hardware_attestation_cost(input: &ForgeryCostInput) -> ComponentCost 
     if input.has_hardware_attestation {
         ComponentCost {
             name: "hardware_attestation".into(),
-            cost_cpu_sec: f64::INFINITY,
+            cost_cpu_sec: INFEASIBLE_COST,
             present: true,
             explanation: "Hardware-bound key; forgery requires physical device access"
                 .into(),
@@ -292,7 +296,7 @@ fn compute_temporal_cost(input: &ForgeryCostInput) -> ComponentCost {
     if input.has_external_time_anchor {
         ComponentCost {
             name: "external_time_anchor".into(),
-            cost_cpu_sec: f64::INFINITY,
+            cost_cpu_sec: INFEASIBLE_COST,
             present: true,
             explanation: "RFC3161/Roughtime timestamp; adversary cannot backdate"
                 .into(),
@@ -344,12 +348,9 @@ fn aggregate_costs(
         .iter()
         .any(|c| c.present && c.cost_cpu_sec.is_infinite());
 
-    // Use a near-max but finite value for hardware-attestation difficulty so
-    // the result serializes to valid JSON (Infinity serializes as null or errors).
-    const HARDWARE_ATTESTATION_DIFFICULTY: f64 = 1e308;
     let overall_difficulty = if finite_costs.is_empty() {
         if has_infinite {
-            HARDWARE_ATTESTATION_DIFFICULTY
+            INFEASIBLE_COST
         } else {
             0.0
         }
@@ -385,7 +386,7 @@ fn aggregate_costs(
         .map(|c| c.name.clone());
 
     let estimated_forge_time_sec = if has_infinite {
-        f64::INFINITY
+        INFEASIBLE_COST
     } else {
         components
             .iter()
