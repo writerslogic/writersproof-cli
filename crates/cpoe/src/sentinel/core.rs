@@ -1471,6 +1471,14 @@ impl EventLoopCtx {
             session.jitter_hash_state = h.finalize().into();
         }
 
+        // Periodically assess transcription suspicion (every 100 keystrokes).
+        if session.keystroke_count % 100 == 0 && session.jitter_samples.len() >= 20 {
+            session.transcription_suspicion =
+                crate::forensics::error_ecology::assess_transcription_suspicion(
+                    &session.jitter_samples,
+                );
+        }
+
         if let Some(ref tpm) = self.tpm_provider {
             if session.hw_cosign_scheduler.is_none() {
                 match crate::evidence::hw_cosign::HwCosignScheduler::with_defaults(
@@ -1634,6 +1642,7 @@ impl EventLoopCtx {
         {
             let project_uuid =
                 map.uuid_to_title.keys().next().cloned();
+            // AUD-041: sessions(2) before cached_store(3).
             let mut sessions_map = self.sessions.write_recover();
             if let Some(session) = sessions_map.get_mut(path) {
                 if session.segment_counts.is_empty() {
@@ -1878,12 +1887,35 @@ impl EventLoopCtx {
 
     /// Commit checkpoints for all sessions with pending keystrokes.
     async fn handle_checkpoint_tick(&self) {
+        static TICK_COUNTER: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        let tick = TICK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let candidates: Vec<String> = {
             let map = self.sessions.read_recover();
             map.iter()
                 .filter(|(p, s)| {
                     s.keystroke_count > s.last_checkpoint_keystrokes
                         && !p.starts_with("shadow://")
+                })
+                .filter(|(_, s)| {
+                    // Transcription suspicion: always checkpoint (never skip).
+                    // Aggressive evidence collection for suspicious sessions.
+                    if s.transcription_suspicion.is_suspicious {
+                        return true;
+                    }
+                    // Use ecology score to derive cognitive mode and apply
+                    // checkpoint_interval_multiplier:
+                    //   Creative (>0.6)      → 1.5x → skip every 3rd tick
+                    //   Editing (0.3-0.6)    → 1.0x → every tick
+                    //   Transcription (<0.3) → 0.5x → handled above (always true)
+                    if s.transcription_suspicion.sample_count >= 20
+                        && s.transcription_suspicion.ecology_score > 0.6
+                    {
+                        // 1.5x multiplier: skip every 3rd tick
+                        return tick % 3 != 0;
+                    }
+                    true
                 })
                 .map(|(p, _)| p.clone())
                 .collect()
@@ -1923,17 +1955,46 @@ impl EventLoopCtx {
         let cp_dir = self.writersproof_dir.clone();
         let nonce_for_closure = challenge_nonce.clone();
         let cp_stop = Arc::clone(&self.stopping_flag);
-        let semantic_json = {
+        let (semantic_json, checkpoint_reason) = {
             let map = self.sessions.read_recover();
-            map.get(path).and_then(|s| {
+            let sem = map.get(path).and_then(|s| {
                 serde_json::to_string(&s.semantic_counts).ok()
-            })
+            });
+            // Build checkpoint reason with forensic context from session state.
+            let reason = if let Some(s) = map.get(path) {
+                let mut parts = vec!["Auto-checkpoint".to_string()];
+                if s.transcription_suspicion.is_suspicious {
+                    parts.push(format!(
+                        "[transcription-flagged: correction_ratio={:.2}%, ecology={:.2}]",
+                        s.transcription_suspicion.unexplained_correction_ratio * 100.0,
+                        s.transcription_suspicion.ecology_score,
+                    ));
+                }
+                if s.transcription_suspicion.sample_count >= 20 {
+                    let multiplier: f64 = if s.transcription_suspicion.ecology_score > 0.7 {
+                        1.5
+                    } else if s.transcription_suspicion.ecology_score < 0.3 {
+                        0.5
+                    } else {
+                        1.0
+                    };
+                    if (multiplier - 1.0).abs() > f64::EPSILON {
+                        parts.push(format!(
+                            "[interval-multiplier: {multiplier:.1}x]"
+                        ));
+                    }
+                }
+                parts.join(" ")
+            } else {
+                "Auto-checkpoint".to_string()
+            };
+            (sem, reason)
         };
         let sessions_ref = &self.sessions;
         let committed = tokio::task::spawn_blocking(move || {
             super::helpers::commit_checkpoint_for_path_with_semantics(
                 &cp_path,
-                "Auto-checkpoint",
+                &checkpoint_reason,
                 &cp_key,
                 &cp_dir,
                 &nonce_for_closure,

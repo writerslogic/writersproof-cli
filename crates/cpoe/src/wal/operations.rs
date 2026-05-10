@@ -143,7 +143,14 @@ impl Wal {
                 // write_all succeeded but sync failed: the entry may or may not
                 // reach disk. Mark inconsistent so subsequent appends are rejected
                 // rather than building a hash chain on uncertain durability.
+                // Recovery: call try_recover() to re-validate and clear the flag
+                // if all on-disk entries are intact.
                 state.inconsistent = true;
+                log::error!(
+                    "WAL sync_data failed; WAL marked inconsistent. \
+                     Call try_recover() to attempt non-destructive recovery \
+                     if the I/O failure was transient: {e}"
+                );
                 return Err(WalError::Io(e));
             }
             state.pending_syncs = 0;

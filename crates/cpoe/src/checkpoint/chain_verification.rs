@@ -132,6 +132,12 @@ impl Chain {
                         "checkpoint 0: invalid genesis previous_hash",
                     ));
                 }
+                if is_legacy_genesis && !is_spec_genesis {
+                    log::warn!(
+                        "checkpoint 0: accepting legacy all-zeros genesis prev_hash \
+                         (chain predates spec-correct H(document-ref) computation)"
+                    );
+                }
             }
         }
         Ok(())
@@ -213,6 +219,16 @@ impl Chain {
                 if !is_spec_genesis && !is_legacy_genesis {
                     report.fail("checkpoint 0: invalid genesis prev-hash".into());
                     return report;
+                }
+                if is_legacy_genesis && !is_spec_genesis {
+                    log::warn!(
+                        "checkpoint 0: accepting legacy all-zeros genesis prev_hash \
+                         (chain predates spec-correct H(document-ref) computation)"
+                    );
+                    report.warnings.push(
+                        "checkpoint 0: legacy all-zeros genesis prev_hash accepted"
+                            .to_string(),
+                    );
                 }
             }
 
