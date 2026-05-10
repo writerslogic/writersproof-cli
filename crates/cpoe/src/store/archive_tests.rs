@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use super::*;
-use crate::store::archive::ArchiveResult;
 use crate::DateTimeNanosExt;
 use tempfile::TempDir;
 

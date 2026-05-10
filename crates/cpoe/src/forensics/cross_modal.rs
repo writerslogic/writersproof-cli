@@ -551,7 +551,7 @@ mod tests {
         // 1 jitter sample for a 10,000-char document = 0.1/kchar, below 0.5 threshold
         let events = make_events(50, 1_000_000_000, 1_000_000_000);
         let jitter = make_jitter(1, 1_000_000_000, 250_000_000);
-        let input = CrossModalInput {
+        let _input = CrossModalInput {
             events: &events,
             jitter_samples: Some(&jitter),
             document_length: 10_000,

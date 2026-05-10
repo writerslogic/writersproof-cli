@@ -379,7 +379,7 @@ mod tests {
 
         // Add keystrokes with identical inter-keystroke intervals (100ms)
         let mut timestamp = 0i64;
-        for i in 0..20 {
+        for _i in 0..20 {
             samples.push_back(KeystrokeSample {
                 timestamp_ns: timestamp,
                 key_code: 65,
@@ -388,7 +388,7 @@ mod tests {
             timestamp += 100_000_000; // 100ms intervals
         }
 
-        let (entropy, assessment) = validator.measure_entropy(&samples);
+        let (_entropy, assessment) = validator.measure_entropy(&samples);
         assert_eq!(assessment, EntropyAssessment::Critical);
     }
 

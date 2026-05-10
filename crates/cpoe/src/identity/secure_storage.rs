@@ -6,6 +6,7 @@ use base64::{engine::general_purpose, Engine as _};
 use keyring::Entry;
 use std::collections::HashMap;
 #[cfg_attr(not(target_os = "macos"), allow(unused_imports))]
+#[cfg_attr(test, allow(unused_imports))]
 use std::sync::{Mutex, Once, OnceLock};
 use zeroize::{Zeroize, Zeroizing};
 

@@ -1530,7 +1530,7 @@ fn test_mac_sidecar_legacy_fallback() {
 fn test_batch_verifier_no_silent_panics() {
     use crate::vdf::Parameters;
 
-    let params = Parameters {
+    let _params = Parameters {
         iterations_per_second: 1000,
         min_iterations: 10,
         max_iterations: 100_000,

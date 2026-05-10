@@ -266,6 +266,7 @@ pub fn analyze_error_ecology(samples: &[SimpleJitterSample]) -> Option<ErrorEcol
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     fn make_sample(zone: u8, iki_ms: u64) -> SimpleJitterSample {
         SimpleJitterSample {
             duration_since_last_ns: iki_ms * 1_000_000,

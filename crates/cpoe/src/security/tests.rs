@@ -153,7 +153,7 @@ mod integration_tests {
 
         // Keystrokes before sleep
         let mut timestamp = now_ms - 5000;
-        for i in 0..5 {
+        for _i in 0..5 {
             events.push_back(KeystrokeEvent {
                 timestamp_ms: timestamp,
                 key_code: 65,
@@ -167,7 +167,7 @@ mod integration_tests {
         timestamp += 3000;
 
         // Keystrokes after sleep with identical timing (suspicious)
-        for i in 0..5 {
+        for _i in 0..5 {
             events.push_back(KeystrokeEvent {
                 timestamp_ms: timestamp,
                 key_code: 65,

@@ -19,6 +19,7 @@ fn create_test_events(count: usize) -> Vec<EventData> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn make_checkpoint_proof(ordinal: u64, timestamp_ns: i64) -> crate::evidence::CheckpointProof {
     crate::evidence::CheckpointProof {
         ordinal,
