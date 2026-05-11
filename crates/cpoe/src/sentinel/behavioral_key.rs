@@ -116,3 +116,9 @@ impl BehavioralKey {
         self.entropy_pool.zeroize();
     }
 }
+
+impl Drop for BehavioralKey {
+    fn drop(&mut self) {
+        self.reset();
+    }
+}

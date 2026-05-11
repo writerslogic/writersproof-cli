@@ -223,6 +223,8 @@ impl SecureSession {
 impl Drop for SecureSession {
     fn drop(&mut self) {
         self.key_bytes.zeroize();
+        self.tx_nonce_prefix.zeroize();
+        self.rx_nonce_prefix.zeroize();
     }
 }
 

@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 use crate::keyhierarchy::KeyHierarchyError;
 use crate::tpm::TpmError;
@@ -51,6 +52,12 @@ pub(crate) struct SealedBlob {
     /// HMAC-SHA256 over all other fields, keyed from machine_salt.
     #[serde(default)]
     pub integrity_hmac: Option<Vec<u8>>,
+}
+
+impl Drop for SealedBlob {
+    fn drop(&mut self) {
+        self.sealed_seed.zeroize();
+    }
 }
 
 pub const SEALED_BLOB_VERSION: u32 = 1;
