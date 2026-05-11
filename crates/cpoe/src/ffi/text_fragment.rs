@@ -251,22 +251,11 @@ pub fn ffi_text_fragment_store(
     drop(signing_key);
 
     let fragment = TextFragment {
-        id: None,
-        fragment_hash: fragment_hash.to_vec(),
-        session_id,
         source_app_bundle_id: Some(app_bundle_id).filter(|s| !s.is_empty()),
         source_window_title: Some(window_title).filter(|s| !s.is_empty()),
-        source_signature: signature.to_vec(),
-        nonce: nonce.to_vec(),
-        timestamp,
         keystroke_context: Some(context),
         keystroke_confidence: Some(confidence),
-        keystroke_sequence_hash: None,
-        source_session_id: None,
-        source_evidence_packet: None,
-        wal_entry_hash: None,
-        cloudkit_record_id: None,
-        sync_state: None,
+        ..TextFragment::new(fragment_hash.to_vec(), session_id, signature.to_vec(), nonce.to_vec(), timestamp)
     };
 
     let mut store = try_ffi!(open_store(), FfiTextFragmentStoreResult);
@@ -430,22 +419,12 @@ pub fn ffi_sentinel_record_paste(
             drop(signing_key);
 
             let fragment = TextFragment {
-                id: None,
-                fragment_hash: text_hash.to_vec(),
-                session_id: session.session_id.clone(),
                 source_app_bundle_id: Some(app_bundle_id).filter(|s| !s.is_empty()),
                 source_window_title: Some(window_title).filter(|s| !s.is_empty()),
-                source_signature: signature.to_vec(),
-                nonce: nonce.to_vec(),
-                timestamp: timestamp_ms,
                 keystroke_context: Some(KeystrokeContext::PastedContent),
                 keystroke_confidence: Some(detection_confidence.clamp(0.0, 1.0)),
-                keystroke_sequence_hash: None,
                 source_session_id: matched_session_id.clone(),
-                source_evidence_packet: None,
-                wal_entry_hash: None,
-                cloudkit_record_id: None,
-                sync_state: None,
+                ..TextFragment::new(text_hash.to_vec(), session.session_id.clone(), signature.to_vec(), nonce.to_vec(), timestamp_ms)
             };
 
             if let Err(e) = store.insert_text_fragment(&fragment) {
@@ -528,22 +507,9 @@ pub fn ffi_attest_text(
     drop(signing_key);
 
     let fragment = TextFragment {
-        id: None,
-        fragment_hash: fragment_hash.to_vec(),
-        session_id,
         source_app_bundle_id: Some(app_bundle_id).filter(|s| !s.is_empty()),
         source_window_title: Some(window_title).filter(|s| !s.is_empty()),
-        source_signature: signature.to_vec(),
-        nonce: nonce.to_vec(),
-        timestamp,
-        keystroke_context: None,
-        keystroke_confidence: None,
-        keystroke_sequence_hash: None,
-        source_session_id: None,
-        source_evidence_packet: None,
-        wal_entry_hash: None,
-        cloudkit_record_id: None,
-        sync_state: None,
+        ..TextFragment::new(fragment_hash.to_vec(), session_id, signature.to_vec(), nonce.to_vec(), timestamp)
     };
 
     let mut store = try_ffi!(open_store(), FfiAttestTextResult);
@@ -605,22 +571,8 @@ pub fn store_attestation_from_hash(content_hash: &str, app_bundle_id: &str) -> R
     drop(signing_key);
 
     let fragment = TextFragment {
-        id: None,
-        fragment_hash: hash_bytes,
-        session_id,
         source_app_bundle_id: Some(app_bundle_id.to_string()).filter(|s| !s.is_empty()),
-        source_window_title: None,
-        source_signature: signature.to_vec(),
-        nonce: nonce.to_vec(),
-        timestamp,
-        keystroke_context: None,
-        keystroke_confidence: None,
-        keystroke_sequence_hash: None,
-        source_session_id: None,
-        source_evidence_packet: None,
-        wal_entry_hash: None,
-        cloudkit_record_id: None,
-        sync_state: None,
+        ..TextFragment::new(hash_bytes, session_id, signature.to_vec(), nonce.to_vec(), timestamp)
     };
 
     let mut store = open_store().map_err(|e| e.to_string())?;
@@ -807,22 +759,13 @@ pub fn ffi_apply_remote_fragment(
     let confidence = keystroke_confidence.map(|c| c.clamp(0.0, 1.0));
 
     let fragment = TextFragment {
-        id: None,
-        fragment_hash: fragment_hash.clone(),
-        session_id,
         source_app_bundle_id,
         source_window_title,
-        source_signature,
-        nonce,
-        timestamp: timestamp_ms,
         keystroke_context: context,
         keystroke_confidence: confidence,
-        keystroke_sequence_hash: None,
-        source_session_id: None,
-        source_evidence_packet: None,
-        wal_entry_hash: None,
         cloudkit_record_id,
         sync_state: Some("synced".to_string()),
+        ..TextFragment::new(fragment_hash.clone(), session_id, source_signature, nonce, timestamp_ms)
     };
 
     let mut store = try_ffi!(open_store(), FfiTextFragmentStoreResult);
@@ -887,22 +830,8 @@ pub fn ffi_resolve_sync_conflict(
             _ => return FfiSyncResult::err("Remote timestamp required for KeepRemote/KeepNewest"),
         };
         Some(TextFragment {
-            id: None,
-            fragment_hash: hash,
-            session_id: sid,
-            source_app_bundle_id: None,
-            source_window_title: None,
-            source_signature: sig,
-            nonce,
-            timestamp: ts,
-            keystroke_context: None,
-            keystroke_confidence: None,
-            keystroke_sequence_hash: None,
-            source_session_id: None,
-            source_evidence_packet: None,
-            wal_entry_hash: None,
             cloudkit_record_id: remote_cloudkit_record_id,
-            sync_state: None,
+            ..TextFragment::new(hash, sid, sig, nonce, ts)
         })
     } else {
         None

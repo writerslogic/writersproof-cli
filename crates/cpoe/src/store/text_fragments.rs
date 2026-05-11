@@ -61,6 +61,36 @@ pub struct TextFragment {
     pub sync_state: Option<String>,
 }
 
+impl TextFragment {
+    /// Create a new fragment with required fields; all optional fields default to `None`.
+    pub fn new(
+        fragment_hash: Vec<u8>,
+        session_id: String,
+        source_signature: Vec<u8>,
+        nonce: Vec<u8>,
+        timestamp: i64,
+    ) -> Self {
+        Self {
+            id: None,
+            fragment_hash,
+            session_id,
+            source_app_bundle_id: None,
+            source_window_title: None,
+            source_signature,
+            nonce,
+            timestamp,
+            keystroke_context: None,
+            keystroke_confidence: None,
+            keystroke_sequence_hash: None,
+            source_session_id: None,
+            source_evidence_packet: None,
+            wal_entry_hash: None,
+            cloudkit_record_id: None,
+            sync_state: None,
+        }
+    }
+}
+
 impl SecureStore {
     /// Deserialize a row into a `TextFragment`.
     /// The SELECT must return columns in the canonical order:
