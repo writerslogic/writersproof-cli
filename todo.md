@@ -2398,7 +2398,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** maintainability
 - **Files:** `crates/cpoe/src/fingerprint/activity_analysis.rs`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: already split into 8 submodules in prior session)
 - **Description:** 1603-line file implements 10+ distribution types. Highest-churn area of fingerprint module. Hard to audit, test, and maintain.
 - **Fix:** Split into: `iki_analysis.rs` (IKI/interval stats), `zone_analysis.rs` (keyboard zone profiles), `pause_analysis.rs` (pause signatures), `session_analysis.rs` (SessionSignature, CircadianPattern), `distribution_helpers.rs` (shared stats utilities: percentile, pearson, etc.). Keep `mod.rs` as re-exports only.
 
@@ -2630,6 +2630,6 @@ pub enum SecureChannelSendError {
 
 - **Model:** Opus | **Scope:** architecture
 - **Files:** `crates/cpoe/src/sentinel/core.rs:519-1451`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (extracted EventLoopCtx + 19 handlers into event_handlers.rs; core.rs 2481→1198 lines)
 - **Description:** The entire event loop is a single closure with tokio::select! branches for keystroke, mouse, focus, idle, checkpoint, and permission handling. 8+ levels of nesting. Maintenance cost is extreme (22 changes in 6 months).
 - **Fix:** Extract each select! branch into a dedicated handler method: `handle_keystroke()`, `handle_checkpoint_tick()`, `handle_idle_check()`, etc. Keep event loop as thin dispatcher.
