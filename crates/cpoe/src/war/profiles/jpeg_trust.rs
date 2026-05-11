@@ -6,6 +6,8 @@
 //! trustworthiness assessment. CPoE's WAR block maps to a JPEG Trust
 //! Report, providing process-level evidence as a trust indicator.
 
+use std::sync::OnceLock;
+
 use serde::{Deserialize, Serialize};
 
 /// JPEG Trust profile describing trust indicators for a media asset.
@@ -37,7 +39,10 @@ pub struct TrustIndicator {
 /// Returns a profile with three trust indicators covering behavioral
 /// process evidence, cryptographic identity binding, and temporal proof
 /// via VDF and checkpoint chains.
-pub fn cpop_trust_profile() -> JpegTrustProfile {
+static CPOP_PROFILE: OnceLock<JpegTrustProfile> = OnceLock::new();
+
+pub fn cpop_trust_profile() -> &'static JpegTrustProfile {
+    CPOP_PROFILE.get_or_init(|| {
     JpegTrustProfile {
         profile_id: "cpoe-pop-attestation-v1".into(),
         profile_name: "CPoE Proof-of-Process Attestation".into(),
@@ -68,7 +73,7 @@ pub fn cpop_trust_profile() -> JpegTrustProfile {
             },
         ],
     }
-}
+    })
 
 #[cfg(test)]
 mod tests {

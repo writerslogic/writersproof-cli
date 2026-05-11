@@ -35,7 +35,7 @@ impl EvidenceSigner for ProviderSigner<'_> {
 }
 
 use super::cawg::{
-    to_cawg_identity, to_cawg_tdm, CawgIdentityAssertion, CawgTdmAssertion,
+    to_cawg_identity_enriched, to_cawg_tdm, CawgIdentityAssertion, CawgTdmAssertion,
 };
 use super::eu_ai_act::Article50Compliance;
 use super::jpeg_trust::{cpop_trust_profile, JpegTrustProfile};
@@ -64,7 +64,7 @@ pub struct CredentialPackage {
     /// EU AI Act Article 50 compliance metadata (present when declaration provided).
     pub eu_ai_act: Option<Article50Compliance>,
     /// JPEG Trust profile (always present).
-    pub jpeg_trust: JpegTrustProfile,
+    pub jpeg_trust: &'static JpegTrustProfile,
     /// Multi-standard compliance report (NIST, ISO, IPTC, WGA, RATS).
     pub standards_report: StandardsComplianceReport,
     /// C2PA manifest as JUMBF bytes (present when evidence bytes provided).
@@ -170,13 +170,8 @@ impl CredentialPackageBuilder {
         let vc_hash: [u8; 32] = Sha256::digest(vc_json.as_bytes()).into();
 
         // 4. CAWG Identity Assertion (enriched with entropy/forensic claims)
-        let mut cawg_identity = to_cawg_identity(&self.ear, &self.author_did)?;
-        // Sign via the TPM provider's raw sign interface
-        let cawg_payload = serde_json::to_vec(&cawg_identity.signer_payload)
-            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
-        cawg_identity.signature = signer
-            .sign(&cawg_payload)
-            .map_err(|e| Error::crypto(format!("CAWG signing failed: {e}")))?;
+        let mut cawg_identity = to_cawg_identity_enriched(&self.ear, &self.author_did)?;
+        cawg_identity.sign_cose(signer)?;
 
         // 5. CAWG TDM + EU AI Act (require declaration)
         let cawg_tdm = self.declaration.as_ref().map(to_cawg_tdm);
@@ -375,7 +370,7 @@ pub fn verify_credential_package(
     };
 
     // 4. Verify CAWG COSE_Sign1 signature
-    let cawg_signature_valid = package.cawg_identity.verify(&vk).is_ok();
+    let cawg_signature_valid = package.cawg_identity.verify_cose(&vk).is_ok();
 
     // 5. Verify C2PA manifest (if present)
     let (c2pa_structure_valid, c2pa_signature_valid) =

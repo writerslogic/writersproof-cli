@@ -17,6 +17,8 @@
 //! - W3C AI Content Disclosure (proposed)
 //! - WGA MBA / SAG-AFTRA AI provisions (creative rights)
 
+use std::sync::OnceLock;
+
 use serde::{Deserialize, Serialize};
 
 use crate::declaration::{AiExtent, Declaration};
@@ -109,7 +111,10 @@ pub struct NistSubcategory {
 }
 
 /// Generate the NIST AI RMF mapping for a CPoE evidence packet.
-pub fn nist_rmf_mapping() -> NistRmfMapping {
+static NIST_RMF: OnceLock<NistRmfMapping> = OnceLock::new();
+
+pub fn nist_rmf_mapping() -> &'static NistRmfMapping {
+    NIST_RMF.get_or_init(|| {
     NistRmfMapping {
         subcategories: vec![
             NistSubcategory {
@@ -157,10 +162,13 @@ pub struct Iso42001Control {
     pub id: String,
     pub topic: String,
     pub cpop_coverage: String,
-}
+    })
 
 /// Generate the ISO 42001 mapping for CPoE.
-pub fn iso_42001_mapping() -> Iso42001Mapping {
+static ISO_42001: OnceLock<Iso42001Mapping> = OnceLock::new();
+
+pub fn iso_42001_mapping() -> &'static Iso42001Mapping {
+    ISO_42001.get_or_init(|| {
     Iso42001Mapping {
         controls: vec![
             Iso42001Control {
@@ -185,7 +193,7 @@ pub fn iso_42001_mapping() -> Iso42001Mapping {
             },
         ],
     }
-}
+    })
 
 // ---------------------------------------------------------------------------
 // WGA MBA / SAG-AFTRA creative rights compliance
@@ -356,8 +364,8 @@ pub fn standards_compliance_report(
         iptc_digital_source_type: ai_disclosure.to_iptc_digital_source_type().to_string(),
         c2pa_assertion_label: super::c2pa::ASSERTION_LABEL.to_string(),
         creative_rights,
-        nist_rmf: nist_rmf_mapping(),
-        iso_42001: iso_42001_mapping(),
+        nist_rmf: nist_rmf_mapping().clone(),
+        iso_42001: iso_42001_mapping().clone(),
     }
 }
 

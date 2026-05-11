@@ -11,10 +11,12 @@
 //! - **Training and Data Mining Assertion v1.1**: projects a CPoE declaration
 //!   into a `cawg.training-mining` assertion with per-use-type permissions.
 
+use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::declaration::{AiExtent, Declaration};
 use crate::error::{Error, Result};
+use crate::tpm;
 use crate::war::ear::EarToken;
 use ed25519_dalek::Signer as _;
 
@@ -137,6 +139,105 @@ pub fn to_cawg_identity(ear: &EarToken, author_did: &str) -> Result<CawgIdentity
     })
 }
 
+
+/// Build a CAWG identity assertion enriched with entropy and forensic claims.
+pub fn to_cawg_identity_enriched(
+    ear: &EarToken,
+    author_did: &str,
+) -> Result<CawgIdentityAssertion> {
+    let mut assertion = to_cawg_identity(ear, author_did)?;
+    if let CawgCredential::Ica { ref mut claims, .. } = assertion.signer_payload.credential {
+        if let Some(appr) = ear.pop_appraisal() {
+            if let Some(entropy) = &appr.pop_entropy_report {
+                claims.push(CawgIdentityClaim {
+                    claim_type: "entropy_timing_bits".to_string(),
+                    value: format!("{:.2}", entropy.timing_entropy),
+                });
+                claims.push(CawgIdentityClaim {
+                    claim_type: "entropy_revision_bits".to_string(),
+                    value: format!("{:.2}", entropy.revision_entropy),
+                });
+            }
+            if let Some(forensic) = &appr.pop_forensic_summary {
+                claims.push(CawgIdentityClaim {
+                    claim_type: "forensic_flags_ratio".to_string(),
+                    value: format!("{}/{}", forensic.flags_triggered, forensic.flags_evaluated),
+                });
+            }
+            if let Some(forgery) = &appr.pop_forgery_cost {
+                claims.push(CawgIdentityClaim {
+                    claim_type: "forgery_cost_total".to_string(),
+                    value: format!("{:.2}", forgery.c_total),
+                });
+            }
+        }
+    }
+    Ok(assertion)
+
+    /// Sign the signer payload with COSE_Sign1.
+    pub fn sign_cose(&mut self, signer: &dyn tpm::Provider) -> Result<()> {
+        let payload_json = serde_json::to_vec(&self.signer_payload)
+            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
+        let mut payload_cbor = Vec::new();
+        ciborium::into_writer(&payload_json, &mut payload_cbor)
+            .map_err(|e| Error::crypto(format!("CAWG CBOR encode error: {e}")))?;
+        let protected = HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .content_type(COSE_CAWG_IDENTITY_CONTENT_TYPE.to_string())
+            .build();
+        let mut sign_error: Option<Error> = None;
+        let sign1 = CoseSign1Builder::new()
+            .protected(protected)
+            .payload(payload_cbor)
+            .create_signature(&[], |sig_data| match signer.sign(sig_data) {
+                Ok(sig) => sig,
+                Err(e) => {
+                    sign_error = Some(Error::crypto(format!("CAWG COSE sign error: {e}")));
+                    Vec::new()
+                }
+            })
+            .build();
+        if let Some(e) = sign_error {
+            return Err(e);
+        }
+        if sign1.signature.is_empty() {
+            return Err(Error::crypto("CAWG COSE signing produced empty signature"));
+        }
+        self.signature = sign1
+            .to_vec()
+            .map_err(|e| Error::crypto(format!("CAWG COSE encoding error: {e}")))?;
+        Ok(())
+    }
+
+    /// Verify the COSE_Sign1 signature against the provided public key.
+    pub fn verify_cose(&self, verifying_key: &ed25519_dalek::VerifyingKey) -> Result<()> {
+        if self.signature.is_empty() {
+            return Err(Error::evidence("CAWG identity assertion is unsigned"));
+        }
+        let sign1 = coset::CoseSign1::from_slice(&self.signature)
+            .map_err(|e| Error::crypto(format!("CAWG COSE decode error: {e}")))?;
+        let payload_json = serde_json::to_vec(&self.signer_payload)
+            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
+        let mut expected_cbor = Vec::new();
+        ciborium::into_writer(&payload_json, &mut expected_cbor)
+            .map_err(|e| Error::crypto(format!("CAWG CBOR encode error: {e}")))?;
+        let actual_payload = sign1.payload.as_ref()
+            .ok_or_else(|| Error::crypto("CAWG COSE missing payload"))?;
+        if actual_payload != &expected_cbor {
+            return Err(Error::evidence("CAWG COSE payload mismatch"));
+        }
+        let sig_data = sign1.tbs_data(&[]);
+        let sig_bytes: [u8; 64] = sign1.signature.as_slice().try_into()
+            .map_err(|_| Error::evidence("CAWG COSE signature must be 64 bytes"))?;
+        let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
+        verifying_key.verify_strict(&sig_data, &sig)
+            .map_err(|e| Error::evidence(format!("CAWG COSE signature verification failed: {e}")))
+    }
+
+}
+
+const COSE_CAWG_IDENTITY_CONTENT_TYPE: &str = "application/cawg.identity";
+
 impl CawgIdentityAssertion {
     /// Sign the signer payload with the given Ed25519 key, populating `self.signature`.
     pub fn sign(&mut self, signing_key: &ed25519_dalek::SigningKey) -> Result<()> {
@@ -190,6 +291,9 @@ pub struct CawgTdmEntry {
     /// Optional constraint information when permission is "constrained".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub constraint_info: Option<String>,
+    /// URI to the constraint policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constraint_uri: Option<String>,
 }
 
 /// Build a CAWG TDM assertion from a CPoE declaration.
@@ -211,16 +315,19 @@ pub fn to_cawg_tdm(decl: &Declaration) -> CawgTdmAssertion {
                 use_type: "cawg.data_mining".to_string(),
                 permission: "allowed".to_string(),
                 constraint_info: None,
+                constraint_uri: None,
             },
             CawgTdmEntry {
                 use_type: "cawg.ai_inference".to_string(),
                 permission: "allowed".to_string(),
                 constraint_info: None,
+                constraint_uri: None,
             },
             CawgTdmEntry {
                 use_type: "cawg.ai_generative_training".to_string(),
                 permission: "notAllowed".to_string(),
                 constraint_info: None,
+                constraint_uri: None,
             },
             CawgTdmEntry {
                 use_type: "cawg.ai_training".to_string(),
@@ -228,6 +335,7 @@ pub fn to_cawg_tdm(decl: &Declaration) -> CawgTdmAssertion {
                 constraint_info: Some(
                     "Human-authored content; generative training requires explicit license."
                         .to_string(),
+                constraint_uri: None,
                 ),
             },
         ]
@@ -237,21 +345,25 @@ pub fn to_cawg_tdm(decl: &Declaration) -> CawgTdmAssertion {
                 use_type: "cawg.data_mining".to_string(),
                 permission: "allowed".to_string(),
                 constraint_info: None,
+                constraint_uri: None,
             },
             CawgTdmEntry {
                 use_type: "cawg.ai_inference".to_string(),
                 permission: "allowed".to_string(),
                 constraint_info: None,
+                constraint_uri: None,
             },
             CawgTdmEntry {
                 use_type: "cawg.ai_generative_training".to_string(),
                 permission: "allowed".to_string(),
                 constraint_info: None,
+                constraint_uri: None,
             },
             CawgTdmEntry {
                 use_type: "cawg.ai_training".to_string(),
                 permission: "allowed".to_string(),
                 constraint_info: None,
+                constraint_uri: None,
             },
         ]
     };
