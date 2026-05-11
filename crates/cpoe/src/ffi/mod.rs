@@ -19,6 +19,7 @@ pub mod forensics;
 pub mod forensics_detail;
 pub mod helpers;
 pub mod report;
+pub mod report_dimensions;
 pub mod report_types;
 pub mod sentinel;
 pub mod sentinel_config;
