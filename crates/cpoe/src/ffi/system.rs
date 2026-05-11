@@ -5,8 +5,6 @@ use crate::ffi::types::{
     catch_ffi_panic, FfiActivityPoint, FfiDashboardMetrics, FfiEngineVersion, FfiLogEntry,
     FfiResult, FfiStatus, FfiTrackedFile,
 };
-use crate::DateTimeNanosExt;
-
 /// Maximum number of tracked files returned via FFI (prevents unbounded allocations).
 const FFI_MAX_TRACKED_FILES: usize = 50_000;
 /// Maximum number of log entries returned for a single file via FFI.

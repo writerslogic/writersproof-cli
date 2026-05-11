@@ -17,7 +17,9 @@ use crate::RwLockRecover;
 /// automatically via `CfGuard` when this struct is dropped.
 struct MouseTapResources {
     run_loop: *mut std::ffi::c_void,
+    #[allow(dead_code)] // Held for RAII release via CfGuard::Drop
     tap: CfGuard,
+    #[allow(dead_code)] // Held for RAII release via CfGuard::Drop
     source: CfGuard,
 }
 unsafe impl Send for MouseTapResources {}

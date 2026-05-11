@@ -72,7 +72,9 @@ unsafe impl Sync for RunLoopHandle {}
 /// via `CfGuard` when this struct is dropped after the run loop has exited.
 struct EventTapResources {
     run_loop: *mut std::ffi::c_void,
+    #[allow(dead_code)] // Held for RAII release via CfGuard::Drop
     tap: CfGuard,
+    #[allow(dead_code)] // Held for RAII release via CfGuard::Drop
     source: CfGuard,
 }
 // SAFETY: EventTapResources is only accessed under a Mutex. The CF objects it

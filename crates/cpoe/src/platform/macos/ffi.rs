@@ -82,6 +82,7 @@ impl CfGuard {
     }
 
     /// Release ownership, returning the raw pointer without calling `CFRelease`.
+    #[allow(dead_code)]
     pub fn into_raw(self) -> *mut std::ffi::c_void {
         let ptr = self.0;
         std::mem::forget(self);
@@ -118,8 +119,11 @@ pub struct MachToWallClock {
     /// on Intel, pre-converted via timebase ratio).
     mach_ns: u64,
     /// Timebase numerator (for mach ticks → nanoseconds conversion).
+    /// Used by `ticks_to_utc_ns` for IOKit HID timestamp conversion.
+    #[allow(dead_code)]
     numer: u32,
     /// Timebase denominator.
+    #[allow(dead_code)]
     denom: u32,
 }
 
@@ -154,6 +158,7 @@ impl MachToWallClock {
 
     /// Convert a raw mach_absolute_time tick value (as returned by
     /// `IOHIDValueGetTimeStamp`) to UTC nanoseconds.
+    #[allow(dead_code)]
     pub fn ticks_to_utc_ns(&self, mach_ticks: u64) -> i64 {
         let mach_ns = mach_ticks as u128 * self.numer as u128 / self.denom as u128;
         self.to_utc_ns(mach_ns as u64)
