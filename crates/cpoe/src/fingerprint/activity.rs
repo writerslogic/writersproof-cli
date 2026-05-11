@@ -27,10 +27,10 @@ pub trait WeightedDistribution {
     fn weighted_merge(&mut self, other: &Self, self_weight: f64, other_weight: f64);
 }
 
-/// Linearly blend two scalar values by weight.
+/// Linearly blend two scalar values by weight (NaN/Infinity-safe).
 #[inline]
 pub(super) fn weighted_blend(a: f64, b: f64, a_weight: f64, b_weight: f64) -> f64 {
-    a * a_weight + b * b_weight
+    crate::utils::stats::weighted_blend(a, b, a_weight, b_weight)
 }
 
 /// Typing dynamics fingerprint built from behavioral samples.

@@ -143,15 +143,15 @@ impl WeightedDistribution for DigraphProfile {
                 entry.std_dev_ms =
                     weighted_blend(entry.std_dev_ms, other_timing.std_dev_ms, sw, ow);
             }
-            entry.count = total.round() as u64;
+            // Preserve at least count=1 so rare discriminative digraphs
+            // are not permanently lost through repeated merge rounding.
+            entry.count = (total.round() as u64).max(1);
         }
         // Scale counts for keys only in self
         for (key, timing) in &mut self.digraph_timings {
             if !other.digraph_timings.contains_key(key) {
-                timing.count = (timing.count as f64 * self_weight).round() as u64;
+                timing.count = (timing.count as f64 * self_weight).round().max(1.0) as u64;
             }
         }
-        // Remove entries that rounded to zero
-        self.digraph_timings.retain(|_, t| t.count > 0);
     }
 }

@@ -171,6 +171,26 @@ pub fn spearman_correlation(xs: &[f64], ys: &[f64]) -> f64 {
     (num / denom).clamp(-1.0, 1.0)
 }
 
+/// Linearly blend two scalar values by weight, with NaN/Infinity protection.
+///
+/// If the blended result is non-finite (due to NaN or Infinity in either
+/// input), falls back to whichever input is finite. If both are non-finite,
+/// returns 0.0. This prevents corrupted data from propagating through
+/// incremental merge operations.
+#[inline]
+pub fn weighted_blend(a: f64, b: f64, a_weight: f64, b_weight: f64) -> f64 {
+    let result = a * a_weight + b * b_weight;
+    if result.is_finite() {
+        result
+    } else if a.is_finite() {
+        a
+    } else if b.is_finite() {
+        b
+    } else {
+        0.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
