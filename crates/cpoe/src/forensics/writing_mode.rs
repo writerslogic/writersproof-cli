@@ -52,15 +52,15 @@ impl ScoringSignal {
     }
 }
 
-const CORRECTION_RATIO: ScoringSignal = ScoringSignal::new(0.02, 0.05, 0.20);
-const BURST_SPEED_CV: ScoringSignal = ScoringSignal::new(0.15, 0.25, 0.15);
-const ZERO_VAR_WINDOWS: ScoringSignal = ScoringSignal::inverted(0.0, 5.0, 0.15);
+const CORRECTION_RATIO: ScoringSignal = ScoringSignal::new(0.02, 0.05, 0.15);
+const BURST_SPEED_CV: ScoringSignal = ScoringSignal::new(0.15, 0.25, 0.12);
+const ZERO_VAR_WINDOWS: ScoringSignal = ScoringSignal::inverted(0.0, 5.0, 0.12);
 const IKI_AUTOCORR: ScoringSignal = ScoringSignal::inverted(0.15, 0.40, 0.10);
 const POST_PAUSE_CV: ScoringSignal = ScoringSignal::new(0.10, 0.30, 0.10);
-const DEEP_PAUSE: ScoringSignal = ScoringSignal::new(0.0, 0.10, 0.10);
+const DEEP_PAUSE: ScoringSignal = ScoringSignal::new(0.0, 0.10, 0.08);
 const POS_NEG_RATIO: ScoringSignal = ScoringSignal::inverted(0.85, 0.98, 0.05);
 const MONOTONIC_APPEND: ScoringSignal = ScoringSignal::inverted(0.70, 0.90, 0.05);
-const REVISION_FRACTION: ScoringSignal = ScoringSignal::new(0.02, 0.15, 0.07);
+const REVISION_FRACTION: ScoringSignal = ScoringSignal::new(0.02, 0.15, 0.05);
 const THINKING_PAUSE_RATIO: ScoringSignal = ScoringSignal::new(0.0, 0.08, 0.05);
 const BURST_LENGTH_CV: ScoringSignal = ScoringSignal::new(0.20, 0.60, 0.05);
 
@@ -639,6 +639,7 @@ mod tests {
             median_interval: 2.0,
             positive_negative_ratio: crate::utils::Probability::clamp(0.70),
             deletion_clustering: 0.5,
+            ..Default::default()
         };
 
         let result = classify_writing_mode(
@@ -664,6 +665,7 @@ mod tests {
             median_interval: 0.15,
             positive_negative_ratio: crate::utils::Probability::clamp(0.99),
             deletion_clustering: 0.0,
+            ..Default::default()
         };
 
         let result = classify_writing_mode(
@@ -693,6 +695,7 @@ mod tests {
             median_interval: 0.5,
             positive_negative_ratio: crate::utils::Probability::clamp(0.90),
             deletion_clustering: 0.3,
+            ..Default::default()
         };
         // Cadence halfway between cognitive and transcriptive.
         let cadence = CadenceMetrics {
