@@ -194,7 +194,10 @@ impl CredentialPackageBuilder {
         // 7. C2PA manifest (requires evidence_bytes for the protocol builder)
         let c2pa_jumbf = self.build_c2pa_manifest(
             signer,
+            &vc_hash,
             ai_disclosure.as_ref(),
+            &cawg_identity,
+            cawg_tdm.as_ref(),
         )?;
 
         Ok(CredentialPackage {
@@ -213,7 +216,10 @@ impl CredentialPackageBuilder {
     fn build_c2pa_manifest(
         &self,
         signer: &dyn tpm::Provider,
+        vc_hash: &[u8; 32],
         ai_disclosure: Option<&AiDisclosureLevel>,
+        cawg_identity: &CawgIdentityAssertion,
+        cawg_tdm: Option<&CawgTdmAssertion>,
     ) -> Result<Option<Vec<u8>>> {
         let evidence_bytes = match &self.evidence_bytes {
             Some(bytes) => bytes,
@@ -228,6 +234,19 @@ impl CredentialPackageBuilder {
             ciborium::from_reader(evidence_bytes.as_slice()).map_err(|e| {
                 Error::evidence(format!("evidence packet CBOR decode failed: {e}"))
             })?;
+
+        // Build ingredients from checkpoint history
+        let ingredients = self.build_ingredients();
+
+        // Serialize CAWG assertions for embedding
+        let cawg_identity_json = serde_json::to_value(cawg_identity)
+            .map_err(|e| Error::evidence(format!("CAWG identity serialization failed: {e}")))?;
+        let cawg_tdm_json = cawg_tdm
+            .map(|tdm| {
+                serde_json::to_value(tdm)
+                    .map_err(|e| Error::evidence(format!("CAWG TDM serialization failed: {e}")))
+            })
+            .transpose()?;
 
         // Build AI disclosure assertion from declaration
         let ai_disclosure_assertion = ai_disclosure.map(|level| {
@@ -254,7 +273,14 @@ impl CredentialPackageBuilder {
             evidence_bytes.clone(),
             content_hash,
         )
-        .format(&self.dc_format);
+        .format(&self.dc_format)
+        .ingredients(ingredients)
+        .cawg_identity(cawg_identity_json)
+        .vc_reference(*vc_hash, None);
+
+        if let Some(tdm_json) = cawg_tdm_json {
+            builder = builder.cawg_tdm(tdm_json);
+        }
 
         if let Some(title) = &self.title {
             builder = builder.title(title.clone());
@@ -278,6 +304,29 @@ impl CredentialPackageBuilder {
             .map_err(|e| Error::evidence(format!("C2PA manifest build failed: {e}")))?;
 
         Ok(Some(jumbf))
+    }
+
+    fn build_ingredients(&self) -> Vec<authorproof_protocol::c2pa::C2paIngredient> {
+        let count = self.checkpoints.len().min(self.max_ingredients);
+        let start = self.checkpoints.len().saturating_sub(count);
+
+        self.checkpoints[start..]
+            .iter()
+            .map(|cp| authorproof_protocol::c2pa::C2paIngredient {
+                title: format!("Checkpoint #{}", cp.ordinal),
+                relationship: "parentOf".to_string(),
+                document_hash: Some(cp.content_hash.clone()),
+                instance_id: Some(format!("cpoe:checkpoint:{}", cp.ordinal)),
+                format: Some(self.dc_format.clone()),
+                informational_uri: None,
+                metadata: Some(authorproof_protocol::c2pa::IngredientMetadata {
+                    checkpoint_ordinal: cp.ordinal,
+                    timestamp: cp.timestamp.to_rfc3339(),
+                    vdf_verified: cp.vdf_output.is_some(),
+                    content_size: cp.content_size,
+                }),
+            })
+            .collect()
     }
 }
 
