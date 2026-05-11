@@ -135,13 +135,13 @@ pub struct FfiLikelihoodSignals {
     pub window_count: u32,
     /// Timestamped per-window cognitive probability timeline.
     /// Each point has a seconds-since-session-start and P(cognitive).
-    pub timeline: Vec<FfiTimelinePoint>,
+    pub timeline: Vec<FfiLikelihoodTimelinePoint>,
 }
 
 /// A single point on the cognitive probability timeline.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
-pub struct FfiTimelinePoint {
+pub struct FfiLikelihoodTimelinePoint {
     /// Seconds since the start of the session.
     pub seconds_from_start: f64,
     /// Posterior P(cognitive) for this window.
@@ -434,7 +434,7 @@ fn build_enhanced_signals(
             timeline: lm
                 .window_timeline
                 .iter()
-                .map(|&(secs, p)| FfiTimelinePoint {
+                .map(|&(secs, p)| FfiLikelihoodTimelinePoint {
                     seconds_from_start: secs,
                     p_cognitive: p,
                 })

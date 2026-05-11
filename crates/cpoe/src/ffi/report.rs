@@ -84,18 +84,18 @@ fn forensic_cache() -> &'static std::sync::Mutex<BoundedLruCache> {
 
 #[allow(dead_code)] // fields used for future report sections
 pub(crate) struct EventStats {
-    avg_forensic: f64,
-    total_iterations: u64,
-    total_secs: f64,
-    total_min: f64,
-    paste_count: u64,
-    avg_compute_ms: u64,
-    backdating_hours: f64,
-    size_delta_chars: i64,
-    keystroke_estimate: u64,
-    paste_ratio_pct: Option<f64>,
-    doc_hash: String,
-    doc_size: i64,
+    pub(crate) avg_forensic: f64,
+    pub(crate) total_iterations: u64,
+    pub(crate) total_secs: f64,
+    pub(crate) total_min: f64,
+    pub(crate) paste_count: u64,
+    pub(crate) avg_compute_ms: u64,
+    pub(crate) backdating_hours: f64,
+    pub(crate) size_delta_chars: i64,
+    pub(crate) keystroke_estimate: u64,
+    pub(crate) paste_ratio_pct: Option<f64>,
+    pub(crate) doc_hash: String,
+    pub(crate) doc_size: i64,
 }
 
 fn compute_event_stats(

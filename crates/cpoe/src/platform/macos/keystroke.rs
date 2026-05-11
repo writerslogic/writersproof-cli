@@ -354,7 +354,7 @@ impl KeystrokeMonitor {
         // Store tap pointer so the callback can re-enable after timeout.
         // The tap handle is inside runner.tap_resources; extract it once.
         if let Some(ref res) = *runner.tap_resources.lock_recover() {
-            tap_ptr.store(res.tap, Ordering::SeqCst);
+            tap_ptr.store(res.tap.as_ptr(), Ordering::SeqCst);
         }
 
         Ok(Self {
@@ -436,7 +436,7 @@ impl KeystrokeMonitor {
 
         let runner = EventTapRunner::start(tap_cb)?;
         if let Some(ref res) = *runner.tap_resources.lock_recover() {
-            tap_ptr.store(res.tap, Ordering::SeqCst);
+            tap_ptr.store(res.tap.as_ptr(), Ordering::SeqCst);
         }
 
         Ok(Self {
@@ -639,7 +639,7 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
 
         let runner = EventTapRunner::start(tap_cb)?;
         if let Some(ref res) = *runner.tap_resources.lock_recover() {
-            tap_ptr.store(res.tap, Ordering::SeqCst);
+            tap_ptr.store(res.tap.as_ptr(), Ordering::SeqCst);
         }
         self.runner = Some(runner);
         Ok(rx)

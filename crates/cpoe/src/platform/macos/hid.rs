@@ -11,7 +11,7 @@ use core_foundation::string::CFString;
 use core_foundation_sys::base::kCFAllocatorDefault;
 use core_foundation_sys::dictionary::{
     kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks, CFDictionaryCreateMutable,
-    CFDictionarySetValue,
+    CFDictionaryRef, CFDictionarySetValue,
 };
 use core_foundation_sys::number::{kCFNumberIntType, CFNumberCreate, CFNumberGetTypeID};
 

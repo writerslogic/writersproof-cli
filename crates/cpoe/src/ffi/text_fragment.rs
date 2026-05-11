@@ -744,7 +744,7 @@ pub fn ffi_apply_remote_fragment(
         keystroke_confidence: confidence,
         cloudkit_record_id,
         sync_state: Some("synced".to_string()),
-        ..TextFragment::new(fragment_hash.clone(), session_id, source_signature, nonce, timestamp_ms)
+        ..TextFragment::new(fragment_hash.clone(), session_id, source_signature.0.to_vec(), nonce, timestamp_ms)
     };
 
     let mut store = try_ffi!(open_store(), FfiTextFragmentStoreResult);

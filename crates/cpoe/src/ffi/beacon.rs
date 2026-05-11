@@ -3,7 +3,7 @@
 use crate::ffi::helpers::{
     load_api_key, load_did, load_events_for_path, load_signing_key, open_store, validate_path_str,
 };
-use crate::ffi::types::{catch_ffi_panic, try_ffi};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult};
 use std::sync::OnceLock;
 
 /// Maximum evidence file size for FFI reads (64 MB).
