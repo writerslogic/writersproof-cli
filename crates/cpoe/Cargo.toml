@@ -106,7 +106,7 @@ keyring = "2.3.3"
 glob = "0.3.2"
 toml = "0.8.19"
 blake3 = "1.8.3"
-chacha20poly1305 = { version = "0.10.1", features = ["zeroize"] }
+chacha20poly1305 = "0.10.1"
 aes-gcm = { version = "0.10", features = ["zeroize"] }
 p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }
 

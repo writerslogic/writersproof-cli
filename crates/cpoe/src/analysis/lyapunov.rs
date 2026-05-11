@@ -42,8 +42,8 @@ impl std::error::Error for LyapunovError {}
 /// Minimum data points for Lyapunov analysis.
 const MIN_DATA_POINTS: usize = 100;
 
-/// Cap input to avoid O(N²) nearest-neighbor search in phase space.
-const MAX_DATA_POINTS: usize = 1000;
+/// Cap input length. KD-tree NN search is O(N log N), so 5000 is fast (~2ms).
+const MAX_DATA_POINTS: usize = 5000;
 
 /// Embedding dimension for phase-space reconstruction.
 const EMBED_DIM: usize = 5;
@@ -137,32 +137,16 @@ pub fn analyze_lyapunov(iki_intervals_ns: &[f64]) -> Result<LyapunovAnalysis, Ly
         return Err(LyapunovError::InsufficientIterations);
     }
 
-    // For each point, find nearest neighbor with temporal separation
+    // Build KD-tree for O(N log N) nearest-neighbor search.
+    let tree = crate::analysis::spatial::KdTree::build(&embedding, embed_len, EMBED_DIM);
+
     let mut divergence_sum = vec![0.0f64; max_iter];
     let mut divergence_count = vec![0usize; max_iter];
 
     for i in 0..embed_len {
-        let mut min_dist = f64::INFINITY;
-        let mut nn_idx = 0;
-        let p_i = get_point(i);
-
-        for j in 0..embed_len {
-            let temporal_sep = i.abs_diff(j);
-            if temporal_sep < min_sep {
-                continue;
-            }
-
-            let dist = sq_dist(p_i, get_point(j)).sqrt();
-
-            if dist < min_dist && dist > 0.0 {
-                min_dist = dist;
-                nn_idx = j;
-            }
-        }
-
-        if min_dist.is_infinite() {
+        let Some((nn_idx, _)) = tree.nearest_neighbor(i, min_sep) else {
             continue;
-        }
+        };
 
         // Track divergence over time
         for k in 0..max_iter {

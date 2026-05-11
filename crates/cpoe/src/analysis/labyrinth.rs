@@ -296,36 +296,29 @@ fn estimate_lyapunov(embed: &FlatEmbedding, delay: usize) -> f64 {
         return 0.0;
     }
 
+    let tree =
+        crate::analysis::spatial::KdTree::build(&embed.data, embed.count, embed.dim);
+    let min_sep = delay * 2;
+
     let mut divergence = 0.0;
     let mut count = 0usize;
 
     for i in 0..n - evol_steps {
-        let p_i = embed.get_point(i);
-        let mut min_dist = f64::MAX;
-        let mut nn_idx = None;
-
-        for j in 0..n - evol_steps {
-            if (i as i64 - j as i64).unsigned_abs() < (delay as u64 * 2) {
-                continue;
-            }
-            let d = sq_dist(p_i, embed.get_point(j));
-            if d < min_dist && d > 1e-10 {
-                min_dist = d;
-                nn_idx = Some(j);
-            }
+        let Some((j, min_dist_sq)) = tree.nearest_neighbor(i, min_sep) else {
+            continue;
+        };
+        if j + evol_steps >= n {
+            continue;
         }
-
-        if let Some(j) = nn_idx {
-            let d0 = min_dist.sqrt();
-            let dt = sq_dist(
-                embed.get_point(i + evol_steps),
-                embed.get_point(j + evol_steps),
-            )
-            .sqrt();
-            if d0 > 1e-10 && dt > 1e-10 {
-                divergence += (dt / d0).ln();
-                count += 1;
-            }
+        let d0 = min_dist_sq.sqrt();
+        let dt = sq_dist(
+            embed.get_point(i + evol_steps),
+            embed.get_point(j + evol_steps),
+        )
+        .sqrt();
+        if d0 > 1e-10 && dt > 1e-10 {
+            divergence += (dt / d0).ln();
+            count += 1;
         }
     }
 

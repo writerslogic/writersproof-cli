@@ -1257,6 +1257,7 @@ dependencies = [
  "qrcode",
  "rand 0.9.2",
  "raw-cpuid",
+ "rayon",
  "reqwest",
  "ripemd",
  "roughenough-common",

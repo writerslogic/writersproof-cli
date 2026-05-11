@@ -269,12 +269,13 @@ impl SealedIdentityStore {
         let blob = self.load_blob()?;
         let public_key: [u8; 32] = blob
             .public_key
+            .clone()
             .try_into()
             .map_err(|_| SealedIdentityError::BlobCorrupted)?;
         Ok(MasterIdentity {
             public_key,
-            fingerprint: blob.fingerprint,
-            device_id: blob.device_id,
+            fingerprint: blob.fingerprint.clone(),
+            device_id: blob.device_id.clone(),
             created_at: blob.sealed_at,
             version: SEALED_BLOB_VERSION,
         })
@@ -333,11 +334,11 @@ impl SealedIdentityStore {
 
         let blob = SealedBlob {
             version: SEALED_BLOB_VERSION,
-            provider_type: old_blob.provider_type,
+            provider_type: old_blob.provider_type.clone(),
             device_id: self.provider.device_id(),
             sealed_seed,
-            public_key: old_blob.public_key,
-            fingerprint: old_blob.fingerprint,
+            public_key: old_blob.public_key.clone(),
+            fingerprint: old_blob.fingerprint.clone(),
             sealed_at: Utc::now(),
             counter_at_seal: old_blob.last_known_counter,
             last_known_counter: old_blob.last_known_counter,

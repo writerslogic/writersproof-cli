@@ -19,6 +19,7 @@ pub mod lyapunov;
 pub mod perplexity;
 pub mod pink_noise;
 pub mod snr;
+pub(crate) mod spatial;
 pub(crate) mod stats;
 
 pub use active_probes::{
