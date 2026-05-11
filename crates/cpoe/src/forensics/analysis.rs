@@ -343,63 +343,74 @@ pub fn analyze_forensics_ext_with_focus(
         // Cognitive load, error ecology, and likelihood model still run because they feed
         // into the writing-mode enrichment and real-time gating.
         if metrics.anomaly_count < EARLY_EXIT_ANOMALY_THRESHOLD {
-            // SNR analysis
-            match analyze_snr(&iki_intervals) {
-                Ok(snr) => {
-                    if snr.flagged {
-                        metrics.anomaly_count += 1;
+            // Run the four IKI-based probes in parallel — they are read-only
+            // over the same interval buffer and have no inter-dependencies.
+            let run_labyrinth = iki_intervals.len() >= MIN_IKI_FOR_LABYRINTH;
+            let (snr_r, lyap_r, comp_r, lab_r) = std::thread::scope(|s| {
+                let h_snr = s.spawn(|| analyze_snr(&iki_intervals));
+                let h_lyap = s.spawn(|| analyze_lyapunov(&iki_intervals));
+                let h_comp = s.spawn(|| analyze_iki_compression(&iki_intervals));
+                let h_lab = s.spawn(|| {
+                    if run_labyrinth {
+                        let params = LabyrinthParams::default();
+                        Some(analyze_labyrinth(&iki_intervals, &[], &params))
+                    } else {
+                        None
                     }
-                    metrics.snr = Some(snr);
-                    metrics.analysis_status.mark_completed(AnalysisKind::Snr);
+                });
+                (
+                    h_snr.join().ok(),
+                    h_lyap.join().ok(),
+                    h_comp.join().ok(),
+                    h_lab.join().ok().flatten(),
+                )
+            });
+
+            // Merge SNR result
+            if let Some(Ok(snr)) = snr_r {
+                if snr.flagged {
+                    metrics.anomaly_count += 1;
                 }
-                Err(e) => {
-                    log::debug!("SNR analysis skipped: {}", e);
-                    metrics.analysis_status.mark_failed(AnalysisKind::Snr);
-                }
+                metrics.snr = Some(snr);
+                metrics.analysis_status.mark_completed(AnalysisKind::Snr);
+            } else if let Some(Err(e)) = snr_r {
+                log::debug!("SNR analysis skipped: {}", e);
+                metrics.analysis_status.mark_failed(AnalysisKind::Snr);
             }
 
-            // Lyapunov exponent analysis
-            match analyze_lyapunov(&iki_intervals) {
-                Ok(lyap) => {
-                    if lyap.flagged {
-                        metrics.anomaly_count += 1;
-                    }
-                    metrics.lyapunov = Some(lyap);
-                    metrics.analysis_status.mark_completed(AnalysisKind::Lyapunov);
+            // Merge Lyapunov result
+            if let Some(Ok(lyap)) = lyap_r {
+                if lyap.flagged {
+                    metrics.anomaly_count += 1;
                 }
-                Err(e) => {
-                    log::debug!("Lyapunov analysis skipped: {}", e);
-                    metrics.analysis_status.mark_failed(AnalysisKind::Lyapunov);
-                }
+                metrics.lyapunov = Some(lyap);
+                metrics.analysis_status.mark_completed(AnalysisKind::Lyapunov);
+            } else if let Some(Err(e)) = lyap_r {
+                log::debug!("Lyapunov analysis skipped: {}", e);
+                metrics.analysis_status.mark_failed(AnalysisKind::Lyapunov);
             }
 
-            // IKI compression ratio analysis
-            match analyze_iki_compression(&iki_intervals) {
-                Ok(comp) => {
-                    if comp.flagged {
-                        metrics.anomaly_count += 1;
-                    }
-                    metrics.iki_compression = Some(comp);
-                    metrics.analysis_status.mark_completed(AnalysisKind::IkiCompression);
+            // Merge IKI compression result
+            if let Some(Ok(comp)) = comp_r {
+                if comp.flagged {
+                    metrics.anomaly_count += 1;
                 }
-                Err(e) => {
-                    log::debug!("IKI compression analysis skipped: {}", e);
-                    metrics.analysis_status.mark_failed(AnalysisKind::IkiCompression);
-                }
+                metrics.iki_compression = Some(comp);
+                metrics.analysis_status.mark_completed(AnalysisKind::IkiCompression);
+            } else if let Some(Err(e)) = comp_r {
+                log::debug!("IKI compression analysis skipped: {}", e);
+                metrics.analysis_status.mark_failed(AnalysisKind::IkiCompression);
             }
 
-            // Labyrinth (Takens' embedding) analysis
-            if iki_intervals.len() >= MIN_IKI_FOR_LABYRINTH {
-                let params = LabyrinthParams::default();
-                if let Ok(lab) = analyze_labyrinth(&iki_intervals, &[], &params) {
-                    if !lab.is_biologically_plausible() {
-                        metrics.anomaly_count += 1;
-                    }
-                    metrics.labyrinth = Some(lab);
-                    metrics.analysis_status.mark_completed(AnalysisKind::Labyrinth);
-                } else {
-                    metrics.analysis_status.mark_failed(AnalysisKind::Labyrinth);
+            // Merge Labyrinth result
+            if let Some(Ok(lab)) = lab_r {
+                if !lab.is_biologically_plausible() {
+                    metrics.anomaly_count += 1;
                 }
+                metrics.labyrinth = Some(lab);
+                metrics.analysis_status.mark_completed(AnalysisKind::Labyrinth);
+            } else if let Some(Err(_)) = lab_r {
+                metrics.analysis_status.mark_failed(AnalysisKind::Labyrinth);
             }
 
             // Cognitive-Linguistic Complexity (CLC) analysis
