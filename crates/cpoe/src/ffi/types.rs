@@ -8,6 +8,25 @@ pub trait FfiErrResult {
     fn ffi_err(msg: impl Into<String>) -> Self;
 }
 
+/// Implement `FfiErrResult` for a struct that has `success: bool` and
+/// `error_message: Option<String>` fields and derives `Default`.
+///
+/// Usage: `impl_ffi_err!(FfiArchiveResult);`
+macro_rules! impl_ffi_err {
+    ($ty:ty) => {
+        impl $crate::ffi::types::FfiErrResult for $ty {
+            fn ffi_err(msg: impl Into<String>) -> Self {
+                Self {
+                    success: false,
+                    error_message: Some(msg.into()),
+                    ..Default::default()
+                }
+            }
+        }
+    };
+}
+pub(crate) use impl_ffi_err;
+
 /// Unwrap a `Result<T, E>` inside an FFI function, returning the error as an
 /// `FfiErrResult` implementor if the result is `Err`.
 ///
@@ -318,7 +337,7 @@ pub struct FfiWitnessingStatus {
     pub undo_count: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiPublishResult {
     pub success: bool,
@@ -329,18 +348,7 @@ pub struct FfiPublishResult {
     pub error_message: Option<String>,
 }
 
-impl FfiErrResult for FfiPublishResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            canonical_url: None,
-            record_id: None,
-            verification_passed: false,
-            checkpoint_count: 0,
-            error_message: Some(msg.into()),
-        }
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiPublishResult);
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]

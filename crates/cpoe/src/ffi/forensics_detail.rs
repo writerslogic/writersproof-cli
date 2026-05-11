@@ -4,7 +4,7 @@ use crate::ffi::helpers::load_events_for_path;
 use crate::ffi::types::{catch_ffi_panic, try_ffi};
 use crate::utils::finite_or;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiForensicBreakdown {
     pub success: bool,
@@ -216,11 +216,7 @@ impl FfiForensicBreakdown {
     }
 }
 
-impl super::types::FfiErrResult for FfiForensicBreakdown {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::error(msg.into())
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiForensicBreakdown);
 
 /// Return a detailed forensic breakdown for a tracked file.
 ///

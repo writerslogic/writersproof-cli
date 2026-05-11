@@ -10,7 +10,7 @@ use crate::credentials::AuthorshipCredential;
 // FFI types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiCredentialResult {
     pub success: bool,
@@ -38,7 +38,7 @@ impl FfiCredentialResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiSignedCredentialResult {
     pub success: bool,
@@ -63,7 +63,7 @@ impl FfiSignedCredentialResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiVerificationResult {
     pub success: bool,
@@ -94,7 +94,7 @@ impl FfiVerificationResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiCredentialStatusResult {
     pub success: bool,
@@ -128,29 +128,10 @@ impl FfiCredentialStatusResult {
     }
 }
 
-impl super::types::FfiErrResult for FfiCredentialResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
-
-impl super::types::FfiErrResult for FfiSignedCredentialResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
-
-impl super::types::FfiErrResult for FfiVerificationResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
-
-impl super::types::FfiErrResult for FfiCredentialStatusResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiCredentialResult);
+crate::ffi::types::impl_ffi_err!(FfiSignedCredentialResult);
+crate::ffi::types::impl_ffi_err!(FfiVerificationResult);
+crate::ffi::types::impl_ffi_err!(FfiCredentialStatusResult);
 
 // ---------------------------------------------------------------------------
 // Exported FFI functions

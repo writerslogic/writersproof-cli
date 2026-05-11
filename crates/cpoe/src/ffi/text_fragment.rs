@@ -29,7 +29,7 @@ pub struct FfiTextFragment {
     pub timestamp_ms: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiTextFragmentStoreResult {
     pub success: bool,
@@ -57,13 +57,9 @@ impl FfiTextFragmentStoreResult {
     }
 }
 
-impl super::types::FfiErrResult for FfiTextFragmentStoreResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiTextFragmentStoreResult);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiPasteRecordResult {
     pub success: bool,
@@ -94,13 +90,9 @@ impl FfiPasteRecordResult {
     }
 }
 
-impl super::types::FfiErrResult for FfiPasteRecordResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiPasteRecordResult);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiAttestTextResult {
     pub success: bool,
@@ -134,11 +126,7 @@ impl FfiAttestTextResult {
     }
 }
 
-impl super::types::FfiErrResult for FfiAttestTextResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiAttestTextResult);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -582,7 +570,7 @@ pub fn store_attestation_from_hash(content_hash: &str, app_bundle_id: &str) -> R
 // ---------------------------------------------------------------------------
 
 /// FFI result for sync operations that return a boolean success/failure.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiSyncResult {
     pub success: bool,
@@ -604,11 +592,7 @@ impl FfiSyncResult {
     }
 }
 
-impl super::types::FfiErrResult for FfiSyncResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiSyncResult);
 
 /// Mark a fragment as pending sync to CloudKit.
 #[cfg_attr(feature = "ffi", uniffi::export)]

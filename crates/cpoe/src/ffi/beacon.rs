@@ -3,7 +3,7 @@
 use crate::ffi::helpers::{
     load_api_key, load_did, load_events_for_path, load_signing_key, open_store, validate_path_str,
 };
-use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi};
 use std::sync::OnceLock;
 
 /// Maximum evidence file size for FFI reads (64 MB).
@@ -59,7 +59,7 @@ pub(crate) fn beacon_runtime() -> Result<&'static tokio::runtime::Runtime, Strin
 // Tokio runtimes clean up their worker threads when dropped, which
 // happens at process exit when the static is reclaimed.
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiBeaconResult {
     pub success: bool,
@@ -72,7 +72,7 @@ pub struct FfiBeaconResult {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiBeaconListResult {
     pub success: bool,
@@ -93,21 +93,8 @@ fn err_beacon(msg: String) -> FfiBeaconResult {
     }
 }
 
-impl super::types::FfiErrResult for FfiBeaconResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        err_beacon(msg.into())
-    }
-}
-
-impl super::types::FfiErrResult for FfiBeaconListResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            beacons: vec![],
-            error_message: Some(msg.into()),
-        }
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiBeaconResult);
+crate::ffi::types::impl_ffi_err!(FfiBeaconListResult);
 
 fn beacon_sidecar_path(document_path: &str) -> Option<std::path::PathBuf> {
     let data_dir = crate::ffi::helpers::get_data_dir()?;

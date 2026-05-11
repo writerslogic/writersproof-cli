@@ -16,7 +16,7 @@ pub struct FfiSnapshotEntry {
     pub session_group: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiSnapshotContent {
     pub success: bool,
@@ -41,11 +41,7 @@ impl FfiSnapshotContent {
     }
 }
 
-impl super::types::FfiErrResult for FfiSnapshotContent {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self::err(msg)
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiSnapshotContent);
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]

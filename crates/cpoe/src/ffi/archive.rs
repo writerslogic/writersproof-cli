@@ -3,7 +3,7 @@
 use crate::ffi::helpers::{get_db_path, open_store};
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiArchiveResult {
     pub success: bool,
@@ -13,17 +13,7 @@ pub struct FfiArchiveResult {
     pub active_db_size_after: u64,
 }
 
-impl FfiErrResult for FfiArchiveResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            error_message: Some(msg.into()),
-            archive_path: None,
-            events_archived: 0,
-            active_db_size_after: 0,
-        }
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiArchiveResult);
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -32,7 +22,7 @@ pub struct FfiArchiveInfo {
     pub size_bytes: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiArchiveListResult {
     pub success: bool,
@@ -42,17 +32,7 @@ pub struct FfiArchiveListResult {
     pub needs_archival: bool,
 }
 
-impl FfiErrResult for FfiArchiveListResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            error_message: Some(msg.into()),
-            archives: Vec::new(),
-            active_db_size_bytes: 0,
-            needs_archival: false,
-        }
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiArchiveListResult);
 
 /// Manually trigger archival of events older than the specified number of days.
 /// If `age_days` is 0, defaults to 90 days.
@@ -153,7 +133,7 @@ pub fn ffi_query_events_spanning(path: String, start_ns: i64, end_ns: i64) -> Ff
     })
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiSpanningQueryResult {
     pub success: bool,
@@ -163,14 +143,4 @@ pub struct FfiSpanningQueryResult {
     pub latest_timestamp_ns: Option<i64>,
 }
 
-impl FfiErrResult for FfiSpanningQueryResult {
-    fn ffi_err(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            error_message: Some(msg.into()),
-            event_count: 0,
-            earliest_timestamp_ns: None,
-            latest_timestamp_ns: None,
-        }
-    }
-}
+crate::ffi::types::impl_ffi_err!(FfiSpanningQueryResult);
