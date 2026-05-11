@@ -69,19 +69,13 @@ pub fn analyze_velocity(sorted: SortedEvents<'_>) -> VelocityMetrics {
 }
 
 /// Count sessions in pre-sorted events without cloning.
-///
-/// # Panics
-/// Debug-asserts that `sorted_events` is sorted by `timestamp_ns`.
-pub fn count_sessions_sorted(sorted_events: &[EventData], gap_threshold_sec: f64) -> usize {
+pub fn count_sessions_sorted(
+    sorted_events: super::types::SortedEvents<'_>,
+    gap_threshold_sec: f64,
+) -> usize {
     if sorted_events.is_empty() {
         return 0;
     }
-    debug_assert!(
-        sorted_events
-            .windows(2)
-            .all(|w| w[0].timestamp_ns <= w[1].timestamp_ns),
-        "count_sessions_sorted requires pre-sorted events"
-    );
     let mut count = 1;
     for i in 1..sorted_events.len() {
         let delta_ns = sorted_events[i]

@@ -104,8 +104,13 @@ pub(super) fn run_forensics(
         );
     }
 
+    // Sort once: analyze_forensics_ext detects the pre-sorted input via its
+    // is_sorted fast-path, and per_checkpoint_flags reuses the same sort.
+    let mut sorted_events = events;
+    sorted_events.sort_unstable_by_key(|e| e.timestamp_ns);
+
     let forensics = analyze_forensics_ext(
-        &events,
+        &sorted_events,
         &regions,
         if jitter_samples.is_empty() {
             None
@@ -121,11 +126,12 @@ pub(super) fn run_forensics(
     // Events derived from behavioral edit_topology have timestamp_ns: 0, which
     // would bucket all events into the first checkpoint interval and produce
     // meaningless results. Only run when keystroke data provides real timestamps.
-    let events_have_timestamps = events.iter().any(|e| e.timestamp_ns > 0);
+    let events_have_timestamps = sorted_events.iter().any(|e| e.timestamp_ns > 0);
     let per_cp = if packet.checkpoints.len() >= 2 && events_have_timestamps {
-        let mut sorted_ev = events.clone();
-        sorted_ev.sort_unstable_by_key(|e| e.timestamp_ns);
-        let result = per_checkpoint_flags(SortedEvents::new(&sorted_ev), &packet.checkpoints);
+        let result = per_checkpoint_flags(
+            SortedEvents::new(&sorted_events),
+            &packet.checkpoints,
+        );
         if result.suspicious {
             warnings.push(format!(
                 "Per-checkpoint analysis: {:.0}% of checkpoints flagged (threshold: {:.0}%)",

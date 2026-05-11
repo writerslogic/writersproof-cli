@@ -103,8 +103,8 @@ pub fn build_profile(
         DateTime::from_timestamp_nanos(sorted.last().map(|e| e.timestamp_ns).unwrap_or(0));
     let time_span = last_ts.signed_duration_since(first_ts);
 
-    let session_count = count_sessions_sorted(&sorted, DEFAULT_SESSION_GAP_SEC);
     let sorted_ev = SortedEvents::new(&sorted);
+    let session_count = count_sessions_sorted(sorted_ev, DEFAULT_SESSION_GAP_SEC);
 
     let metrics = match compute_primary_metrics(sorted_ev, regions_by_event) {
         Ok(m) => m,
