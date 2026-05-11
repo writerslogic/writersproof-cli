@@ -74,6 +74,7 @@ pub fn cpop_trust_profile() -> &'static JpegTrustProfile {
         ],
     }
     })
+}
 
 #[cfg(test)]
 mod tests {

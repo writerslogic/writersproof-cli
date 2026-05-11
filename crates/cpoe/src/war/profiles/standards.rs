@@ -144,6 +144,7 @@ pub fn nist_rmf_mapping() -> &'static NistRmfMapping {
             },
         ],
     }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +163,7 @@ pub struct Iso42001Control {
     pub id: String,
     pub topic: String,
     pub cpop_coverage: String,
-    })
+}
 
 /// Generate the ISO 42001 mapping for CPoE.
 static ISO_42001: OnceLock<Iso42001Mapping> = OnceLock::new();
@@ -194,6 +195,7 @@ pub fn iso_42001_mapping() -> &'static Iso42001Mapping {
         ],
     }
     })
+}
 
 // ---------------------------------------------------------------------------
 // WGA MBA / SAG-AFTRA creative rights compliance
