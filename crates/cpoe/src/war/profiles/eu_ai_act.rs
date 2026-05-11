@@ -27,6 +27,12 @@ pub const LABEL_AI_ASSISTED_SUBSTANTIAL: &str = "ai-assisted-substantial";
 /// Machine-readable label: content primarily or entirely AI-generated.
 pub const LABEL_AI_GENERATED: &str = "ai-generated";
 
+/// Minimum keystroke count for evidence to qualify as evidence-backed.
+const MIN_EVIDENCE_KEYSTROKE_COUNT: u64 = 5;
+
+/// Minimum entropy bits for evidence to qualify as evidence-backed.
+const MIN_EVIDENCE_ENTROPY_BITS: f64 = 1.5;
+
 /// EU AI Act Article 50 transparency obligations compliance metadata.
 ///
 /// Effective 2 August 2026. Requires machine-readable marking of
@@ -84,8 +90,8 @@ impl Article50Compliance {
         // presence alone does not suffice (a zero or trivial seal is not evidence).
         let evidence_backed = decl.jitter_sealed.as_ref().is_some_and(|j| {
             j.jitter_hash != [0u8; 32]
-                && j.keystroke_count >= 5
-                && j.entropy_bits >= 1.5
+                && j.keystroke_count >= MIN_EVIDENCE_KEYSTROKE_COUNT
+                && j.entropy_bits >= MIN_EVIDENCE_ENTROPY_BITS
                 && j.duration_ms > 0
         });
 

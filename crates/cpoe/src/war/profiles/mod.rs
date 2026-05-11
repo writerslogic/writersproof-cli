@@ -8,3 +8,4 @@ pub mod eu_ai_act;
 pub mod jpeg_trust;
 pub mod standards;
 pub mod vc;
+pub mod package;

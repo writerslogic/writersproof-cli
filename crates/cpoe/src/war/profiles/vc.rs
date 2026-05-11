@@ -6,7 +6,7 @@
 //! using JOSE and COSE" Recommendation (May 2025):
 //!
 //! - **Data Integrity proof** (`to_signed_verifiable_credential`): Ed25519 proof
-//!   embedded in the VC JSON, using `eddsa-rdfc-2022` cryptosuite.
+//!   embedded in the VC JSON, using `eddsa-jcs-2022` cryptosuite.
 //! - **COSE_Sign1 envelope** (`to_cose_secured_vc`): VC payload serialized as
 //!   CBOR and wrapped in a COSE_Sign1 structure with EdDSA signing.
 
@@ -200,7 +200,7 @@ pub fn to_verifiable_credential(ear: &EarToken, author_did: &str) -> Result<Veri
     // Placeholder proof for backward compatibility.
     vc.proof = Some(VcProof {
         proof_type: "DataIntegrityProof".to_string(),
-        cryptosuite: "eddsa-rdfc-2022".to_string(),
+        cryptosuite: "eddsa-jcs-2022".to_string(),
         verification_method: format!("{}#key-1", author_did),
         proof_purpose: "assertionMethod".to_string(),
         proof_value: String::new(),
@@ -221,9 +221,9 @@ pub fn to_signed_verifiable_credential(
 ) -> Result<VerifiableCredential> {
     let mut vc = build_vc_core(ear, author_did)?;
 
-    // Canonicalize the VC (without proof) as sorted-key JSON, then hash.
-    let canon_json = serde_json::to_string(&vc)
-        .map_err(|e| Error::evidence(format!("VC JSON serialization failed: {e}")))?;
+    // Canonicalize the VC (without proof) as RFC 8785 (JCS), then hash.
+    let canon_json = serde_jcs::to_string(&vc)
+        .map_err(|e| Error::evidence(format!("VC JCS canonicalization failed: {e}")))?;
     let digest = Sha256::digest(canon_json.as_bytes());
 
     // Sign the hash with Ed25519.
@@ -236,7 +236,7 @@ pub fn to_signed_verifiable_credential(
 
     vc.proof = Some(VcProof {
         proof_type: "DataIntegrityProof".to_string(),
-        cryptosuite: "eddsa-rdfc-2022".to_string(),
+        cryptosuite: "eddsa-jcs-2022".to_string(),
         verification_method: format!("{}#key-1", author_did),
         proof_purpose: "assertionMethod".to_string(),
         proof_value,
@@ -456,7 +456,7 @@ mod tests {
 
         let proof = vc.proof.expect("proof should be present");
         assert_eq!(proof.proof_type, "DataIntegrityProof");
-        assert_eq!(proof.cryptosuite, "eddsa-rdfc-2022");
+        assert_eq!(proof.cryptosuite, "eddsa-jcs-2022");
         assert_eq!(proof.verification_method, format!("{}#key-1", did));
         assert_eq!(proof.proof_purpose, "assertionMethod");
 
@@ -514,7 +514,7 @@ mod tests {
         );
 
         // Verify the enriched VC serializes with expected field names.
-        let json = serde_json::to_string(&vc).expect("serialize");
+        let json = serde_jcs::to_string(&vc).expect("serialize");
         assert!(json.contains("\"writingMode\""), "should contain writingMode: {json}");
         assert!(json.contains("\"compositionMode\""), "should contain compositionMode: {json}");
         assert!(json.contains("\"forensicSignals\""), "should contain forensicSignals: {json}");
