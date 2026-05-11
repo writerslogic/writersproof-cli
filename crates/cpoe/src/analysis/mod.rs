@@ -10,6 +10,7 @@ pub mod active_probes;
 pub mod behavioral_fingerprint;
 pub mod content_detector;
 pub mod error_topology;
+pub mod histogram;
 pub mod hurst;
 pub mod iki_compression;
 pub mod labyrinth;

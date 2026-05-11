@@ -119,42 +119,8 @@ impl Article50Compliance {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::declaration::{
-        AiExtent, AiPurpose, AiToolUsage, Declaration, InputModality, ModalityType,
-    };
-    use chrono::Utc;
-
-    fn make_decl(ai_tools: Vec<AiToolUsage>) -> Declaration {
-        Declaration {
-            document_hash: [1u8; 32],
-            chain_hash: [2u8; 32],
-            title: "Test".to_string(),
-            input_modalities: vec![InputModality {
-                modality_type: ModalityType::Keyboard,
-                percentage: 100.0,
-                note: None,
-            }],
-            ai_tools,
-            collaborators: Vec::new(),
-            statement: "I wrote this.".to_string(),
-            created_at: Utc::now(),
-            version: 1,
-            author_public_key: Vec::new(),
-            signature: Vec::new(),
-            jitter_sealed: None,
-        }
-    }
-
-    fn make_ai_tool(extent: AiExtent) -> AiToolUsage {
-        AiToolUsage {
-            tool: "TestTool".to_string(),
-            version: None,
-            purpose: AiPurpose::Drafting,
-            interaction: None,
-            extent,
-            sections: Vec::new(),
-        }
-    }
+    use crate::declaration::AiExtent;
+    use crate::war::profiles::test_helpers::{make_ai_tool, make_decl};
 
     #[test]
     fn test_article50_no_ai() {

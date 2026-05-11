@@ -648,19 +648,16 @@ fn enrich_checkpoints(
         // Cursor trajectory histogram: bin the cursor position relative to file size.
         // 8 bins spanning [0, max_file_size].
         let cursor_frac = cursor_offset as f64 / max_file_size;
-        let cursor_bin = (cursor_frac * 8.0).floor().min(7.0) as usize;
+        let cursor_bin = crate::analysis::histogram::bin_linear_normalized(cursor_frac, 8);
         let mut cursor_hist = vec![0u64; 8];
         cursor_hist[cursor_bin] = 1;
         cp.delta.cursor_trajectory_histogram = Some(cursor_hist);
 
         // Revision depth: how many times this position bin has been edited so far.
         let mut revision_hist = vec![0u64; 8];
-        let bin_for_event = |e: &crate::store::SecureEvent| -> usize {
-            let pos = e.file_size.max(0) as f64 / max_file_size;
-            (pos * 8.0).floor().min(7.0) as usize
-        };
         for prev_ev in &events[..=i] {
-            let bin = bin_for_event(prev_ev);
+            let pos = prev_ev.file_size.max(0) as f64 / max_file_size;
+            let bin = crate::analysis::histogram::bin_linear_normalized(pos, 8);
             revision_hist[bin] += 1;
         }
         cp.delta.revision_depth_histogram = Some(revision_hist);
@@ -674,15 +671,12 @@ fn enrich_checkpoints(
             .collect();
 
         if !window_jitter.is_empty() {
-            let mut pause_hist = vec![0u64; 8];
-            for s in &window_jitter {
-                let iki_ms = s.duration_since_last_ns / 1_000_000;
-                let bin = PAUSE_HIST_EDGES_MS
-                    .iter()
-                    .rposition(|&edge| iki_ms >= edge)
-                    .unwrap_or(0);
-                pause_hist[bin.min(7)] += 1;
-            }
+            let pause_ms: Vec<u64> = window_jitter
+                .iter()
+                .map(|s| s.duration_since_last_ns / 1_000_000)
+                .collect();
+            let pause_hist =
+                crate::analysis::histogram::edge_histogram(&pause_ms, &PAUSE_HIST_EDGES_MS, 8);
             cp.delta.pause_duration_histogram = Some(pause_hist);
 
             // Jitter binding: IKI intervals + entropy estimate + HMAC seal.
@@ -718,26 +712,8 @@ fn estimate_entropy_centibits(intervals_ms: &[u64]) -> u64 {
     if intervals_ms.is_empty() {
         return 0;
     }
-    // Bin into IKI histogram and compute Shannon entropy.
-    let mut bins = [0u64; 9];
-    for &iki in intervals_ms {
-        let bin = IKI_HIST_EDGES_MS
-            .iter()
-            .rposition(|&edge| iki >= edge)
-            .unwrap_or(0);
-        bins[bin.min(8)] += 1;
-    }
-    let n = intervals_ms.len() as f64;
-    let entropy: f64 = bins
-        .iter()
-        .filter(|&&c| c > 0)
-        .map(|&c| {
-            let p = c as f64 / n;
-            -p * p.log2()
-        })
-        .sum();
-    // Convert bits to centibits (1 bit = 100 centibits).
-    (entropy * 100.0).round() as u64
+    let hist = crate::analysis::histogram::edge_histogram(intervals_ms, &IKI_HIST_EDGES_MS, 9);
+    crate::analysis::histogram::shannon_entropy_centibits(&hist)
 }
 
 /// HMAC-SHA256 seal over jitter intervals bound to content hash.
@@ -768,22 +744,18 @@ fn build_baseline_verification(
         return None;
     }
 
-    // Build 9-bin IKI histogram.
+    // Build 9-bin IKI histogram, normalized to proportions.
+    let iki_ms_vals: Vec<u64> = session
+        .jitter_samples
+        .iter()
+        .map(|s| s.duration_since_last_ns / 1_000_000)
+        .collect();
+    let iki_counts = crate::analysis::histogram::edge_histogram(&iki_ms_vals, &IKI_HIST_EDGES_MS, 9);
     let mut iki_histogram = [0.0f64; 9];
-    let mut total_samples = 0u64;
-    for s in &session.jitter_samples {
-        let iki_ms = s.duration_since_last_ns / 1_000_000;
-        let bin = IKI_HIST_EDGES_MS
-            .iter()
-            .rposition(|&edge| iki_ms >= edge)
-            .unwrap_or(0);
-        iki_histogram[bin.min(8)] += 1.0;
-        total_samples += 1;
-    }
-    // Normalize to proportions.
-    if total_samples > 0 {
-        for bin in &mut iki_histogram {
-            *bin /= total_samples as f64;
+    let total_samples = iki_ms_vals.len() as f64;
+    if total_samples > 0.0 {
+        for (i, &c) in iki_counts.iter().enumerate() {
+            iki_histogram[i] = c as f64 / total_samples;
         }
     }
 

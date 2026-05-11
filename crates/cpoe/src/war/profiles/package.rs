@@ -492,41 +492,11 @@ fn verify_vc_proof(
 mod tests {
     use super::*;
     use crate::tpm::SoftwareProvider;
-    use crate::war::ear::{Ar4siStatus, EarAppraisal, VerifierId};
-    use std::collections::BTreeMap;
-
-    fn make_ear() -> EarToken {
-        let mut submods = BTreeMap::new();
-        submods.insert(
-            "pop".to_string(),
-            EarAppraisal {
-                ear_status: Ar4siStatus::Affirming,
-                ear_trustworthiness_vector: None,
-                ear_appraisal_policy_id: None,
-                pop_seal: None,
-                pop_evidence_ref: None,
-                pop_entropy_report: None,
-                pop_forgery_cost: None,
-                pop_forensic_summary: None,
-                pop_chain_length: Some(5),
-                pop_chain_duration: Some(3600),
-                pop_absence_claims: None,
-                pop_warnings: None,
-                pop_process_start: None,
-                pop_process_end: None,
-            },
-        );
-        EarToken {
-            eat_profile: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
-            iat: chrono::Utc::now().timestamp(),
-            ear_verifier_id: VerifierId::default(),
-            submods,
-        }
-    }
+    use crate::war::profiles::test_helpers::make_ear;
 
     #[test]
     fn test_package_produces_all_outputs() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let provider = SoftwareProvider::new();
         let did = "did:key:z6MkPackageTest";
 
@@ -570,7 +540,7 @@ mod tests {
     fn test_package_with_declaration() {
         use crate::declaration::{Declaration, InputModality, ModalityType};
 
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let provider = SoftwareProvider::new();
         let decl = Declaration {
             document_hash: [1u8; 32],
@@ -611,7 +581,7 @@ mod tests {
 
     #[test]
     fn test_package_cross_standard_vc_hash() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let provider = SoftwareProvider::new();
 
         let pkg = CredentialPackageBuilder::new(
@@ -632,7 +602,7 @@ mod tests {
     fn test_verify_credential_package_roundtrip() {
         use crate::tpm::Provider;
 
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let provider = SoftwareProvider::new();
         let pk_bytes: [u8; 32] = provider.public_key().try_into().expect("32-byte pk");
 
@@ -661,7 +631,7 @@ mod tests {
     fn test_verify_rejects_wrong_key() {
         use crate::tpm::Provider;
 
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let provider = SoftwareProvider::new();
 
         let pkg = CredentialPackageBuilder::new(

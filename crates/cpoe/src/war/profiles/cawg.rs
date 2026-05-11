@@ -372,79 +372,17 @@ pub fn to_cawg_tdm(decl: &Declaration) -> CawgTdmAssertion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::declaration::{
-        AiExtent, AiPurpose, AiToolUsage, Declaration, InputModality, ModalityType,
-    };
-    use crate::war::ear::{Ar4siStatus, EarAppraisal, EarToken, VerifierId};
+    use crate::declaration::AiExtent;
+    use crate::war::ear::{EarToken, VerifierId};
+    use crate::war::profiles::test_helpers::{make_ai_tool, make_decl, make_ear};
     use chrono::Utc;
     use std::collections::BTreeMap;
-
-    fn make_decl(ai_tools: Vec<AiToolUsage>) -> Declaration {
-        Declaration {
-            document_hash: [1u8; 32],
-            chain_hash: [2u8; 32],
-            title: "Test".to_string(),
-            input_modalities: vec![InputModality {
-                modality_type: ModalityType::Keyboard,
-                percentage: 100.0,
-                note: None,
-            }],
-            ai_tools,
-            collaborators: Vec::new(),
-            statement: "I wrote this.".to_string(),
-            created_at: Utc::now(),
-            version: 1,
-            author_public_key: Vec::new(),
-            signature: Vec::new(),
-            jitter_sealed: None,
-        }
-    }
-
-    fn make_ai_tool(extent: AiExtent) -> AiToolUsage {
-        AiToolUsage {
-            tool: "TestTool".to_string(),
-            version: None,
-            purpose: AiPurpose::Drafting,
-            interaction: None,
-            extent,
-            sections: Vec::new(),
-        }
-    }
-
-    fn make_ear() -> EarToken {
-        let mut submods = BTreeMap::new();
-        submods.insert(
-            "pop".to_string(),
-            EarAppraisal {
-                ear_status: Ar4siStatus::Affirming,
-                ear_trustworthiness_vector: None,
-                ear_appraisal_policy_id: None,
-                pop_seal: None,
-                pop_evidence_ref: None,
-                pop_entropy_report: None,
-                pop_forgery_cost: None,
-                pop_forensic_summary: None,
-                pop_chain_length: Some(5),
-                pop_chain_duration: Some(3600),
-                pop_absence_claims: None,
-                pop_warnings: None,
-                pop_process_start: None,
-                pop_process_end: None,
-            },
-        );
-        EarToken {
-            eat_profile: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
-            iat: Utc::now().timestamp(),
-            ear_verifier_id: VerifierId::default(),
-            submods,
-        }
-    }
 
     // -- Identity assertion tests --
 
     #[test]
     fn test_cawg_identity_has_did_claim() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let assertion = to_cawg_identity(&ear, "did:key:z6MkTest").expect("identity assertion");
         assert_eq!(assertion.signer_payload.sig_type, IDENTITY_LABEL);
 
@@ -460,7 +398,7 @@ mod tests {
 
     #[test]
     fn test_cawg_identity_has_attestation_status() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let assertion = to_cawg_identity(&ear, "did:key:z6MkTest").expect("identity assertion");
 
         if let CawgCredential::Ica { claims, .. } = &assertion.signer_payload.credential {
@@ -474,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_cawg_identity_includes_chain_metadata() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let assertion = to_cawg_identity(&ear, "did:key:z6MkTest").expect("identity assertion");
 
         if let CawgCredential::Ica { claims, .. } = &assertion.signer_payload.credential {
@@ -503,7 +441,7 @@ mod tests {
 
     #[test]
     fn test_cawg_identity_assertion_structure() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let assertion =
             to_cawg_identity(&ear, "did:key:z6MkStructure").expect("identity assertion");
         // Label must be "cawg.identity".
@@ -627,7 +565,7 @@ mod tests {
 
     #[test]
     fn test_cawg_identity_sign_verify_roundtrip() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let sk = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
         let vk = sk.verifying_key();
 
@@ -642,7 +580,7 @@ mod tests {
 
     #[test]
     fn test_cawg_identity_verify_rejects_unsigned() {
-        let ear = make_ear();
+        let ear = make_ear(5, 3600);
         let sk = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
         let assertion = to_cawg_identity(&ear, "did:key:z6MkNoSig").expect("identity assertion");
         assert!(assertion.verify(&sk.verifying_key()).is_err());

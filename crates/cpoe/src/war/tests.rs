@@ -6,14 +6,10 @@ use crate::declaration;
 use crate::evidence;
 use crate::evidence::Packet;
 use crate::vdf;
-use ed25519_dalek::SigningKey;
+use crate::war::profiles::test_helpers::test_signing_key;
 use std::fs;
 use std::time::Duration;
 use tempfile::TempDir;
-
-fn test_signing_key() -> SigningKey {
-    SigningKey::from_bytes(&[7u8; 32])
-}
 
 fn create_test_evidence() -> (Packet, TempDir) {
     let dir = TempDir::new().expect("create temp dir");

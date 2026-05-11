@@ -96,15 +96,9 @@ pub fn edit_entropy(regions: &[RegionData], bins: usize) -> f64 {
 
     let mut histogram = vec![0usize; bins];
     for r in regions {
-        let mut pos = r.start_pct;
-        if pos < 0.0 {
-            pos = 0.0;
-        }
-        if pos >= 1.0 {
-            pos = 0.9999;
-        }
-        let bin_idx = (pos * bins as f32) as usize;
-        let bin_idx = bin_idx.min(bins - 1);
+        // Keep f32 arithmetic to match input precision of start_pct: f32.
+        let pos = r.start_pct.clamp(0.0, 0.9999);
+        let bin_idx = ((pos * bins as f32) as usize).min(bins - 1);
         histogram[bin_idx] += 1;
     }
 
@@ -113,21 +107,7 @@ pub fn edit_entropy(regions: &[RegionData], bins: usize) -> f64 {
 
 /// Shannon entropy from a frequency histogram.
 pub(crate) fn shannon_entropy(histogram: &[usize]) -> f64 {
-    let n: usize = histogram.iter().sum();
-    if n == 0 {
-        return 0.0;
-    }
-
-    let n_float = n as f64;
-    let mut entropy = 0.0;
-    for &count in histogram {
-        if count > 0 {
-            let p = count as f64 / n_float;
-            entropy -= p * p.log2();
-        }
-    }
-
-    entropy
+    crate::analysis::histogram::shannon_entropy_usize(histogram)
 }
 
 /// Median inter-event interval in seconds.

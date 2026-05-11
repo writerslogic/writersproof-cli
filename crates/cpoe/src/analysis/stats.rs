@@ -99,12 +99,7 @@ pub fn bhattacharyya_coefficient(a: &[f64], b: &[f64]) -> f64 {
 ///
 /// If the histogram sums to zero (or negative), it is left unchanged.
 pub fn normalize_histogram(hist: &mut [f64]) {
-    let total: f64 = hist.iter().sum();
-    if total > 0.0 {
-        for h in hist {
-            *h /= total;
-        }
-    }
+    crate::analysis::histogram::normalize(hist);
 }
 
 /// Weighted merge of histogram `b` into `a`: `a[i] = a[i] * a_weight + b[i] * b_weight`.

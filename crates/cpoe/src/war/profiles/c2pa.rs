@@ -156,43 +156,12 @@ pub fn to_c2pa_action(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::war::ear::{Ar4siStatus, EarAppraisal, EarToken, VerifierId};
     use crate::war::profiles::standards::AiDisclosureLevel;
-    use chrono::Utc;
-    use std::collections::BTreeMap;
-
-    fn make_ear() -> EarToken {
-        let mut submods = BTreeMap::new();
-        submods.insert(
-            "pop".to_string(),
-            EarAppraisal {
-                ear_status: Ar4siStatus::Affirming,
-                ear_trustworthiness_vector: None,
-                ear_appraisal_policy_id: None,
-                pop_seal: None,
-                pop_evidence_ref: None,
-                pop_entropy_report: None,
-                pop_forgery_cost: None,
-                pop_forensic_summary: None,
-                pop_chain_length: Some(10),
-                pop_chain_duration: Some(7200),
-                pop_absence_claims: None,
-                pop_warnings: None,
-                pop_process_start: None,
-                pop_process_end: None,
-            },
-        );
-        EarToken {
-            eat_profile: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
-            iat: Utc::now().timestamp(),
-            ear_verifier_id: VerifierId::default(),
-            submods,
-        }
-    }
+    use crate::war::profiles::test_helpers::make_ear;
 
     #[test]
     fn test_c2pa_action_with_ai_disclosure() {
-        let ear = make_ear();
+        let ear = make_ear(10, 7200);
 
         // No AI disclosure: humanCreation.
         let action_none = to_c2pa_action(&ear, None).expect("action");
@@ -221,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_c2pa_assertion_structure() {
-        let ear = make_ear();
+        let ear = make_ear(10, 7200);
         let assertion = to_c2pa_assertion(&ear).expect("assertion");
         assert_eq!(assertion.label, ASSERTION_LABEL);
         assert_eq!(assertion.data.status, "affirming");

@@ -401,14 +401,11 @@ mod tests {
     use crate::vdf;
     use crate::war::Block;
     use coset::CborSerializable;
-    use ed25519_dalek::SigningKey;
     use std::fs;
     use std::time::Duration;
     use tempfile::TempDir;
 
-    fn test_signing_key() -> SigningKey {
-        SigningKey::from_bytes(&[7u8; 32])
-    }
+    use crate::war::profiles::test_helpers::test_signing_key;
 
     fn create_test_ear() -> (EarToken, TempDir) {
         let dir = TempDir::new().expect("create temp dir");
