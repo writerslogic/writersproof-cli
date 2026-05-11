@@ -196,16 +196,26 @@ pub fn analyze_forensics_ext_with_focus(
     let mut metrics = ForensicMetrics::default();
 
     // Sort once at pipeline entry; all analyzers receive the sorted invariant.
-    // Avoid cloning when the input is already sorted (common case).
+    // Avoid cloning when the input is already sorted AND timestamps are plausible.
     let already_sorted = events
         .windows(2)
         .all(|w| w[0].timestamp_ns <= w[1].timestamp_ns);
+    let needs_clamp = events
+        .iter()
+        .any(|e| e.timestamp_ns < MIN_PLAUSIBLE_TS_NS || e.timestamp_ns > MAX_PLAUSIBLE_TS_NS);
     let owned_buf: Vec<EventData>;
-    let sorted = if already_sorted {
+    let sorted = if already_sorted && !needs_clamp {
         SortedEvents::new(events)
     } else {
         owned_buf = {
             let mut buf = events.to_vec();
+            if needs_clamp {
+                for event in &mut buf {
+                    event.timestamp_ns = event
+                        .timestamp_ns
+                        .clamp(MIN_PLAUSIBLE_TS_NS, MAX_PLAUSIBLE_TS_NS);
+                }
+            }
             buf.sort_unstable_by_key(|e| e.timestamp_ns);
             buf
         };
@@ -456,7 +466,8 @@ pub fn analyze_forensics_ext_with_focus(
     metrics.checkpoint_count = context.checkpoint_count as usize;
 
     let anomalies = detect_anomalies(sorted, regions, &metrics.primary);
-    metrics.anomaly_count += anomalies.len();
+    let primary_anomaly_count = anomalies.len();
+    metrics.anomaly_count += primary_anomaly_count;
 
     // Skip cross-modal when context is default/unpopulated to avoid false positives
     let skip_cross_modal = context.checkpoint_count == 0 && context.document_length == 0;
@@ -482,10 +493,13 @@ pub fn analyze_forensics_ext_with_focus(
         metrics.analysis_status.mark_completed(AnalysisKind::CrossModal);
     }
 
+    // Exclude primary-metric anomalies from the score because compute_assessment_score
+    // already directly penalizes for the same metrics (monotonic append, low entropy).
+    let scoring_anomaly_count = metrics.anomaly_count.saturating_sub(primary_anomaly_count);
     metrics.assessment_score = Probability::clamp(compute_assessment_score(
         &metrics.primary,
         &metrics.cadence,
-        metrics.anomaly_count,
+        scoring_anomaly_count,
         events.len(),
         metrics.biological_cadence_score.get(),
     ));

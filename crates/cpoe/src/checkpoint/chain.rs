@@ -38,6 +38,27 @@ pub struct ChainMetadata {
     pub signature_policy: SignaturePolicy,
 }
 
+/// Configuration for forensic gating of checkpoint creation.
+#[derive(Debug, Clone)]
+pub struct ForensicGateConfig {
+    /// Anomaly count above which checkpoints are flagged low-confidence.
+    pub anomaly_threshold: usize,
+    /// Assessment score below which VDF cost is multiplied.
+    pub min_assessment_score: f64,
+    /// VDF cost multiplier when forensic gate triggers.
+    pub cost_multiplier: u32,
+}
+
+impl Default for ForensicGateConfig {
+    fn default() -> Self {
+        Self {
+            anomaly_threshold: 4,
+            min_assessment_score: 0.3,
+            cost_multiplier: 4,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chain {
     pub metadata: ChainMetadata,
@@ -45,10 +66,11 @@ pub struct Chain {
     #[serde(skip)]
     storage_path: Option<PathBuf>,
     /// Optional MMR coordinator for anti-deletion anchoring.
-    /// When present, each commit sets `checkpoint.mmr_root` and
-    /// `checkpoint.mmr_inclusion_proof` before finalizing the hash.
     #[serde(skip)]
     mmr: Option<crate::checkpoint_mmr::CheckpointMmr>,
+    /// Optional forensic gating configuration.
+    #[serde(skip)]
+    forensic_gate: Option<ForensicGateConfig>,
 }
 
 fn mac_sidecar_path(chain_path: &Path) -> PathBuf {
@@ -76,6 +98,91 @@ impl Chain {
     pub fn with_signature_policy(mut self, policy: SignaturePolicy) -> Self {
         self.metadata.signature_policy = policy;
         self
+    }
+
+    /// Enable forensic gating on checkpoint creation.
+    pub fn with_forensic_gate(mut self, config: ForensicGateConfig) -> Self {
+        self.forensic_gate = Some(config);
+        self
+    }
+
+    /// Evaluate forensic metrics against the gate configuration.
+    pub fn evaluate_forensic_gate(
+        &self,
+        anomaly_count: usize,
+        assessment_score: f64,
+    ) -> crate::forensics::ForensicGateVerdict {
+        self.evaluate_forensic_gate_with_coverage(anomaly_count, assessment_score, 1.0)
+    }
+
+    /// Like `evaluate_forensic_gate` but also considers analysis coverage.
+    pub fn evaluate_forensic_gate_with_coverage(
+        &self,
+        anomaly_count: usize,
+        assessment_score: f64,
+        analysis_success_ratio: f64,
+    ) -> crate::forensics::ForensicGateVerdict {
+        let config = match &self.forensic_gate {
+            Some(c) => c,
+            None => return crate::forensics::ForensicGateVerdict::Proceed,
+        };
+
+        let anomaly_threshold = if analysis_success_ratio < 0.75 {
+            config.anomaly_threshold.saturating_sub(1).max(1)
+        } else {
+            config.anomaly_threshold
+        };
+        let min_score = if analysis_success_ratio < 0.75 {
+            (config.min_assessment_score + 0.1).min(1.0)
+        } else {
+            config.min_assessment_score
+        };
+
+        if anomaly_count > anomaly_threshold && assessment_score < min_score {
+            crate::forensics::ForensicGateVerdict::IncreaseCost {
+                multiplier: config.cost_multiplier,
+                reason: format!(
+                    "anomalies={anomaly_count} (>{anomaly_threshold}) and \
+                     score={assessment_score:.2} (<{min_score:.2}), \
+                     coverage={:.0}%",
+                    analysis_success_ratio * 100.0,
+                ),
+            }
+        } else if anomaly_count > anomaly_threshold {
+            crate::forensics::ForensicGateVerdict::LowConfidence {
+                reason: format!(
+                    "anomalies={anomaly_count} exceeds threshold {anomaly_threshold}"
+                ),
+            }
+        } else if analysis_success_ratio < 0.5 {
+            crate::forensics::ForensicGateVerdict::LowConfidence {
+                reason: format!(
+                    "only {:.0}% of analyses completed",
+                    analysis_success_ratio * 100.0,
+                ),
+            }
+        } else {
+            crate::forensics::ForensicGateVerdict::Proceed
+        }
+    }
+
+    /// Compute VDF cost multiplier from cross-modal consistency.
+    pub fn cross_modal_vdf_multiplier(
+        &self,
+        cross_modal: Option<&crate::forensics::cross_modal::CrossModalResult>,
+    ) -> u32 {
+        let Some(cm) = cross_modal else {
+            return 1;
+        };
+        match cm.verdict {
+            crate::forensics::cross_modal::CrossModalVerdict::Inconsistent => {
+                self.forensic_gate
+                    .as_ref()
+                    .map_or(4, |c| c.cost_multiplier)
+            }
+            crate::forensics::cross_modal::CrossModalVerdict::Marginal => 2,
+            _ => 1,
+        }
     }
 
     pub fn new_with_mode(
@@ -109,28 +216,91 @@ impl Chain {
             checkpoints: Vec::with_capacity(1024),
             storage_path: None,
             mmr: None,
+            forensic_gate: None,
         })
     }
 
     pub fn commit(&mut self, message: Option<String>) -> Result<Checkpoint> {
-        self.commit_internal(message, None)
+        self.commit_internal(message, None, 1)
+    }
+
+    /// Commit with forensic gating. Evaluates the gate, applies VDF multiplier.
+    pub fn commit_with_forensics(
+        &mut self,
+        message: Option<String>,
+        anomaly_count: usize,
+        assessment_score: f64,
+        cross_modal: Option<&crate::forensics::cross_modal::CrossModalResult>,
+    ) -> Result<Checkpoint> {
+        self.commit_with_forensics_full(message, anomaly_count, assessment_score, cross_modal, 1.0)
+    }
+
+    /// Full forensic-gated commit with analysis coverage information.
+    pub fn commit_with_forensics_full(
+        &mut self,
+        message: Option<String>,
+        anomaly_count: usize,
+        assessment_score: f64,
+        cross_modal: Option<&crate::forensics::cross_modal::CrossModalResult>,
+        analysis_success_ratio: f64,
+    ) -> Result<Checkpoint> {
+        let gate_verdict = self.evaluate_forensic_gate_with_coverage(
+            anomaly_count,
+            assessment_score,
+            analysis_success_ratio,
+        );
+        let cm_multiplier = self.cross_modal_vdf_multiplier(cross_modal);
+
+        let vdf_multiplier = match &gate_verdict {
+            crate::forensics::ForensicGateVerdict::IncreaseCost { multiplier, reason } => {
+                log::info!("forensic gate: increasing VDF cost {multiplier}x — {reason}");
+                *multiplier
+            }
+            crate::forensics::ForensicGateVerdict::LowConfidence { reason } => {
+                log::info!("forensic gate: low confidence — {reason}");
+                1
+            }
+            crate::forensics::ForensicGateVerdict::Proceed => 1,
+        };
+
+        let total_multiplier = vdf_multiplier.max(cm_multiplier);
+
+        let msg = match &gate_verdict {
+            crate::forensics::ForensicGateVerdict::LowConfidence { reason } => {
+                Some(format!(
+                    "{}[low-confidence: {reason}]",
+                    message.as_deref().map(|m| format!("{m} ")).unwrap_or_default(),
+                ))
+            }
+            crate::forensics::ForensicGateVerdict::IncreaseCost { multiplier, reason } => {
+                Some(format!(
+                    "{}[vdf-cost: {multiplier}x, {reason}]",
+                    message.as_deref().map(|m| format!("{m} ")).unwrap_or_default(),
+                ))
+            }
+            crate::forensics::ForensicGateVerdict::Proceed => message,
+        };
+
+        self.commit_internal(msg, None, total_multiplier)
     }
 
     fn commit_internal(
         &mut self,
         message: Option<String>,
         vdf_duration: Option<Duration>,
+        vdf_cost_multiplier: u32,
     ) -> Result<Checkpoint> {
         let lock_file = fs::File::open(&self.metadata.document_path)?;
         Self::acquire_lock(&lock_file)?;
         let _guard = scopeguard::guard(&lock_file, Self::release_lock);
-        self.commit_internal_locked(message, vdf_duration)
+        self.commit_internal_locked(message, vdf_duration, vdf_cost_multiplier)
     }
 
     fn commit_internal_locked(
         &mut self,
         message: Option<String>,
         vdf_duration: Option<Duration>,
+        vdf_cost_multiplier: u32,
     ) -> Result<Checkpoint> {
         let (content_hash, content_size) =
             crate::crypto::hash_file_with_size(Path::new(&self.metadata.document_path))?;
@@ -184,13 +354,10 @@ impl Chain {
                 }
                 explicit
             } else {
-                let delta = checkpoint
-                    .timestamp
-                    .signed_duration_since(
-                        last_cp
-                            .expect("ordinal > 0 implies at least one prior checkpoint")
-                            .timestamp,
-                    );
+                let prev = last_cp.ok_or_else(|| {
+                    Error::checkpoint("ordinal > 0 but no prior checkpoint exists")
+                })?;
+                let delta = checkpoint.timestamp.signed_duration_since(prev.timestamp);
                 match delta.to_std() {
                     Ok(d) => d,
                     Err(_) => {
@@ -212,7 +379,15 @@ impl Chain {
                 }
             };
             let vdf_input = vdf::chain_input(content_hash, previous_hash, ordinal);
-            checkpoint.vdf = Some(vdf::compute(vdf_input, duration, self.metadata.vdf_params)?);
+            let mut vdf_params = self.metadata.vdf_params;
+            if vdf_cost_multiplier > 1 {
+                let m = u64::from(vdf_cost_multiplier);
+                vdf_params.min_iterations =
+                    vdf_params.min_iterations.saturating_mul(m);
+                vdf_params.iterations_per_second =
+                    vdf_params.iterations_per_second.saturating_mul(m);
+            }
+            checkpoint.vdf = Some(vdf::compute(vdf_input, duration, vdf_params)?);
         }
 
         self.commit_finish(checkpoint)
@@ -245,12 +420,8 @@ impl Chain {
         }
         let data = serde_json::to_vec_pretty(self)
             .map_err(|e| Error::checkpoint(format!("failed to marshal chain: {e}")))?;
-        let rand_suffix: String = format!("{:016x}", rand::random::<u64>());
-        let tmp_name = format!(
-            "{}.{}.tmp",
-            path.display(),
-            &rand_suffix[..8.min(rand_suffix.len())]
-        );
+        let rand_suffix = format!("{:08x}", rand::random::<u32>());
+        let tmp_name = format!("{}.{rand_suffix}.tmp", path.display());
         let tmp_path = PathBuf::from(tmp_name);
         fs::write(&tmp_path, &data)?;
         fs::File::open(&tmp_path)?.sync_all()?;
@@ -306,12 +477,13 @@ impl Chain {
         fs::write(&tmp_mac, mac)?;
         fs::File::open(&tmp_mac)?.sync_all()?;
 
-        // Commit sidecar first so load_with_mac never sees a chain without
-        // a matching sidecar (the converse is acceptable: MAC but no chain).
-        fs::rename(&tmp_mac, &mac_path)
-            .map_err(|e| Error::checkpoint(format!("failed to commit chain MAC: {e}")))?;
+        // Commit chain first, then sidecar. On crash between the two renames:
+        // - New chain + stale MAC → load_with_mac rejects (MAC mismatch), clear error.
+        // - The reverse (old chain + new MAC) would silently pass MAC check on stale data.
         fs::rename(&tmp_chain, path)
             .map_err(|e| Error::checkpoint(format!("failed to commit chain: {e}")))?;
+        fs::rename(&tmp_mac, &mac_path)
+            .map_err(|e| Error::checkpoint(format!("failed to commit chain MAC: {e}")))?;
         if let Some(parent) = path.parent() {
             if let Ok(dir) = fs::File::open(parent) {
                 let _ = dir.sync_all();
@@ -404,7 +576,7 @@ impl Chain {
         message: Option<String>,
         vdf_duration: Duration,
     ) -> Result<Checkpoint> {
-        self.commit_internal(message, Some(vdf_duration))
+        self.commit_internal(message, Some(vdf_duration), 1)
     }
 
     pub fn commit_entangled(

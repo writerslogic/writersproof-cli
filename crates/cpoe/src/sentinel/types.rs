@@ -762,6 +762,10 @@ pub struct DocumentSession {
     pub(crate) last_export_detected_ns: Option<i64>,
     /// Confidence in the evidence path and storage metadata for this session.
     pub evidence_confidence: EvidenceConfidence,
+    /// Real-time transcription suspicion flag. Updated periodically during
+    /// keystroke capture to detect transcription-like correction patterns.
+    /// When `is_suspicious`, checkpoints are forced on every tick (never skipped).
+    pub(crate) transcription_suspicion: crate::forensics::error_ecology::TranscriptionSuspicion,
 }
 
 /// Confidence in the evidence path and storage metadata for a document session.
@@ -956,6 +960,7 @@ impl Clone for DocumentSession {
             scrivener_project_map: self.scrivener_project_map.clone(),
             last_export_detected_ns: self.last_export_detected_ns,
             evidence_confidence: self.evidence_confidence,
+            transcription_suspicion: self.transcription_suspicion.clone(),
         }
     }
 }
@@ -1024,6 +1029,7 @@ impl DocumentSession {
             scrivener_project_map: None,
             last_export_detected_ns: None,
             evidence_confidence: EvidenceConfidence::Full,
+            transcription_suspicion: Default::default(),
         }
     }
 
