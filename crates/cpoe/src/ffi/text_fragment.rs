@@ -271,13 +271,9 @@ pub fn ffi_text_fragment_store(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_text_fragment_lookup(fragment_hash_hex: String) -> Option<FfiTextFragment> {
     catch_ffi_panic!(None, {
-    let hash_bytes = match hex::decode(&fragment_hash_hex) {
-        Ok(b) if b.len() == 32 => {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&b);
-            arr
-        }
-        _ => {
+    let hash_bytes = match crate::utils::crypto_types::HexHash::from_hex(&fragment_hash_hex) {
+        Ok(h) => h.0,
+        Err(_) => {
             log::warn!("ffi_text_fragment_lookup: invalid hash hex (expected 64 hex chars)");
             return None;
         }
@@ -550,11 +546,10 @@ pub fn ffi_attest_text(
 /// Used by the native messaging host where the browser has already hashed the
 /// text. Signs the hash with the device key and inserts a TextFragment record.
 pub fn store_attestation_from_hash(content_hash: &str, app_bundle_id: &str) -> Result<(), String> {
-    let hash_bytes =
-        hex::decode(content_hash).map_err(|e| format!("Invalid content_hash hex: {e}"))?;
-    if hash_bytes.len() != 32 {
-        return Err("content_hash must decode to 32 bytes".into());
-    }
+    let hash_bytes = crate::utils::crypto_types::HexHash::from_hex(content_hash)
+        .map_err(|e| format!("Invalid content_hash hex: {e}"))?
+        .0
+        .to_vec();
 
     let session_id = generate_ephemeral_session_id();
     let timestamp = current_timestamp_ms();
@@ -696,9 +691,9 @@ pub fn ffi_apply_remote_fragment(
         return FfiTextFragmentStoreResult::err("timestamp_ms must be positive");
     }
 
-    let fragment_hash = match hex::decode(&fragment_hash_hex) {
-        Ok(b) if b.len() == 32 => b,
-        _ => {
+    let fragment_hash = match crate::utils::crypto_types::HexHash::from_hex(&fragment_hash_hex) {
+        Ok(h) => h.0.to_vec(),
+        Err(_) => {
             return FfiTextFragmentStoreResult::err(
                 "fragment_hash_hex must be 64 hex chars (32 bytes)",
             )
@@ -809,12 +804,12 @@ pub fn ffi_resolve_sync_conflict(
     };
 
     let remote_fragment = if strat != SyncResolutionStrategy::KeepLocal {
-        let hash = match remote_fragment_hash_hex.as_deref().map(hex::decode) {
-            Some(Ok(b)) if b.len() == 32 => b,
+        let hash = match remote_fragment_hash_hex.as_deref().map(crate::utils::crypto_types::HexHash::from_hex) {
+            Some(Ok(h)) => h.0.to_vec(),
             _ => return FfiSyncResult::err("Remote fragment hash required"),
         };
-        let sig = match remote_signature_hex.as_deref().map(hex::decode) {
-            Some(Ok(b)) if b.len() == 64 => b,
+        let sig = match remote_signature_hex.as_deref().map(crate::utils::crypto_types::Ed25519Sig::from_hex) {
+            Some(Ok(s)) => s.0.to_vec(),
             _ => return FfiSyncResult::err("Remote signature required"),
         };
         let nonce = match remote_nonce_hex.as_deref().map(hex::decode) {
