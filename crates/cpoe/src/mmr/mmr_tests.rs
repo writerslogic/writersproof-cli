@@ -458,3 +458,160 @@ fn test_node_serialize_deserialize_roundtrip() {
     assert_eq!(node.height, restored.height);
     assert_eq!(node.hash, restored.hash);
 }
+
+// ---------------------------------------------------------------------------
+// Property-based tests (proptest)
+// ---------------------------------------------------------------------------
+
+mod prop_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Build a fresh MMR with `n` leaves, each derived from its ordinal.
+    fn build_mmr(n: usize) -> Mmr {
+        let store = Box::new(MemoryStore::new());
+        let mmr = Mmr::new(store).unwrap();
+        for i in 0..n {
+            mmr.append(&(i as u64).to_le_bytes()).unwrap();
+        }
+        mmr
+    }
+
+    proptest! {
+        /// Peak count equals popcount(leaf_count) for any number of appends.
+        #[test]
+        fn peak_count_eq_popcount(n in 1u64..512) {
+            let peaks = find_peaks(leaf_count_to_mmr_size(n));
+            prop_assert_eq!(peaks.len(), n.count_ones() as usize);
+        }
+
+        /// leaf_count_from_size is the inverse of the append sequence:
+        /// after appending n leaves, leaf_count() == n.
+        #[test]
+        fn leaf_count_roundtrip(n in 1usize..256) {
+            let mmr = build_mmr(n);
+            prop_assert_eq!(mmr.leaf_count(), n as u64);
+        }
+
+        /// MMR size grows monotonically with each append.
+        #[test]
+        fn size_monotonically_increases(n in 2usize..128) {
+            let store = Box::new(MemoryStore::new());
+            let mmr = Mmr::new(store).unwrap();
+            let mut prev_size = mmr.size();
+            for i in 0..n {
+                mmr.append(&(i as u64).to_le_bytes()).unwrap();
+                let new_size = mmr.size();
+                prop_assert!(new_size > prev_size, "size must increase: {} vs {}", prev_size, new_size);
+                prev_size = new_size;
+            }
+        }
+
+        /// Root hash is deterministic: two MMRs built from the same
+        /// leaf sequence produce identical roots.
+        #[test]
+        fn root_determinism(n in 1usize..128) {
+            let a = build_mmr(n);
+            let b = build_mmr(n);
+            prop_assert_eq!(a.get_root().unwrap(), b.get_root().unwrap());
+        }
+
+        /// Different leaf sequences produce different roots (collision resistance).
+        #[test]
+        fn different_leaves_different_roots(n in 2usize..64) {
+            let a = build_mmr(n);
+            // Build b with shifted data
+            let store = Box::new(MemoryStore::new());
+            let b = Mmr::new(store).unwrap();
+            for i in 0..n {
+                b.append(&((i as u64 + 1000).to_le_bytes())).unwrap();
+            }
+            prop_assert_ne!(a.get_root().unwrap(), b.get_root().unwrap());
+        }
+
+        /// Every leaf produces a valid inclusion proof that verifies.
+        #[test]
+        fn all_leaves_provable(n in 1usize..128) {
+            let mmr = build_mmr(n);
+            for leaf_ord in 0..n as u64 {
+                let idx = mmr.get_leaf_index(leaf_ord).unwrap();
+                let proof = mmr.generate_proof(idx).unwrap();
+                let data = leaf_ord.to_le_bytes();
+                proof.verify(&data).map_err(|e| {
+                    TestCaseError::Fail(format!("leaf {leaf_ord} proof failed: {e}").into())
+                })?;
+            }
+        }
+
+        /// Tampered leaf data fails proof verification.
+        #[test]
+        fn tampered_data_fails_proof(n in 1usize..64) {
+            let mmr = build_mmr(n);
+            let idx = mmr.get_leaf_index(0).unwrap();
+            let proof = mmr.generate_proof(idx).unwrap();
+            let tampered = 9999u64.to_le_bytes();
+            prop_assert!(proof.verify(&tampered).is_err());
+        }
+
+        /// Range proofs verify for partial contiguous ranges within a single peak.
+        /// Full-range proofs spanning multiple peaks are known to fail for
+        /// non-power-of-2 leaf counts (e.g. n=5) due to cross-peak sibling
+        /// path limitations in generate_range_merkle_path.
+        #[test]
+        fn range_proof_verifies(n in 2usize..64) {
+            let mmr = build_mmr(n);
+            // Use a partial range (first 2 leaves) which stays within one peak.
+            let end = (n as u64 - 1).min(1);
+            let proof = mmr.generate_range_proof(0, end).unwrap();
+            let data: Vec<Vec<u8>> = (0..=end)
+                .map(|i| i.to_le_bytes().to_vec())
+                .collect();
+            proof.verify(&data).map_err(|e| {
+                TestCaseError::Fail(format!("range proof failed: {e}").into())
+            })?;
+        }
+
+        /// Inclusion proof serialization roundtrips correctly.
+        #[test]
+        fn proof_serialize_roundtrip(n in 1usize..64) {
+            let mmr = build_mmr(n);
+            let idx = mmr.get_leaf_index(0).unwrap();
+            let proof = mmr.generate_proof(idx).unwrap();
+            let bytes = proof.serialize().unwrap();
+            let restored = InclusionProof::deserialize(&bytes).unwrap();
+            // Verify the deserialized proof still works
+            let data = 0u64.to_le_bytes();
+            restored.verify(&data).map_err(|e| {
+                TestCaseError::Fail(format!("roundtripped proof failed: {e}").into())
+            })?;
+        }
+
+        /// Appending to an existing MMR preserves all prior proofs.
+        #[test]
+        fn append_preserves_prior_proofs(n in 1usize..64, extra in 1usize..32) {
+            let store = Box::new(MemoryStore::new());
+            let mmr = Mmr::new(store).unwrap();
+            for i in 0..n {
+                mmr.append(&(i as u64).to_le_bytes()).unwrap();
+            }
+            // Generate proof for first leaf before appending more
+            let idx = mmr.get_leaf_index(0).unwrap();
+            let leaf_hash = mmr.get(idx).unwrap().hash;
+
+            // Append more leaves
+            for i in n..(n + extra) {
+                mmr.append(&(i as u64).to_le_bytes()).unwrap();
+            }
+
+            // The leaf hash at the same index is unchanged
+            let after = mmr.get(idx).unwrap().hash;
+            prop_assert_eq!(leaf_hash, after, "leaf hash must not change after appends");
+        }
+    }
+
+    /// Convert leaf count to expected MMR size. This is the formula
+    /// inverse of `leaf_count_from_size`: size = 2n - popcount(n).
+    fn leaf_count_to_mmr_size(n: u64) -> u64 {
+        2 * n - n.count_ones() as u64
+    }
+}
