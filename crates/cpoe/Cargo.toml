@@ -66,6 +66,7 @@ der = "0.7"
 
 # Math & Analysis
 aho-corasick = "1"
+rayon = "1.10"
 statrs = "0.18.0"
 bincode = { version = "2.0.0-rc.3", features = ["serde"] } 
 lazy_static = "1.5.0"
