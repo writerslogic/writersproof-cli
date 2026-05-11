@@ -266,7 +266,7 @@ impl WebVHIdentity {
     /// Returns the hex-encoded public key of the derived webvh signing key.
     pub fn public_key_hex(&self, master_key: &SigningKey) -> Result<String, Error> {
         let derived = derive_webvh_signing_key(master_key, &self.address)?;
-        Ok(hex::encode(derived.verifying_key().as_bytes()))
+        Ok(crate::utils::crypto_types::Ed25519Pubkey::from(derived.verifying_key()).to_hex())
     }
 
     /// Update the DID document.

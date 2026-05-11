@@ -102,7 +102,7 @@ impl Block {
         let signed = seal.signature != [0u8; 64];
 
         let author = if seal.public_key != [0u8; 32] {
-            let fingerprint = &hex::encode(seal.public_key)[..16];
+            let fingerprint = &crate::utils::crypto_types::Ed25519Pubkey::from_bytes(seal.public_key).to_hex()[..16];
             format!("key:{fingerprint}")
         } else {
             "unknown".to_string()

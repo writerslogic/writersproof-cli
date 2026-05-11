@@ -85,12 +85,15 @@ pub fn to_c2pa_assertion(ear: &EarToken) -> Result<C2paAssertion> {
         .as_ref()
         .map(SerializedTrustVector::from);
 
-    let seal_json = appr.pop_seal.as_ref().map(|s| SealJson {
-        h1: hex::encode(s.h1),
-        h2: hex::encode(s.h2),
-        h3: hex::encode(s.h3),
-        signature: hex::encode(s.signature),
-        public_key: hex::encode(s.public_key),
+    let seal_json = appr.pop_seal.as_ref().map(|s| {
+        use crate::utils::crypto_types::{Ed25519Pubkey, Ed25519Sig, HexHash};
+        SealJson {
+            h1: HexHash::from_bytes(s.h1).to_hex(),
+            h2: HexHash::from_bytes(s.h2).to_hex(),
+            h3: HexHash::from_bytes(s.h3).to_hex(),
+            signature: Ed25519Sig::from_bytes(s.signature).to_hex(),
+            public_key: Ed25519Pubkey::from_bytes(s.public_key).to_hex(),
+        }
     });
 
     let evidence_ref = appr.pop_evidence_ref.as_ref().map(hex::encode);

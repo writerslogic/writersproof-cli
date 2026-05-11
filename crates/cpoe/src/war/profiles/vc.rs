@@ -151,7 +151,7 @@ fn build_vc_core(ear: &EarToken, author_did: &str) -> Result<VerifiableCredentia
         .checked_add_signed(chrono::Duration::days(MAX_VC_VALIDITY_DAYS))
         .map(|dt| dt.to_rfc3339());
 
-    let seal_hash = appr.pop_seal.as_ref().map(|s| hex::encode(s.h3));
+    let seal_hash = appr.pop_seal.as_ref().map(|s| crate::utils::crypto_types::HexHash::from_bytes(s.h3).to_hex());
 
     let evidence = vec![VcEvidence {
         evidence_type: "ProofOfProcessEvidence".to_string(),
