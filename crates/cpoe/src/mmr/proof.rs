@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::mmr::errors::MmrError;
-use crate::mmr::node::{hash_internal, hash_leaf, HASH_SIZE};
+use crate::mmr::node::{hash_bag, hash_internal, hash_leaf, HASH_SIZE};
 
 const PROOF_VERSION: u8 = 1;
 const PROOF_TYPE_INCLUSION: u8 = 0x01;
@@ -38,17 +38,19 @@ pub struct InclusionProof {
 impl InclusionProof {
     /// Verify this proof against the given leaf data and root.
     pub fn verify(&self, leaf_data: &[u8]) -> Result<(), MmrError> {
-        let expected = hash_leaf(leaf_data);
+        let expected = hash_leaf(self.leaf_index, leaf_data);
         if expected != self.leaf_hash {
             return Err(MmrError::HashMismatch);
         }
         let mut current = self.leaf_hash;
+        let mut height: u8 = 1;
         for elem in &self.merkle_path {
             current = if elem.is_left {
-                hash_internal(elem.hash, current)
+                hash_internal(height, elem.hash, current)
             } else {
-                hash_internal(current, elem.hash)
+                hash_internal(height, current, elem.hash)
             };
+            height = height.saturating_add(1);
         }
         if self.peak_position >= self.peaks.len() {
             return Err(MmrError::InvalidProof);
@@ -64,7 +66,7 @@ impl InclusionProof {
         }
         let mut root = self.peaks[self.peaks.len() - 1];
         for i in (0..self.peaks.len() - 1).rev() {
-            root = hash_internal(self.peaks[i], root);
+            root = hash_bag(self.peaks[i], root);
         }
         if root != self.root {
             return Err(MmrError::InvalidProof);
@@ -261,7 +263,7 @@ impl RangeProof {
             return Err(MmrError::InvalidProof);
         }
         for (i, data) in leaf_data.iter().enumerate() {
-            let h = hash_leaf(data);
+            let h = hash_leaf(self.leaf_indices[i], data);
             if h != self.leaf_hashes[i] {
                 return Err(MmrError::HashMismatch);
             }
@@ -307,9 +309,10 @@ impl RangeProof {
                 let right_sibling = left_parent.checked_sub(1).ok_or(MmrError::InvalidProof)?;
                 let parent_pos;
                 let combined;
+                let parent_height = height + 1;
                 if let Some(sib_hash) = current.get(&right_sibling) {
                     if right_sibling != pos {
-                        combined = hash_internal(hash, *sib_hash);
+                        combined = hash_internal(parent_height, hash, *sib_hash);
                         parent_pos = left_parent;
                         processed.insert(right_sibling, true);
                     } else {
@@ -321,7 +324,7 @@ impl RangeProof {
                     if offset <= right_parent {
                         let left_sibling = right_parent - offset;
                         if let Some(sib_hash) = current.get(&left_sibling) {
-                            combined = hash_internal(*sib_hash, hash);
+                            combined = hash_internal(parent_height, *sib_hash, hash);
                             parent_pos = right_parent;
                             processed.insert(left_sibling, true);
                         } else {
@@ -333,10 +336,10 @@ impl RangeProof {
                             let elem = &self.sibling_path[sibling_idx];
                             sibling_idx += 1;
                             if elem.is_left {
-                                combined = hash_internal(elem.hash, hash);
+                                combined = hash_internal(parent_height, elem.hash, hash);
                                 parent_pos = right_parent;
                             } else {
-                                combined = hash_internal(hash, elem.hash);
+                                combined = hash_internal(parent_height, hash, elem.hash);
                                 parent_pos = left_parent;
                             }
                         }
@@ -349,9 +352,9 @@ impl RangeProof {
                         let elem = &self.sibling_path[sibling_idx];
                         sibling_idx += 1;
                         combined = if elem.is_left {
-                            hash_internal(elem.hash, hash)
+                            hash_internal(parent_height, elem.hash, hash)
                         } else {
-                            hash_internal(hash, elem.hash)
+                            hash_internal(parent_height, hash, elem.hash)
                         };
                         parent_pos = left_parent;
                     }
@@ -394,7 +397,7 @@ impl RangeProof {
         }
         let mut root = self.peaks[self.peaks.len() - 1];
         for i in (0..self.peaks.len() - 1).rev() {
-            root = hash_internal(self.peaks[i], root);
+            root = hash_bag(self.peaks[i], root);
         }
         if root != self.root {
             return Err(MmrError::InvalidProof);

@@ -9,6 +9,10 @@ pub const NODE_SIZE: usize = 41;
 const LEAF_PREFIX: u8 = 0x00;
 const INTERNAL_PREFIX: u8 = 0x01;
 
+const LEAF_DST: &[u8] = b"cpoe-mmr-leaf-v1";
+const NODE_DST: &[u8] = b"cpoe-mmr-node-v1";
+const BAG_DST: &[u8] = b"cpoe-mmr-bag-v1";
+
 #[derive(Debug, Clone)]
 pub struct Node {
     pub index: u64,
@@ -16,9 +20,13 @@ pub struct Node {
     pub hash: [u8; HASH_SIZE],
 }
 
-pub fn hash_leaf(data: &[u8]) -> [u8; HASH_SIZE] {
+/// Hash a leaf node. Binds the MMR position into the digest so identical data
+/// at different positions produces distinct hashes (prevents node transplant).
+pub fn hash_leaf(index: u64, data: &[u8]) -> [u8; HASH_SIZE] {
     let mut hasher = Sha256::new();
+    hasher.update(LEAF_DST);
     hasher.update([LEAF_PREFIX]);
+    hasher.update(index.to_be_bytes());
     hasher.update(data);
     let digest = hasher.finalize();
     let mut out = [0u8; HASH_SIZE];
@@ -26,9 +34,26 @@ pub fn hash_leaf(data: &[u8]) -> [u8; HASH_SIZE] {
     out
 }
 
-pub fn hash_internal(left: [u8; HASH_SIZE], right: [u8; HASH_SIZE]) -> [u8; HASH_SIZE] {
+/// Hash an internal node. Binds the tree height so a node proven at one level
+/// cannot be replayed at another (prevents height-confusion attacks).
+pub fn hash_internal(height: u8, left: [u8; HASH_SIZE], right: [u8; HASH_SIZE]) -> [u8; HASH_SIZE] {
     let mut hasher = Sha256::new();
+    hasher.update(NODE_DST);
     hasher.update([INTERNAL_PREFIX]);
+    hasher.update([height]);
+    hasher.update(left);
+    hasher.update(right);
+    let digest = hasher.finalize();
+    let mut out = [0u8; HASH_SIZE];
+    out.copy_from_slice(&digest);
+    out
+}
+
+/// Hash for peak-bagging (combining peaks into the MMR root). Separate from
+/// `hash_internal` because peak combination is not a tree level operation.
+pub fn hash_bag(left: [u8; HASH_SIZE], right: [u8; HASH_SIZE]) -> [u8; HASH_SIZE] {
+    let mut hasher = Sha256::new();
+    hasher.update(BAG_DST);
     hasher.update(left);
     hasher.update(right);
     let digest = hasher.finalize();
@@ -42,7 +67,7 @@ impl Node {
         Self {
             index,
             height: 0,
-            hash: hash_leaf(data),
+            hash: hash_leaf(index, data),
         }
     }
 
@@ -50,7 +75,7 @@ impl Node {
         Self {
             index,
             height,
-            hash: hash_internal(left.hash, right.hash),
+            hash: hash_internal(height, left.hash, right.hash),
         }
     }
 

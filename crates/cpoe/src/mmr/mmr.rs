@@ -135,7 +135,7 @@ impl Mmr {
         }
         let mut root = peaks[peaks.len() - 1].hash;
         for i in (0..peaks.len() - 1).rev() {
-            root = crate::mmr::node::hash_internal(peaks[i].hash, root);
+            root = crate::mmr::node::hash_bag(peaks[i].hash, root);
         }
         Ok(root)
     }
