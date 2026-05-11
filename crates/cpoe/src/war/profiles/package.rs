@@ -441,16 +441,32 @@ fn verify_vc_proof(
         _ => return false,
     };
 
-    // Reconstruct the VC without the proof for hashing.
+    // eddsa-jcs-2022: verify SHA-256(proof_options) || SHA-256(document)
     let mut vc_no_proof = vc.clone();
     vc_no_proof.proof = None;
 
-    let canon_json = match serde_jcs::to_string(&vc_no_proof) {
+    // Hash the proof options (with empty proofValue)
+    let proof_options = super::vc::VcProof {
+        proof_value: String::new(),
+        ..proof.clone()
+    };
+    let proof_options_canon = match serde_jcs::to_string(&proof_options) {
         Ok(j) => j,
         Err(_) => return false,
     };
+    let proof_options_hash = Sha256::digest(proof_options_canon.as_bytes());
 
-    let digest = Sha256::digest(canon_json.as_bytes());
+    // Hash the document (without proof)
+    let doc_canon = match serde_jcs::to_string(&vc_no_proof) {
+        Ok(j) => j,
+        Err(_) => return false,
+    };
+    let doc_hash = Sha256::digest(doc_canon.as_bytes());
+
+    // Concatenate hashes as signing input
+    let mut signing_input = [0u8; 64];
+    signing_input[..32].copy_from_slice(&proof_options_hash);
+    signing_input[32..].copy_from_slice(&doc_hash);
 
     // proofValue is multibase base16: 'f' prefix + hex
     let hex_part = match proof.proof_value.strip_prefix('f') {
@@ -469,7 +485,7 @@ fn verify_vc_proof(
     };
 
     let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
-    vk.verify(&digest, &signature).is_ok()
+    vk.verify(&signing_input, &signature).is_ok()
 }
 
 #[cfg(test)]

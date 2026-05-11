@@ -145,7 +145,8 @@ fn build_vc_core(ear: &EarToken, author_did: &str) -> Result<VerifiableCredentia
         .as_ref()
         .map(|tv| derive_attestation_tier(tv).to_string());
 
-    let valid_from: DateTime<Utc> = DateTime::from_timestamp(ear.iat, 0).unwrap_or_else(Utc::now);
+    let valid_from: DateTime<Utc> = DateTime::from_timestamp(ear.iat, 0)
+        .ok_or_else(|| Error::evidence(format!("EAR iat {} is not a valid timestamp", ear.iat)))?;
     let valid_until = valid_from
         .checked_add_signed(chrono::Duration::days(MAX_VC_VALIDITY_DAYS))
         .map(|dt| dt.to_rfc3339());
@@ -211,9 +212,10 @@ pub fn to_verifiable_credential(ear: &EarToken, author_did: &str) -> Result<Veri
 
 /// Produce a signed W3C Verifiable Credential 2.0 with a Data Integrity proof.
 ///
-/// The VC JSON is canonicalized (sorted keys), hashed with SHA-256, and signed
-/// with Ed25519 via the provided TPM provider. The `proofValue` is encoded as
-/// multibase base16 (`f` prefix + lowercase hex).
+/// Follows the `eddsa-jcs-2022` cryptosuite specification: the proof is
+/// computed over `SHA-256(proof_options) || SHA-256(document)` where both
+/// inputs are JCS-canonicalized. The `proofValue` is encoded as multibase
+/// base16 (`f` prefix + lowercase hex).
 pub fn to_signed_verifiable_credential(
     ear: &EarToken,
     author_did: &str,
@@ -221,25 +223,38 @@ pub fn to_signed_verifiable_credential(
 ) -> Result<VerifiableCredential> {
     let mut vc = build_vc_core(ear, author_did)?;
 
-    // Canonicalize the VC (without proof) as RFC 8785 (JCS), then hash.
-    let canon_json = serde_jcs::to_string(&vc)
-        .map_err(|e| Error::evidence(format!("VC JCS canonicalization failed: {e}")))?;
-    let digest = Sha256::digest(canon_json.as_bytes());
+    // Build proof options (will be embedded in VC after signing).
+    let proof_options = VcProof {
+        proof_type: "DataIntegrityProof".to_string(),
+        cryptosuite: "eddsa-jcs-2022".to_string(),
+        verification_method: format!("{}#key-1", author_did),
+        proof_purpose: "assertionMethod".to_string(),
+        proof_value: String::new(),
+    };
 
-    // Sign the hash with Ed25519.
+    // eddsa-jcs-2022: sign SHA-256(proof_options) || SHA-256(document)
+    let proof_options_canon = serde_jcs::to_string(&proof_options)
+        .map_err(|e| Error::evidence(format!("proof options JCS failed: {e}")))?;
+    let proof_options_hash = Sha256::digest(proof_options_canon.as_bytes());
+
+    let doc_canon = serde_jcs::to_string(&vc)
+        .map_err(|e| Error::evidence(format!("VC JCS canonicalization failed: {e}")))?;
+    let doc_hash = Sha256::digest(doc_canon.as_bytes());
+
+    let mut signing_input = [0u8; 64];
+    signing_input[..32].copy_from_slice(&proof_options_hash);
+    signing_input[32..].copy_from_slice(&doc_hash);
+
     let signature = signer
-        .sign(&digest)
+        .sign(&signing_input)
         .map_err(|e| Error::crypto(format!("VC signing failed: {e}")))?;
 
     // Encode as multibase base16 (f + hex).
     let proof_value = format!("f{}", hex::encode(&signature));
 
     vc.proof = Some(VcProof {
-        proof_type: "DataIntegrityProof".to_string(),
-        cryptosuite: "eddsa-jcs-2022".to_string(),
-        verification_method: format!("{}#key-1", author_did),
-        proof_purpose: "assertionMethod".to_string(),
         proof_value,
+        ..proof_options
     });
 
     Ok(vc)
@@ -317,6 +332,40 @@ pub fn from_cose_secured_vc(bytes: &[u8]) -> Result<VerifiableCredential> {
         .ok_or_else(|| Error::crypto("missing COSE VC payload"))?;
 
     // The payload is a CBOR-encoded JSON value (serde_json::Value).
+    let json_value: serde_json::Value = ciborium::from_reader(payload.as_slice())
+        .map_err(|e| Error::crypto(format!("CBOR payload decode error: {e}")))?;
+
+    serde_json::from_value(json_value)
+        .map_err(|e| Error::evidence(format!("VC deserialization failed: {e}")))
+}
+
+/// Decode and verify a COSE_Sign1-secured Verifiable Credential.
+///
+/// Parses the COSE_Sign1 envelope, verifies the Ed25519 signature against
+/// the provided public key, and returns the decoded VC.
+pub fn verify_cose_secured_vc(
+    bytes: &[u8],
+    verifying_key: &ed25519_dalek::VerifyingKey,
+) -> Result<VerifiableCredential> {
+    use ed25519_dalek::Verifier;
+
+    let sign1 = coset::CoseSign1::from_slice(bytes)
+        .map_err(|e| Error::crypto(format!("COSE decode error: {e}")))?;
+
+    let result = sign1.verify_signature(&[], |sig, sig_data| {
+        let signature = ed25519_dalek::Signature::from_slice(sig)
+            .map_err(|e| Error::crypto(format!("invalid signature: {e}")))?;
+        verifying_key
+            .verify(sig_data, &signature)
+            .map_err(|e| Error::crypto(format!("COSE VC signature invalid: {e}")))
+    });
+
+    result.map_err(|e| Error::crypto(format!("COSE VC verification failed: {e}")))?;
+
+    let payload = sign1
+        .payload
+        .ok_or_else(|| Error::crypto("missing COSE VC payload"))?;
+
     let json_value: serde_json::Value = ciborium::from_reader(payload.as_slice())
         .map_err(|e| Error::crypto(format!("CBOR payload decode error: {e}")))?;
 

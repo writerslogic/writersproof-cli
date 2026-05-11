@@ -207,10 +207,8 @@ impl CawgIdentityAssertion {
 
     /// Sign the signer payload with COSE_Sign1.
     pub fn sign_cose(&mut self, signer: &dyn tpm::Provider) -> Result<()> {
-        let payload_json = serde_json::to_vec(&self.signer_payload)
-            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
         let mut payload_cbor = Vec::new();
-        ciborium::into_writer(&payload_json, &mut payload_cbor)
+        ciborium::into_writer(&self.signer_payload, &mut payload_cbor)
             .map_err(|e| Error::crypto(format!("CAWG CBOR encode error: {e}")))?;
         let protected = HeaderBuilder::new()
             .algorithm(coset::iana::Algorithm::EdDSA)
@@ -247,10 +245,8 @@ impl CawgIdentityAssertion {
         }
         let sign1 = coset::CoseSign1::from_slice(&self.signature)
             .map_err(|e| Error::crypto(format!("CAWG COSE decode error: {e}")))?;
-        let payload_json = serde_json::to_vec(&self.signer_payload)
-            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
         let mut expected_cbor = Vec::new();
-        ciborium::into_writer(&payload_json, &mut expected_cbor)
+        ciborium::into_writer(&self.signer_payload, &mut expected_cbor)
             .map_err(|e| Error::crypto(format!("CAWG CBOR encode error: {e}")))?;
         let actual_payload = sign1.payload.as_ref()
             .ok_or_else(|| Error::crypto("CAWG COSE missing payload"))?;

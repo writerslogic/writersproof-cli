@@ -41,7 +41,9 @@ const MIN_EVIDENCE_ENTROPY_BITS: f64 = 1.5;
 pub struct Article50Compliance {
     /// Whether the content was generated or substantially modified by AI.
     pub ai_generated: bool,
-    /// AI disclosure level mapped from CPoE's `AiExtent`.
+    /// AI disclosure level from the coarser W3C 3-tier mapping (none/ai-assisted/ai-generated).
+    /// Note: for `AiExtent::Moderate`, `ai_generated` is `true` but this field is `"ai-assisted"`
+    /// because W3C collapses Minimal and Moderate into the same tier.
     pub disclosure_level: String,
     /// Machine-readable label per Article 50(2): "clearly and distinguishably marked".
     pub machine_readable_label: String,
