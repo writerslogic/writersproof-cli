@@ -17,7 +17,7 @@ use super::serde_helpers::{fixed_bytes_16, fixed_bytes_32_opt, serde_bytes_opt};
 /// checkpoint = {
 ///     1 => uint,               ; sequence
 ///     2 => uuid,               ; checkpoint-id
-///     3 => pop-timestamp,      ; timestamp
+///     3 => cpoe-timestamp,      ; timestamp
 ///     4 => hash-value,         ; content-hash
 ///     5 => uint,               ; char-count
 ///     6 => edit-delta,         ; delta

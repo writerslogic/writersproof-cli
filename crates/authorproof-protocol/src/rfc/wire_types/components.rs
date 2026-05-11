@@ -446,7 +446,7 @@ impl JitterBindingWire {
 /// }
 ///
 /// inertial-sample = [
-///     pop-timestamp,
+///     cpoe-timestamp,
 ///     int,   ; x-axis (micro-g)
 ///     int,   ; y-axis (micro-g)
 ///     int,   ; z-axis (micro-g)
@@ -490,10 +490,10 @@ impl PhysicalState {
 
 /// A single tri-axis accelerometer reading at a point in time.
 ///
-/// Units: timestamp in milliseconds (pop-timestamp), axes in micro-g (1e-6 * 9.81 m/s^2).
+/// Units: timestamp in milliseconds (cpoe-timestamp), axes in micro-g (1e-6 * 9.81 m/s^2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InertialSample {
-    /// Sample timestamp (milliseconds since epoch, pop-timestamp).
+    /// Sample timestamp (milliseconds since epoch, cpoe-timestamp).
     pub timestamp: u64,
     /// X-axis acceleration (micro-g).
     pub x: i64,
@@ -541,7 +541,7 @@ impl PhysicalLiveness {
 /// presence-challenge = {
 ///     1 => bstr .size (16..256),
 ///     2 => bstr,
-///     3 => pop-timestamp,
+///     3 => cpoe-timestamp,
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -653,7 +653,7 @@ pub struct ChannelBinding {
 ///     1 => tstr,
 ///     2 => hash-value / compact-ref,
 ///     3 => hash-value / compact-ref,
-///     4 => pop-timestamp,
+///     4 => cpoe-timestamp,
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -679,7 +679,7 @@ pub struct SelfReceipt {
 ///     1 => tstr,
 ///     2 => hash-value,
 ///     ? 3 => hash-value,
-///     4 => pop-timestamp,
+///     4 => cpoe-timestamp,
 ///     5 => bstr,           ; COSE_Sign1 bytes
 ///     ? 6 => uint,
 /// }
@@ -727,8 +727,8 @@ pub enum Receipt {
 /// ```cddl
 /// active-probe = {
 ///     1 => probe-type,
-///     2 => pop-timestamp,
-///     3 => pop-timestamp,
+///     2 => cpoe-timestamp,
+///     3 => cpoe-timestamp,
 ///     4 => bstr,
 ///     5 => bstr,
 ///     ? 6 => uint,
@@ -885,7 +885,7 @@ pub struct StreamingStats {
 ///     8  => streaming-stats,   ; pause-stats
 ///     9  => bstr .size 32,     ; session-merkle-root (MMR)
 ///     10 => confidence-tier,   ; baseline maturity
-///     11 => pop-timestamp,     ; computed-at
+///     11 => cpoe-timestamp,     ; computed-at
 ///     12 => bstr .size 32,     ; identity-fingerprint
 /// }
 /// ```

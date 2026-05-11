@@ -8,7 +8,7 @@
 //! checkpoint = {
 //!     1 => uint,           ; sequence
 //!     2 => uuid,           ; checkpoint-id
-//!     3 => pop-timestamp,  ; timestamp
+//!     3 => cpoe-timestamp,  ; timestamp
 //!     4 => bstr .size 32,  ; content-hash
 //!     5 => bstr .size 32,  ; prev-hash
 //!     6 => bstr .size 32,  ; checkpoint-hash

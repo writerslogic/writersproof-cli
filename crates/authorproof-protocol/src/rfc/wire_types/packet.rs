@@ -24,7 +24,7 @@ use crate::codec::{self, CodecError};
 ///     1 => uint,                    ; version
 ///     2 => tstr,                    ; profile-uri
 ///     3 => uuid,                    ; packet-id
-///     4 => pop-timestamp,           ; created
+///     4 => cpoe-timestamp,           ; created
 ///     5 => document-ref,            ; document
 ///     6 => [3* checkpoint],         ; checkpoints (min 3)
 ///     ? 7 => attestation-tier,

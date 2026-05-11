@@ -138,8 +138,8 @@ impl CompactRef {
 ///
 /// ```cddl
 /// time-window = {
-///     1 => pop-timestamp,
-///     2 => pop-timestamp,
+///     1 => cpoe-timestamp,
+///     2 => cpoe-timestamp,
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

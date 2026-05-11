@@ -232,7 +232,7 @@ pub struct EffortAttribution {
 ///     ? 9 => [+ absence-claim],
 ///     ? 10 => [* tstr],             ; warnings
 ///     11 => bstr,                   ; verifier-signature
-///     12 => pop-timestamp,          ; created
+///     12 => cpoe-timestamp,          ; created
 ///     ? 13 => forensic-summary,
 ///     ? 14 => confidence-tier,
 ///     ? 15 => effort-attribution,
