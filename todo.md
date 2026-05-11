@@ -2550,7 +2550,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** architecture
 - **Files:** `crates/cpoe/src/ffi/report.rs:880-1088`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (dimension builders extracted to report_dimensions.rs; report.rs 1843→1395 lines)
 - **Description:** God function mixing stats computation, forensics analysis, VC building, and HTML rendering prep. FFI boundary should delegate to core, not contain business logic.
 - **Fix:** Extract: `compute_report_data()`, `build_report_claims()`, `format_report_outputs()` into core modules; FFI calls them.
 
@@ -2560,7 +2560,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** code_quality
 - **Files:** `crates/cpoe/src/ffi/report.rs:634`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (dimension builders already separate functions; extracted to report_dimensions.rs)
 - **Description:** 214-line function computing 6 scoring dimensions with 4+ nesting levels. Hard to test individual dimensions.
 - **Fix:** Extract each dimension into its own function: `build_temporal_dimension()`, `build_edit_dimension()`, etc.
 
@@ -2580,7 +2580,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** code_quality
 - **Files:** `apps/cpoe_cli/src/native_messaging_host/handlers.rs:25-255`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: already decomposed into 10 named helper functions; orchestrator is 135 lines)
 - **Description:** Spans startup logic including dir creation, file I/O, key loading, session creation, prior session finalization. High churn (20 changes in 6 months).
 - **Fix:** Extract: session creation, prior session finalization, key loading into helper functions.
 
@@ -2620,7 +2620,7 @@ pub enum SecureChannelSendError {
 
 - **Model:** Sonnet | **Scope:** code_quality
 - **Files:** `crates/cpoe/src/forensics/forgery_cost.rs:117-357`
-- **Severity:** MEDIUM | **Status:** open
+- **Severity:** MEDIUM | **Status:** fixed 2026-05-10 (verified: already 11 small functions; estimate_forgery_cost is 30-line orchestrator)
 - **Description:** 8 component cost blocks follow similar pattern. Function exceeds 100-line guideline by 2.4x. Adding new components requires editing deep in the function.
 - **Fix:** Extract component cost calculation into a builder pattern or vec of closures. Each component returns `CostComponent` struct.
 
