@@ -69,18 +69,7 @@ pub fn lock_ffi_env() -> std::sync::MutexGuard<'static, ()> {
 }
 
 pub(crate) fn get_data_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("CPOE_DATA_DIR") {
-        return Some(PathBuf::from(dir));
-    }
-    #[cfg(target_os = "macos")]
-    {
-        // Must match EngineService.swift's dataDirectoryPath (Application Support/WritersProof)
-        dirs::home_dir().map(|h| h.join("Library/Application Support/WritersProof"))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        dirs::data_local_dir().map(|d| d.join("CPoE"))
-    }
+    crate::utils::get_data_dir()
 }
 
 pub(crate) fn get_db_path() -> Option<PathBuf> {

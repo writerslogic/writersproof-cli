@@ -3,6 +3,7 @@
 //! Shared engine-wide utility functions.
 
 pub mod crypto_helpers;
+pub mod crypto_types;
 pub mod error_context;
 pub mod formatting;
 pub(crate) mod lock;
@@ -17,6 +18,7 @@ pub use crypto_helpers::{
     blake3_hash_bytes, blake3_hash_truncated_8, compute_content_hash, constant_time_eq,
     NonceManager, SignatureKey, SignedPayloadBuilder,
 };
+pub use crypto_types::{Ed25519Pubkey, Ed25519Sig, HexBytes, HexHash};
 pub use error_context::{sanitize_for_user, ErrorContext};
 pub use formatting::{format_bytes, format_duration_human, format_number, hash_bytes};
 pub(crate) use lock::{MutexRecover, RwLockRecover};
@@ -72,6 +74,25 @@ pub fn correction_rate(corrections: u32, total_words: u32) -> f32 {
 pub fn safe_duration_secs(start_ns: i64, end_ns: i64) -> f64 {
     let nanos = end_ns.saturating_sub(start_ns).max(1_000_000);
     nanos as f64 / 1_000_000_000.0
+}
+
+/// Platform-aware data directory for CPoE/WritersProof state files.
+///
+/// Checks `CPOE_DATA_DIR` env var first, then falls back to platform defaults:
+/// - macOS: `~/Library/Application Support/WritersProof`
+/// - Other: `{data_local_dir}/CPoE`
+pub fn get_data_dir() -> Option<std::path::PathBuf> {
+    if let Ok(dir) = std::env::var("CPOE_DATA_DIR") {
+        return Some(std::path::PathBuf::from(dir));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        dirs::home_dir().map(|h| h.join("Library/Application Support/WritersProof"))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        dirs::data_local_dir().map(|d| d.join("CPoE"))
+    }
 }
 
 /// Hash a filesystem path (its UTF-8 string representation) with SHA-256.

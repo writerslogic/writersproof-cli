@@ -301,6 +301,7 @@ fn test_profile_comparison() {
             median_interval: 3.0,
             positive_negative_ratio: Probability::clamp(0.7),
             deletion_clustering: 0.4,
+            ..Default::default()
         },
         ..Default::default()
     };
@@ -312,6 +313,7 @@ fn test_profile_comparison() {
             median_interval: 3.2,
             positive_negative_ratio: Probability::clamp(0.72),
             deletion_clustering: 0.45,
+            ..Default::default()
         },
         ..Default::default()
     };
@@ -329,6 +331,7 @@ fn test_assessment_score() {
         median_interval: 5.0,
         positive_negative_ratio: Probability::clamp(0.7),
         deletion_clustering: 0.5,
+        ..Default::default()
     };
 
     let good_cadence = CadenceMetrics {
@@ -346,6 +349,7 @@ fn test_assessment_score() {
         median_interval: 5.0,
         positive_negative_ratio: Probability::clamp(0.98),
         deletion_clustering: 1.0,
+        ..Default::default()
     };
 
     let bad_cadence = CadenceMetrics {

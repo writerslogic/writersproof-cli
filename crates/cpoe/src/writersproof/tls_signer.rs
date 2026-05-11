@@ -6,8 +6,6 @@
 //! on macOS or TPM on Windows/Linux) into rustls's TLS client authentication.
 //! The private key never enters process memory.
 
-use std::sync::Arc;
-
 use rustls::pki_types::SubjectPublicKeyInfoDer;
 use rustls::sign::{Signer, SigningKey};
 use rustls::{Error as TlsError, SignatureAlgorithm, SignatureScheme};
@@ -84,6 +82,8 @@ impl Signer for HardwareSigner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
     use crate::tpm::{Binding, Capabilities, ClockInfo, Provider, Quote, TpmError};
 
     #[derive(Debug)]
@@ -92,9 +92,12 @@ mod tests {
     impl Provider for MockProvider {
         fn capabilities(&self) -> Capabilities {
             Capabilities {
-                has_secure_enclave: false,
-                has_tpm: false,
-                has_key_attestation: false,
+                hardware_backed: false,
+                supports_pcrs: false,
+                supports_sealing: false,
+                supports_attestation: false,
+                monotonic_counter: false,
+                secure_clock: false,
             }
         }
         fn device_id(&self) -> String {
@@ -107,17 +110,16 @@ mod tests {
             coset::iana::Algorithm::ES256
         }
         fn quote(&self, _nonce: &[u8], _pcrs: &[u32]) -> Result<Quote, TpmError> {
-            Err(TpmError::NotSupported)
+            Err(TpmError::NotAvailable)
         }
         fn bind(&self, _data: &[u8]) -> Result<Binding, TpmError> {
-            Err(TpmError::NotSupported)
+            Err(TpmError::NotAvailable)
         }
         fn sign(&self, data: &[u8]) -> Result<Vec<u8>, TpmError> {
-            // Return a fake DER-encoded ECDSA signature
-            let mut sig = vec![0x30, 0x44]; // SEQUENCE header
-            sig.extend_from_slice(&[0x02, 0x20]); // INTEGER r
+            let mut sig = vec![0x30, 0x44];
+            sig.extend_from_slice(&[0x02, 0x20]);
             sig.extend_from_slice(&[0xAB; 32]);
-            sig.extend_from_slice(&[0x02, 0x20]); // INTEGER s
+            sig.extend_from_slice(&[0x02, 0x20]);
             sig.extend_from_slice(&data[..32.min(data.len())]);
             sig.resize(70, 0);
             Ok(sig)
@@ -126,13 +128,13 @@ mod tests {
             Ok(())
         }
         fn seal(&self, _data: &[u8], _policy: &[u8]) -> Result<Vec<u8>, TpmError> {
-            Err(TpmError::NotSupported)
+            Err(TpmError::NotAvailable)
         }
         fn unseal(&self, _sealed: &[u8]) -> Result<Vec<u8>, TpmError> {
-            Err(TpmError::NotSupported)
+            Err(TpmError::NotAvailable)
         }
         fn clock_info(&self) -> Result<ClockInfo, TpmError> {
-            Err(TpmError::NotSupported)
+            Err(TpmError::NotAvailable)
         }
     }
 

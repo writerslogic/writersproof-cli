@@ -54,6 +54,10 @@ serde_jcs = "0.2"
 scopeguard = "1"
 async-trait = "0.1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "query", "blocking"] }
+rustls = "0.23"
+rustls-pki-types = "1"
+webpki-roots = "0.26"
+x509-cert = { version = "0.2", features = ["builder"] }
 url = "2"
 log = "0.4"
 getrandom = "0.2"
