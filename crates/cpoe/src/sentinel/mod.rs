@@ -31,6 +31,7 @@ pub mod clipboard;
 pub mod core;
 pub mod core_session;
 mod core_setup;
+mod event_handlers;
 pub mod daemon;
 pub mod error;
 pub mod focus;
