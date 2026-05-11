@@ -119,12 +119,12 @@ fn make_dimension(
     key_discriminator: String,
     interpretation: String,
 ) -> DimensionScore {
+    let lr = compute_likelihood_ratio(score);
     DimensionScore {
         name: name.to_string(),
         score,
-        lr: compute_likelihood_ratio(score),
-        // log10() may return -inf for LR=0 or NaN for negative; .max(-2.0) clamps both.
-        log_lr: compute_likelihood_ratio(score).log10().max(-2.0),
+        lr,
+        log_lr: lr.log10().max(-2.0),
         confidence,
         key_discriminator: key_discriminator.clone(),
         color: score_color(score),
@@ -394,7 +394,7 @@ fn build_enhanced_dimension(
     composite_score: f64,
     key_discriminator: &str,
 ) -> DimensionScore {
-    let score = (composite_score * 100.0).round().clamp(0.0, 100.0) as u32;
+    let score = (composite_score * 100.0).round().clamp(0.0, 99.0) as u32;
     let interpretation = if composite_score >= ENHANCED_COGNITIVE_THRESHOLD {
         "Consistent with cognitive authorship"
     } else if composite_score >= ENHANCED_MIXED_THRESHOLD {
