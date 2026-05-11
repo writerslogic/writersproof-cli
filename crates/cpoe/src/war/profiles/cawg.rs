@@ -173,6 +173,37 @@ pub fn to_cawg_identity_enriched(
         }
     }
     Ok(assertion)
+}
+
+const COSE_CAWG_IDENTITY_CONTENT_TYPE: &str = "application/cawg.identity";
+
+impl CawgIdentityAssertion {
+    /// Sign the signer payload with the given Ed25519 key, populating `self.signature`.
+    pub fn sign(&mut self, signing_key: &ed25519_dalek::SigningKey) -> Result<()> {
+        let payload_bytes = serde_json::to_vec(&self.signer_payload)
+            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
+        let sig = signing_key.sign(&payload_bytes);
+        self.signature = sig.to_bytes().to_vec();
+        Ok(())
+    }
+
+    /// Verify the signature against the provided public key.
+    pub fn verify(&self, verifying_key: &ed25519_dalek::VerifyingKey) -> Result<()> {
+        if self.signature.is_empty() {
+            return Err(Error::evidence("CAWG identity assertion is unsigned"));
+        }
+        let sig_bytes: [u8; 64] = self
+            .signature
+            .as_slice()
+            .try_into()
+            .map_err(|_| Error::evidence("CAWG signature must be 64 bytes"))?;
+        let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
+        let payload_bytes = serde_json::to_vec(&self.signer_payload)
+            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
+        verifying_key
+            .verify_strict(&payload_bytes, &sig)
+            .map_err(|e| Error::evidence(format!("CAWG signature verification failed: {e}")))
+    }
 
     /// Sign the signer payload with COSE_Sign1.
     pub fn sign_cose(&mut self, signer: &dyn tpm::Provider) -> Result<()> {
@@ -232,38 +263,6 @@ pub fn to_cawg_identity_enriched(
         let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
         verifying_key.verify_strict(&sig_data, &sig)
             .map_err(|e| Error::evidence(format!("CAWG COSE signature verification failed: {e}")))
-    }
-
-}
-
-const COSE_CAWG_IDENTITY_CONTENT_TYPE: &str = "application/cawg.identity";
-
-impl CawgIdentityAssertion {
-    /// Sign the signer payload with the given Ed25519 key, populating `self.signature`.
-    pub fn sign(&mut self, signing_key: &ed25519_dalek::SigningKey) -> Result<()> {
-        let payload_bytes = serde_json::to_vec(&self.signer_payload)
-            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
-        let sig = signing_key.sign(&payload_bytes);
-        self.signature = sig.to_bytes().to_vec();
-        Ok(())
-    }
-
-    /// Verify the signature against the provided public key.
-    pub fn verify(&self, verifying_key: &ed25519_dalek::VerifyingKey) -> Result<()> {
-        if self.signature.is_empty() {
-            return Err(Error::evidence("CAWG identity assertion is unsigned"));
-        }
-        let sig_bytes: [u8; 64] = self
-            .signature
-            .as_slice()
-            .try_into()
-            .map_err(|_| Error::evidence("CAWG signature must be 64 bytes"))?;
-        let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
-        let payload_bytes = serde_json::to_vec(&self.signer_payload)
-            .map_err(|e| Error::evidence(format!("CAWG payload serialization failed: {e}")))?;
-        verifying_key
-            .verify_strict(&payload_bytes, &sig)
-            .map_err(|e| Error::evidence(format!("CAWG signature verification failed: {e}")))
     }
 }
 
