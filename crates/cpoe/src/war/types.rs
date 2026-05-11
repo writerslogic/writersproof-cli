@@ -122,37 +122,25 @@ impl<'de> Deserialize<'de> for Seal {
             reconstructed: bool,
         }
 
+        use crate::utils::crypto_types::{Ed25519Pubkey, Ed25519Sig, HexHash};
+
         let helper = SealHelper::deserialize(deserializer)?;
 
-        let h1 = hex::decode(&helper.h1).map_err(serde::de::Error::custom)?;
-        let h2 = hex::decode(&helper.h2).map_err(serde::de::Error::custom)?;
-        let h3 = hex::decode(&helper.h3).map_err(serde::de::Error::custom)?;
-        let signature = hex::decode(&helper.signature).map_err(serde::de::Error::custom)?;
-        let public_key = hex::decode(&helper.public_key).map_err(serde::de::Error::custom)?;
+        let h1 = HexHash::from_hex(&helper.h1).map_err(serde::de::Error::custom)?;
+        let h2 = HexHash::from_hex(&helper.h2).map_err(serde::de::Error::custom)?;
+        let h3 = HexHash::from_hex(&helper.h3).map_err(serde::de::Error::custom)?;
+        let signature = Ed25519Sig::from_hex(&helper.signature)
+            .map_err(serde::de::Error::custom)?;
+        let public_key = Ed25519Pubkey::from_hex(&helper.public_key)
+            .map_err(serde::de::Error::custom)?;
 
-        if h1.len() != 32 || h2.len() != 32 || h3.len() != 32 {
-            return Err(serde::de::Error::custom("hash must be 32 bytes"));
-        }
-        if signature.len() != 64 {
-            return Err(serde::de::Error::custom("signature must be 64 bytes"));
-        }
-        if public_key.len() != 32 {
-            return Err(serde::de::Error::custom("public key must be 32 bytes"));
-        }
-
-        let mut seal = Seal {
-            h1: [0u8; 32],
-            h2: [0u8; 32],
-            h3: [0u8; 32],
-            signature: [0u8; 64],
-            public_key: [0u8; 32],
+        Ok(Seal {
+            h1: h1.0,
+            h2: h2.0,
+            h3: h3.0,
+            signature: signature.0,
+            public_key: public_key.0,
             reconstructed: helper.reconstructed,
-        };
-        seal.h1.copy_from_slice(&h1);
-        seal.h2.copy_from_slice(&h2);
-        seal.h3.copy_from_slice(&h3);
-        seal.signature.copy_from_slice(&signature);
-        seal.public_key.copy_from_slice(&public_key);
-        Ok(seal)
+        })
     }
 }

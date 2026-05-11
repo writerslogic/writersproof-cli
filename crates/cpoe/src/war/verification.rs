@@ -622,27 +622,18 @@ pub fn verify_beacon_attestation_with_bundle(
     };
 
     // Decode the CA public key.
-    let ca_pubkey_bytes = match hex::decode(&ca_pubkey_hex) {
-        Ok(b) if b.len() == 32 => b,
-        _ => {
-            return CheckResult {
-                name: "beacon_attestation".to_string(),
-                passed: false,
-                message: format!("Internal error: invalid CA public key for kid {ca_kid}"),
-            };
-        }
-    };
-    let ca_key_array: &[u8; 32] = match ca_pubkey_bytes.as_slice().try_into() {
-        Ok(a) => a,
-        Err(_) => {
-            return CheckResult {
-                name: "beacon_attestation".to_string(),
-                passed: false,
-                message: format!("CA key for kid {ca_kid} is not 32 bytes"),
-            };
-        }
-    };
-    let ca_verifying_key = match VerifyingKey::from_bytes(ca_key_array) {
+    let ca_pubkey =
+        match crate::utils::crypto_types::Ed25519Pubkey::from_hex(&ca_pubkey_hex) {
+            Ok(pk) => pk,
+            Err(_) => {
+                return CheckResult {
+                    name: "beacon_attestation".to_string(),
+                    passed: false,
+                    message: format!("Internal error: invalid CA public key for kid {ca_kid}"),
+                };
+            }
+        };
+    let ca_verifying_key = match ca_pubkey.to_verifying_key() {
         Ok(key) => key,
         Err(e) => {
             return CheckResult {
@@ -654,37 +645,18 @@ pub fn verify_beacon_attestation_with_bundle(
     };
 
     // Decode the counter-signature.
-    let sig_bytes = match hex::decode(&attestation.wp_signature) {
-        Ok(b) if b.len() == 64 => b,
-        Ok(b) => {
-            return CheckResult {
-                name: "beacon_attestation".to_string(),
-                passed: false,
-                message: format!(
-                    "Invalid beacon signature length: expected 64, got {}",
-                    b.len()
-                ),
-            };
-        }
-        Err(e) => {
-            return CheckResult {
-                name: "beacon_attestation".to_string(),
-                passed: false,
-                message: format!("Invalid beacon signature hex: {e}"),
-            };
-        }
-    };
-    let sig_array: [u8; 64] = match sig_bytes.as_slice().try_into() {
-        Ok(a) => a,
-        Err(_) => {
-            return CheckResult {
-                name: "beacon_attestation".to_string(),
-                passed: false,
-                message: "Beacon signature is not 64 bytes".to_string(),
-            };
-        }
-    };
-    let signature = Signature::from_bytes(&sig_array);
+    let beacon_sig =
+        match crate::utils::crypto_types::Ed25519Sig::from_hex(&attestation.wp_signature) {
+            Ok(s) => s,
+            Err(e) => {
+                return CheckResult {
+                    name: "beacon_attestation".to_string(),
+                    passed: false,
+                    message: format!("Invalid beacon signature hex: {e}"),
+                };
+            }
+        };
+    let signature = beacon_sig.to_signature();
 
     // Reconstruct the signed message: checkpoint_hash || drand fields || nist fields || fetched_at.
     // This must match what WritersProof signed server-side.

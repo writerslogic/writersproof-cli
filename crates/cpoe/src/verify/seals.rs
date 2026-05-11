@@ -3,7 +3,7 @@
 //! Seal verification and duration/key-provenance checks.
 
 use base64::Engine;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::Verifier;
 
 use crate::evidence::Packet;
 use crate::vdf;
@@ -269,9 +269,11 @@ pub(super) fn verify_key_provenance(
 
             // AUD-026: Cryptographically verify Ed25519 checkpoint signatures.
             // Decode the ratchet public key and signature from hex, then verify.
-            let pubkey_bytes = match hex::decode(&kh.ratchet_public_keys[uidx]) {
-                Ok(b) if b.len() == 32 => b,
-                _ => {
+            let pubkey = match crate::utils::crypto_types::Ed25519Pubkey::from_hex(
+                &kh.ratchet_public_keys[uidx],
+            ) {
+                Ok(pk) => pk,
+                Err(_) => {
                     signing_key_consistent = false;
                     warnings.push(format!(
                         "Checkpoint {}: ratchet key {} has invalid hex/length",
@@ -280,9 +282,9 @@ pub(super) fn verify_key_provenance(
                     continue;
                 }
             };
-            let sig_bytes = match hex::decode(&sig.signature) {
-                Ok(b) if b.len() == 64 => b,
-                _ => {
+            let ed_sig = match crate::utils::crypto_types::Ed25519Sig::from_hex(&sig.signature) {
+                Ok(s) => s,
+                Err(_) => {
                     signing_key_consistent = false;
                     warnings.push(format!(
                         "Checkpoint {}: signature has invalid hex/length",
@@ -303,15 +305,9 @@ pub(super) fn verify_key_provenance(
                 }
             };
 
-            let mut pk_arr = [0u8; 32];
-            pk_arr.copy_from_slice(&pubkey_bytes);
-            let mut sig_arr = [0u8; 64];
-            sig_arr.copy_from_slice(&sig_bytes);
-
-            match VerifyingKey::from_bytes(&pk_arr) {
+            match pubkey.to_verifying_key() {
                 Ok(vk) => {
-                    let ed_sig = Signature::from_bytes(&sig_arr);
-                    if vk.verify(&hash_bytes, &ed_sig).is_err() {
+                    if vk.verify(&hash_bytes, &ed_sig.to_signature()).is_err() {
                         signing_key_consistent = false;
                         warnings.push(format!(
                             "Checkpoint {}: Ed25519 signature verification FAILED",

@@ -752,22 +752,24 @@ pub fn ffi_apply_remote_fragment(
             )
         }
     };
-    let source_signature = match hex::decode(&source_signature_hex) {
-        Ok(b) if b.len() == 64 => b,
-        _ => {
-            return FfiTextFragmentStoreResult::err(
-                "source_signature_hex must be 128 hex chars (64 bytes)",
-            )
-        }
-    };
+    let source_signature =
+        match crate::utils::crypto_types::Ed25519Sig::from_hex(&source_signature_hex) {
+            Ok(s) => s,
+            _ => {
+                return FfiTextFragmentStoreResult::err(
+                    "source_signature_hex must be 128 hex chars (64 bytes)",
+                )
+            }
+        };
     let nonce = match hex::decode(&nonce_hex) {
         Ok(b) if b.len() == 16 => b,
         _ => return FfiTextFragmentStoreResult::err("nonce_hex must be 32 hex chars (16 bytes)"),
     };
 
     // Verify signature before accepting remote fragment.
-    let pub_bytes = match hex::decode(&signing_public_key_hex) {
-        Ok(b) if b.len() == 32 => b,
+    let pubkey = match crate::utils::crypto_types::Ed25519Pubkey::from_hex(&signing_public_key_hex)
+    {
+        Ok(pk) => pk,
         _ => {
             return FfiTextFragmentStoreResult::err(
                 "signing_public_key_hex must be 64 hex chars (32 bytes)",
@@ -775,22 +777,12 @@ pub fn ffi_apply_remote_fragment(
         }
     };
     {
-        use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-        let vk = match VerifyingKey::from_bytes(
-            pub_bytes
-                .as_slice()
-                .try_into()
-                .expect("length validated at 32 bytes"),
-        ) {
+        use ed25519_dalek::Verifier;
+        let vk = match pubkey.to_verifying_key() {
             Ok(k) => k,
             Err(e) => return FfiTextFragmentStoreResult::err(format!("Invalid public key: {e}")),
         };
-        // Signature::from_bytes is infallible in ed25519-dalek v2.
-        let sig_arr: &[u8; 64] = source_signature
-            .as_slice()
-            .try_into()
-            .expect("length validated at 64 bytes");
-        let sig = Signature::from_bytes(sig_arr);
+        let sig = source_signature.to_signature();
         // Reconstruct the domain-tagged payload that was signed.
         const DST: &[u8] = b"witnessd-text-fragment-v1";
         let sid_len = (session_id.len() as u32).to_le_bytes();

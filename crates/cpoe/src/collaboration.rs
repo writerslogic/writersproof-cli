@@ -402,26 +402,16 @@ impl Collaborator {
     /// Verify the attestation signature against the embedded public key.
     /// Both `public_key` and `attestation_signature` must be hex-encoded.
     pub fn verify_attestation(&self) -> Result<(), String> {
-        let pub_bytes =
-            hex::decode(&self.public_key).map_err(|e| format!("invalid public key hex: {e}"))?;
-        let vk = ed25519_dalek::VerifyingKey::from_bytes(
-            pub_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| format!("public key must be 32 bytes, got {}", pub_bytes.len()))?,
-        )
-        .map_err(|e| format!("invalid Ed25519 public key: {e}"))?;
+        let pubkey = crate::utils::crypto_types::Ed25519Pubkey::from_hex(&self.public_key)
+            .map_err(|e| format!("invalid public key hex: {e}"))?;
+        let vk = pubkey
+            .to_verifying_key()
+            .map_err(|e| format!("invalid Ed25519 public key: {e}"))?;
 
-        let sig_bytes = hex::decode(&self.attestation_signature)
+        let sig = crate::utils::crypto_types::Ed25519Sig::from_hex(&self.attestation_signature)
             .map_err(|e| format!("invalid signature hex: {e}"))?;
-        let sig = ed25519_dalek::Signature::from_bytes(
-            sig_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| format!("signature must be 64 bytes, got {}", sig_bytes.len()))?,
-        );
 
-        vk.verify_strict(&self.signing_payload(), &sig)
+        vk.verify_strict(&self.signing_payload(), &sig.to_signature())
             .map_err(|e| format!("attestation verification failed: {e}"))
     }
 }
