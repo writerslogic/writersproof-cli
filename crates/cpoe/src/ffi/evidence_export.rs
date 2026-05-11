@@ -2,7 +2,7 @@
 
 use crate::ffi::helpers::{detect_attestation_tier, open_store};
 use crate::ffi::sentinel::get_sentinel;
-use crate::ffi::types::{try_ffi, FfiResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 use crate::jitter::SimpleJitterSample;
 use crate::RwLockRecover;
 use authorproof_protocol::rfc::wire_types::{
@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 /// Export stored events as a human-readable JSON evidence packet.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let output_path = match crate::sentinel::helpers::validate_path(&output) {
         Ok(p) => p,
         Err(e) => return FfiResult::err(format!("Invalid output path: {e}")),
@@ -32,6 +33,7 @@ pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> F
         }
         Err(e) => FfiResult::err(format!("JSON serialization failed: {e}")),
     }
+    })
 }
 
 /// Export stored events for a file as a CBOR evidence packet at the given tier.
@@ -397,6 +399,7 @@ fn export_evidence_inner(
     start_ns: Option<i64>,
     end_ns: Option<i64>,
 ) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let output_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&output)
             .map_err(|e| format!("Invalid output path: {e}")),
@@ -427,6 +430,7 @@ fn export_evidence_inner(
         }
         Err(e) => FfiResult::err(format!("Failed to write output: {}", e)),
     }
+    })
 }
 
 /// Collect AI tool limitations from the sentinel session matching `path`.
@@ -505,6 +509,7 @@ fn collect_repair_history(data_dir: &std::path::Path) -> Vec<String> {
 /// Returns an FfiResult with the certificate fingerprint on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_provision_ca_cert() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     use crate::ffi::types::try_ffi;
 
     let signing_key = try_ffi!(
@@ -592,6 +597,7 @@ pub fn ffi_provision_ca_cert() -> FfiResult {
         Ok(msg) => FfiResult::ok(msg),
         Err(e) => FfiResult::err(e),
     }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -914,6 +920,7 @@ fn collect_composition_mode_limitations(path: &str, event_count: usize) -> Vec<S
 /// Return a compact reference string for the latest event on a tracked file.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_compact_ref(path: String) -> String {
+    catch_ffi_panic!(String::new(), {
     let path = match crate::sentinel::helpers::validate_path(&path) {
         Ok(p) => p.to_string_lossy().to_string(),
         Err(_) => return String::new(),
@@ -941,12 +948,14 @@ pub fn ffi_get_compact_ref(path: String) -> String {
         &hash_hex[..hash_hex.len().min(12)],
         events.len()
     )
+    })
 }
 
 /// Extract the embedded document from a .cpoe evidence package.
 /// Returns an FfiResult with the output path on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let cpoe_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&cpoe_path)
             .map(|p| p.to_string_lossy().to_string())
@@ -1026,6 +1035,7 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
     }
 
     FfiResult::ok(format!("Document extracted to {}", out.display()))
+    })
 }
 
 /// Collect project file references for all tracked files under the same

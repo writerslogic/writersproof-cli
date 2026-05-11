@@ -527,6 +527,18 @@ pub struct FfiLiveScores {
 /// for full analysis.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
+    catch_ffi_panic!(FfiLiveScores {
+        success: false,
+        writing_mode: "insufficient".into(),
+        cognitive_score: 0.0,
+        assessment_score: 0.0,
+        risk_level: "insufficient data".into(),
+        keystroke_count: 0,
+        session_duration_sec: 0.0,
+        cadence_score: 0.0,
+        composition_mode: "unknown".into(),
+        error_message: Some("engine internal error".into()),
+    }, {
     let sentinel = match super::sentinel::get_sentinel() {
         Some(s) => s,
         None => {
@@ -620,6 +632,7 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
             .unwrap_or_else(|| "unknown".to_string()),
         error_message: None,
     }
+    })
 }
 
 #[cfg(test)]

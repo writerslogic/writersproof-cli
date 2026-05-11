@@ -4,7 +4,7 @@
 //! (excluded paths, allowed extensions) persisted in writersproof.json.
 
 use super::helpers::get_data_dir;
-use super::types::FfiResult;
+use super::types::{catch_ffi_panic, FfiResult};
 use std::path::PathBuf;
 
 /// Load the config, apply a mutation, persist, and return success/error.
@@ -36,6 +36,7 @@ fn load_config() -> Result<crate::config::CpopConfig, String> {
 /// Get the list of excluded directory paths.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_excluded_paths() -> Vec<String> {
+    catch_ffi_panic!(Vec::new(), {
     match load_config() {
         Ok(c) => c
             .sentinel
@@ -48,11 +49,13 @@ pub fn ffi_config_get_excluded_paths() -> Vec<String> {
             Vec::new()
         }
     }
+    })
 }
 
 /// Add a path to the excluded directories list.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_add_excluded_path(path: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     if path.is_empty() {
         return FfiResult::err("Path cannot be empty");
     }
@@ -70,14 +73,17 @@ pub fn ffi_config_add_excluded_path(path: String) -> FfiResult {
             config.sentinel.excluded_paths.push(new_path);
         }
     })
+    })
 }
 
 /// Remove a path from the excluded directories list.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_remove_excluded_path(path: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let target = PathBuf::from(&path);
     with_config_mut(|config| {
         config.sentinel.excluded_paths.retain(|p| p != &target);
+    })
     })
 }
 
@@ -86,6 +92,7 @@ pub fn ffi_config_remove_excluded_path(path: String) -> FfiResult {
 /// Get the list of allowed file extensions.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_allowed_extensions() -> Vec<String> {
+    catch_ffi_panic!(Vec::new(), {
     match load_config() {
         Ok(c) => c.sentinel.allowed_extensions,
         Err(e) => {
@@ -93,11 +100,13 @@ pub fn ffi_config_get_allowed_extensions() -> Vec<String> {
             Vec::new()
         }
     }
+    })
 }
 
 /// Add a file extension to the allowed list (without leading dot).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_add_allowed_extension(extension: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let ext = extension.trim_start_matches('.').to_lowercase();
     if ext.is_empty() {
         return FfiResult::err("Extension cannot be empty");
@@ -112,17 +121,20 @@ pub fn ffi_config_add_allowed_extension(extension: String) -> FfiResult {
             config.sentinel.allowed_extensions.push(ext);
         }
     })
+    })
 }
 
 /// Remove a file extension from the allowed list.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_remove_allowed_extension(extension: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     let ext = extension.trim_start_matches('.').to_lowercase();
     with_config_mut(|config| {
         config
             .sentinel
             .allowed_extensions
             .retain(|e| !e.eq_ignore_ascii_case(&ext));
+    })
     })
 }
 

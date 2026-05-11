@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::open_store;
-use crate::ffi::types::{try_ffi, FfiResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 
 use super::evidence::device_identity;
 
 /// Create a manual checkpoint for a file, hashing its current content.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_create_checkpoint(path: String, message: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
     // Truncate at a char boundary to avoid panicking on multi-byte UTF-8 sequences.
     let message = if message.len() > 4096 {
         message.chars().take(4096).collect()
@@ -52,6 +53,7 @@ pub fn ffi_create_checkpoint(path: String, message: String) -> FfiResult {
         )),
         Err(e) => FfiResult::err(format!("Failed to create checkpoint: {}", e)),
     }
+    })
 }
 
 #[cfg(test)]
