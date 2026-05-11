@@ -137,7 +137,10 @@ impl WritersProofClient {
             .header("Content-Type", "application/cbor")
             .header("X-CPoE-Nonce", hex::encode(nonce))
             .header("X-CPoE-Hardware-Key-Id", hardware_key_id)
-            .header("X-CPoE-Signature", hex::encode(signature.to_bytes()))
+            .header(
+                "X-CPoE-Signature",
+                crate::utils::crypto_types::Ed25519Sig::from(signature).to_hex(),
+            )
             .body(evidence_cbor.to_vec());
 
         if let Some(ref jwt) = self.jwt {

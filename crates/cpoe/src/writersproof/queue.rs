@@ -75,7 +75,7 @@ impl OfflineQueue {
             ),
             nonce: nonce.map(hex::encode),
             hardware_key_id: hardware_key_id.to_string(),
-            signature: hex::encode(signature.to_bytes()),
+            signature: crate::utils::crypto_types::Ed25519Sig::from(signature).to_hex(),
             queue_nonce: Some(hex::encode(queue_nonce)),
             retry_count: 0,
             last_error: None,

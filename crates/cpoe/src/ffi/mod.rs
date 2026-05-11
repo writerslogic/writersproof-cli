@@ -6,6 +6,7 @@ pub mod archive;
 pub mod attestation;
 pub mod beacon;
 pub mod chain;
+pub mod conv;
 pub mod collaboration_ffi;
 pub mod dictation_analytics;
 pub mod credentials;

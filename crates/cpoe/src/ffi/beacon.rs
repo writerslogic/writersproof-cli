@@ -170,7 +170,7 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
         msg.update(b"cpoe-beacon-anchor-v1");
         msg.update(latest.content_hash.as_slice());
         let digest = msg.finalize();
-        let sig = hex::encode(signing_key.sign(&digest).to_bytes());
+        let sig = super::conv::sign_hex(&signing_key, &digest);
         let vk = *signing_key.verifying_key().as_bytes();
         (sig, vk)
         // signing_key drops and zeroizes here

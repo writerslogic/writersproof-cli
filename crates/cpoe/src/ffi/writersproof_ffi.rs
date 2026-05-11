@@ -37,12 +37,11 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     // Load signing key and sign the raw hash bytes (matches CLI: signing_key.sign(latest.event_hash.as_slice()))
     let signing_key = try_ffi!(load_signing_key(), FfiResult);
     let signature = {
-        use ed25519_dalek::Signer;
         const DST: &[u8] = b"witnessd-anchor-v1";
         let mut payload = Vec::with_capacity(DST.len() + latest.event_hash.len());
         payload.extend_from_slice(DST);
         payload.extend_from_slice(latest.event_hash.as_slice());
-        hex::encode(signing_key.sign(&payload).to_bytes())
+        super::conv::sign_hex(&signing_key, &payload)
     };
     drop(signing_key);
 
@@ -203,12 +202,11 @@ pub fn ffi_publish_evidence(
 
     let signing_key = try_ffi!(load_signing_key(), FfiPublishResult);
     let signature = {
-        use ed25519_dalek::Signer;
         const DST: &[u8] = b"witnessd-publish-v1";
         let mut payload = Vec::with_capacity(DST.len() + latest.event_hash.len());
         payload.extend_from_slice(DST);
         payload.extend_from_slice(latest.event_hash.as_slice());
-        hex::encode(signing_key.sign(&payload).to_bytes())
+        super::conv::sign_hex(&signing_key, &payload)
     };
     drop(signing_key);
 
@@ -296,11 +294,10 @@ pub fn ffi_sync_text_attestation(
         FfiResult
     );
 
-    let public_key_hex = hex::encode(signing_key.verifying_key().as_bytes());
+    let public_key_hex = super::conv::pubkey_hex(&signing_key);
 
     // Sign with domain separation: DST || content_hash_bytes.
     let signature_hex = {
-        use ed25519_dalek::Signer;
         const DST: &[u8] = b"witnessd-text-attest-v1";
         let hash_bytes = try_ffi!(
             hex::decode(&content_hash).map_err(|e| format!("Invalid content_hash hex: {e}")),
@@ -309,7 +306,7 @@ pub fn ffi_sync_text_attestation(
         let mut payload = Vec::with_capacity(DST.len() + hash_bytes.len());
         payload.extend_from_slice(DST);
         payload.extend_from_slice(&hash_bytes);
-        hex::encode(signing_key.sign(&payload).to_bytes())
+        super::conv::sign_hex(&signing_key, &payload)
     };
     drop(signing_key);
 
@@ -386,13 +383,12 @@ pub fn ffi_sync_text_attestation(
             // Re-sign with anchor-specific DST for transparency log.
             let anchor_sig = match load_signing_key() {
                 Ok(k) => {
-                    use ed25519_dalek::Signer;
                     const DST: &[u8] = b"witnessd-anchor-v1";
                     let hash_bytes = hex::decode(&anchor_evidence_hash).unwrap_or_default();
                     let mut payload = Vec::with_capacity(DST.len() + hash_bytes.len());
                     payload.extend_from_slice(DST);
                     payload.extend_from_slice(&hash_bytes);
-                    let sig = hex::encode(k.sign(&payload).to_bytes());
+                    let sig = super::conv::sign_hex(&k, &payload);
                     drop(k);
                     sig
                 }

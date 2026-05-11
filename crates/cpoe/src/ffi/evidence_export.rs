@@ -543,7 +543,7 @@ pub fn ffi_provision_ca_cert() -> FfiResult {
         let client = crate::writersproof::WritersProofClient::new(&base_url)
             .map_err(|e| format!("Failed to create WritersProof client: {e}"))?;
 
-        let pub_key_hex = hex::encode(signing_key.verifying_key().to_bytes());
+        let pub_key_hex = super::conv::pubkey_hex(&signing_key);
         let device_id = hex::encode(&sha2::Sha256::digest(
             signing_key.verifying_key().as_bytes(),
         )[..16]);
