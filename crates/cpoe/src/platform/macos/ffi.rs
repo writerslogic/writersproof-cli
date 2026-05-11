@@ -54,6 +54,48 @@ extern "C" {
     pub fn IOHIDElementGetUsage(element: *mut std::ffi::c_void) -> u32;
 }
 
+/// RAII wrapper for CoreFoundation objects. Calls `CFRelease` on drop,
+/// preventing leaks if an error occurs between creation and manual release.
+///
+/// Not `Send`/`Sync` by default (CF objects are generally not thread-safe).
+/// Parent structs that synchronize access via `Mutex` may add `unsafe impl Send`.
+pub struct CfGuard(*mut std::ffi::c_void);
+
+impl CfGuard {
+    /// Take ownership of a CF object. Returns `None` if the pointer is null.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must be a CF object with a +1 retain count that this guard
+    /// will balance by calling `CFRelease` on drop.
+    pub unsafe fn new(ptr: *mut std::ffi::c_void) -> Option<Self> {
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Self(ptr))
+        }
+    }
+
+    /// Borrow the raw pointer without transferring ownership.
+    pub fn as_ptr(&self) -> *mut std::ffi::c_void {
+        self.0
+    }
+
+    /// Release ownership, returning the raw pointer without calling `CFRelease`.
+    pub fn into_raw(self) -> *mut std::ffi::c_void {
+        let ptr = self.0;
+        std::mem::forget(self);
+        ptr
+    }
+}
+
+impl Drop for CfGuard {
+    fn drop(&mut self) {
+        // SAFETY: self.0 was a valid CF object with +1 retain at construction.
+        unsafe { CFRelease(self.0) }
+    }
+}
+
 #[repr(C)]
 pub struct MachTimebaseInfo {
     pub numer: u32,

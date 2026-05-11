@@ -13,11 +13,12 @@ use crate::DateTimeNanosExt;
 use crate::MutexRecover;
 use crate::RwLockRecover;
 
-/// Holds CF objects created by the mouse CGEventTap so they can be released on shutdown.
+/// Holds CF objects created by the mouse CGEventTap. Resources are released
+/// automatically via `CfGuard` when this struct is dropped.
 struct MouseTapResources {
     run_loop: *mut std::ffi::c_void,
-    tap: *mut std::ffi::c_void,
-    source: *mut std::ffi::c_void,
+    tap: CfGuard,
+    source: CfGuard,
 }
 unsafe impl Send for MouseTapResources {}
 unsafe impl Sync for MouseTapResources {}
@@ -141,30 +142,38 @@ impl MouseCapture for MacOSMouseCapture {
                 });
 
             unsafe {
-                let tap = CGEventTapCreate(
+                let tap = match CfGuard::new(CGEventTapCreate(
                     K_CG_HID_EVENT_TAP,
                     K_CG_HEAD_INSERT_EVENT_TAP,
                     K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
                     cg_event_mask_bit(K_CG_EVENT_MOUSE_MOVED),
                     event_tap_trampoline,
                     &mut tap_cb as *mut TapCallback as *mut std::ffi::c_void,
-                );
+                )) {
+                    Some(t) => t,
+                    None => {
+                        let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
+                        return;
+                    }
+                };
 
-                if tap.is_null() {
-                    let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
-                    return;
-                }
-
-                let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
-                if source.is_null() {
-                    CFRelease(tap);
-                    let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
-                    return;
-                }
+                let source = match CfGuard::new(CFMachPortCreateRunLoopSource(
+                    std::ptr::null_mut(),
+                    tap.as_ptr(),
+                    0,
+                )) {
+                    Some(s) => s,
+                    None => {
+                        let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
+                        return;
+                    }
+                };
 
                 let rl_ref = CFRunLoopGetCurrent();
                 CFRetain(rl_ref);
                 *run_loop.lock_recover() = Some(RunLoopHandle(rl_ref));
+                CFRunLoopAddSource(rl_ref, source.as_ptr(), kCFRunLoopCommonModes);
+                CGEventTapEnable(tap.as_ptr(), true);
                 {
                     let mut res = tap_resources.lock_recover();
                     *res = Some(MouseTapResources {
@@ -173,9 +182,7 @@ impl MouseCapture for MacOSMouseCapture {
                         source,
                     });
                 }
-                CFRunLoopAddSource(rl_ref, source, kCFRunLoopCommonModes);
                 let _ = ready_tx.send(Ok(()));
-                CGEventTapEnable(tap, true);
                 CFRunLoopRun();
             }
         });
@@ -233,18 +240,13 @@ impl MouseCapture for MacOSMouseCapture {
             thread_joined = true;
         }
         if thread_joined {
-            // Release all CF objects after the thread has exited
+            // tap and source are released automatically via CfGuard;
+            // run_loop was obtained via CFRunLoopGetCurrent + CFRetain.
             if let Some(res) = self.tap_resources.lock_recover().take() {
-                unsafe {
-                    CFRelease(res.source);
-                    CFRelease(res.tap);
-                    CFRelease(res.run_loop);
-                }
+                unsafe { CFRelease(res.run_loop) };
             } else if let Some(p) = ptr {
                 // Fallback: release run loop if tap_resources wasn't populated
-                unsafe {
-                    CFRelease(p);
-                }
+                unsafe { CFRelease(p) };
             }
         }
         Ok(())

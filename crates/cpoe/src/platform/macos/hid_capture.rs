@@ -32,7 +32,7 @@ struct HidCaptureContext {
 /// so that stop() can perform proper cleanup from the owning thread.
 struct HidThreadHandles {
     run_loop: *mut std::ffi::c_void,
-    manager: *mut std::ffi::c_void,
+    manager: CfGuard,
 }
 
 // The raw pointers are CF objects retained by the worker thread; they are
@@ -164,17 +164,19 @@ impl HidInputCapture {
             // run_hid_loop. We replace the callback with a no-op first, then
             // unschedule, close, and release before stopping the run loop.
             unsafe {
-                // Unschedule and close the HID manager before stopping the run loop.
                 IOHIDManagerRegisterInputValueCallback(
-                    h.manager,
+                    h.manager.as_ptr(),
                     hid_input_callback_noop,
                     std::ptr::null_mut(),
                 );
-                IOHIDManagerUnscheduleFromRunLoop(h.manager, h.run_loop, kCFRunLoopCommonModes);
-                IOHIDManagerClose(h.manager, K_IO_HID_OPTIONS_TYPE_NONE);
-                CFRelease(h.manager);
+                IOHIDManagerUnscheduleFromRunLoop(
+                    h.manager.as_ptr(),
+                    h.run_loop,
+                    kCFRunLoopCommonModes,
+                );
+                IOHIDManagerClose(h.manager.as_ptr(), K_IO_HID_OPTIONS_TYPE_NONE);
+                // h.manager released on drop via CfGuard
 
-                // Stop the run loop so CFRunLoopRun returns and the thread exits.
                 CFRunLoopStop(h.run_loop);
             }
         }
@@ -216,7 +218,8 @@ extern "C" fn hid_input_callback_noop(
 
 /// Set up IOHIDManager, register callback, and schedule on current thread's run loop.
 ///
-/// Returns `Some((manager, run_loop))` on success so stop() can clean up.
+/// Returns `Some((manager_guard, run_loop))` on success so stop() can clean up.
+/// The `CfGuard` owns the manager; `run_loop` is a borrowed `CFRunLoopGetCurrent()`.
 ///
 /// # Safety
 ///
@@ -224,58 +227,50 @@ extern "C" fn hid_input_callback_noop(
 /// obtained from `Arc::into_raw` that will be reclaimed by the caller.
 unsafe fn run_hid_loop(
     ctx_raw: *const HidCaptureContext,
-) -> Option<(*mut std::ffi::c_void, *mut std::ffi::c_void)> {
-    let manager = IOHIDManagerCreate(kCFAllocatorDefault, K_IO_HID_OPTIONS_TYPE_NONE);
-    if manager.is_null() {
-        log::error!("IOHIDManagerCreate returned null");
-        return None;
-    }
+) -> Option<(CfGuard, *mut std::ffi::c_void)> {
+    let manager = CfGuard::new(IOHIDManagerCreate(
+        kCFAllocatorDefault,
+        K_IO_HID_OPTIONS_TYPE_NONE,
+    ))?;
 
     // Build matching dictionary for keyboard devices (usage page 0x01, usage 0x06).
-    let matching = CFDictionaryCreateMutable(
-        kCFAllocatorDefault,
-        2,
-        &core_foundation_sys::dictionary::kCFTypeDictionaryKeyCallBacks,
-        &core_foundation_sys::dictionary::kCFTypeDictionaryValueCallBacks,
-    );
-    if matching.is_null() {
-        CFRelease(manager);
-        return None;
-    }
+    let matching = CfGuard::new(
+        CFDictionaryCreateMutable(
+            kCFAllocatorDefault,
+            2,
+            &core_foundation_sys::dictionary::kCFTypeDictionaryKeyCallBacks,
+            &core_foundation_sys::dictionary::kCFTypeDictionaryValueCallBacks,
+        ) as *mut _,
+    )?;
 
-    let page_key = cfstr(K_IO_HID_DEVICE_USAGE_PAGE_KEY);
-    let usage_key = cfstr(K_IO_HID_DEVICE_USAGE_KEY);
-    let page_val = cfnum(K_HID_PAGE_GENERIC_DESKTOP);
-    let usage_val = cfnum(K_HID_USAGE_GD_KEYBOARD);
+    let page_key = CfGuard::new(cfstr(K_IO_HID_DEVICE_USAGE_PAGE_KEY));
+    let usage_key = CfGuard::new(cfstr(K_IO_HID_DEVICE_USAGE_KEY));
+    let page_val = CfGuard::new(cfnum(K_HID_PAGE_GENERIC_DESKTOP));
+    let usage_val = CfGuard::new(cfnum(K_HID_USAGE_GD_KEYBOARD));
 
-    if page_key.is_null() || usage_key.is_null() || page_val.is_null() || usage_val.is_null() {
-        CFRelease(manager);
-        CFRelease(matching as *mut _);
-        return None;
-    }
+    let (page_key, usage_key, page_val, usage_val) = match (page_key, usage_key, page_val, usage_val)
+    {
+        (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
+        _ => return None,
+    };
 
     core_foundation_sys::dictionary::CFDictionarySetValue(
-        matching,
-        page_key as *const _,
-        page_val as *const _,
+        matching.as_ptr() as *mut _,
+        page_key.as_ptr() as *const _,
+        page_val.as_ptr() as *const _,
     );
     core_foundation_sys::dictionary::CFDictionarySetValue(
-        matching,
-        usage_key as *const _,
-        usage_val as *const _,
+        matching.as_ptr() as *mut _,
+        usage_key.as_ptr() as *const _,
+        usage_val.as_ptr() as *const _,
     );
 
-    IOHIDManagerSetDeviceMatching(manager, matching as CFDictionaryRef);
-    CFRelease(matching as *mut _);
-    CFRelease(page_key as *mut _);
-    CFRelease(usage_key as *mut _);
-    CFRelease(page_val as *mut _);
-    CFRelease(usage_val as *mut _);
+    IOHIDManagerSetDeviceMatching(manager.as_ptr(), matching.as_ptr() as CFDictionaryRef);
+    drop((matching, page_key, usage_key, page_val, usage_val));
 
-    let result = IOHIDManagerOpen(manager, K_IO_HID_OPTIONS_TYPE_NONE);
+    let result = IOHIDManagerOpen(manager.as_ptr(), K_IO_HID_OPTIONS_TYPE_NONE);
     if result != 0 {
         log::error!("IOHIDManagerOpen failed: {result}");
-        CFRelease(manager);
         return None;
     }
 
@@ -283,13 +278,13 @@ unsafe fn run_hid_loop(
     // incremented by the caller via Arc::into_raw; it will be decremented
     // in stop() after the callback is unregistered.
     IOHIDManagerRegisterInputValueCallback(
-        manager,
+        manager.as_ptr(),
         hid_input_callback,
         ctx_raw as *mut std::ffi::c_void,
     );
 
     let run_loop = CFRunLoopGetCurrent();
-    IOHIDManagerScheduleWithRunLoop(manager, run_loop, kCFRunLoopCommonModes);
+    IOHIDManagerScheduleWithRunLoop(manager.as_ptr(), run_loop, kCFRunLoopCommonModes);
 
     Some((manager, run_loop))
 }

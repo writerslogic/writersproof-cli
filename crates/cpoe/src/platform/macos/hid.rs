@@ -18,79 +18,84 @@ use core_foundation_sys::number::{kCFNumberIntType, CFNumberCreate, CFNumberGetT
 /// Enumerate all connected HID keyboard devices.
 pub fn enumerate_hid_keyboards() -> Result<Vec<HidDeviceInfo>> {
     unsafe {
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, K_IO_HID_OPTIONS_TYPE_NONE);
-        if manager.is_null() {
-            return Err(anyhow!("Failed to create HID manager"));
-        }
-
-        let match_dict = CFDictionaryCreateMutable(
+        let manager = CfGuard::new(IOHIDManagerCreate(
             kCFAllocatorDefault,
-            0,
-            &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks,
+            K_IO_HID_OPTIONS_TYPE_NONE,
+        ))
+        .ok_or_else(|| anyhow!("Failed to create HID manager"))?;
+
+        let match_dict = CfGuard::new(
+            CFDictionaryCreateMutable(
+                kCFAllocatorDefault,
+                0,
+                &kCFTypeDictionaryKeyCallBacks,
+                &kCFTypeDictionaryValueCallBacks,
+            ) as *mut _,
         );
 
-        if !match_dict.is_null() {
+        if let Some(ref dict) = match_dict {
             let usage_page_key = CFString::new(K_IO_HID_DEVICE_USAGE_PAGE_KEY);
             let usage_key = CFString::new(K_IO_HID_DEVICE_USAGE_KEY);
 
             let usage_page = K_HID_PAGE_GENERIC_DESKTOP;
             let usage = K_HID_USAGE_GD_KEYBOARD;
 
-            let usage_page_num = CFNumberCreate(
-                kCFAllocatorDefault,
-                kCFNumberIntType,
-                &usage_page as *const i32 as *const std::ffi::c_void,
-            );
-            let usage_num = CFNumberCreate(
-                kCFAllocatorDefault,
-                kCFNumberIntType,
-                &usage as *const i32 as *const std::ffi::c_void,
-            );
-
-            if !usage_page_num.is_null() {
+            if let Some(num) = CfGuard::new(
+                CFNumberCreate(
+                    kCFAllocatorDefault,
+                    kCFNumberIntType,
+                    &usage_page as *const i32 as *const std::ffi::c_void,
+                ) as *mut _,
+            ) {
                 CFDictionarySetValue(
-                    match_dict,
+                    dict.as_ptr() as *mut _,
                     usage_page_key.as_concrete_TypeRef() as *const std::ffi::c_void,
-                    usage_page_num as *const std::ffi::c_void,
+                    num.as_ptr() as *const std::ffi::c_void,
                 );
-                CFRelease(usage_page_num as *mut std::ffi::c_void);
             }
-            if !usage_num.is_null() {
+            if let Some(num) = CfGuard::new(
+                CFNumberCreate(
+                    kCFAllocatorDefault,
+                    kCFNumberIntType,
+                    &usage as *const i32 as *const std::ffi::c_void,
+                ) as *mut _,
+            ) {
                 CFDictionarySetValue(
-                    match_dict,
+                    dict.as_ptr() as *mut _,
                     usage_key.as_concrete_TypeRef() as *const std::ffi::c_void,
-                    usage_num as *const std::ffi::c_void,
+                    num.as_ptr() as *const std::ffi::c_void,
                 );
-                CFRelease(usage_num as *mut std::ffi::c_void);
             }
         }
 
-        IOHIDManagerSetDeviceMatching(manager, match_dict);
+        IOHIDManagerSetDeviceMatching(
+            manager.as_ptr(),
+            match_dict
+                .as_ref()
+                .map_or(std::ptr::null(), |d| d.as_ptr()) as CFDictionaryRef,
+        );
+        drop(match_dict);
 
-        if !match_dict.is_null() {
-            CFRelease(match_dict as *mut std::ffi::c_void);
-        }
-
-        let result = IOHIDManagerOpen(manager, K_IO_HID_OPTIONS_TYPE_NONE);
+        let result = IOHIDManagerOpen(manager.as_ptr(), K_IO_HID_OPTIONS_TYPE_NONE);
         if result != 0 {
-            CFRelease(manager);
             return Err(anyhow!("Failed to open HID manager: {}", result));
         }
 
-        let devices_set = IOHIDManagerCopyDevices(manager);
-        if devices_set.is_null() {
-            IOHIDManagerClose(manager, K_IO_HID_OPTIONS_TYPE_NONE);
-            CFRelease(manager);
-            return Ok(Vec::new());
-        }
+        let devices_set = CfGuard::new(IOHIDManagerCopyDevices(manager.as_ptr()));
+        let devices_set = match devices_set {
+            Some(s) => s,
+            None => {
+                IOHIDManagerClose(manager.as_ptr(), K_IO_HID_OPTIONS_TYPE_NONE);
+                return Ok(Vec::new());
+            }
+        };
 
-        let count = CFSetGetCount(devices_set).max(0) as usize;
+        let count = CFSetGetCount(devices_set.as_ptr()).max(0) as usize;
         let mut devices = Vec::with_capacity(count);
 
         if count > 0 {
             let mut device_refs: Vec<*const std::ffi::c_void> = vec![std::ptr::null(); count];
-            CFSetGetValues(devices_set, device_refs.as_mut_ptr());
+            CFSetGetValues(devices_set.as_ptr(), device_refs.as_mut_ptr());
 
             for device_ref in device_refs {
                 if let Some(info) = get_hid_device_info(device_ref as *mut std::ffi::c_void) {
@@ -99,9 +104,9 @@ pub fn enumerate_hid_keyboards() -> Result<Vec<HidDeviceInfo>> {
             }
         }
 
-        CFRelease(devices_set);
-        IOHIDManagerClose(manager, K_IO_HID_OPTIONS_TYPE_NONE);
-        CFRelease(manager);
+        drop(devices_set);
+        IOHIDManagerClose(manager.as_ptr(), K_IO_HID_OPTIONS_TYPE_NONE);
+        // manager released on drop
 
         Ok(devices)
     }

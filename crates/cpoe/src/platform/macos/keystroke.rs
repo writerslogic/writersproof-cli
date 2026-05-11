@@ -68,11 +68,12 @@ pub struct RunLoopHandle(pub(super) *mut std::ffi::c_void);
 unsafe impl Send for RunLoopHandle {}
 unsafe impl Sync for RunLoopHandle {}
 
-/// Holds CF objects created by CGEventTap so they can be released on shutdown.
+/// Holds CF objects created by CGEventTap. Resources are released automatically
+/// via `CfGuard` when this struct is dropped after the run loop has exited.
 struct EventTapResources {
     run_loop: *mut std::ffi::c_void,
-    tap: *mut std::ffi::c_void,
-    source: *mut std::ffi::c_void,
+    tap: CfGuard,
+    source: CfGuard,
 }
 // SAFETY: EventTapResources is only accessed under a Mutex. The CF objects it
 // holds are safe to release from any thread after the run loop has exited.
@@ -112,38 +113,44 @@ impl EventTapRunner {
             // normally. stop() calls CFRelease(tap) only after joining this thread,
             // so macOS cannot invoke the callback after `tap_cb` is dropped.
             unsafe {
-                let tap = CGEventTapCreate(
+                let tap = match CfGuard::new(CGEventTapCreate(
                     K_CG_HID_EVENT_TAP,
                     K_CG_HEAD_INSERT_EVENT_TAP,
                     K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
                     cg_event_mask_bit(K_CG_EVENT_KEY_DOWN) | cg_event_mask_bit(K_CG_EVENT_KEY_UP),
                     event_tap_trampoline,
                     &mut tap_cb as *mut TapCallback as *mut std::ffi::c_void,
-                );
+                )) {
+                    Some(t) => t,
+                    None => {
+                        let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
+                        return;
+                    }
+                };
 
-                if tap.is_null() {
-                    let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
-                    return;
-                }
-
-                let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
-                if source.is_null() {
-                    CFRelease(tap);
-                    let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
-                    return;
-                }
+                let source = match CfGuard::new(CFMachPortCreateRunLoopSource(
+                    std::ptr::null_mut(),
+                    tap.as_ptr(),
+                    0,
+                )) {
+                    Some(s) => s,
+                    None => {
+                        let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
+                        return;
+                    }
+                };
 
                 let rl_ref = CFRunLoopGetCurrent();
                 CFRetain(rl_ref);
                 *run_loop_clone.lock_recover() = Some(RunLoopHandle(rl_ref));
+                CFRunLoopAddSource(rl_ref, source.as_ptr(), kCFRunLoopCommonModes);
+                CGEventTapEnable(tap.as_ptr(), true);
                 *tap_resources_clone.lock_recover() = Some(EventTapResources {
                     run_loop: rl_ref,
                     tap,
                     source,
                 });
-                CFRunLoopAddSource(rl_ref, source, kCFRunLoopCommonModes);
                 let _ = ready_tx.send(Ok(()));
-                CGEventTapEnable(tap, true);
                 CFRunLoopRun();
             }
         });
@@ -194,13 +201,9 @@ impl EventTapRunner {
         }
         if thread_joined {
             if let Some(res) = self.tap_resources.lock_recover().take() {
-                // SAFETY: Thread has joined, so no callbacks can fire. Each CF object
-                // was retained during start(); releasing them restores the refcount.
-                unsafe {
-                    CFRelease(res.source);
-                    CFRelease(res.tap);
-                    CFRelease(res.run_loop);
-                }
+                // run_loop was obtained via CFRunLoopGetCurrent + CFRetain;
+                // tap and source are released automatically via CfGuard.
+                unsafe { CFRelease(res.run_loop) };
             }
         }
     }
