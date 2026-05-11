@@ -138,6 +138,29 @@ pub fn ffi_config_remove_allowed_extension(extension: String) -> FfiResult {
     })
 }
 
+// ── Research Opt-In ─────────────────────────────────────────────────
+
+/// Get the current research contribution opt-in status.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_config_get_research_enabled() -> bool {
+    catch_ffi_panic!(false, {
+    match load_config() {
+        Ok(c) => c.research.contribute_to_research,
+        Err(_) => false,
+    }
+    })
+}
+
+/// Enable or disable anonymous research data contribution.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_config_set_research_enabled(enabled: bool) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    with_config_mut(|config| {
+        config.research.contribute_to_research = enabled;
+    })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

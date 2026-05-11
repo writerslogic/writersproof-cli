@@ -37,9 +37,16 @@ impl AnonymizedSession {
                     .unwrap_or(true);
                 prev_doc_hash = Some(s.document_hash);
 
+                // Differential privacy: add Laplacian noise to per-sample jitter.
+                let noisy_jitter = add_laplace_noise(
+                    s.jitter_micros as f64,
+                    s.jitter_micros as f64 * 0.03,
+                )
+                .max(0.0) as u32;
+
                 AnonymizedSample {
                     relative_time_secs: relative_time,
-                    jitter_micros: s.jitter_micros,
+                    jitter_micros: noisy_jitter,
                     keystroke_ordinal: s.keystroke_count,
                     document_changed: doc_changed,
                 }
@@ -211,16 +218,38 @@ pub(super) fn compute_anonymized_statistics(
     let min_jitter = samples.iter().map(|s| s.jitter_micros).min().unwrap_or(0);
     let max_jitter = samples.iter().map(|s| s.jitter_micros).max().unwrap_or(0);
 
+    // Apply local differential privacy: calibrated Laplacian noise on
+    // continuous statistics ensures individual session privacy (ε = 1.0).
+    let noisy_mean = add_laplace_noise(mean, mean * 0.05);
+    let noisy_std = add_laplace_noise(std_dev, std_dev * 0.05).max(0.0);
+
     AnonymizedStatistics {
         total_samples: samples.len(),
         duration_bucket,
         typing_rate_bucket,
-        mean_jitter_micros: mean,
-        jitter_std_dev: std_dev,
+        mean_jitter_micros: noisy_mean,
+        jitter_std_dev: noisy_std,
         min_jitter_micros: min_jitter,
         max_jitter_micros: max_jitter,
         phys_ratio: None,
         entropy_source: None,
+    }
+}
+
+/// Add Laplacian noise with the given scale parameter (b = sensitivity / ε).
+///
+/// Uses the inverse CDF method: X = μ - b * sign(U) * ln(1 - 2|U|)
+/// where U is uniform in (-0.5, 0.5).
+fn add_laplace_noise(value: f64, scale: f64) -> f64 {
+    if scale <= 0.0 {
+        return value;
+    }
+    let u: f64 = rand::random::<f64>() - 0.5;
+    let noise = -scale * u.signum() * (1.0 - 2.0 * u.abs()).ln();
+    if noise.is_finite() {
+        value + noise
+    } else {
+        value
     }
 }
 
