@@ -194,10 +194,7 @@ impl CredentialPackageBuilder {
         // 7. C2PA manifest (requires evidence_bytes for the protocol builder)
         let c2pa_jumbf = self.build_c2pa_manifest(
             signer,
-            &vc_hash,
             ai_disclosure.as_ref(),
-            cawg_identity.clone(),
-            cawg_tdm.clone(),
         )?;
 
         Ok(CredentialPackage {
@@ -216,10 +213,7 @@ impl CredentialPackageBuilder {
     fn build_c2pa_manifest(
         &self,
         signer: &dyn tpm::Provider,
-        vc_hash: &[u8; 32],
         ai_disclosure: Option<&AiDisclosureLevel>,
-        cawg_identity: CawgIdentityAssertion,
-        cawg_tdm: Option<CawgTdmAssertion>,
     ) -> Result<Option<Vec<u8>>> {
         let evidence_bytes = match &self.evidence_bytes {
             Some(bytes) => bytes,
@@ -234,16 +228,6 @@ impl CredentialPackageBuilder {
             ciborium::from_reader(evidence_bytes.as_slice()).map_err(|e| {
                 Error::evidence(format!("evidence packet CBOR decode failed: {e}"))
             })?;
-
-        // Build ingredients from checkpoint history
-        let ingredients = self.build_ingredients();
-
-        // Serialize CAWG assertions for embedding
-        let cawg_identity_json = serde_json::to_value(&cawg_identity)
-            .map_err(|e| Error::evidence(format!("CAWG identity serialization failed: {e}")))?;
-        let cawg_tdm_json = cawg_tdm.as_ref().and_then(|tdm| {
-            serde_json::to_value(tdm).ok()
-        });
 
         // Build AI disclosure assertion from declaration
         let ai_disclosure_assertion = ai_disclosure.map(|level| {
@@ -264,8 +248,6 @@ impl CredentialPackageBuilder {
         });
 
         let tpm_signer = ProviderSigner(signer);
-
-        let _ = (ingredients, cawg_identity_json, cawg_tdm_json);
 
         let mut builder = authorproof_protocol::c2pa::C2paManifestBuilder::new(
             evidence_packet,
@@ -314,10 +296,8 @@ pub struct PackageVerification {
     pub vc_hash_consistent: bool,
     /// CAWG identity COSE_Sign1 signature is valid.
     pub cawg_signature_valid: bool,
-    /// C2PA JUMBF structural validation passed (None if no JUMBF).
-    pub c2pa_structure_valid: Option<bool>,
-    /// C2PA claim signature is valid (None if no JUMBF).
-    pub c2pa_signature_valid: Option<bool>,
+    /// C2PA JUMBF structural validation passed (None if no JUMBF present).
+    pub c2pa_valid: Option<bool>,
     /// All checks passed.
     pub all_valid: bool,
     /// Non-fatal warnings from validation.
@@ -343,8 +323,7 @@ pub fn verify_credential_package(
                 vc_cose_valid: false,
                 vc_hash_consistent: false,
                 cawg_signature_valid: false,
-                c2pa_structure_valid: None,
-                c2pa_signature_valid: None,
+                c2pa_valid: None,
                 all_valid: false,
                 warnings,
             };
@@ -373,32 +352,29 @@ pub fn verify_credential_package(
     let cawg_signature_valid = package.cawg_identity.verify_cose(&vk).is_ok();
 
     // 5. Verify C2PA manifest (if present)
-    let (c2pa_structure_valid, c2pa_signature_valid) =
-        if let Some(ref jumbf) = package.c2pa_jumbf {
-            let structure_ok =
-                authorproof_protocol::c2pa::verify_jumbf_structure(jumbf).is_ok();
-            if !structure_ok {
-                warnings.push("C2PA JUMBF structure validation failed".to_string());
-            }
-            (Some(structure_ok), Some(structure_ok))
-        } else {
-            (None, None)
-        };
+    let c2pa_valid = if let Some(ref jumbf) = package.c2pa_jumbf {
+        let structure_ok =
+            authorproof_protocol::c2pa::verify_jumbf_structure(jumbf).is_ok();
+        if !structure_ok {
+            warnings.push("C2PA JUMBF structure validation failed".to_string());
+        }
+        Some(structure_ok)
+    } else {
+        None
+    };
 
     let all_valid = vc_proof_valid
         && vc_cose_valid
         && vc_hash_consistent
         && cawg_signature_valid
-        && c2pa_structure_valid.unwrap_or(true)
-        && c2pa_signature_valid.unwrap_or(true);
+        && c2pa_valid.unwrap_or(true);
 
     PackageVerification {
         vc_proof_valid,
         vc_cose_valid,
         vc_hash_consistent,
         cawg_signature_valid,
-        c2pa_structure_valid,
-        c2pa_signature_valid,
+        c2pa_valid,
         all_valid,
         warnings,
     }
