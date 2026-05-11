@@ -335,8 +335,8 @@ pub fn to_cawg_tdm(decl: &Declaration) -> CawgTdmAssertion {
                 constraint_info: Some(
                     "Human-authored content; generative training requires explicit license."
                         .to_string(),
-                constraint_uri: None,
                 ),
+                constraint_uri: None,
             },
         ]
     } else {
