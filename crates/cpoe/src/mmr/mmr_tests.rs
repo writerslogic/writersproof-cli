@@ -463,6 +463,22 @@ fn test_node_serialize_deserialize_roundtrip() {
 // Property-based tests (proptest)
 // ---------------------------------------------------------------------------
 
+#[test]
+fn test_range_proof_cross_peak_n5() {
+    let store = Box::new(MemoryStore::new());
+    let mmr = Mmr::new(store).expect("create mmr");
+    for i in 0..5u64 {
+        mmr.append(&i.to_le_bytes()).expect("append");
+    }
+    assert_eq!(mmr.leaf_count(), 5);
+    let peaks = mmr.get_peaks().expect("peaks");
+    assert_eq!(peaks.len(), 2, "n=5 should have 2 peaks");
+
+    let proof = mmr.generate_range_proof(0, 4).expect("generate range proof");
+    let data: Vec<Vec<u8>> = (0..5u64).map(|i| i.to_le_bytes().to_vec()).collect();
+    proof.verify(&data).expect("cross-peak range proof should verify");
+}
+
 mod prop_tests {
     use super::*;
     use proptest::prelude::*;
@@ -553,17 +569,13 @@ mod prop_tests {
             prop_assert!(proof.verify(&tampered).is_err());
         }
 
-        /// Range proofs verify for partial contiguous ranges within a single peak.
-        /// Full-range proofs spanning multiple peaks are known to fail for
-        /// non-power-of-2 leaf counts (e.g. n=5) due to cross-peak sibling
-        /// path limitations in generate_range_merkle_path.
+        /// Range proofs verify for any contiguous leaf range, including
+        /// ranges that span multiple peaks (e.g. n=5).
         #[test]
         fn range_proof_verifies(n in 2usize..64) {
             let mmr = build_mmr(n);
-            // Use a partial range (first 2 leaves) which stays within one peak.
-            let end = (n as u64 - 1).min(1);
-            let proof = mmr.generate_range_proof(0, end).unwrap();
-            let data: Vec<Vec<u8>> = (0..=end)
+            let proof = mmr.generate_range_proof(0, n as u64 - 1).unwrap();
+            let data: Vec<Vec<u8>> = (0..n as u64)
                 .map(|i| i.to_le_bytes().to_vec())
                 .collect();
             proof.verify(&data).map_err(|e| {

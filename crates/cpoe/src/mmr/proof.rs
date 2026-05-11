@@ -287,9 +287,18 @@ impl RangeProof {
             current.insert(self.leaf_indices[i], *hash);
         }
 
+        let peak_set: std::collections::BTreeSet<u64> =
+            super::find_peaks(self.mmr_size).into_iter().collect();
+
         let mut sibling_idx = 0usize;
         let mut height: u8 = 0;
         while current.len() > 1 || sibling_idx < self.sibling_path.len() {
+            // All remaining positions are peaks — nothing left to merge.
+            if current.keys().all(|p| peak_set.contains(p))
+                && sibling_idx == self.sibling_path.len()
+            {
+                break;
+            }
             if height >= 63 {
                 return Err(MmrError::InvalidProof);
             }
@@ -302,6 +311,12 @@ impl RangeProof {
                     continue;
                 }
                 let hash = current[&pos];
+                // Node already at a peak — carry forward without merging.
+                if peak_set.contains(&pos) {
+                    next.insert(pos, hash);
+                    processed.insert(pos, true);
+                    continue;
+                }
                 let offset = 1u64
                     .checked_shl((height + 1) as u32)
                     .ok_or(MmrError::InvalidProof)?;
@@ -372,22 +387,18 @@ impl RangeProof {
         if current.is_empty() {
             return Err(MmrError::InvalidProof);
         }
-        // Reject proofs with unconsumed sibling_path elements — indicates
-        // a malformed or padded proof that may verify by coincidence.
         if sibling_idx != self.sibling_path.len() {
             return Err(MmrError::InvalidProof);
         }
-        // After Merkle reconstruction, multiple remaining peaks means the
-        // proof path was incomplete — reject rather than silently picking one.
-        if current.len() != 1 {
-            return Err(MmrError::InvalidProof);
-        }
-        let computed_peak = *current.values().next().ok_or(MmrError::InvalidProof)?;
-        if self.peak_position >= self.peaks.len() {
-            return Err(MmrError::InvalidProof);
-        }
-        if computed_peak != self.peaks[self.peak_position] {
-            return Err(MmrError::InvalidProof);
+        // Each remaining entry must match a known peak.
+        for (&pos, &hash) in &current {
+            let peak_idx = peak_set
+                .iter()
+                .position(|&p| p == pos)
+                .ok_or(MmrError::InvalidProof)?;
+            if peak_idx >= self.peaks.len() || hash != self.peaks[peak_idx] {
+                return Err(MmrError::InvalidProof);
+            }
         }
         if self.peaks.len() == 1 {
             if self.peaks[0] != self.root {
