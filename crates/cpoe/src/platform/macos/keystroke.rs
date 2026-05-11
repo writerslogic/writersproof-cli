@@ -315,6 +315,7 @@ impl KeystrokeMonitor {
         let rejected_count = Arc::new(AtomicU64::new(0));
         let tap_ptr = Arc::new(AtomicPtr::new(std::ptr::null_mut()));
         let tap_alive = Arc::new(AtomicBool::new(true));
+        let clock = MachToWallClock::calibrate();
 
         let tap_cb = build_monitor_tap_callback(
             Arc::clone(&tap_ptr),
@@ -323,7 +324,7 @@ impl KeystrokeMonitor {
             Arc::clone(&verified_count),
             Arc::clone(&rejected_count),
             move |event, verification| {
-                let now = chrono::Utc::now().timestamp_nanos_safe();
+                let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
                 // SAFETY: event is a valid CGEventRef; K_CG_KEYBOARD_EVENT_KEYCODE
                 // is a valid field constant for key events.
                 let keycode =
@@ -401,6 +402,7 @@ impl KeystrokeMonitor {
         let rejected_count = Arc::new(AtomicU64::new(0));
         let tap_ptr = Arc::new(AtomicPtr::new(std::ptr::null_mut()));
         let tap_alive = Arc::new(AtomicBool::new(true));
+        let clock = MachToWallClock::calibrate();
 
         let tap_cb = build_monitor_tap_callback(
             Arc::clone(&tap_ptr),
@@ -417,7 +419,7 @@ impl KeystrokeMonitor {
                 let _ = session_clone.lock_recover().record_keystroke(keycode);
 
                 if let Some(ref cb) = callback {
-                    let now = chrono::Utc::now().timestamp_nanos_safe();
+                    let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
                     cb(KeystrokeInfo {
                         timestamp_ns: now,
                         keycode: keycode as i64,
@@ -508,6 +510,7 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
         let strict = self.strict_mode;
         let tap_ptr = Arc::new(AtomicPtr::new(std::ptr::null_mut()));
         let tap_ptr_cb = Arc::clone(&tap_ptr);
+        let clock = MachToWallClock::calibrate();
 
         running.store(true, Ordering::SeqCst);
         tap_alive.store(true, Ordering::SeqCst);
@@ -559,7 +562,9 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                     return;
                 }
 
-                let now = chrono::Utc::now().timestamp_nanos_safe();
+                // Use kernel event timestamp for IKI precision instead of
+                // wall-clock time (avoids CFRunLoop scheduling jitter).
+                let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
                 // SAFETY: event is a valid CGEventRef for a key event.
                 let keycode = u16::try_from(unsafe {
                     CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE)

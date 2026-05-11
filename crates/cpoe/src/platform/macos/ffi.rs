@@ -66,6 +66,58 @@ extern "C" {
     pub fn mach_absolute_time() -> u64;
 }
 
+/// Snapshot of the wall-clock ↔ mach_absolute_time offset, taken once at
+/// capture start. Applying this to kernel event timestamps yields UTC
+/// nanoseconds with kernel-level precision (no CFRunLoop scheduling jitter).
+pub struct MachToWallClock {
+    /// UTC nanoseconds at calibration time.
+    utc_ns: i64,
+    /// mach_absolute_time() at calibration time (already in nanoseconds on Apple Silicon;
+    /// on Intel, pre-converted via timebase ratio).
+    mach_ns: u64,
+    /// Timebase numerator (for mach ticks → nanoseconds conversion).
+    numer: u32,
+    /// Timebase denominator.
+    denom: u32,
+}
+
+impl MachToWallClock {
+    /// Calibrate the offset between wall-clock and monotonic time.
+    /// Call once at capture start; reuse for all events in the session.
+    pub fn calibrate() -> Self {
+        let mut info = MachTimebaseInfo { numer: 0, denom: 0 };
+        unsafe { mach_timebase_info(&mut info) };
+        // If timebase query fails, default to 1:1 (correct on Apple Silicon).
+        if info.denom == 0 {
+            info.numer = 1;
+            info.denom = 1;
+        }
+        let mach_ticks = unsafe { mach_absolute_time() };
+        let mach_ns = mach_ticks as u128 * info.numer as u128 / info.denom as u128;
+        let utc_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        Self {
+            utc_ns,
+            mach_ns: mach_ns as u64,
+            numer: info.numer,
+            denom: info.denom,
+        }
+    }
+
+    /// Convert a kernel event timestamp (mach absolute time nanoseconds,
+    /// as returned by `CGEventGetTimestamp`) to UTC nanoseconds.
+    pub fn to_utc_ns(&self, event_mach_ns: u64) -> i64 {
+        let delta = event_mach_ns as i128 - self.mach_ns as i128;
+        (self.utc_ns as i128 + delta) as i64
+    }
+
+    /// Convert a raw mach_absolute_time tick value (as returned by
+    /// `IOHIDValueGetTimeStamp`) to UTC nanoseconds.
+    pub fn ticks_to_utc_ns(&self, mach_ticks: u64) -> i64 {
+        let mach_ns = mach_ticks as u128 * self.numer as u128 / self.denom as u128;
+        self.to_utc_ns(mach_ns as u64)
+    }
+}
+
 pub const K_HID_PAGE_GENERIC_DESKTOP: i32 = 0x01;
 #[allow(dead_code)]
 pub const K_HID_PAGE_KEYBOARD_OR_KEYPAD: u32 = 0x07;
@@ -142,6 +194,7 @@ extern "C" {
 
     pub fn CGEventTapEnable(tap: *mut std::ffi::c_void, enable: bool);
     pub fn CGEventTapIsEnabled(tap: *mut std::ffi::c_void) -> bool;
+    pub fn CGEventGetTimestamp(event: *mut std::ffi::c_void) -> u64;
     pub fn CGEventGetIntegerValueField(event: *mut std::ffi::c_void, field: u32) -> i64;
     pub fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
     /// SAFETY: `unicode_string` must point to a buffer of at least

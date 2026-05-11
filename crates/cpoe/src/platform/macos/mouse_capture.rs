@@ -85,6 +85,7 @@ impl MouseCapture for MacOSMouseCapture {
 
         let (ready_tx, ready_rx) = mpsc::channel::<Result<()>>();
 
+        let clock = MachToWallClock::calibrate();
         let thread = std::thread::spawn(move || {
             let mut tap_cb: TapCallback =
                 Box::new(move |event: *mut std::ffi::c_void, event_type: u32| {
@@ -107,7 +108,7 @@ impl MouseCapture for MacOSMouseCapture {
                             return;
                         }
 
-                        let now = chrono::Utc::now().timestamp_nanos_safe();
+                        let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
 
                         let location = unsafe { CGEventGetLocation(event) };
                         let x = location.x;
