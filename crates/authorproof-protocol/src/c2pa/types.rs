@@ -303,6 +303,42 @@ pub struct AiContentProfile {
     pub human_oversight_level: String,
 }
 
+
+/// C2PA ingredient representing a prior version of the asset.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C2paIngredient {
+    pub title: String,
+    pub relationship: String,
+    #[serde(rename = "documentHash", skip_serializing_if = "Option::is_none")]
+    pub document_hash: Option<String>,
+    #[serde(rename = "instanceID", skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    #[serde(rename = "dc:format", skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(rename = "informationalURI", skip_serializing_if = "Option::is_none")]
+    pub informational_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<IngredientMetadata>,
+}
+
+/// Metadata for a C2PA ingredient sourced from a CPoE checkpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngredientMetadata {
+    pub checkpoint_ordinal: u64,
+    pub timestamp: String,
+    pub vdf_verified: bool,
+    pub content_size: u64,
+}
+
+/// Reference to a W3C Verifiable Credential linked to this manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcReferenceAssertion {
+    pub vc_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vc_url: Option<String>,
+    pub algorithm: String,
+}
+
 /// Summary of a parsed JUMBF superbox structure (ISO 19566-5).
 #[derive(Debug)]
 pub struct JumbfInfo {

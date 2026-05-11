@@ -22,7 +22,8 @@ pub use types::{
     AssertionMetadata, AssetInfo, AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo,
     DataSource, ExclusionRange, ExternalReferenceAssertion, ForensicSignalScores,
     HashDataAssertion, HashedExtUri, HashedUri, JitterSeal, JumbfInfo, MetadataAssertion,
-    ProcessAssertion, SoftwareAgent, ValidationResult,
+    C2paIngredient, IngredientMetadata,
+    ProcessAssertion, SoftwareAgent, ValidationResult, VcReferenceAssertion,
 };
 pub use validation::{validate_manifest, verify_manifest_signature, verify_manifest_with_key};
 
@@ -32,3 +33,7 @@ pub const ASSERTION_LABEL_HASH_DATA: &str = "c2pa.hash.data";
 pub const ASSERTION_LABEL_METADATA: &str = "c2pa.metadata";
 pub const ASSERTION_LABEL_EXTERNAL_REF: &str = "c2pa.external-reference";
 pub const ASSERTION_LABEL_AI_DISCLOSURE: &str = "c2pa.ai-disclosure";
+pub const ASSERTION_LABEL_INGREDIENT: &str = "c2pa.ingredient";
+pub const ASSERTION_LABEL_CAWG_IDENTITY: &str = "cawg.identity";
+pub const ASSERTION_LABEL_CAWG_TDM: &str = "cawg.training-mining";
+pub const ASSERTION_LABEL_VC_REFERENCE: &str = "com.writerslogic.vc-reference.v1";

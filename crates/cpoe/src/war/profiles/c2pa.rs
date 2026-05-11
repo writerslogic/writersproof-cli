@@ -142,7 +142,7 @@ pub fn to_c2pa_action(
 
     let params = serde_json::json!({
         "pop.attestation_tier": tier_str,
-        "pop.chain_duration_secs": appr.pop_chain_duration.unwrap_or(0),
+        "pop.chain_duration_secs": appr.pop_chain_duration,
     });
 
     Ok(C2paAction {

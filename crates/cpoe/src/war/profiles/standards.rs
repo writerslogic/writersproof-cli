@@ -231,14 +231,11 @@ pub fn creative_rights_compliance(
         let no_ai = matches!(max_extent, AiExtent::None);
         let disclosure = AiDisclosureLevel::from_ai_extent(max_extent);
 
-        // WGA MBA requires disclosure of any GAI-generated source material
-        let gai_disclosed = !decl.ai_tools.is_empty() || no_ai;
-
-        if !gai_disclosed {
-            notes.push(
-                "WGA MBA Section 72: AI tool usage should be disclosed in declaration".into(),
-            );
-        }
+        // WGA MBA requires disclosure of any GAI-generated source material.
+        // Currently, max_ai_extent() derives from ai_tools, so if tools are
+        // listed then disclosure is inherent. A future `ai_used_undisclosed`
+        // field on Declaration would allow detecting the gap explicitly.
+        let gai_disclosed = no_ai || !decl.ai_tools.is_empty();
 
         (disclosure, gai_disclosed)
     } else {

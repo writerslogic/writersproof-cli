@@ -12,11 +12,11 @@ use super::types::{
     Action, ActionParameters, ActionsAssertion, AiDisclosureAssertion, AssertionMetadata,
     AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo, DataSource,
     ExternalReferenceAssertion, ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri,
-    MetadataAssertion, ProcessAssertion, SoftwareAgent,
+    C2paIngredient, MetadataAssertion, ProcessAssertion, SoftwareAgent, VcReferenceAssertion,
 };
 use super::{
-    ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_AI_DISCLOSURE, ASSERTION_LABEL_CPOE,
-    ASSERTION_LABEL_EXTERNAL_REF, ASSERTION_LABEL_HASH_DATA, ASSERTION_LABEL_METADATA,
+    ASSERTION_LABEL_EXTERNAL_REF, ASSERTION_LABEL_HASH_DATA, ASSERTION_LABEL_INGREDIENT,
+    ASSERTION_LABEL_METADATA, ASSERTION_LABEL_VC_REFERENCE,
 };
 
 /// C2PA 2.4 spec version for claim_generator_info.
@@ -37,6 +37,10 @@ pub struct C2paManifestBuilder {
     composition_mode: Option<String>,
     writing_mode: Option<String>,
     ai_disclosure: Option<AiDisclosureAssertion>,
+    ingredients: Vec<C2paIngredient>,
+    cawg_identity: Option<serde_json::Value>,
+    cawg_tdm: Option<serde_json::Value>,
+    vc_reference: Option<VcReferenceAssertion>,
 }
 
 impl C2paManifestBuilder {
@@ -60,6 +64,10 @@ impl C2paManifestBuilder {
             composition_mode: None,
             writing_mode: None,
             ai_disclosure: None,
+            ingredients: Vec::new(),
+            cawg_identity: None,
+            cawg_tdm: None,
+            vc_reference: None,
         }
     }
 
@@ -116,6 +124,34 @@ impl C2paManifestBuilder {
         self
     }
 
+
+    /// Set C2PA ingredients representing revision history.
+    pub fn ingredients(mut self, ingredients: Vec<C2paIngredient>) -> Self {
+        self.ingredients = ingredients;
+        self
+    }
+
+    /// Embed a CAWG identity assertion in the manifest.
+    pub fn cawg_identity(mut self, assertion: serde_json::Value) -> Self {
+        self.cawg_identity = Some(assertion);
+        self
+    }
+
+    /// Embed a CAWG training-and-data-mining assertion in the manifest.
+    pub fn cawg_tdm(mut self, assertion: serde_json::Value) -> Self {
+        self.cawg_tdm = Some(assertion);
+        self
+    }
+
+    /// Link a W3C Verifiable Credential to this manifest.
+    pub fn vc_reference(mut self, vc_hash: [u8; 32], vc_url: Option<String>) -> Self {
+        self.vc_reference = Some(VcReferenceAssertion {
+            vc_hash: hex::encode(vc_hash),
+            vc_url,
+            algorithm: "sha256".to_string(),
+        });
+        self
+    }
     pub fn build_jumbf(self, signer: &dyn EvidenceSigner) -> Result<Vec<u8>> {
         let manifest = self.build_manifest(signer)?;
         encode_jumbf(&manifest)
@@ -171,7 +207,6 @@ impl C2paManifestBuilder {
         for (box_bytes, label) in assertion_boxes.iter().zip(&[
             ASSERTION_LABEL_HASH_DATA,
             ASSERTION_LABEL_ACTIONS,
-            ASSERTION_LABEL_CPOE,
         ]) {
             let hash = Sha256::digest(&box_bytes[8..]);
             created_assertions.push(HashedUri {
@@ -257,6 +292,51 @@ impl C2paManifestBuilder {
             assertion_boxes.push(ai_box);
         }
 
+
+        for (i, ingredient) in self.ingredients.iter().enumerate() {
+            let label = format!("{ASSERTION_LABEL_INGREDIENT}.{i}");
+            let ing_box = build_assertion_jumbf_cbor(&label, ingredient)?;
+            let ing_hash = Sha256::digest(&ing_box[8..]);
+            created_assertions.push(HashedUri {
+                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{label}"),
+                hash: ing_hash.to_vec(),
+                alg: Some("sha256".to_string()),
+            });
+            assertion_boxes.push(ing_box);
+        }
+
+        if let Some(ref identity) = self.cawg_identity {
+            let cawg_box = build_assertion_jumbf_json(ASSERTION_LABEL_CAWG_IDENTITY, identity)?;
+            let cawg_hash = Sha256::digest(&cawg_box[8..]);
+            created_assertions.push(HashedUri {
+                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_CAWG_IDENTITY}"),
+                hash: cawg_hash.to_vec(),
+                alg: Some("sha256".to_string()),
+            });
+            assertion_boxes.push(cawg_box);
+        }
+
+        if let Some(ref tdm) = self.cawg_tdm {
+            let tdm_box = build_assertion_jumbf_json(ASSERTION_LABEL_CAWG_TDM, tdm)?;
+            let tdm_hash = Sha256::digest(&tdm_box[8..]);
+            created_assertions.push(HashedUri {
+                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_CAWG_TDM}"),
+                hash: tdm_hash.to_vec(),
+                alg: Some("sha256".to_string()),
+            });
+            assertion_boxes.push(tdm_box);
+        }
+
+        if let Some(ref vc_ref) = self.vc_reference {
+            let vc_box = build_assertion_jumbf_json(ASSERTION_LABEL_VC_REFERENCE, vc_ref)?;
+            let vc_hash = Sha256::digest(&vc_box[8..]);
+            created_assertions.push(HashedUri {
+                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_VC_REFERENCE}"),
+                hash: vc_hash.to_vec(),
+                alg: Some("sha256".to_string()),
+            });
+            assertion_boxes.push(vc_box);
+        }
         let sig_url = format!("self#jumbf=/c2pa/{manifest_label}/c2pa.signature");
 
         let claim = C2paClaim {
