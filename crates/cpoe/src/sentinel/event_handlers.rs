@@ -606,6 +606,7 @@ impl EventLoopCtx {
                 &self.session_events_tx,
             );
             self.bundle_monitors.lock_recover().remove(path);
+            self.last_fingerprint_time.remove(path.as_str());
         }
         self.check_capture_health();
     }
@@ -708,16 +709,17 @@ impl EventLoopCtx {
             }
         }
         {
-            let threads = self.bridge_health_threads.lock_recover();
-            for (i, handle) in threads.iter().enumerate() {
-                if handle.is_finished() {
-                    log::error!(
-                        "Bridge thread {i} died; attempting automatic recovery"
-                    );
-                    self.bridge_healthy_flag
-                        .store(false, Ordering::SeqCst);
-                    needs_restart = true;
-                }
+            let mut threads = self.bridge_health_threads.lock_recover();
+            let had = threads.len();
+            threads.retain(|t| !t.is_finished());
+            let dead_count = had - threads.len();
+            if dead_count > 0 {
+                log::error!(
+                    "{dead_count} bridge thread(s) died; attempting automatic recovery"
+                );
+                self.bridge_healthy_flag
+                    .store(false, Ordering::SeqCst);
+                needs_restart = true;
             }
         }
         if needs_restart {
