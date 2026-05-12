@@ -39,9 +39,12 @@ impl SnapshotStore {
         crate::crypto::restrict_permissions(path, 0o600)
             .map_err(|e| format!("failed to set db permissions: {e}"))?;
 
-        let _: String = conn
+        let journal_mode: String = conn
             .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
             .map_err(|e| format!("WAL pragma failed: {e}"))?;
+        if journal_mode.to_lowercase() != "wal" {
+            log::warn!("snapshot db: requested WAL but got '{journal_mode}' journal mode");
+        }
         conn.execute_batch(&format!(
             "PRAGMA busy_timeout={BUSY_TIMEOUT_MS}; PRAGMA foreign_keys=ON; \
              PRAGMA synchronous=FULL;"
@@ -109,14 +112,16 @@ impl SnapshotStore {
             .transaction()
             .map_err(|e| format!("transaction begin failed: {e}"))?;
 
-        // Monotonicity inside transaction to prevent concurrent timestamp collisions
+        // Monotonicity inside transaction to prevent concurrent timestamp collisions.
+        // COALESCE handles the NULL case (no prior snapshots) in SQL so query_row
+        // only fails on real database errors, not on empty result sets.
         let last_ts: i64 = tx
             .query_row(
-                "SELECT MAX(timestamp_ns) FROM snapshot_meta WHERE document_path = ?",
+                "SELECT COALESCE(MAX(timestamp_ns), 0) FROM snapshot_meta WHERE document_path = ?",
                 params![document_path],
                 |row| row.get(0),
             )
-            .unwrap_or(0);
+            .map_err(|e| format!("monotonicity check failed: {e}"))?;
         if timestamp_ns <= last_ts {
             timestamp_ns = last_ts + 1;
         }

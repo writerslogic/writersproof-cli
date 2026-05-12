@@ -42,10 +42,10 @@ pub fn encrypt_blob(
         return Err("content hash does not match plaintext".to_string());
     }
 
-    let compressed =
+    let mut compressed =
         zstd::encode_all(plaintext, 3).map_err(|e| format!("zstd compress failed: {e}"))?;
 
-    let mut key = derive_blob_key(signing_key_bytes, content_hash);
+    let key = derive_blob_key(signing_key_bytes, content_hash);
     let nonce_bytes = derive_blob_nonce(signing_key_bytes, content_hash);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
@@ -56,7 +56,8 @@ pub fn encrypt_blob(
         .encrypt(nonce, compressed.as_slice())
         .map_err(|e| format!("encryption failed: {e}"))?;
 
-    key.zeroize();
+    compressed.zeroize();
+    // key is Zeroizing<[u8; 32]> — zeroized automatically on drop
     Ok(ciphertext)
 }
 
@@ -66,7 +67,7 @@ pub fn decrypt_blob(
     content_hash: &[u8; 32],
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, String> {
-    let mut key = derive_blob_key(signing_key_bytes, content_hash);
+    let key = derive_blob_key(signing_key_bytes, content_hash);
     let nonce_bytes = derive_blob_nonce(signing_key_bytes, content_hash);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
@@ -77,7 +78,7 @@ pub fn decrypt_blob(
         .decrypt(nonce, ciphertext)
         .map_err(|e| format!("decryption failed (tampered or wrong key): {e}"))?;
 
-    key.zeroize();
+    drop(key); // Zeroizing<[u8; 32]> — zeroized on drop
 
     const MAX_SNAPSHOT_SIZE: u64 = 100 * 1024 * 1024;
     // Use a size-limited reader to prevent decompression bombs from
