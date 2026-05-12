@@ -62,7 +62,10 @@ impl SecureStore {
             }
         }
 
-        let _: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
+        let journal_mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
+        if journal_mode.to_lowercase() != "wal" {
+            log::warn!("events db: requested WAL but got '{journal_mode}' journal mode");
+        }
         conn.execute_batch(&format!(
             "PRAGMA busy_timeout={BUSY_TIMEOUT_MS}; PRAGMA foreign_keys=ON; \
              PRAGMA synchronous=FULL; \

@@ -354,8 +354,11 @@ impl SecureStore {
         #[cfg(unix)]
         crate::crypto::restrict_permissions(archive_path, 0o600)?;
 
-        let _: String =
+        let journal_mode: String =
             archive_conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
+        if journal_mode.to_lowercase() != "wal" {
+            log::warn!("archive db: requested WAL but got '{journal_mode}' journal mode");
+        }
         archive_conn.execute_batch(
             "PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
         )?;
