@@ -381,20 +381,13 @@ pub fn ffi_sync_text_attestation(
         }
         Ok(Ok(_)) => {
             // Re-sign with anchor-specific DST for transparency log.
-            let anchor_sig = match load_signing_key() {
-                Ok(k) => {
+            let anchor_sig = {
                     const DST: &[u8] = b"witnessd-anchor-v1";
                     let hash_bytes = hex::decode(&anchor_evidence_hash).unwrap_or_default();
                     let mut payload = Vec::with_capacity(DST.len() + hash_bytes.len());
                     payload.extend_from_slice(DST);
                     payload.extend_from_slice(&hash_bytes);
-                    let sig = super::conv::sign_hex(&k, &payload);
-                    drop(k);
-                    sig
-                }
-                Err(e) => {
-                    log::warn!("Cannot sign anchor: {e}");
-                    return FfiResult::ok(format!("Synced (anchor skipped): {writersproof_id}"));
+                    super::conv::sign_hex(&signing_key, &payload)
                 }
             };
             let anchor_req = crate::writersproof::AnchorRequest {

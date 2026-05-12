@@ -44,8 +44,9 @@ impl BehavioralKey {
 
     /// Set the master key and initialize the active key.
     pub fn set_key(&mut self, key: SigningKey) {
-        let key_bytes = key.to_bytes();
+        let mut key_bytes = key.to_bytes();
         self.master_key = Some(ProtectedKey::new(key_bytes));
+        key_bytes.zeroize();
         *self.active_key.lock_recover() = Some(key);
         self.last_activity = Instant::now();
     }
