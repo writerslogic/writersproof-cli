@@ -590,6 +590,7 @@ impl Sentinel {
                 last_mouse_ts_ns: 0,
                 pending_downs: HashMap::new(),
                 last_keyup_ts_ns: 0,
+                last_fingerprint_time: HashMap::new(),
             };
 
             let mut idle_check_interval = interval(Duration::from_secs(idle_check_interval_secs));

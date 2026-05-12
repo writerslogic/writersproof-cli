@@ -70,6 +70,8 @@ pub(super) struct EventLoopCtx {
     pub(super) last_mouse_ts_ns: i64,
     pub(super) pending_downs: HashMap<u16, i64>,
     pub(super) last_keyup_ts_ns: i64,
+    /// Debounce: last time content fingerprint was computed per path.
+    pub(super) last_fingerprint_time: HashMap<String, std::time::Instant>,
 }
 
 /// Duration after last keystroke within which mouse micro-movements are recorded.
@@ -407,7 +409,7 @@ impl EventLoopCtx {
     }
 
     /// Handle a focus event and optionally start a bundle monitor.
-    pub(super) fn handle_focus_branch(&self, event: FocusEvent) {
+    pub(super) fn handle_focus_branch(&mut self, event: FocusEvent) {
         handle_focus_event_sync(
             event,
             &self.sessions,
@@ -463,6 +465,15 @@ impl EventLoopCtx {
                         }
                     }
                 }
+
+                // Debounce: skip fingerprint if same path was computed < 30s ago.
+                let should_fingerprint = self.last_fingerprint_time
+                    .get(path.as_str())
+                    .map_or(true, |t| t.elapsed() >= Duration::from_secs(30));
+                if !should_fingerprint {
+                    return;
+                }
+                self.last_fingerprint_time.insert(path.clone(), std::time::Instant::now());
 
                 // Compute content fingerprint for cross-app session linking.
                 // File I/O runs on the blocking pool to avoid stalling the event loop.
