@@ -1016,6 +1016,15 @@ impl EventLoopCtx {
             return false;
         };
 
+        // Hash the file ONCE for text fragment + HW co-sign + snapshot.
+        let content_hash_opt = if !path.starts_with("shadow://") {
+            crate::crypto::hash_file_with_size(std::path::Path::new(path))
+                .map(|(h, _)| h)
+                .ok()
+        } else {
+            None
+        };
+
         let sk_for_frag = sk_opt.clone();
         if let Some(ref mut store) = *self.cached_store.lock_recover() {
             let stats = crate::store::DocumentStats {
@@ -1037,15 +1046,18 @@ impl EventLoopCtx {
                 );
             }
 
-            self.save_text_fragment(
-                store,
-                path,
-                &session_id,
-                has_paste_ctx,
-                &app_bundle_id,
-                &window_title,
-                sk_for_frag.as_ref(),
-            );
+            if let Some(frag_hash) = content_hash_opt {
+                self.save_text_fragment(
+                    store,
+                    path,
+                    &session_id,
+                    has_paste_ctx,
+                    &app_bundle_id,
+                    &window_title,
+                    sk_for_frag.as_ref(),
+                    frag_hash,
+                );
+            }
         }
 
         if self.snapshots_flag.load(Ordering::SeqCst)
@@ -1087,22 +1099,12 @@ impl EventLoopCtx {
 
         if has_hw_sched {
             if let Some(ref tpm) = self.tpm_provider {
-                let content_hash: [u8; 32] = {
-                    use sha2::Digest;
-                    let src = std::path::Path::new(path);
-                    match std::fs::read(src) {
-                        Ok(data) => {
-                            sha2::Sha256::digest(&data).into()
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "Skipping HW co-sign: file read \
-                                 failed for {}: {e}",
-                                path
-                            );
-                            return true; // break candidates loop
-                        }
-                    }
+                let Some(content_hash) = content_hash_opt else {
+                    log::warn!(
+                        "Skipping HW co-sign: content hash unavailable for {}",
+                        path
+                    );
+                    return true;
                 };
                 let nonce_bytes_opt =
                     challenge_nonce.as_ref().and_then(|nonce_hex| {
@@ -1152,21 +1154,8 @@ impl EventLoopCtx {
         app_bundle_id: &str,
         window_title: &str,
         sk: Option<&SigningKey>,
+        frag_hash: [u8; 32],
     ) {
-        let content_hash = match crate::crypto::hash_file_with_size(
-            std::path::Path::new(path),
-        ) {
-            Ok((h, _)) => Some(h),
-            Err(e) => {
-                log::debug!(
-                    "Text fragment hash failed for {path}: {e}"
-                );
-                None
-            }
-        };
-        let Some(frag_hash) = content_hash else {
-            return;
-        };
         let ts =
             crate::store::text_fragments::current_timestamp_ms();
         let nonce =
