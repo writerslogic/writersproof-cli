@@ -740,7 +740,7 @@ fn compute_jitter_seal(intervals_ms: &[u64], content_hash: [u8; 32]) -> Vec<u8> 
 /// Build baseline verification from sentinel session behavioral data.
 fn build_baseline_verification(
     path: &str,
-    events: &[crate::store::SecureEvent],
+    _events: &[crate::store::SecureEvent],
 ) -> Option<authorproof_protocol::rfc::wire_types::BaselineVerification> {
     let sentinel = get_sentinel()?;
     let sessions = sentinel.sessions.read_recover();

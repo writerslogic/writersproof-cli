@@ -148,7 +148,6 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
 
     let (signature, verifying_key_bytes) = {
         let signing_key = try_ffi!(load_signing_key(), FfiBeaconResult);
-        use ed25519_dalek::Signer;
         use sha2::{Digest, Sha256};
         // Domain-separated signing over evidence_hash (content_hash). The server
         // receives evidence_hash in AnchorRequest and can reconstruct this message
