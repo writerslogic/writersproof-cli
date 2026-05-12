@@ -1000,6 +1000,7 @@ impl EventLoopCtx {
                     session.paste_context.is_some(),
                     session.app_bundle_id.clone(),
                     session.window_title.reveal().to_string(),
+                    session.transcription_suspicion.ecology_score,
                 )
             })
         };
@@ -1015,6 +1016,7 @@ impl EventLoopCtx {
             has_paste_ctx,
             app_bundle_id,
             window_title,
+            ecology_score,
         )) = session_snapshot
         else {
             return false;
@@ -1060,6 +1062,7 @@ impl EventLoopCtx {
                     &window_title,
                     sk_for_frag.as_ref(),
                     frag_hash,
+                    ecology_score,
                 );
             }
         }
@@ -1159,6 +1162,7 @@ impl EventLoopCtx {
         window_title: &str,
         sk: Option<&SigningKey>,
         frag_hash: [u8; 32],
+        ecology_score: f64,
     ) {
         let ts =
             crate::store::text_fragments::current_timestamp_ms();
@@ -1192,7 +1196,7 @@ impl EventLoopCtx {
             nonce: nonce.to_vec(),
             timestamp: ts,
             keystroke_context: Some(ctx),
-            keystroke_confidence: Some(1.0),
+            keystroke_confidence: Some(ecology_score.clamp(0.0, 1.0)),
             keystroke_sequence_hash: None,
             source_session_id: None,
             source_evidence_packet: None,

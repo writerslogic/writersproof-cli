@@ -265,6 +265,7 @@ impl Sentinel {
                     s.paste_context.is_some(),
                     s.app_bundle_id.clone(),
                     s.window_title.reveal().to_string(),
+                    s.transcription_suspicion.ecology_score,
                 )
             })
         };
@@ -316,7 +317,7 @@ impl Sentinel {
             );
             store.add_secure_event_with_signer(&mut event, sk_cached.as_ref())?;
 
-            if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title))) =
+            if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title, eco_score))) =
                 (&sk_cached, &session_info)
             {
                 let ts = crate::store::text_fragments::current_timestamp_ms();
@@ -343,7 +344,7 @@ impl Sentinel {
                     nonce: nonce.to_vec(),
                     timestamp: ts,
                     keystroke_context: Some(ctx),
-                    keystroke_confidence: Some(1.0),
+                    keystroke_confidence: Some(eco_score.clamp(0.0, 1.0)),
                     keystroke_sequence_hash: None,
                     source_session_id: None,
                     source_evidence_packet: None,
