@@ -69,9 +69,10 @@ const SUSPICIOUS_INDICATOR_CRITICAL: usize = 3;
 const VELOCITY_WINDOW_SEC: f64 = 60.0;
 
 /// IKI autocorrelation above which typing rhythm is suspiciously uniform.
-const IKI_AUTOCORR_TRANSCRIPTIVE: f64 = 0.3;
+/// Calibrated: composing 0.007, transcribing 0.099-0.298 (diary data).
+const IKI_AUTOCORR_TRANSCRIPTIVE: f64 = 0.05;
 /// Maximum penalty for high IKI autocorrelation.
-const IKI_AUTOCORR_PENALTY: f64 = 0.15;
+const IKI_AUTOCORR_PENALTY: f64 = 0.12;
 /// Correction ratio below which lack of edits is penalized.
 const CORRECTION_RATIO_LOW: f64 = 0.02;
 /// Penalty for suspiciously low correction ratio.
@@ -373,14 +374,21 @@ pub fn compute_assessment_score(
 
     // Penalty: low burst speed CV (constant speed within bursts = transcription)
     if cadence.burst_speed_cv > 0.0 && cadence.burst_speed_cv < 0.15 && cadence.burst_count >= 3 {
-        score -= 0.10;
+        score -= 0.05;
     }
 
     // Penalty: zero-variance windows (stretches with no timing variation)
     if cadence.zero_variance_windows > 3 {
-        score -= 0.15;
+        score -= 0.08;
     } else if cadence.zero_variance_windows > 0 {
-        score -= 0.05;
+        score -= 0.03;
+    }
+
+    // Reward: revision density spikes (cognitive revision behavior)
+    if let Some(spikes) = cadence.revision_spike_count {
+        if spikes >= 2 {
+            score += 0.05;
+        }
     }
 
     crate::utils::Probability::clamp(score).get()
@@ -410,10 +418,10 @@ pub fn compute_cadence_score(cadence: &CadenceMetrics) -> f64 {
 
     // Transcription signals
     if cadence.burst_speed_cv > 0.0 && cadence.burst_speed_cv < 0.15 && cadence.burst_count >= 3 {
-        score -= 0.10;
+        score -= 0.05;
     }
     if cadence.zero_variance_windows > 3 {
-        score -= 0.15;
+        score -= 0.08;
     }
 
     crate::utils::Probability::clamp(score).get()
