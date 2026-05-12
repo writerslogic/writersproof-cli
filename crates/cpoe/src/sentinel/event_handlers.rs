@@ -675,8 +675,9 @@ impl EventLoopCtx {
         }
     }
 
-    /// Check CGEventTap and bridge thread health.
+    /// Check CGEventTap and bridge thread health; auto-recover if dead.
     fn check_capture_health(&self) {
+        let mut needs_restart = false;
         {
             let tap_dead = {
                 let guard = self.tap_check_capture.lock_recover();
@@ -684,9 +685,10 @@ impl EventLoopCtx {
             };
             if tap_dead && self.tap_check_active.load(Ordering::SeqCst) {
                 log::error!(
-                    "CGEventTap died; marking keystroke capture inactive"
+                    "CGEventTap died; attempting automatic recovery"
                 );
                 self.tap_check_active.store(false, Ordering::SeqCst);
+                needs_restart = true;
             }
         }
         {
@@ -694,14 +696,16 @@ impl EventLoopCtx {
             for (i, handle) in threads.iter().enumerate() {
                 if handle.is_finished() {
                     log::error!(
-                        "Bridge thread {i} died; keystroke capture \
-                         is stopped. Restart sentinel to resume \
-                         keystroke capture."
+                        "Bridge thread {i} died; attempting automatic recovery"
                     );
                     self.bridge_healthy_flag
                         .store(false, Ordering::SeqCst);
+                    needs_restart = true;
                 }
             }
+        }
+        if needs_restart {
+            self.restart_capture_after_permission_grant();
         }
     }
 
