@@ -344,7 +344,11 @@ impl Sentinel {
                     nonce: nonce.to_vec(),
                     timestamp: ts,
                     keystroke_context: Some(ctx),
-                    keystroke_confidence: Some(eco_score.clamp(0.0, 1.0)),
+                    keystroke_confidence: Some(if *eco_score > f64::EPSILON {
+                        eco_score.clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    }),
                     keystroke_sequence_hash: None,
                     source_session_id: None,
                     source_evidence_packet: None,

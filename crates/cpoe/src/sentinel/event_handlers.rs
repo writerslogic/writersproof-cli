@@ -72,6 +72,8 @@ pub(super) struct EventLoopCtx {
     pub(super) last_keyup_ts_ns: i64,
     /// Debounce: last time content fingerprint was computed per path.
     pub(super) last_fingerprint_time: HashMap<String, std::time::Instant>,
+    /// Cooldown: last time capture auto-recovery was attempted.
+    pub(super) last_capture_restart: Option<std::time::Instant>,
 }
 
 /// Duration after last keystroke within which mouse micro-movements are recorded.
@@ -470,9 +472,8 @@ impl EventLoopCtx {
                 let should_fingerprint = self.last_fingerprint_time
                     .get(path.as_str())
                     .map_or(true, |t| t.elapsed() >= Duration::from_secs(30));
-                if !should_fingerprint {
-                    return;
-                }
+
+                if should_fingerprint {
                 self.last_fingerprint_time.insert(path.clone(), std::time::Instant::now());
 
                 // Compute content fingerprint for cross-app session linking.
@@ -520,6 +521,7 @@ impl EventLoopCtx {
                         store.push((sid, app, fp));
                     }
                 });
+                } // should_fingerprint
             }
         }
     }
@@ -581,7 +583,7 @@ impl EventLoopCtx {
     }
 
     /// Auto-checkpoint and end idle sessions; check capture health.
-    pub(super) async fn handle_idle_check(&self) {
+    pub(super) async fn handle_idle_check(&mut self) {
         let idle_paths: Vec<String> = {
             let map = self.sessions.read_recover();
             map.iter()
@@ -687,7 +689,10 @@ impl EventLoopCtx {
     }
 
     /// Check CGEventTap and bridge thread health; auto-recover if dead.
-    fn check_capture_health(&self) {
+    ///
+    /// Cooldown: at most one restart attempt per 30 seconds to prevent
+    /// infinite restart loops when the tap dies immediately after creation.
+    fn check_capture_health(&mut self) {
         let mut needs_restart = false;
         {
             let tap_dead = {
@@ -716,7 +721,16 @@ impl EventLoopCtx {
             }
         }
         if needs_restart {
-            self.restart_capture_after_permission_grant();
+            // Cooldown: skip if last restart was < 30s ago.
+            let now = std::time::Instant::now();
+            let cooldown_ok = self.last_capture_restart
+                .map_or(true, |t| now.duration_since(t) >= Duration::from_secs(30));
+            if cooldown_ok {
+                self.last_capture_restart = Some(now);
+                self.restart_capture_after_permission_grant();
+            } else {
+                log::warn!("Capture restart skipped: cooldown active");
+            }
         }
     }
 
@@ -1207,7 +1221,13 @@ impl EventLoopCtx {
             nonce: nonce.to_vec(),
             timestamp: ts,
             keystroke_context: Some(ctx),
-            keystroke_confidence: Some(ecology_score.clamp(0.0, 1.0)),
+            // ecology_score is 0.0 before first assessment (at 100 keystrokes);
+            // default to 1.0 (assume genuine) until enough samples exist.
+            keystroke_confidence: Some(if ecology_score > f64::EPSILON {
+                ecology_score.clamp(0.0, 1.0)
+            } else {
+                1.0
+            }),
             keystroke_sequence_hash: None,
             source_session_id: None,
             source_evidence_packet: None,
