@@ -656,7 +656,8 @@ impl Sentinel {
             device_uid_hash,
             fragment_count: 0,
             total_words: 0,
-            confidence_values: Vec::new(),
+            confidence_sum: 0.0,
+            confidence_sum_sq: 0.0,
             speaker_output_ever_active: false,
             ambient_noise_db,
             keystrokes_at_begin,
@@ -705,7 +706,8 @@ impl Sentinel {
         active.fragment_count += 1;
         active.total_words = active.total_words.saturating_add(word_count);
         active.total_corrections = active.total_corrections.saturating_add(correction_count);
-        active.confidence_values.push(confidence);
+        active.confidence_sum += confidence as f64;
+        active.confidence_sum_sq += (confidence as f64) * (confidence as f64);
         if speaker_output_active {
             active.speaker_output_ever_active = true;
         }
@@ -771,8 +773,14 @@ impl Sentinel {
         let end_ns = crate::utils::now_ns();
         let duration_ns = end_ns.saturating_sub(active.start_ns);
         let wpm = crate::utils::words_per_minute(active.total_words, duration_ns);
-        let (conf_mean, conf_stddev) =
-            crate::utils::mean_and_std_dev_f32(&active.confidence_values);
+        let n = active.fragment_count as f64;
+        let conf_mean = if n > 0.0 { (active.confidence_sum / n) as f32 } else { 0.0 };
+        let conf_stddev = if n > 1.0 {
+            let variance = (active.confidence_sum_sq - active.confidence_sum * active.confidence_sum / n) / (n - 1.0);
+            variance.max(0.0).sqrt() as f32
+        } else {
+            0.0
+        };
         let corr_rate = crate::utils::correction_rate(active.total_corrections, active.total_words);
 
         let keystrokes_hid_end = super::hid_key_down_count();

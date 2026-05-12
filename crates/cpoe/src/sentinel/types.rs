@@ -670,7 +670,10 @@ pub struct ActiveDictationSession {
     pub device_uid_hash: [u8; 8],
     pub fragment_count: u32,
     pub total_words: u32,
-    pub confidence_values: Vec<f32>,
+    /// Running sum of confidence values (avoids unbounded Vec growth).
+    pub confidence_sum: f64,
+    /// Running sum of squared confidence values (for stddev computation).
+    pub confidence_sum_sq: f64,
     pub speaker_output_ever_active: bool,
     pub ambient_noise_db: f32,
     /// Keystroke count at dictation begin (compare with session count at end).
