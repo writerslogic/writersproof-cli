@@ -91,7 +91,7 @@ impl Sentinel {
         let store_guard = self.get_or_open_store();
 
         match store_guard {
-            Some(ref guard) => match guard.as_ref().unwrap().load_document_stats(&path_str) {
+            Some(ref guard) if guard.is_some() => match guard.as_ref().unwrap().load_document_stats(&path_str) {
                 Ok(Some(stats)) => {
                     session.cumulative_keystrokes_base =
                         u64::try_from(stats.total_keystrokes).unwrap_or(0);
@@ -112,7 +112,7 @@ impl Sentinel {
                     session.first_tracked_at = Some(SystemTime::now());
                 }
             },
-            None => {
+            _ => {
                 log::warn!("Failed to open store for document stats: signing key unavailable");
                 session.first_tracked_at = Some(SystemTime::now());
             }
