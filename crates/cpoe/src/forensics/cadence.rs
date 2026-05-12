@@ -112,6 +112,7 @@ pub fn analyze_cadence(samples: &[SimpleJitterSample]) -> CadenceMetrics {
     metrics.zero_variance_windows = count_zero_variance_windows(&ikis);
 
     metrics.structural_homogeneity_score = Some(compute_structural_homogeneity_score(&ikis));
+    metrics.planning_pause_rate = compute_planning_pause_rate(&ikis);
 
     // Sanitize non-finite values from ratio/CV computations
     if !metrics.coefficient_of_variation.is_finite() {
@@ -425,4 +426,16 @@ fn count_zero_variance_windows(ikis: &[f64]) -> usize {
         }
     }
     count
+}
+
+/// Fraction of keystrokes preceded by a planning pause (>2s).
+///
+/// Composition produces ~2x the planning pause rate of transcription
+/// (diary calibration: 0.062 composing vs 0.007-0.009 transcribing).
+fn compute_planning_pause_rate(ikis: &[f64]) -> Option<f64> {
+    if ikis.len() < 10 {
+        return None;
+    }
+    let pauses = ikis.iter().filter(|&&iki| iki > PAUSE_THRESHOLD_NS_F64).count();
+    Some(pauses as f64 / (ikis.len() + 1) as f64)
 }
