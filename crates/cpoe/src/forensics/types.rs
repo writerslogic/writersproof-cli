@@ -274,6 +274,19 @@ pub struct CadenceMetrics {
     /// pause gaps (CV < 0.15 is suspicious). Higher = more naturally variable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structural_homogeneity_score: Option<f64>,
+    /// Planning pause rate: fraction of keystrokes preceded by a >2s pause.
+    /// Composition ~0.062, transcription ~0.007-0.009 (diary calibration data).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planning_pause_rate: Option<f64>,
+    /// Fraction of bursts that are pure translating (forward typing only).
+    /// `translating / (translating + revising)` per checkpoint-style counting.
+    /// Composition ~0.40, transcription ~0.81 (diary calibration data).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translating_burst_ratio: Option<f64>,
+    /// Count of 50-event windows where revision density exceeds 2x session
+    /// baseline + 0.02. Composition produces revision spikes; transcription does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision_spike_count: Option<u32>,
 }
 
 /// Cognitive-Linguistic Complexity metrics from n-gram surprisal analysis.

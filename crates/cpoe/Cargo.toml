@@ -187,6 +187,7 @@ ffi = ["dep:uniffi", "uniffi/cli"]  # UniFFI bindings for Swift (macOS GUI)
 test-utils = []  # Expose internal helpers for integration tests
 did-webvh = ["dep:didwebvh-rs", "dep:affinidi-data-integrity", "dep:affinidi-secrets-resolver"]
 posme = ["dep:posme", "authorproof-protocol/posme"]
+v2_classifier = []  # Structural-signal writing mode classifier (calibration phase)
 
 [build-dependencies]
 uniffi = { version = "0.29", features = ["build"], optional = true }
