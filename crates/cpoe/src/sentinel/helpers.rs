@@ -824,7 +824,7 @@ fn wal_append_session_event(
             log::warn!(
                 "Pending WAL buffer full ({MAX_PENDING_WAL_ENTRIES}); dropping oldest entry"
             );
-            pending.remove(0);
+            pending.drain(..1);
         }
         log::warn!(
             "Signing key unavailable; buffering WAL entry for session {} ({} pending)",
@@ -1873,6 +1873,10 @@ pub fn extract_word_count(path: &Path) -> Option<u64> {
 
 /// Count whitespace-separated tokens in a plain text file.
 fn extract_word_count_plaintext(path: &Path) -> Option<u64> {
+    let meta = std::fs::metadata(path).ok()?;
+    if meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
     let contents = std::fs::read_to_string(path).ok()?;
     let count = contents.split_whitespace().count();
     Some(count as u64)
@@ -1880,6 +1884,10 @@ fn extract_word_count_plaintext(path: &Path) -> Option<u64> {
 
 /// Strip RTF control words and count remaining whitespace-separated tokens.
 fn extract_word_count_rtf(path: &Path) -> Option<u64> {
+    let meta = std::fs::metadata(path).ok()?;
+    if meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
     let contents = std::fs::read_to_string(path).ok()?;
     let text = strip_rtf(&contents);
     let count = text.split_whitespace().count();
@@ -2371,7 +2379,7 @@ pub fn parse_fdx_scene_fingerprint(path: &Path) -> Option<String> {
                 }
             }
         }
-        search_from = abs + rel + 1;
+        search_from = abs + 1;
     }
 
     if headings.is_empty() {

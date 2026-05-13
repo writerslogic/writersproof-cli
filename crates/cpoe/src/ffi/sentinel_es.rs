@@ -144,6 +144,9 @@ pub fn ffi_sentinel_es_ai_tool_detected(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
     catch_ffi_panic!(false, {
+    if old_path.len() > 4096 {
+        return false;
+    }
     let sentinel = match get_running_sentinel() {
         Some(s) => s,
         None => return false,
@@ -221,14 +224,6 @@ pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
     // Verify the opening process's bundle ID matches the focused session's app.
     // Resolve PID to bundle ID via NSRunningApplication (on macOS).
     let opener_bundle = crate::sentinel::macos_focus::bundle_id_for_pid(pid);
-    let session_bundle = {
-        let sessions = sentinel.sessions.read_recover();
-        sessions.get(&current).map(|s| s.app_bundle_id.clone())
-    };
-    match (opener_bundle, session_bundle) {
-        (Some(opener), Some(session_bid)) if opener == session_bid => {}
-        _ => return false,
-    }
 
     // Check if this path has a recognized document extension.
     let ext_ok = std::path::Path::new(&validated)
@@ -242,8 +237,16 @@ pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
         return false;
     }
 
-    // Don't upgrade if the real path is already tracked as a separate session.
+    // Single write lock for the entire bundle verification + re-key operation
+    // to prevent TOCTOU races between read and write phases.
     let mut sessions = sentinel.sessions.write_recover();
+
+    let session_bid = sessions.get(&current).map(|s| s.app_bundle_id.clone());
+    match (opener_bundle, session_bid) {
+        (Some(opener), Some(bid)) if opener == bid => {}
+        _ => return false,
+    }
+
     if sessions.contains_key(&validated) {
         return false;
     }
@@ -260,7 +263,12 @@ pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
         sessions.insert(validated.clone(), session);
         drop(sessions);
 
-        *sentinel.current_focus.write_recover() = Some(validated);
+        // Re-check current_focus under the write lock to prevent overwriting
+        // a concurrent focus change.
+        let mut focus = sentinel.current_focus.write_recover();
+        if focus.as_deref() == Some(current.as_str()) {
+            *focus = Some(validated);
+        }
         return true;
     }
 
@@ -500,6 +508,10 @@ pub fn ffi_sentinel_dictation_end(
     catch_ffi_panic!(false, {
     if doc_path.len() > 4096 {
         log::warn!("ffi_sentinel_dictation_end: doc_path too long");
+        return false;
+    }
+    if !cross_window_similarity.is_finite() {
+        log::warn!("ffi_sentinel_dictation_end: invalid cross_window_similarity {cross_window_similarity}");
         return false;
     }
     let cross_window_similarity = cross_window_similarity.clamp(0.0, 1.0);

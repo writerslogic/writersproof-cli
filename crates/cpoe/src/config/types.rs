@@ -377,7 +377,9 @@ impl Default for SentinelConfig {
                 PathBuf::from("/tmp"),
                 PathBuf::from("/var"),
                 PathBuf::from("/private/tmp"),
-                dirs::home_dir().unwrap_or_default().join("Library"),
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("/nonexistent"))
+                    .join("Library"),
                 PathBuf::from("node_modules"),
                 PathBuf::from(".git"),
                 PathBuf::from("DerivedData"),
@@ -499,6 +501,7 @@ impl SentinelConfig {
         require_nonzero(self.checkpoint_interval_secs, "checkpoint_interval_secs")?;
         require_nonzero(self.heartbeat_interval_secs, "heartbeat_interval_secs")?;
         require_nonzero(self.poll_interval_ms, "poll_interval_ms")?;
+        require_nonzero(self.idle_check_interval_secs, "idle_check_interval_secs")?;
 
         if self.idle_timeout_secs < self.checkpoint_interval_secs {
             return Err(Error::validation(format!(
@@ -548,6 +551,12 @@ impl CpopConfig {
             return Err(Error::validation(
                 "presence.response_window_secs must be > 0",
             ));
+        }
+        if self.fingerprint.advisory_sessions <= self.fingerprint.bootstrap_sessions {
+            return Err(Error::validation(format!(
+                "fingerprint.advisory_sessions ({}) must be > bootstrap_sessions ({})",
+                self.fingerprint.advisory_sessions, self.fingerprint.bootstrap_sessions
+            )));
         }
         self.sentinel.validate()?;
         Ok(())

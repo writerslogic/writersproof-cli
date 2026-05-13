@@ -278,14 +278,7 @@ fn inject_keystroke_inner_v3(
 
     // Classify the keystroke semantic from keycode + modifier flags.
     let semantic = KeystrokeSemantic::classify(keycode, modifiers);
-
-    // Feed style fingerprint collector if enabled.
-    // Only the first character matters (NSEvent.characters can be multi-char for
-    // dead keys, but we want the primary character for writing style analysis).
     let char_opt = char_value.chars().next();
-    if let Some(ref mut collector) = *sentinel.style_collector.write_recover() {
-        collector.record_keystroke_with_semantic(keycode, char_opt, semantic);
-    }
 
     // Same verification as CGEventTap's verify_event_source.
     // Constants from CGEventTypes.h -- stable across macOS versions.
@@ -353,6 +346,12 @@ fn inject_keystroke_inner_v3(
         }
     }
 
+    // Feed style fingerprint collector after source verification so rejected
+    // synthetic events cannot pollute the writing style profile.
+    if let Some(ref mut collector) = *sentinel.style_collector.write_recover() {
+        collector.record_keystroke_with_semantic(keycode, char_opt, semantic);
+    }
+
     // Compute inter-keystroke duration from timestamps (the Swift side
     // sends absolute timestamps; we need the delta for cadence analysis).
     //
@@ -404,10 +403,6 @@ fn inject_keystroke_inner_v3(
                 session.jitter_sample_index.insert(sample.timestamp_ns, idx);
             }
 
-            // Record semantic and device classification for evidence enrichment.
-            session.record_semantic(semantic);
-            session.record_device_keystroke(keyboard_type);
-
             let validation = crate::forensics::validate_keystroke_event(
                 timestamp_ns,
                 keycode,
@@ -427,6 +422,11 @@ fn inject_keystroke_inner_v3(
                     session.jitter_sample_index.remove(&sample.timestamp_ns);
                     session.jitter_samples.pop();
                 }
+            } else {
+                // Record semantic and device classification only for validated
+                // keystrokes so rejected events cannot skew forensic distributions.
+                session.record_semantic(semantic);
+                session.record_device_keystroke(keyboard_type);
             }
         } else {
             log::warn!(
