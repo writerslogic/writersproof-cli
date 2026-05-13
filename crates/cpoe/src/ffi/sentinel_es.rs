@@ -333,7 +333,10 @@ pub fn ffi_sentinel_dictation_begin(
 
     let device_uid_hash = match crate::utils::hex_decode_8(&device_uid_hash_hex) {
         Ok(h) => h,
-        Err(_) => [0u8; 8],
+        Err(e) => {
+            log::warn!("ffi_sentinel_dictation_begin: invalid device_uid_hash_hex: {e}");
+            return false;
+        }
     };
 
     let sentinel = match get_running_sentinel() {

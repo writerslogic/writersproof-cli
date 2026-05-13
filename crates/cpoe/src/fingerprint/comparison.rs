@@ -537,8 +537,8 @@ impl BatchComparator {
                             compare_fingerprints(&fingerprints[ja], &fingerprints[jb]).similarity;
                         if sim.is_finite() {
                             total_sim += sim;
+                            count += 1;
                         }
-                        count += 1;
                     }
                 }
                 if count > 0 && total_sim.is_finite() {

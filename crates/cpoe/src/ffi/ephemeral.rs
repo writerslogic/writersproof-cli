@@ -585,6 +585,10 @@ pub fn ffi_ephemeral_checkpoint_hash(
     flush_session_state(&session_id, &entry);
     drop(entry);
 
+    if let Some(err) = persist_error {
+        return FfiResult::err(err);
+    }
+
     let msg = format!(
         "Ephemeral checkpoint #{}: {}",
         checkpoint_count,
@@ -593,7 +597,7 @@ pub fn ffi_ephemeral_checkpoint_hash(
     FfiResult {
         success: true,
         message: Some(msg),
-        error_message: persist_error,
+        error_message: None,
         error_code: None,
     }
     })
@@ -642,10 +646,10 @@ fn build_war_block(
         if let Ok(meta) = std::fs::metadata(&key_path) {
             let mode = meta.permissions().mode() & 0o777;
             if mode & 0o077 != 0 {
-                log::warn!(
-                    "Signing key file has overly permissive mode {:04o}; expected 0600",
+                return Err(format!(
+                    "signing key file has unsafe permissions {:o}",
                     mode
-                );
+                ));
             }
         }
     }

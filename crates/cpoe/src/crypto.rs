@@ -145,7 +145,7 @@ pub fn compute_integrity_hmac(
 /// with existing HMAC chains. Changing to HKDF would invalidate all previously stored
 /// event integrity tags.
 pub fn derive_hmac_key(priv_key_seed: &[u8]) -> Zeroizing<Vec<u8>> {
-    debug_assert!(priv_key_seed.len() >= 16, "derive_hmac_key: seed must be ≥16 bytes");
+    assert!(priv_key_seed.len() >= 16, "derive_hmac_key: seed must be ≥16 bytes");
     let mut hasher = Sha256::new();
     hasher.update(b"cpoe-hmac-key-v1");
     hasher.update(priv_key_seed);
@@ -576,7 +576,7 @@ mod tests {
 
     #[test]
     fn hash_file_and_hash_file_with_size_agree() {
-        let dir = std::env::temp_dir().join("cpop_crypto_test");
+        let dir = std::env::temp_dir().join("cpoe_crypto_test");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("test_hash.txt");
         let content = b"hello world for hashing";
@@ -601,14 +601,14 @@ mod tests {
 
     #[test]
     fn hash_file_nonexistent_returns_error() {
-        let result = hash_file(Path::new("/tmp/cpop_crypto_nonexistent_file_xyz"));
+        let result = hash_file(Path::new("/tmp/cpoe_crypto_nonexistent_file_xyz"));
         assert!(result.is_err());
     }
 
     #[test]
     fn hash_file_with_size_rejects_oversized() {
         use std::io::{Seek, SeekFrom, Write};
-        let dir = std::env::temp_dir().join("cpop_size_limit_test");
+        let dir = std::env::temp_dir().join("cpoe_size_limit_test");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("oversized_sparse.bin");
 

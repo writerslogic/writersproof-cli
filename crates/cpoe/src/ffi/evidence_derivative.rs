@@ -31,6 +31,12 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
         return FfiResult::err(format!("Export file not found: {}", export.display()));
     }
 
+    if let (Ok(cs), Ok(ce)) = (source.canonicalize(), export.canonicalize()) {
+        if cs == ce {
+            return FfiResult::err("Source and export paths resolve to the same file".to_string());
+        }
+    }
+
     let mut store = try_ffi!(open_store(), FfiResult);
 
     let source_str = source.to_string_lossy().to_string();

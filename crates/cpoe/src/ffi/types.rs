@@ -78,18 +78,22 @@ impl FfiResult {
         }
     }
     pub fn err(message: impl Into<String>) -> Self {
+        let mut msg: String = message.into();
+        msg.truncate(4096);
         Self {
             success: false,
             message: None,
-            error_message: Some(message.into()),
+            error_message: Some(msg),
             error_code: None,
         }
     }
     pub fn err_with_code(message: impl Into<String>, code: impl Into<String>) -> Self {
+        let mut msg: String = message.into();
+        msg.truncate(4096);
         Self {
             success: false,
             message: None,
-            error_message: Some(message.into()),
+            error_message: Some(msg),
             error_code: Some(code.into()),
         }
     }

@@ -51,7 +51,7 @@ impl GaussianParams {
             return;
         }
 
-        let prior_precision = 1.0 / (self.sigma * self.sigma);
+        let prior_precision = 1.0 / (self.sigma.max(f64::EPSILON) * self.sigma.max(f64::EPSILON));
         let data_precision = session_count as f64 / (session_sigma * session_sigma);
         let new_precision = prior_precision + data_precision;
 
