@@ -430,7 +430,10 @@ fn cbor_to_appraisal(value: &Value) -> Result<EarAppraisal> {
             }
             k if k == POP_KEY_SEAL => {
                 if let Value::Bytes(b) = v {
-                    seal = ciborium::from_reader(b.as_slice()).ok();
+                    match ciborium::from_reader(b.as_slice()) {
+                        Ok(s) => seal = Some(s),
+                        Err(e) => log::warn!("EAT: failed to decode pop_seal: {e}"),
+                    }
                 }
             }
             k if k == POP_KEY_EVIDENCE_REF => {
@@ -440,17 +443,26 @@ fn cbor_to_appraisal(value: &Value) -> Result<EarAppraisal> {
             }
             k if k == POP_KEY_ENTROPY => {
                 if let Value::Bytes(b) = v {
-                    entropy_report = ciborium::from_reader(b.as_slice()).ok();
+                    match ciborium::from_reader(b.as_slice()) {
+                        Ok(r) => entropy_report = Some(r),
+                        Err(e) => log::warn!("EAT: failed to decode pop_entropy_report: {e}"),
+                    }
                 }
             }
             k if k == POP_KEY_FORGERY_COST => {
                 if let Value::Bytes(b) = v {
-                    forgery_cost = ciborium::from_reader(b.as_slice()).ok();
+                    match ciborium::from_reader(b.as_slice()) {
+                        Ok(c) => forgery_cost = Some(c),
+                        Err(e) => log::warn!("EAT: failed to decode pop_forgery_cost: {e}"),
+                    }
                 }
             }
             k if k == POP_KEY_FORENSIC => {
                 if let Value::Bytes(b) = v {
-                    forensic_summary = ciborium::from_reader(b.as_slice()).ok();
+                    match ciborium::from_reader(b.as_slice()) {
+                        Ok(f) => forensic_summary = Some(f),
+                        Err(e) => log::warn!("EAT: failed to decode pop_forensic_summary: {e}"),
+                    }
                 }
             }
             k if k == POP_KEY_CHAIN_LENGTH => {
@@ -461,7 +473,10 @@ fn cbor_to_appraisal(value: &Value) -> Result<EarAppraisal> {
             }
             k if k == POP_KEY_ABSENCE => {
                 if let Value::Bytes(b) = v {
-                    absence_claims = ciborium::from_reader(b.as_slice()).ok();
+                    match ciborium::from_reader(b.as_slice()) {
+                        Ok(a) => absence_claims = Some(a),
+                        Err(e) => log::warn!("EAT: failed to decode pop_absence_claims: {e}"),
+                    }
                 }
             }
             k if k == POP_KEY_WARNINGS => {
