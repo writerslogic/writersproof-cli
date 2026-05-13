@@ -9,7 +9,6 @@ use anyhow::{anyhow, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 
-use crate::DateTimeNanosExt;
 use crate::MutexRecover;
 use crate::RwLockRecover;
 

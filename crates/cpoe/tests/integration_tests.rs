@@ -1268,7 +1268,7 @@ fn test_witnessing_status_when_not_tracking() {
 // ============================================================
 
 #[test]
-fn test_exported_cpop_is_valid_cbor() {
+fn test_exported_cpoe_is_valid_cbor() {
     let (dir, _g) = setup();
     let init = cpoe_engine::ffi::system::ffi_init();
     assert!(init.success, "init failed: {:?}", init.error_message);

@@ -38,7 +38,7 @@ use super::cawg::{
     to_cawg_identity_enriched, to_cawg_tdm, CawgIdentityAssertion, CawgTdmAssertion,
 };
 use super::eu_ai_act::Article50Compliance;
-use super::jpeg_trust::{cpop_trust_profile, JpegTrustProfile};
+use super::jpeg_trust::{cpoe_trust_profile, JpegTrustProfile};
 use super::standards::{
     standards_compliance_report, AiDisclosureLevel, StandardsComplianceReport,
 };
@@ -207,7 +207,7 @@ impl CredentialPackageBuilder {
             cawg_identity,
             cawg_tdm,
             eu_ai_act,
-            jpeg_trust: cpop_trust_profile(),
+            jpeg_trust: cpoe_trust_profile(),
             standards_report,
             c2pa_jumbf,
         })
@@ -254,6 +254,8 @@ impl CredentialPackageBuilder {
                 AiDisclosureLevel::None => ("none", "human_validated"),
                 AiDisclosureLevel::AiAssisted => ("language_model", "human_validated"),
                 AiDisclosureLevel::AiGenerated => ("language_model", "prompt_guided"),
+                AiDisclosureLevel::Autonomous => ("language_model", "fully_autonomous"),
+                AiDisclosureLevel::Mixed => ("language_model", "human_validated"),
             };
             authorproof_protocol::c2pa::AiDisclosureAssertion {
                 model_type: model_type.to_string(),

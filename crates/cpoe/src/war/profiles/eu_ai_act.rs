@@ -82,11 +82,7 @@ impl Article50Compliance {
         };
 
         let disclosure_level = AiDisclosureLevel::from_ai_extent(max_extent);
-        let disclosure_str = match disclosure_level {
-            AiDisclosureLevel::None => "none",
-            AiDisclosureLevel::AiAssisted => "ai-assisted",
-            AiDisclosureLevel::AiGenerated => "ai-generated",
-        };
+        let disclosure_str = disclosure_level.as_str();
 
         // Evidence-backed requires a jitter seal with minimum quality thresholds;
         // presence alone does not suffice (a zero or trivial seal is not evidence).

@@ -60,7 +60,7 @@ fn tiers_at_or_above(min_tier: &str) -> Vec<&'static str> {
 /// The definition requires:
 /// - A checkpoint chain duration of at least `min_chain_duration_secs` seconds.
 /// - A forensic tier at or above `min_tier` (e.g. "gold", "silver", "bronze").
-pub fn cpop_attestation_request(
+pub fn cpoe_attestation_request(
     min_chain_duration_secs: u64,
     min_tier: &str,
 ) -> PresentationDefinition {
@@ -111,8 +111,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_presentation_definition_for_cpop() {
-        let pd = cpop_attestation_request(3600, "gold");
+    fn test_presentation_definition_for_cpoe() {
+        let pd = cpoe_attestation_request(3600, "gold");
 
         assert_eq!(pd.id, "cpoe-attestation-request");
         assert_eq!(pd.input_descriptors.len(), 2);
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_presentation_exchange_constraints_structure() {
-        let pd = cpop_attestation_request(1800, "silver");
+        let pd = cpoe_attestation_request(1800, "silver");
 
         // Verify top-level metadata.
         assert_eq!(pd.id, "cpoe-attestation-request");
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn test_presentation_exchange_different_tiers() {
         // bronze accepts all tiers
-        let pd = cpop_attestation_request(60, "bronze");
+        let pd = cpoe_attestation_request(60, "bronze");
         let filter = pd.input_descriptors[1].constraints.fields[0]
             .filter
             .as_ref()
@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(filter["enum"].as_array().unwrap().len(), 4);
 
         // gold accepts gold + platinum
-        let pd = cpop_attestation_request(60, "gold");
+        let pd = cpoe_attestation_request(60, "gold");
         let filter = pd.input_descriptors[1].constraints.fields[0]
             .filter
             .as_ref()
@@ -192,7 +192,7 @@ mod tests {
         assert!(allowed.iter().any(|v| v == "platinum"));
 
         // platinum accepts only platinum
-        let pd = cpop_attestation_request(60, "platinum");
+        let pd = cpoe_attestation_request(60, "platinum");
         let filter = pd.input_descriptors[1].constraints.fields[0]
             .filter
             .as_ref()

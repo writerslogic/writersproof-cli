@@ -311,7 +311,7 @@ fn test_rats_cwt_roundtrip() {
 fn test_assertion_label_follows_c2pa_naming() {
     // C2PA entity-specific assertion labels must follow the pattern:
     // <reverse-domain>.<assertion-name>.v<version>
-    // e.g. "com.writerslogic.pop-attestation.v1"
+    // e.g. "com.writerslogic.cpoe-attestation.v1"
 
     let label = ASSERTION_LABEL;
 

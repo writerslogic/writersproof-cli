@@ -145,7 +145,7 @@ fn t05_export_json() {
 // ============================================================
 
 #[test]
-fn t06_export_cpop() {
+fn t06_export_cpoe() {
     let (dir, _g) = setup();
     assert!(cpoe_engine::ffi::system::ffi_init().success);
     let doc = create_doc(&dir, "report.txt", "Report.");

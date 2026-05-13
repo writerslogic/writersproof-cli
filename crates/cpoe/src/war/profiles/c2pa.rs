@@ -9,7 +9,7 @@ use crate::war::common::{derive_attestation_tier, SerializedTrustVector};
 use crate::war::ear::EarToken;
 
 /// C2PA assertion label for CPoE PoP attestation.
-pub const ASSERTION_LABEL: &str = "com.writerslogic.pop-attestation.v1";
+pub const ASSERTION_LABEL: &str = "com.writerslogic.cpoe-attestation.v1";
 
 /// C2PA assertion containing EAR-derived data.
 #[derive(Debug, Clone, Serialize, Deserialize)]

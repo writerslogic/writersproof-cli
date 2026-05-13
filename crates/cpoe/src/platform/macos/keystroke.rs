@@ -12,7 +12,6 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
 use crate::jitter::SimpleJitterSession;
-use crate::DateTimeNanosExt;
 
 /// Bounded capacity for the keystroke channel (~5 s at 100 WPM with key-up events).
 const KEYSTROKE_CHANNEL_CAPACITY: usize = 512;

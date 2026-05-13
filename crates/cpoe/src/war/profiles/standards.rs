@@ -45,6 +45,10 @@ pub const IPTC_TRAINED_ALGORITHMIC_MEDIA: &str =
 // ---------------------------------------------------------------------------
 
 /// W3C AI Content Disclosure values.
+///
+/// Four element-level values per the W3C AI Content Disclosure CG spec,
+/// plus `Mixed` for page-level `<meta>` tags when different sections
+/// carry different disclosure levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AiDisclosureLevel {
     /// Entirely human-authored, no AI involvement.
@@ -53,13 +57,36 @@ pub enum AiDisclosureLevel {
     /// Human-authored with AI assistance.
     #[serde(rename = "ai-assisted")]
     AiAssisted,
-    /// Primarily or entirely AI-generated.
+    /// Primarily or entirely AI-generated with human prompting/review.
     #[serde(rename = "ai-generated")]
     AiGenerated,
+    /// AI-generated without human oversight.
+    #[serde(rename = "autonomous")]
+    Autonomous,
+    /// Page-level only: different sections have different disclosure levels.
+    /// Not valid as an element-level attribute value.
+    #[serde(rename = "mixed")]
+    Mixed,
 }
 
 impl AiDisclosureLevel {
+    /// The W3C attribute string value for this disclosure level.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::AiAssisted => "ai-assisted",
+            Self::AiGenerated => "ai-generated",
+            Self::Autonomous => "autonomous",
+            Self::Mixed => "mixed",
+        }
+    }
+
     /// Map from CPoE's `AiExtent` to W3C AI Content Disclosure level.
+    ///
+    /// Note: `Autonomous` and `Mixed` are never produced from `AiExtent`
+    /// because CPoE's behavioral attestation inherently proves human
+    /// involvement. These values exist for describing third-party content
+    /// or mixed-authorship documents.
     pub fn from_ai_extent(extent: AiExtent) -> Self {
         match extent {
             AiExtent::None => Self::None,
@@ -73,19 +100,195 @@ impl AiDisclosureLevel {
         match self {
             Self::None => IPTC_HUMAN_CREATION,
             Self::AiAssisted => IPTC_COMPOSITE_WITH_TRAINED_MODEL,
-            Self::AiGenerated => IPTC_TRAINED_ALGORITHMIC_MEDIA,
+            // Both AI-generated and autonomous map to the same IPTC type;
+            // IPTC does not distinguish human oversight level.
+            Self::AiGenerated | Self::Autonomous => IPTC_TRAINED_ALGORITHMIC_MEDIA,
+            // Mixed is a document-level concept; default to composite.
+            Self::Mixed => IPTC_COMPOSITE_WITH_TRAINED_MODEL,
         }
     }
 
-    /// Generate HTML meta tag for AI content disclosure.
-    pub fn to_html_meta_tag(&self) -> String {
-        let value = match self {
+    /// Map to IETF draft-abaris-aicdh `mode` token.
+    pub fn to_ietf_header_mode(&self) -> &'static str {
+        match self {
             Self::None => "none",
-            Self::AiAssisted => "ai-assisted",
-            Self::AiGenerated => "ai-generated",
-        };
-        format!(r#"<meta name="ai-disclosure" content="{}">"#, value)
+            Self::AiAssisted => "ai-modified",
+            Self::AiGenerated => "ai-originated",
+            Self::Autonomous => "machine-generated",
+            Self::Mixed => "ai-modified",
+        }
     }
+
+    /// Generate HTML `<meta>` tag for AI content disclosure.
+    pub fn to_html_meta_tag(&self) -> String {
+        format!(
+            r#"<meta name="ai-disclosure" content="{}">"#,
+            self.as_str()
+        )
+    }
+
+    /// Generate an HTML element attribute string (e.g., `ai-disclosure="ai-assisted"`).
+    ///
+    /// Returns `None` for `Mixed`, which is only valid as a page-level meta value.
+    pub fn to_html_element_attr(&self) -> Option<String> {
+        match self {
+            Self::Mixed => Option::None,
+            _ => Some(format!(r#"ai-disclosure="{}""#, self.as_str())),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AI Disclosure attributes bundle (W3C companion attributes + evidence URL)
+// ---------------------------------------------------------------------------
+
+/// Complete set of W3C AI Content Disclosure attributes plus the
+/// WritersProof `ai-evidence-url` extension for machine-verifiable proofs.
+///
+/// Can emit HTML meta tags, element-level attributes, and IETF
+/// `AI-Disclosure` HTTP headers (draft-abaris-aicdh).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiDisclosureAttributes {
+    /// Disclosure level (none / ai-assisted / ai-generated / autonomous / mixed).
+    pub level: AiDisclosureLevel,
+    /// AI model identifier (e.g., `"claude-3.5-sonnet"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// AI provider/organization (e.g., `"Anthropic"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// URL to prompt methodology documentation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_url: Option<String>,
+    /// WritersProof evidence verification URL
+    /// (e.g., `https://writersproof.com/verify/{proof_id}`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence_url: Option<String>,
+}
+
+impl AiDisclosureAttributes {
+    /// Create attributes from a disclosure level with no companion metadata.
+    pub fn from_level(level: AiDisclosureLevel) -> Self {
+        Self {
+            level,
+            model: Option::None,
+            provider: Option::None,
+            prompt_url: Option::None,
+            evidence_url: Option::None,
+        }
+    }
+
+    /// Create attributes from a CPoE declaration and optional evidence URL.
+    pub fn from_declaration(decl: &Declaration, evidence_url: Option<String>) -> Self {
+        let level = AiDisclosureLevel::from_ai_extent(decl.max_ai_extent());
+        let (model, provider) = decl.ai_tools.first().map_or(
+            (Option::None, Option::None),
+            |t| (Some(t.tool.clone()), t.version.clone()),
+        );
+        Self {
+            level,
+            model,
+            provider,
+            prompt_url: Option::None,
+            evidence_url,
+        }
+    }
+
+    /// Generate all HTML `<meta>` tags for page-level disclosure.
+    ///
+    /// Produces the primary `ai-disclosure` meta tag plus optional
+    /// companion tags for model, provider, prompt URL, and evidence URL.
+    pub fn to_html_meta_tags(&self) -> String {
+        let mut tags = vec![self.level.to_html_meta_tag()];
+
+        if let Some(ref model) = self.model {
+            tags.push(format!(
+                r#"<meta name="ai-model" content="{}">"#,
+                html_escape_attr(model)
+            ));
+        }
+        if let Some(ref provider) = self.provider {
+            tags.push(format!(
+                r#"<meta name="ai-provider" content="{}">"#,
+                html_escape_attr(provider)
+            ));
+        }
+        if let Some(ref prompt_url) = self.prompt_url {
+            tags.push(format!(
+                r#"<meta name="ai-prompt-url" content="{}">"#,
+                html_escape_attr(prompt_url)
+            ));
+        }
+        if let Some(ref evidence_url) = self.evidence_url {
+            tags.push(format!(
+                r#"<meta name="ai-evidence-url" content="{}">"#,
+                html_escape_attr(evidence_url)
+            ));
+        }
+
+        tags.join("\n")
+    }
+
+    /// Generate HTML element-level attribute string.
+    ///
+    /// Returns a space-separated set of attributes suitable for embedding
+    /// in an HTML element tag. Returns `None` if the level is `Mixed`
+    /// (which is only valid at page level).
+    pub fn to_html_element_attrs(&self) -> Option<String> {
+        if self.level == AiDisclosureLevel::Mixed {
+            return Option::None;
+        }
+
+        let mut attrs = vec![format!(r#"ai-disclosure="{}""#, self.level.as_str())];
+
+        if let Some(ref model) = self.model {
+            attrs.push(format!(r#"ai-model="{}""#, html_escape_attr(model)));
+        }
+        if let Some(ref provider) = self.provider {
+            attrs.push(format!(
+                r#"ai-provider="{}""#,
+                html_escape_attr(provider)
+            ));
+        }
+        if let Some(ref prompt_url) = self.prompt_url {
+            attrs.push(format!(
+                r#"ai-prompt-url="{}""#,
+                html_escape_attr(prompt_url)
+            ));
+        }
+        if let Some(ref evidence_url) = self.evidence_url {
+            attrs.push(format!(
+                r#"ai-evidence-url="{}""#,
+                html_escape_attr(evidence_url)
+            ));
+        }
+
+        Some(attrs.join(" "))
+    }
+
+    /// Generate an IETF `AI-Disclosure` HTTP header value per draft-abaris-aicdh.
+    ///
+    /// Format: `mode=<token>; model="<string>"; provider="<string>"; date=@<epoch>`
+    pub fn to_ietf_header(&self) -> String {
+        let mut parts = vec![format!("mode={}", self.level.to_ietf_header_mode())];
+
+        if let Some(ref model) = self.model {
+            parts.push(format!(r#"model="{}""#, model));
+        }
+        if let Some(ref provider) = self.provider {
+            parts.push(format!(r#"provider="{}""#, provider));
+        }
+
+        parts.join("; ")
+    }
+}
+
+/// Minimal HTML attribute value escaping for double-quoted contexts.
+fn html_escape_attr(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +310,7 @@ pub struct NistSubcategory {
     /// Short description from the RMF.
     pub description: String,
     /// How CPoE addresses this subcategory.
-    pub cpop_coverage: String,
+    pub cpoe_coverage: String,
 }
 
 /// Generate the NIST AI RMF mapping for a CPoE evidence packet.
@@ -120,27 +323,27 @@ pub fn nist_rmf_mapping() -> &'static NistRmfMapping {
             NistSubcategory {
                 id: "GV-1.1".into(),
                 description: "Legal and regulatory requirements documented".into(),
-                cpop_coverage: "Evidence packets carry declaration with AI disclosure fields per EU AI Act Article 50".into(),
+                cpoe_coverage: "Evidence packets carry declaration with AI disclosure fields per EU AI Act Article 50".into(),
             },
             NistSubcategory {
                 id: "GV-1.2".into(),
                 description: "Trustworthiness characteristics integrated".into(),
-                cpop_coverage: "AR4SI trustworthiness vector maps 8 components per draft-ietf-rats-ar4si".into(),
+                cpoe_coverage: "AR4SI trustworthiness vector maps 8 components per draft-ietf-rats-ar4si".into(),
             },
             NistSubcategory {
                 id: "MS-2.6".into(),
                 description: "AI system performance assessed".into(),
-                cpop_coverage: "Forensic analysis produces assessment_score with 5 verdict levels".into(),
+                cpoe_coverage: "Forensic analysis produces assessment_score with 5 verdict levels".into(),
             },
             NistSubcategory {
                 id: "MS-2.11".into(),
                 description: "Fairness assessed and documented".into(),
-                cpop_coverage: "Behavioral analysis uses biological plausibility ranges, not demographic profiling".into(),
+                cpoe_coverage: "Behavioral analysis uses biological plausibility ranges, not demographic profiling".into(),
             },
             NistSubcategory {
                 id: "MG-4.1".into(),
                 description: "Post-deployment monitoring procedures".into(),
-                cpop_coverage: "Continuous sentinel monitoring with checkpoint chain for lifecycle tracking".into(),
+                cpoe_coverage: "Continuous sentinel monitoring with checkpoint chain for lifecycle tracking".into(),
             },
         ],
     }
@@ -162,7 +365,7 @@ pub struct Iso42001Mapping {
 pub struct Iso42001Control {
     pub id: String,
     pub topic: String,
-    pub cpop_coverage: String,
+    pub cpoe_coverage: String,
 }
 
 /// Generate the ISO 42001 mapping for CPoE.
@@ -175,22 +378,22 @@ pub fn iso_42001_mapping() -> &'static Iso42001Mapping {
             Iso42001Control {
                 id: "A.6".into(),
                 topic: "Data governance".into(),
-                cpop_coverage: "Evidence data integrity via HMAC chains, WAL, and MMR append-only proofs".into(),
+                cpoe_coverage: "Evidence data integrity via HMAC chains, WAL, and MMR append-only proofs".into(),
             },
             Iso42001Control {
                 id: "A.7".into(),
                 topic: "System information documentation".into(),
-                cpop_coverage: "Evidence packets include claim_generator_info with version, capabilities, limitations".into(),
+                cpoe_coverage: "Evidence packets include claim_generator_info with version, capabilities, limitations".into(),
             },
             Iso42001Control {
                 id: "A.8".into(),
                 topic: "Information for interested parties (transparency)".into(),
-                cpop_coverage: "Forensic verdict with confidence, anomaly counts, per-checkpoint flags, and limitations array".into(),
+                cpoe_coverage: "Forensic verdict with confidence, anomaly counts, per-checkpoint flags, and limitations array".into(),
             },
             Iso42001Control {
                 id: "A.10".into(),
                 topic: "Accountability and responsibility".into(),
-                cpop_coverage: "Key hierarchy with master→session→ratchet chain ties actions to signing identity".into(),
+                cpoe_coverage: "Key hierarchy with master→session→ratchet chain ties actions to signing identity".into(),
             },
         ],
     }
@@ -430,5 +633,140 @@ mod tests {
         assert!(!result.human_authored);
         assert!(!result.wga_mba_compliant);
         assert!(!result.notes.is_empty());
+    }
+
+    #[test]
+    fn test_autonomous_level() {
+        let level = AiDisclosureLevel::Autonomous;
+        assert_eq!(level.as_str(), "autonomous");
+        assert_eq!(
+            level.to_iptc_digital_source_type(),
+            IPTC_TRAINED_ALGORITHMIC_MEDIA
+        );
+        assert_eq!(level.to_ietf_header_mode(), "machine-generated");
+        assert_eq!(
+            level.to_html_meta_tag(),
+            r#"<meta name="ai-disclosure" content="autonomous">"#
+        );
+        assert_eq!(
+            level.to_html_element_attr(),
+            Some(r#"ai-disclosure="autonomous""#.to_string())
+        );
+    }
+
+    #[test]
+    fn test_mixed_level_page_only() {
+        let level = AiDisclosureLevel::Mixed;
+        assert_eq!(level.as_str(), "mixed");
+        assert_eq!(
+            level.to_html_meta_tag(),
+            r#"<meta name="ai-disclosure" content="mixed">"#
+        );
+        // Mixed is not valid as an element-level attribute.
+        assert!(level.to_html_element_attr().is_none());
+    }
+
+    #[test]
+    fn test_ietf_header_modes() {
+        assert_eq!(AiDisclosureLevel::None.to_ietf_header_mode(), "none");
+        assert_eq!(
+            AiDisclosureLevel::AiAssisted.to_ietf_header_mode(),
+            "ai-modified"
+        );
+        assert_eq!(
+            AiDisclosureLevel::AiGenerated.to_ietf_header_mode(),
+            "ai-originated"
+        );
+    }
+
+    #[test]
+    fn test_disclosure_attributes_meta_tags() {
+        let attrs = AiDisclosureAttributes {
+            level: AiDisclosureLevel::AiAssisted,
+            model: Some("claude-3.5-sonnet".into()),
+            provider: Some("Anthropic".into()),
+            prompt_url: None,
+            evidence_url: Some("https://writersproof.com/verify/abc123".into()),
+        };
+        let html = attrs.to_html_meta_tags();
+        assert!(html.contains(r#"<meta name="ai-disclosure" content="ai-assisted">"#));
+        assert!(html.contains(r#"<meta name="ai-model" content="claude-3.5-sonnet">"#));
+        assert!(html.contains(r#"<meta name="ai-provider" content="Anthropic">"#));
+        assert!(!html.contains("ai-prompt-url"));
+        assert!(html.contains(
+            r#"<meta name="ai-evidence-url" content="https://writersproof.com/verify/abc123">"#
+        ));
+    }
+
+    #[test]
+    fn test_disclosure_attributes_element_attrs() {
+        let attrs = AiDisclosureAttributes {
+            level: AiDisclosureLevel::None,
+            model: None,
+            provider: None,
+            prompt_url: None,
+            evidence_url: Some("https://writersproof.com/verify/xyz".into()),
+        };
+        let attr_str = attrs.to_html_element_attrs().expect("not mixed");
+        assert!(attr_str.contains(r#"ai-disclosure="none""#));
+        assert!(attr_str.contains(r#"ai-evidence-url="https://writersproof.com/verify/xyz""#));
+        assert!(!attr_str.contains("ai-model"));
+    }
+
+    #[test]
+    fn test_disclosure_attributes_mixed_no_element() {
+        let attrs = AiDisclosureAttributes::from_level(AiDisclosureLevel::Mixed);
+        assert!(attrs.to_html_element_attrs().is_none());
+    }
+
+    #[test]
+    fn test_disclosure_attributes_ietf_header() {
+        let attrs = AiDisclosureAttributes {
+            level: AiDisclosureLevel::AiGenerated,
+            model: Some("gpt-4".into()),
+            provider: Some("OpenAI".into()),
+            prompt_url: None,
+            evidence_url: None,
+        };
+        let header = attrs.to_ietf_header();
+        assert_eq!(header, r#"mode=ai-originated; model="gpt-4"; provider="OpenAI""#);
+    }
+
+    #[test]
+    fn test_disclosure_attributes_ietf_header_minimal() {
+        let attrs = AiDisclosureAttributes::from_level(AiDisclosureLevel::None);
+        assert_eq!(attrs.to_ietf_header(), "mode=none");
+    }
+
+    #[test]
+    fn test_html_escape_in_attributes() {
+        let attrs = AiDisclosureAttributes {
+            level: AiDisclosureLevel::AiAssisted,
+            model: Some(r#"model"with<special>&chars"#.into()),
+            provider: None,
+            prompt_url: None,
+            evidence_url: None,
+        };
+        let html = attrs.to_html_meta_tags();
+        assert!(html.contains("&amp;"));
+        assert!(html.contains("&quot;"));
+        assert!(html.contains("&lt;"));
+        assert!(html.contains("&gt;"));
+    }
+
+    #[test]
+    fn test_serde_roundtrip_new_variants() {
+        let autonomous: AiDisclosureLevel =
+            serde_json::from_str(r#""autonomous""#).expect("deserialize");
+        assert_eq!(autonomous, AiDisclosureLevel::Autonomous);
+
+        let mixed: AiDisclosureLevel =
+            serde_json::from_str(r#""mixed""#).expect("deserialize");
+        assert_eq!(mixed, AiDisclosureLevel::Mixed);
+
+        assert_eq!(
+            serde_json::to_string(&AiDisclosureLevel::Autonomous).expect("serialize"),
+            r#""autonomous""#
+        );
     }
 }

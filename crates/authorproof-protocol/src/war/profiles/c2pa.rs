@@ -8,7 +8,7 @@ type Result<T> = std::result::Result<T, String>;
 use crate::war::ear::{EarToken, TrustVectorProjection};
 
 /// C2PA assertion label for WritersLogic PoP attestation.
-pub const ASSERTION_LABEL: &str = "com.writerslogic.pop-attestation.v1";
+pub const ASSERTION_LABEL: &str = "com.writerslogic.cpoe-attestation.v1";
 
 /// C2PA assertion containing EAR-derived data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
