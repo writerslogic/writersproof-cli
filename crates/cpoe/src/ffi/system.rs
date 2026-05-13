@@ -15,6 +15,17 @@ const FFI_MAX_LOG_ENTRIES: usize = 10_000;
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_init() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        // Initialize the oslog backend so Rust log::* calls appear in
+        // macOS unified logging (Console.app / `log stream`).
+        static LOGGER_INIT: std::sync::Once = std::sync::Once::new();
+        LOGGER_INIT.call_once(|| {
+            if let Ok(logger) = oslog::OsLogger::new("com.writerslogic.witnessd.engine")
+                .level_filter(log::LevelFilter::Debug)
+                .init()
+            {
+                let _ = logger;
+            }
+        });
         log::trace!("ffi_init called");
         let data_dir = match get_data_dir() {
             Some(d) => d,
