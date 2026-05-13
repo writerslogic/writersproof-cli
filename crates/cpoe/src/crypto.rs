@@ -573,8 +573,8 @@ mod tests {
 
     #[test]
     fn derive_hmac_key_different_seeds_give_different_keys() {
-        let k1 = derive_hmac_key(b"seed-alpha");
-        let k2 = derive_hmac_key(b"seed-bravo");
+        let k1 = derive_hmac_key(b"seed-alpha-padded!");
+        let k2 = derive_hmac_key(b"seed-bravo-padded!");
         assert_ne!(k1, k2);
     }
 

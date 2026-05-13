@@ -209,6 +209,7 @@ impl C2paManifestBuilder {
         for (box_bytes, label) in assertion_boxes.iter().zip(&[
             ASSERTION_LABEL_HASH_DATA,
             ASSERTION_LABEL_ACTIONS,
+            ASSERTION_LABEL_CPOE,
         ]) {
             let hash = Sha256::digest(&box_bytes[8..]);
             created_assertions.push(HashedUri {

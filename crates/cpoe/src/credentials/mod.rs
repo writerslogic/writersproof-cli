@@ -31,7 +31,7 @@ pub struct AuthorshipCredential {
     pub validity: ValidityInfo,
     pub claims: AuthorshipClaims,
     /// COSE_Sign1 envelope bytes, populated after signing.
-    #[serde(skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
     pub issuer_signed: Option<Vec<u8>>,
 }
 
@@ -56,7 +56,7 @@ pub struct AuthorshipClaims {
     pub attestation_tier: String,
     pub process_verdict: String,
     pub authorship_confidence: f64,
-    #[serde(skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "serde_bytes_opt")]
     pub keystroke_proof: Option<Vec<u8>>,
     pub composition_ratio: Option<f64>,
     pub source_attributions: Vec<SourceAttribution>,

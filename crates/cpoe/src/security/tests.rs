@@ -45,14 +45,22 @@ mod integration_tests {
             .unwrap()
             .as_millis() as i64;
 
-        // Create normal keystroke sequence
-        for i in 0..20 {
+        // Create normal keystroke sequence with natural timing variance.
+        // Constant intervals would trigger the monotonic-timing detector
+        // (CV < 0.10), so we add realistic human jitter.
+        let intervals: [i64; 20] = [
+            130, 145, 120, 155, 110, 140, 160, 125, 135, 150,
+            115, 145, 130, 165, 120, 140, 155, 125, 135, 130,
+        ];
+        let mut ts = now_ms - 5000;
+        for interval in &intervals {
             events.push_back(KeystrokeEvent {
-                timestamp_ms: now_ms - 5000 + i * 130,
+                timestamp_ms: ts,
                 key_code: 65,
                 is_focused: true,
                 checkpoint_hash: None,
             });
+            ts += interval;
         }
 
         let flags = detector.detect_tampering(&events);

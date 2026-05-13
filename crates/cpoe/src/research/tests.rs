@@ -294,7 +294,13 @@ fn test_export_json_valid() {
     assert_eq!(parsed.version, 1);
     assert_eq!(parsed.sessions.len(), 1);
     assert_eq!(parsed.sessions[0].samples.len(), 1);
-    assert_eq!(parsed.sessions[0].samples[0].jitter_micros, 500);
+    // Laplace noise (scale = jitter * 0.03 = 15) is applied during anonymization,
+    // so the value will be close to 500 but not exact.
+    let jitter = parsed.sessions[0].samples[0].jitter_micros;
+    assert!(
+        (450..=550).contains(&jitter),
+        "jitter_micros {jitter} should be near 500 (Laplace noise applied)"
+    );
 }
 
 #[test]
@@ -376,7 +382,13 @@ fn test_anonymized_statistics_computation() {
     assert_eq!(anon.typing_rate_bucket, "moderate");
     assert_eq!(anon.min_jitter_micros, 100);
     assert_eq!(anon.max_jitter_micros, 300);
-    assert!((anon.mean_jitter_micros - 200.0).abs() < 0.01);
+    // Laplace noise (scale = mean * 0.05 = 10) is applied for differential privacy,
+    // so the value will be close to 200 but not exact.
+    assert!(
+        (anon.mean_jitter_micros - 200.0).abs() < 50.0,
+        "mean_jitter_micros {} should be near 200.0 (Laplace noise applied)",
+        anon.mean_jitter_micros
+    );
     assert!(anon.jitter_std_dev > 0.0);
     assert!(anon.phys_ratio.is_none());
     assert!(anon.entropy_source.is_none());

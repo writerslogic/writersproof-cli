@@ -65,7 +65,7 @@ impl TfidfModel {
             // rare terms from dominating scores. This is intentional for
             // classification robustness.
             for (term, freq) in doc_frequencies {
-                let idf = ((total_docs as f64) / (freq as f64 + 1.0)).ln();
+                let idf = ((total_docs as f64 + 1.0) / (freq as f64 + 1.0)).ln();
                 model.term_weights.insert(term, idf);
             }
 

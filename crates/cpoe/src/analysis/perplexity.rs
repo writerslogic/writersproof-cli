@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn test_word_trigram_familiar_lower_than_random() {
         let mut model = WordTrigramModel::new();
-        let training = "the quick brown fox jumps over the lazy dog ".repeat(50);
+        let training = "the quick brown fox jumps over the lazy dog ".repeat(120);
         model.train(&training);
 
         let ppl_same = model.compute_perplexity("the quick brown fox jumps over");

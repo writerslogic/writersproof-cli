@@ -357,7 +357,7 @@ impl BehavioralFingerprint {
         // except itself, which uses a fixed 5% relative spread.
         let spread = [
             baseline.keystroke_interval_std.max(1.0),
-            (baseline.keystroke_interval_std * 0.05).max(0.1),
+            (baseline.keystroke_interval_std * 0.25).max(1.0),
             (baseline.burst_length_mean * 0.3).max(0.1),
             (baseline.sentence_pause_mean * 0.3).max(1.0),
             0.02_f64.max(baseline.thinking_pause_frequency * 0.5),

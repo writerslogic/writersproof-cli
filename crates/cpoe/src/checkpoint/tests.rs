@@ -1497,6 +1497,9 @@ fn test_clock_tolerance_tracked_in_report() {
 
     let mut cp1 = Checkpoint::new_base(1, cp0.hash, cp0.content_hash, 100, None);
     cp1.timestamp = cp0.timestamp - chrono::Duration::milliseconds(500);
+    let vdf_input = vdf::chain_input(cp1.content_hash, cp1.previous_hash, cp1.ordinal);
+    cp1.vdf = Some(vdf::compute_iterations(vdf_input, 10));
+    cp1.hash = cp1.compute_hash();
 
     chain.checkpoints.push(cp1);
 
