@@ -74,7 +74,9 @@ fn check_cbor_depth(data: &[u8], max_depth: usize) -> bool {
                 if pos + 4 > data.len() {
                     return false;
                 }
-                let bytes: [u8; 4] = data[pos..pos + 4].try_into().unwrap();
+                let Ok(bytes) = data[pos..pos + 4].try_into() else {
+                    return false;
+                };
                 pos += 4;
                 u32::from_be_bytes(bytes) as u64
             }
@@ -82,7 +84,9 @@ fn check_cbor_depth(data: &[u8], max_depth: usize) -> bool {
                 if pos + 8 > data.len() {
                     return false;
                 }
-                let bytes: [u8; 8] = data[pos..pos + 8].try_into().unwrap();
+                let Ok(bytes) = data[pos..pos + 8].try_into() else {
+                    return false;
+                };
                 pos += 8;
                 u64::from_be_bytes(bytes)
             }
@@ -130,7 +134,9 @@ fn check_cbor_depth(data: &[u8], max_depth: usize) -> bool {
                                 if pos + 4 > data.len() {
                                     return false;
                                 }
-                                let b: [u8; 4] = data[pos..pos + 4].try_into().unwrap();
+                                let Ok(b) = data[pos..pos + 4].try_into() else {
+                                    return false;
+                                };
                                 pos += 4;
                                 u32::from_be_bytes(b) as u64
                             }
@@ -138,23 +144,25 @@ fn check_cbor_depth(data: &[u8], max_depth: usize) -> bool {
                                 if pos + 8 > data.len() {
                                     return false;
                                 }
-                                let b: [u8; 8] = data[pos..pos + 8].try_into().unwrap();
+                                let Ok(b) = data[pos..pos + 8].try_into() else {
+                                    return false;
+                                };
                                 pos += 8;
                                 u64::from_be_bytes(b)
                             }
                             _ => return false, // reserved chunk-length values are malformed
                         };
                         let skip = ch_len.min(data.len() as u64) as usize;
-                        pos = pos.saturating_add(skip);
-                        if pos > data.len() {
-                            return false; // chunk extends past input
+                        match pos.checked_add(skip) {
+                            Some(new_pos) if new_pos <= data.len() => pos = new_pos,
+                            _ => return false, // chunk extends past input
                         }
                     }
                 } else {
                     let skip = arg.min(data.len() as u64) as usize;
-                    pos = pos.saturating_add(skip);
-                    if pos > data.len() {
-                        return false; // byte/text string extends past input
+                    match pos.checked_add(skip) {
+                        Some(new_pos) if new_pos <= data.len() => pos = new_pos,
+                        _ => return false, // byte/text string extends past input
                     }
                 }
                 consume_item(&mut stack);
@@ -248,7 +256,7 @@ pub fn encode_to<T: Serialize, W: Write>(value: &T, writer: W) -> Result<()> {
 pub fn decode_from<T: DeserializeOwned, R: Read>(reader: R) -> Result<T> {
     let mut buf = Vec::new();
     reader
-        .take(MAX_CBOR_PAYLOAD as u64 + 1)
+        .take(MAX_CBOR_PAYLOAD as u64)
         .read_to_end(&mut buf)
         .map_err(CodecError::Io)?;
     if buf.len() > MAX_CBOR_PAYLOAD {

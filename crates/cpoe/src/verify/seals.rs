@@ -183,9 +183,13 @@ pub(super) fn verify_key_provenance(
         let session_bytes_opt = hex::decode(&kh.session_public_key)
             .ok()
             .filter(|b| b.len() == 32);
+        let cert_bytes_opt = base64::engine::general_purpose::STANDARD
+            .decode(&kh.session_certificate)
+            .ok()
+            .filter(|b| b.len() == 64);
         let master_ok = master_bytes_opt.is_some();
         let session_ok = session_bytes_opt.is_some();
-        let cert_ok = base64_decode_len(&kh.session_certificate) == Some(64);
+        let cert_ok = cert_bytes_opt.is_some();
 
         if !master_ok || !session_ok || !cert_ok {
             warnings.push("Key hierarchy has invalid key/certificate lengths".to_string());
@@ -206,7 +210,7 @@ pub(super) fn verify_key_provenance(
                     match crate::keyhierarchy::verification::validate_cert_byte_lengths(
                         &master_bytes,
                         &session_bytes,
-                        &base64_decode(&kh.session_certificate),
+                        cert_bytes_opt.as_deref().expect("cert_ok is true"),
                         &session_id_arr,
                         kh.session_started,
                         &doc_hash_arr,
@@ -351,19 +355,4 @@ pub(super) fn verify_key_provenance(
         signing_key_consistent,
         ratchet_monotonic,
     }
-}
-
-/// Decode base64 to bytes.
-fn base64_decode(s: &str) -> Vec<u8> {
-    base64::engine::general_purpose::STANDARD
-        .decode(s)
-        .unwrap_or_default()
-}
-
-/// Decode base64 and return length if valid.
-fn base64_decode_len(s: &str) -> Option<usize> {
-    base64::engine::general_purpose::STANDARD
-        .decode(s)
-        .ok()
-        .map(|b| b.len())
 }

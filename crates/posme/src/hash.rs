@@ -71,6 +71,14 @@ pub fn derive_challenges(
         }
         counter += 1;
     }
+    debug_assert_eq!(
+        challenges.len(),
+        q as usize,
+        "challenge derivation incomplete: got {} of {} in {} iterations",
+        challenges.len(),
+        q,
+        max_iters
+    );
     challenges
 }
 

@@ -86,6 +86,26 @@ impl SecureSession {
         server_pubkey: &[u8],
         is_server: bool,
     ) -> Result<Self> {
+        if shared_secret.len() < 32 {
+            anyhow::bail!(
+                "shared secret too short: {} bytes (expected 32)",
+                shared_secret.len()
+            );
+        }
+        if client_pubkey.len() != P256_PUBLIC_KEY_SIZE {
+            anyhow::bail!(
+                "client pubkey wrong size: {} bytes (expected {})",
+                client_pubkey.len(),
+                P256_PUBLIC_KEY_SIZE
+            );
+        }
+        if server_pubkey.len() != P256_PUBLIC_KEY_SIZE {
+            anyhow::bail!(
+                "server pubkey wrong size: {} bytes (expected {})",
+                server_pubkey.len(),
+                P256_PUBLIC_KEY_SIZE
+            );
+        }
         let mut info = Vec::with_capacity(15 + P256_PUBLIC_KEY_SIZE * 2);
         info.extend_from_slice(b"aes-256-gcm-key");
         info.extend_from_slice(client_pubkey);

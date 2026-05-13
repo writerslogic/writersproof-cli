@@ -141,7 +141,7 @@ pub(in crate::report::html) fn write_verifiable_credential(
     if let Some(tv) = vc["credentialSubject"]["processAttestation"]["trustVector"].as_object() {
         html.push_str(r#"<h4 style="margin:12px 0 6px;font-size:12px">AR4SI Trust Vector</h4>"#);
         html.push_str(r#"<div class="metric-grid">"#);
-        for (key, val) in tv {
+        for (key, val) in tv.iter().take(100) {
             let v = val.as_i64().unwrap_or(0);
             let (label, color) = match v as i8 {
                 2 => ("Affirming", "#3d7a4a"),

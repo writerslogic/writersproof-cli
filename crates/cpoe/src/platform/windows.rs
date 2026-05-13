@@ -399,8 +399,8 @@ unsafe extern "system" fn keystroke_capture_hook(
         let stats_arc = match GLOBAL_STATS.try_lock() {
             Ok(g) => g.clone(),
             Err(std::sync::TryLockError::Poisoned(poisoned)) => {
-                log::warn!("GLOBAL_STATS mutex poisoned in hook callback: {}", poisoned);
-                poisoned.into_inner().clone()
+                log::error!("GLOBAL_STATS mutex poisoned in hook callback: {}", poisoned);
+                None
             }
             Err(std::sync::TryLockError::WouldBlock) => None,
         };
@@ -423,11 +423,11 @@ unsafe extern "system" fn keystroke_capture_hook(
         let sender = match GLOBAL_SENDER.try_lock() {
             Ok(g) => g.clone(),
             Err(std::sync::TryLockError::Poisoned(poisoned)) => {
-                log::warn!(
+                log::error!(
                     "GLOBAL_SENDER mutex poisoned in hook callback: {}",
                     poisoned
                 );
-                poisoned.into_inner().clone()
+                None
             }
             Err(std::sync::TryLockError::WouldBlock) => None,
         };
@@ -667,8 +667,8 @@ unsafe extern "system" fn mouse_capture_hook(code: i32, wparam: WPARAM, lparam: 
             let idle_stats = match MOUSE_GLOBAL_IDLE_STATS.try_lock() {
                 Ok(g) => g.clone(),
                 Err(std::sync::TryLockError::Poisoned(poisoned)) => {
-                    log::warn!("MOUSE_GLOBAL_IDLE_STATS mutex poisoned: {}", poisoned);
-                    poisoned.into_inner().clone()
+                    log::error!("MOUSE_GLOBAL_IDLE_STATS mutex poisoned: {}", poisoned);
+                    None
                 }
                 Err(std::sync::TryLockError::WouldBlock) => None,
             };
@@ -682,8 +682,8 @@ unsafe extern "system" fn mouse_capture_hook(code: i32, wparam: WPARAM, lparam: 
         let sender = match MOUSE_GLOBAL_SENDER.try_lock() {
             Ok(g) => g.clone(),
             Err(std::sync::TryLockError::Poisoned(poisoned)) => {
-                log::warn!("MOUSE_GLOBAL_SENDER mutex poisoned: {}", poisoned);
-                poisoned.into_inner().clone()
+                log::error!("MOUSE_GLOBAL_SENDER mutex poisoned: {}", poisoned);
+                None
             }
             Err(std::sync::TryLockError::WouldBlock) => None,
         };

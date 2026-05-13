@@ -479,7 +479,7 @@ pub fn compute_window_llrs_with_priors(
         let ll_trans = log_likelihood_transcriptive(&features);
         let llr = ll_cog - ll_trans;
 
-        let p_cognitive = 1.0 / (1.0 + (-llr).exp());
+        let p_cognitive = 1.0 / (1.0 + (-llr.clamp(-700.0, 700.0)).exp());
 
         results.push(WindowLLR {
             start_idx: start,

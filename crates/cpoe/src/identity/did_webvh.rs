@@ -600,10 +600,13 @@ fn load_signing_key() -> Result<SigningKey, Error> {
     let data_dir =
         data_dir().ok_or_else(|| Error::identity("Data directory not found"))?;
     let key_path = data_dir.join("signing_key");
+    let file = std::fs::File::open(&key_path)
+        .map_err(|e| Error::identity(format!("open signing key: {e}")))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let meta = std::fs::metadata(&key_path)
+        let meta = file
+            .metadata()
             .map_err(|e| Error::identity(format!("stat signing key: {e}")))?;
         let mode = meta.mode() & 0o777;
         if mode & 0o077 != 0 {
@@ -613,10 +616,13 @@ fn load_signing_key() -> Result<SigningKey, Error> {
             )));
         }
     }
-    let key_data = zeroize::Zeroizing::new(
-        std::fs::read(&key_path)
-            .map_err(|e| Error::identity(format!("read signing key: {e}")))?,
-    );
+    use std::io::Read;
+    let mut buf = Vec::new();
+    let mut reader = std::io::BufReader::new(file);
+    reader
+        .read_to_end(&mut buf)
+        .map_err(|e| Error::identity(format!("read signing key: {e}")))?;
+    let key_data = zeroize::Zeroizing::new(buf);
     if key_data.len() != 32 {
         return Err(Error::identity(format!(
             "signing key file has invalid length {} (expected exactly 32)",

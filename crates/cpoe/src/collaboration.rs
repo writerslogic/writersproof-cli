@@ -376,7 +376,7 @@ impl Collaborator {
     /// Uses CBOR deterministic encoding (RFC 8949 §4.2) for cross-platform
     /// reproducibility. JSON was previously used but is unsuitable for
     /// signatures because float formatting varies across architectures.
-    pub fn signing_payload(&self) -> Vec<u8> {
+    pub fn signing_payload(&self) -> Result<Vec<u8>, String> {
         let mut map = std::collections::BTreeMap::new();
         map.insert("active_periods", serde_json::json!(self.active_periods));
         map.insert(
@@ -395,8 +395,8 @@ impl Collaborator {
         // architectures, unlike JSON which has float formatting ambiguities.
         let mut buf = Vec::new();
         ciborium::into_writer(&map, &mut buf)
-            .expect("collaborator CBOR payload serialization is infallible");
-        buf
+            .map_err(|e| format!("collaborator CBOR serialization failed: {e}"))?;
+        Ok(buf)
     }
 
     /// Verify the attestation signature against the embedded public key.
@@ -411,7 +411,8 @@ impl Collaborator {
         let sig = crate::utils::crypto_types::Ed25519Sig::from_hex(&self.attestation_signature)
             .map_err(|e| format!("invalid signature hex: {e}"))?;
 
-        vk.verify_strict(&self.signing_payload(), &sig.to_signature())
+        let payload = self.signing_payload()?;
+        vk.verify_strict(&payload, &sig.to_signature())
             .map_err(|e| format!("attestation verification failed: {e}"))
     }
 }
@@ -510,7 +511,7 @@ mod tests {
         .with_name("Alice")
         .with_checkpoint_ranges(vec![(0, 5)]);
 
-        let payload = collab.signing_payload();
+        let payload = collab.signing_payload().unwrap();
         let sig = signing_key.sign(&payload);
         collab.attestation_signature = hex::encode(sig.to_bytes());
 

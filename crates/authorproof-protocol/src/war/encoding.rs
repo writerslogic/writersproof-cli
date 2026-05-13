@@ -34,8 +34,10 @@ impl Block {
         output.push_str("-----BEGIN SEAL-----\n");
 
         let seal_hex = self.seal.encode_hex();
-        for chunk in seal_hex.as_bytes().chunks(64) {
-            output.push_str(std::str::from_utf8(chunk).unwrap_or(""));
+        // hex::encode produces pure ASCII; slice directly in 64-byte chunks.
+        for start in (0..seal_hex.len()).step_by(64) {
+            let end = (start + 64).min(seal_hex.len());
+            output.push_str(&seal_hex[start..end]);
             output.push('\n');
         }
 

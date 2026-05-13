@@ -224,14 +224,19 @@ impl DeclarationJitter {
         avg_interval_ms: f64,
         entropy_bits: f64,
         hardware_sealed: bool,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, crate::error::Error> {
+        if !avg_interval_ms.is_finite() || !entropy_bits.is_finite() {
+            return Err(crate::error::Error::crypto(
+                "jitter evidence contains non-finite avg_interval_ms or entropy_bits",
+            ));
+        }
+        Ok(Self {
             jitter_hash,
             keystroke_count,
             duration_ms,
             avg_interval_ms,
             entropy_bits,
             hardware_sealed,
-        }
+        })
     }
 }

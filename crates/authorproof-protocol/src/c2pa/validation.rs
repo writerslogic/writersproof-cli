@@ -23,7 +23,7 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
         .claim
         .created_assertions
         .iter()
-        .filter(|a| a.url.contains(ASSERTION_LABEL_HASH_DATA))
+        .filter(|a| url_has_label(&a.url, ASSERTION_LABEL_HASH_DATA))
         .count();
     if hard_binding_count != 1 {
         errors.push(format!(
@@ -35,7 +35,7 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
         .claim
         .created_assertions
         .iter()
-        .filter(|a| a.url.contains(ASSERTION_LABEL_ACTIONS))
+        .filter(|a| url_has_label(&a.url, ASSERTION_LABEL_ACTIONS))
         .count();
     if actions_count != 1 {
         errors.push(format!(
@@ -198,6 +198,14 @@ fn extract_public_key(sign1: &coset::CoseSign1) -> Result<[u8; 32]> {
             "x5chain header value must be a byte string".to_string(),
         )),
     }
+}
+
+/// Returns true iff `url` ends with `/{label}` — an exact path-segment match.
+///
+/// Prevents bypass via prefix labels (e.g. "c2pa.hash.data-extra" matching
+/// "c2pa.hash.data") that `str::contains` would incorrectly accept.
+fn url_has_label(url: &str, label: &str) -> bool {
+    url.ends_with(&format!("/{label}"))
 }
 
 /// Verify a COSE_Sign1 Ed25519 signature.

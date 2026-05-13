@@ -409,7 +409,9 @@ impl SealedIdentityStore {
         let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
         std::io::Write::write_all(&mut tmp, &data)?;
         tmp.as_file().sync_all()?;
-        crate::crypto::restrict_permissions(tmp.path(), 0o600).ok();
+        if let Err(e) = crate::crypto::restrict_permissions(tmp.path(), 0o600) {
+            log::warn!("sealed_identity: failed to restrict store file permissions: {e}");
+        }
         tmp.persist(&self.store_path).map_err(|e| e.error)?;
         Ok(())
     }

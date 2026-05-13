@@ -115,6 +115,12 @@ impl ActivityFingerprintAccumulator {
         // have a strictly smaller one.  Both are invalid and indicate injection.
         if let Some(last) = self.samples.back() {
             if sample.timestamp_ns <= last.timestamp_ns {
+                log::warn!(
+                    "fingerprint: rejected out-of-order/replayed sample \
+                     (sample_ts={}, last_ts={}); possible injection attempt",
+                    sample.timestamp_ns,
+                    last.timestamp_ns
+                );
                 return;
             }
         }

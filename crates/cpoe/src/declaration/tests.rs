@@ -544,7 +544,7 @@ fn test_declaration_without_jitter_seal() {
 #[test]
 fn test_declaration_jitter_encode_decode_roundtrip() {
     let signing_key = test_signing_key();
-    let jitter = DeclarationJitter::new([0xABu8; 32], 50, 5000, 100.0, 32.5, true);
+    let jitter = DeclarationJitter::new([0xABu8; 32], 50, 5000, 100.0, 32.5, true).unwrap();
 
     let original = no_ai_declaration([1u8; 32], [2u8; 32], "Test", "Statement")
         .with_jitter_seal(jitter)

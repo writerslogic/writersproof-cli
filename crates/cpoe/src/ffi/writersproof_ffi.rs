@@ -308,8 +308,6 @@ pub fn ffi_sync_text_attestation(
         payload.extend_from_slice(&hash_bytes);
         super::conv::sign_hex(&signing_key, &payload)
     };
-    drop(signing_key);
-
     let api_key = match load_api_key() {
         Ok(k) if k.is_empty() => {
             return FfiResult::err("WritersProof API key is empty".to_string());
@@ -388,8 +386,7 @@ pub fn ffi_sync_text_attestation(
                     payload.extend_from_slice(DST);
                     payload.extend_from_slice(&hash_bytes);
                     super::conv::sign_hex(&signing_key, &payload)
-                }
-            };
+                };
             let anchor_req = crate::writersproof::AnchorRequest {
                 evidence_hash: anchor_evidence_hash.clone(),
                 author_did: String::new(),

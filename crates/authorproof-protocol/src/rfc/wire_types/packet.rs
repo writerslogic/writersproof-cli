@@ -377,6 +377,11 @@ impl EvidencePacketWire {
                     name.len(), MAX_STRING_LEN
                 )));
             }
+            if name.contains('\0') {
+                return Err(CodecError::Validation(
+                    "document_filename contains null byte".into(),
+                ));
+            }
             if name.contains('/') || name.contains('\\') || name.contains("..") {
                 return Err(CodecError::Validation(
                     "document_filename contains path traversal characters".into(),

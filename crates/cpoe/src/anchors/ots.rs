@@ -141,7 +141,14 @@ impl OpenTimestampsProvider {
             // Only contact calendar URLs that were provided at construction time.
             // URLs in the proof body come from a (partially) untrusted server response;
             // allowing arbitrary URLs would enable SSRF. CWE-918.
-            if !self.calendar_urls.iter().any(|allowed| url.starts_with(allowed.as_str())) {
+            if !self.calendar_urls.iter().any(|allowed| {
+                let a = allowed.as_str();
+                url.starts_with(a)
+                    && (a.ends_with('/')
+                        || url.as_bytes().get(a.len()).map_or(true, |&c| {
+                            c == b'/' || c == b'?' || c == b'#'
+                        }))
+            }) {
                 log::warn!("Proof contains unrecognized calendar URL {}; skipping", url);
                 all_server_errors = false;
                 continue;

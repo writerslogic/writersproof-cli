@@ -344,17 +344,17 @@ impl SecureStorage {
             return Ok(Some(Zeroizing::new(cached.as_str().to_owned())));
         }
         let bytes = Self::load(MNEMONIC_ACCOUNT)?;
-        if let Some(b) = bytes {
-            let mut raw = Zeroizing::new(b.to_vec());
-            let s = match String::from_utf8(raw.as_slice().to_vec()) {
-                Ok(s) => s,
+        if let Some(mut b) = bytes {
+            let s = match String::from_utf8(std::mem::take(&mut *b)) {
+                Ok(s) => Zeroizing::new(s),
                 Err(e) => {
-                    raw.zeroize();
-                    return Err(anyhow!("Invalid UTF-8 in mnemonic: {}", e));
+                    let mut bytes = e.into_bytes();
+                    bytes.zeroize();
+                    return Err(anyhow!("Invalid UTF-8 in mnemonic"));
                 }
             };
-            *guard = Some(Zeroizing::new(s.clone()));
-            Ok(Some(Zeroizing::new(s)))
+            *guard = Some(Zeroizing::new(s.as_str().to_owned()));
+            Ok(Some(s))
         } else {
             Ok(None)
         }

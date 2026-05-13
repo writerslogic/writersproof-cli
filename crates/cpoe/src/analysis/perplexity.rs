@@ -39,6 +39,8 @@ pub enum PerplexityError {
     },
     /// No valid n-grams were evaluated (degenerate input).
     NoValidNgrams,
+    /// Perplexity computation produced NaN or infinity.
+    ComputationFailed,
 }
 
 impl fmt::Display for PerplexityError {
@@ -59,6 +61,7 @@ impl fmt::Display for PerplexityError {
                 "input too short: {input_len} chars <= n-gram order {ngram_order}"
             ),
             Self::NoValidNgrams => write!(f, "no valid n-grams evaluated"),
+            Self::ComputationFailed => write!(f, "perplexity computation produced non-finite result"),
         }
     }
 }
@@ -158,7 +161,10 @@ impl PerplexityModel {
         }
 
         let ppl = (-log_prob_sum / count as f64).exp();
-        Ok(if ppl.is_finite() { ppl } else { 1.0 })
+        if !ppl.is_finite() {
+            return Err(PerplexityError::ComputationFailed);
+        }
+        Ok(ppl)
     }
 
     /// Convenience: compute perplexity, returning 1.0 on any error.

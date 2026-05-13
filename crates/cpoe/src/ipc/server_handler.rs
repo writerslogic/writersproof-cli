@@ -275,8 +275,7 @@ pub(super) async fn handle_connection_inner<
                 let msg_required_role = required_role(&msg);
                 if !check_authorization(client_role, msg_required_role) {
                     log::warn!(
-                        "IPC: unauthorized {:?} for role {:?} on {} (requires {:?})",
-                        msg,
+                        "IPC: unauthorized message for role {:?} on {} (requires {:?})",
                         client_role,
                         transport_label,
                         msg_required_role

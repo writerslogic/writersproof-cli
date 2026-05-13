@@ -261,7 +261,9 @@ pub(super) fn validate_tsa_url(url: &str) -> Result<(), AnchorError> {
             || lower.starts_with("192.168.")
             || lower.starts_with("169.254.")
             || lower.starts_with("fe80:")
-            || lower.starts_with("[fe80:");
+            || lower.starts_with("[fe80:")
+            || lower.starts_with("[fc")
+            || lower.starts_with("[fd");
         if blocked {
             return Err(AnchorError::Configuration(format!(
                 "TSA URL must not point to loopback or private address: {url}"
@@ -810,10 +812,16 @@ fn verify_rsa_pkcs1v15_sha256(
     message: &[u8],
     sig_bytes: &[u8],
 ) -> Result<bool, AnchorError> {
-    use rsa::{pkcs1v15::VerifyingKey, pkcs8::DecodePublicKey, signature::Verifier};
+    use rsa::{pkcs1v15::VerifyingKey, pkcs8::DecodePublicKey, signature::Verifier, traits::PublicKeyParts};
     let pub_key = rsa::RsaPublicKey::from_public_key_der(spki_der).map_err(|e| {
         AnchorError::Verification(format!("Invalid RSA public key DER: {e}"))
     })?;
+    if pub_key.size() < 256 {
+        return Err(AnchorError::Verification(format!(
+            "RSA key too small: {} bits (minimum 2048)",
+            pub_key.size() * 8
+        )));
+    }
     let verifying_key: VerifyingKey<sha2::Sha256> = VerifyingKey::new(pub_key);
     let sig = rsa::pkcs1v15::Signature::try_from(sig_bytes).map_err(|e| {
         AnchorError::Verification(format!("Invalid RSA signature encoding: {e}"))

@@ -578,17 +578,16 @@ pub enum SyncResolutionStrategy {
 // ---------------------------------------------------------------------------
 
 /// Current wall-clock time as milliseconds since the Unix epoch.
+///
+/// # Panics
+///
+/// Panics if the system clock is before the Unix epoch, indicating a severely
+/// misconfigured system unsuitable for evidence timestamping.
 pub fn current_timestamp_ms() -> i64 {
-    let ts = std::time::SystemTime::now()
+    let duration = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or(0);
-    if ts <= 0 {
-        log::error!(
-            "System clock returned non-positive timestamp; evidence timing will be unreliable"
-        );
-    }
-    ts
+        .expect("system clock is before Unix epoch; evidence timestamps require a valid clock");
+    i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
 }
 
 /// Generate a 16-byte cryptographic random nonce.

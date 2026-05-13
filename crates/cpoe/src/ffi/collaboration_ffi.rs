@@ -68,7 +68,10 @@ pub fn ffi_collaboration_signing_payload(
         contribution_summary: None,
     };
 
-    collaborator.signing_payload()
+    collaborator.signing_payload().unwrap_or_else(|e| {
+        log::error!("collaboration signing_payload failed: {e}");
+        Vec::new()
+    })
     })
 }
 

@@ -154,7 +154,7 @@ fn ear_to_cbor_map(ear: &EarToken) -> Result<Value> {
         ),
         (
             Value::Integer(CWT_SUB.into()),
-            Value::Text("pop-attestation".to_string()),
+            Value::Text("cpoe-attestation".to_string()),
         ),
         (
             Value::Integer(CWT_KEY_IAT.into()),
@@ -219,8 +219,11 @@ fn appraisal_to_cbor(a: &EarAppraisal) -> Value {
 
     if let Some(ref seal) = a.pop_seal {
         let mut buf = Vec::new();
-        ciborium::into_writer(&seal, &mut buf).ok();
-        map.push((Value::Integer(POP_KEY_SEAL.into()), Value::Bytes(buf)));
+        if let Err(e) = ciborium::into_writer(&seal, &mut buf) {
+            log::error!("EAT: failed to encode pop_seal: {e}");
+        } else {
+            map.push((Value::Integer(POP_KEY_SEAL.into()), Value::Bytes(buf)));
+        }
     }
 
     if let Some(ref evidence_ref) = a.pop_evidence_ref {
@@ -232,30 +235,42 @@ fn appraisal_to_cbor(a: &EarAppraisal) -> Value {
 
     if let Some(ref entropy) = a.pop_entropy_report {
         let mut buf = Vec::new();
-        ciborium::into_writer(&entropy, &mut buf).ok();
-        map.push((Value::Integer(POP_KEY_ENTROPY.into()), Value::Bytes(buf)));
+        if let Err(e) = ciborium::into_writer(&entropy, &mut buf) {
+            log::error!("EAT: failed to encode pop_entropy_report: {e}");
+        } else {
+            map.push((Value::Integer(POP_KEY_ENTROPY.into()), Value::Bytes(buf)));
+        }
     }
 
     if let Some(ref forgery) = a.pop_forgery_cost {
         let mut buf = Vec::new();
-        ciborium::into_writer(&forgery, &mut buf).ok();
-        map.push((
-            Value::Integer(POP_KEY_FORGERY_COST.into()),
-            Value::Bytes(buf),
-        ));
+        if let Err(e) = ciborium::into_writer(&forgery, &mut buf) {
+            log::error!("EAT: failed to encode pop_forgery_cost: {e}");
+        } else {
+            map.push((
+                Value::Integer(POP_KEY_FORGERY_COST.into()),
+                Value::Bytes(buf),
+            ));
+        }
     }
 
     if let Some(ref forensic) = a.pop_forensic_summary {
         let mut buf = Vec::new();
-        ciborium::into_writer(&forensic, &mut buf).ok();
-        map.push((Value::Integer(POP_KEY_FORENSIC.into()), Value::Bytes(buf)));
+        if let Err(e) = ciborium::into_writer(&forensic, &mut buf) {
+            log::error!("EAT: failed to encode pop_forensic_summary: {e}");
+        } else {
+            map.push((Value::Integer(POP_KEY_FORENSIC.into()), Value::Bytes(buf)));
+        }
     }
 
     if let Some(ref absence) = a.pop_absence_claims {
         if !absence.is_empty() {
             let mut buf = Vec::new();
-            ciborium::into_writer(&absence, &mut buf).ok();
-            map.push((Value::Integer(POP_KEY_ABSENCE.into()), Value::Bytes(buf)));
+            if let Err(e) = ciborium::into_writer(&absence, &mut buf) {
+                log::error!("EAT: failed to encode pop_absence_claims: {e}");
+            } else {
+                map.push((Value::Integer(POP_KEY_ABSENCE.into()), Value::Bytes(buf)));
+            }
         }
     }
 

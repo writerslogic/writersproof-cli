@@ -178,8 +178,8 @@ impl CheckpointWire {
         hasher.update(&self.process_proof.merkle_root);
 
         let digest: [u8; 32] = hasher.finalize().into();
-        // SHA-256 output is always 32 bytes; try_sha256 cannot fail here.
-        Ok(HashValue::try_sha256(digest.to_vec()).expect("SHA-256 output is 32 bytes"))
+        // SHA-256 output is always 32 bytes; propagate error defensively.
+        HashValue::try_sha256(digest.to_vec()).map_err(|e| format!("SHA-256 hash: {e}"))
     }
 
     /// Validate digest lengths, size limits, and nested structure.
