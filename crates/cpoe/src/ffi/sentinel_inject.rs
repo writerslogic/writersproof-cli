@@ -208,6 +208,10 @@ fn inject_keystroke_inner_v3(
     use crate::sentinel::types::KeystrokeSemantic;
 
     if char_value.len() > 16 {
+        log::warn!(
+            "FFI keystroke injection rejected: char_value length {} exceeds 16 bytes",
+            char_value.len()
+        );
         return false;
     }
     // SI-004: Reject non-positive timestamps. The caller uses NSEvent.timestamp
@@ -325,8 +329,7 @@ fn inject_keystroke_inner_v3(
     }
     // When NSEvent.addGlobalMonitorForEvents delivers events without a backing
     // CGEvent (sandboxed apps), all three fields are 0. Accept these as trusted
-    // in-process FFI injections from KeystrokeMonitorService. The PreWitnessBuffer
-    // will still validate human plausibility before auto-starting a session.
+    // in-process FFI injections from KeystrokeMonitorService.
     let is_unverified_ffi = source_state_id == 0 && keyboard_type == 0 && source_pid == 0;
     if !is_unverified_ffi {
         // keyboard_type 0 = no physical keyboard (synthetic). Values up to ~255
@@ -334,7 +337,13 @@ fn inject_keystroke_inner_v3(
         if keyboard_type == 0 {
             return false;
         }
-        if source_pid != 0 {
+        // source_pid is the PID of the app that received the event, not the
+        // event source. For NSEvent.addGlobalMonitorForEvents with a CGEvent
+        // backing, this is the frontmost app's PID — completely normal for
+        // hardware keyboard events. Only reject events sourced from our own
+        // process (self-injection).
+        let own_pid = std::process::id() as i64;
+        if source_pid == own_pid {
             return false;
         }
         if source_state_id != SOURCE_STATE_HID_SYSTEM {
@@ -378,7 +387,8 @@ fn inject_keystroke_inner_v3(
     let focus = sentinel.current_focus();
     crate::sentinel::trace!("[FFI_INJECT] focus={:?} keycode={}", focus, keycode);
     if let Some(ref path) = focus {
-        if let Some(session) = sentinel.sessions.write_recover().get_mut(path) {
+        let mut sessions_guard = sentinel.sessions.write_recover();
+        if let Some(session) = sessions_guard.get_mut(path) {
             let increment = coalesced_count.clamp(1, 10);
             session.keystroke_count = session.keystroke_count.saturating_add(increment);
             crate::sentinel::trace!(
@@ -418,6 +428,11 @@ fn inject_keystroke_inner_v3(
                     session.jitter_samples.pop();
                 }
             }
+        } else {
+            log::warn!(
+                "[FFI_INJECT] session not found for focused path {:?}; keystroke not counted",
+                path
+            );
         }
     }
     true

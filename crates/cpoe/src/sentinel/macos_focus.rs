@@ -83,15 +83,25 @@ impl MacOSFocusMonitor {
                     &title_str,
                     Some(&bundle_id_str),
                 )?;
-                // Only use inferred paths that are absolute. Relative paths
-                // (bare filenames like "essay.txt") cannot be resolved to real
-                // files, causing hash failures and path mismatches on export.
-                // The sentinel's title:// fallback handles bare filenames.
                 if std::path::Path::new(&inferred).is_absolute() {
-                    Some(inferred)
-                } else {
-                    None
+                    return Some(inferred);
                 }
+                // Bare filename from title — try to resolve it against the
+                // process's open file descriptors. This handles Electron apps
+                // (VS Code, Cursor, Zed) where AXDocument is unavailable but
+                // the window title contains the filename.
+                let open_docs =
+                    super::process_files::open_documents_for_pid(pid as u32);
+                if let Some(matched) = open_docs.iter().find(|f| {
+                    f.path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().eq_ignore_ascii_case(&inferred))
+                        .unwrap_or(false)
+                }) {
+                    return Some(matched.path.to_string_lossy().into_owned());
+                }
+                // No FD match — use title:// so focus switches still work.
+                Some(format!("title://{}/{}", bundle_id_str, inferred))
             });
 
             // Last resort: enumerate open file descriptors to find documents.
@@ -102,6 +112,24 @@ impl MacOSFocusMonitor {
                     .into_iter()
                     .find(|f| f.writable)
                     .map(|f| f.path.to_string_lossy().into_owned())
+            });
+
+            // If still no path, create a title:// virtual path so focus
+            // switches work correctly for any app. Without this, an empty
+            // path causes keystrokes to stick on the previously focused
+            // document. The downstream is_app_allowed() check in
+            // handle_focus_event_sync filters blocked apps.
+            let doc_path = doc_path.or_else(|| {
+                if !bundle_id_str.is_empty() {
+                    let suffix = if title_str.is_empty() {
+                        "untitled".to_string()
+                    } else {
+                        title_str.clone()
+                    };
+                    Some(format!("title://{}/{}", bundle_id_str, suffix))
+                } else {
+                    None
+                }
             });
 
             Some(WindowInfo {
@@ -126,22 +154,33 @@ impl MacOSFocusMonitor {
         result
     }
 
-    /// Query the focused window's `AXDocument` attribute for its `file://` URL.
-    /// Falls back to `AXURL` on the focused element (S10: WKWebView-hosted local content).
+    /// Query AXDocument on the focused window and element, then AXURL on the
+    /// focused element. Some apps (multi-window editors, Electron) expose
+    /// AXDocument on the element but not the window.
     fn get_document_path_via_ax(&self, pid: i32) -> Option<String> {
-        if let Some(raw) = self.query_focused_window_attribute(pid, "AXDocument") {
-            if let Some(path) = raw.strip_prefix("file://") {
-                if let Ok(decoded) = urlencoding::decode(path) {
-                    let owned = decoded.into_owned();
-                    if !owned.is_empty() {
-                        return Some(owned);
+        // Try AXDocument on the focused window first (native Cocoa apps).
+        for attr_source in &[
+            (true, "AXDocument"),   // focused window
+            (false, "AXDocument"),  // focused element
+        ] {
+            let raw = if attr_source.0 {
+                self.query_focused_window_attribute(pid, attr_source.1)
+            } else {
+                self.query_focused_element_attribute(pid, attr_source.1)
+            };
+            if let Some(raw) = raw {
+                if let Some(path) = raw.strip_prefix("file://") {
+                    if let Ok(decoded) = urlencoding::decode(path) {
+                        let owned = decoded.into_owned();
+                        if !owned.is_empty() {
+                            return Some(owned);
+                        }
                     }
                 }
             }
         }
-        // S10: When AXDocument is absent (Electron/WKWebView apps), query AXURL
-        // on the focused element. Only accept file:// URLs — https:// documents
-        // are handled by the browser extension content script instead.
+        // AXURL on the focused element — handles WKWebView/web content.
+        // Only accept file:// URLs; https:// is handled by the browser extension.
         let url_raw = self.query_focused_element_attribute(pid, "AXURL")?;
         if let Some(path) = url_raw.strip_prefix("file://") {
             if let Ok(decoded) = urlencoding::decode(path) {
@@ -362,6 +401,28 @@ unsafe fn ax_read_string(
 unsafe fn ax_release(ptr: *mut std::ffi::c_void) {
     if !ptr.is_null() {
         CFRelease(ptr);
+    }
+}
+
+/// Resolve a PID to its bundle identifier via NSRunningApplication.
+/// Used by ES file-open events to verify the opener matches the focused app.
+pub fn bundle_id_for_pid(pid: i32) -> Option<String> {
+    unsafe {
+        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+        let cls = class!(NSRunningApplication);
+        let app: *mut Object = msg_send![cls, runningApplicationWithProcessIdentifier: pid];
+        let result = if !app.is_null() {
+            let bid: *mut Object = msg_send![app, bundleIdentifier];
+            if !bid.is_null() {
+                Some(nsstring_to_string(bid))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let _: () = msg_send![pool, drain];
+        result
     }
 }
 

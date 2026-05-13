@@ -361,6 +361,9 @@ impl Default for SentinelConfig {
                 // File managers
                 "com.apple.finder".to_string(),
                 "explorer".to_string(),
+                // WritersProof itself (should not self-monitor)
+                "com.writerslogic.witnessd".to_string(),
+                "com.writerslogic.cpoe".to_string(),
                 // Terminals (not document editors)
                 "com.apple.Terminal".to_string(),
                 "com.github.wez.wezterm".to_string(),

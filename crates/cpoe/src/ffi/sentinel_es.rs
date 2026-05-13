@@ -182,6 +182,92 @@ pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
     })
 }
 
+/// Upgrade a virtual title:// session to a real file path when ES detects the
+/// frontmost app opening a document file.
+///
+/// Called by the Swift ES client when `ES_EVENT_TYPE_NOTIFY_OPEN` fires for a
+/// process that matches the frontmost app's PID and the opened path has a
+/// recognized document extension. This gives ground-truth file identification
+/// for Electron apps (VS Code, Cursor, Zed) that don't expose AXDocument.
+///
+/// Returns `true` if a session was upgraded from a title:// path.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
+    catch_ffi_panic!(false, {
+    if path.len() > 4096 {
+        return false;
+    }
+    let sentinel = match get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    let validated = match crate::sentinel::helpers::validate_path(&path) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(_) => return false,
+    };
+
+    // Only upgrade if the currently focused session is a title:// virtual path.
+    let current_path = {
+        let focus = sentinel.current_focus.read_recover();
+        focus.clone()
+    };
+
+    let current = match current_path {
+        Some(ref p) if p.starts_with("title://") => p.clone(),
+        _ => return false,
+    };
+
+    // Verify the opening process's bundle ID matches the focused session's app.
+    // Resolve PID to bundle ID via NSRunningApplication (on macOS).
+    let opener_bundle = crate::sentinel::macos_focus::bundle_id_for_pid(pid);
+    let session_bundle = {
+        let sessions = sentinel.sessions.read_recover();
+        sessions.get(&current).map(|s| s.app_bundle_id.clone())
+    };
+    match (opener_bundle, session_bundle) {
+        (Some(opener), Some(session_bid)) if opener == session_bid => {}
+        _ => return false,
+    }
+
+    // Check if this path has a recognized document extension.
+    let ext_ok = std::path::Path::new(&validated)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| {
+            crate::sentinel::process_files::is_document_extension(&e.to_lowercase())
+        })
+        .unwrap_or(false);
+    if !ext_ok {
+        return false;
+    }
+
+    // Don't upgrade if the real path is already tracked as a separate session.
+    let mut sessions = sentinel.sessions.write_recover();
+    if sessions.contains_key(&validated) {
+        return false;
+    }
+
+    // Re-key the session from title:// to the real path.
+    if let Some(mut session) = sessions.remove(&current) {
+        log::info!(
+            "ES file open: upgrading session from {} to {}",
+            current, validated
+        );
+        session.origin_temp_path = Some(current.clone());
+        session.path = validated.clone();
+        session.evidence_confidence = crate::sentinel::types::EvidenceConfidence::Full;
+        sessions.insert(validated.clone(), session);
+        drop(sessions);
+
+        *sentinel.current_focus.write_recover() = Some(validated);
+        return true;
+    }
+
+    false
+    })
+}
+
 /// Record an ES capture gap (dropped events detected via sequence number jump).
 ///
 /// Called by the Swift ES client when `seq_num` or `global_seq_num` jumps,

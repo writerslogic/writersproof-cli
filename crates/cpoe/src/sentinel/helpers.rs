@@ -92,12 +92,20 @@ pub fn handle_focus_event_sync(
         && !event.path.starts_with("shadow://")
     {
         let p = Path::new(&event.path);
-        if config.is_path_excluded(p) {
-            super::trace!("[FOCUS] EXCLUDED path={:?}", event.path);
-            return;
-        }
-        if !config.is_extension_allowed(p) {
-            super::trace!("[FOCUS] EXTENSION NOT ALLOWED path={:?}", event.path);
+        let excluded = config.is_path_excluded(p);
+        let ext_blocked = !excluded && !config.is_extension_allowed(p);
+        if excluded || ext_blocked {
+            super::trace!(
+                "[FOCUS] FILTERED path={:?} excluded={} ext_blocked={}",
+                event.path, excluded, ext_blocked
+            );
+            // Unfocus the previous session so keystrokes aren't attributed
+            // to the old document while the user is in a filtered app/path.
+            let path_to_unfocus = { current_focus.read_recover().clone() };
+            if let Some(path) = path_to_unfocus {
+                unfocus_document_sync(&path, sessions, session_events_tx);
+                *current_focus.write_recover() = None;
+            }
             return;
         }
     }
@@ -193,9 +201,12 @@ pub fn handle_focus_event_sync(
                 }
             }
 
-            if path_to_unfocus.is_some() {
-                *current_focus.write_recover() = None;
-            }
+            // Set current_focus to the new path immediately so keystrokes
+            // arriving during focus_document_sync I/O are attributed to the
+            // incoming document rather than dropped (the session will be
+            // created momentarily by focus_document_sync).
+            super::trace!("[FOCUS] set current_focus={:?}", doc_path);
+            *current_focus.write_recover() = Some(doc_path.clone());
 
             focus_document_sync(
                 &doc_path,
@@ -207,8 +218,6 @@ pub fn handle_focus_event_sync(
                 wal_dir,
                 session_events_tx,
             );
-            super::trace!("[FOCUS] set current_focus={:?}", doc_path);
-            *current_focus.write_recover() = Some(doc_path);
         }
         FocusEventType::FocusLost | FocusEventType::FocusUnknown => {
             let prev_path = {

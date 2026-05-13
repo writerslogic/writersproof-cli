@@ -107,6 +107,11 @@ pub fn open_documents_for_pid(pid: u32) -> Vec<OpenFile> {
     docs
 }
 
+/// Check if a lowercase extension is a recognized document type.
+pub fn is_document_extension(ext_lower: &str) -> bool {
+    DOCUMENT_EXTENSIONS.contains(&ext_lower)
+}
+
 /// Check if a path has a recognized document extension and is not
 /// in an excluded system directory.
 fn is_document_path(path: &Path) -> bool {
