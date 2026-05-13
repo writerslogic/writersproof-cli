@@ -728,6 +728,8 @@ fn compute_jitter_seal(intervals_ms: &[u64], content_hash: [u8; 32]) -> Vec<u8> 
     use sha2::Sha256 as HmacSha256;
 
     type HmacSha = Hmac<HmacSha256>;
+    // HMAC accepts any non-empty key; a 32-byte content_hash always satisfies this.
+    // new_from_slice only fails for empty key (InvalidLength), which cannot happen here.
     let mut mac =
         HmacSha::new_from_slice(&content_hash).expect("HMAC accepts any key length");
     mac.update(b"cpoe-jitter-seal-v1");

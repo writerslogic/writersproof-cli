@@ -820,16 +820,20 @@ pub fn ffi_resolve_sync_conflict(
 
     // Verify remote fragment signature before accepting it
     if let Some(ref frag) = remote_fragment {
-        let hash_arr: &[u8; 32] = frag
-            .fragment_hash
-            .as_slice()
-            .try_into()
-            .expect("length validated at 32 bytes");
-        let sig_arr: &[u8; 64] = frag
-            .source_signature
-            .as_slice()
-            .try_into()
-            .expect("length validated at 64 bytes");
+        let hash_arr: &[u8; 32] = match frag.fragment_hash.as_slice().try_into() {
+            Ok(a) => a,
+            Err(_) => return FfiSyncResult::err(&format!(
+                "fragment_hash length {} != 32",
+                frag.fragment_hash.len()
+            )),
+        };
+        let sig_arr: &[u8; 64] = match frag.source_signature.as_slice().try_into() {
+            Ok(a) => a,
+            Err(_) => return FfiSyncResult::err(&format!(
+                "source_signature length {} != 64",
+                frag.source_signature.len()
+            )),
+        };
         let signing_key = try_ffi!(
             crate::ffi::helpers::load_signing_key()
                 .map_err(|e| format!("Cannot verify remote signature: {e}")),
@@ -1061,7 +1065,7 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_attest_test");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().unwrap());
+        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("test temp dir path must be valid UTF-8"));
         let init = crate::ffi::system::ffi_init();
         assert!(init.success, "init failed: {:?}", init.error_message);
 

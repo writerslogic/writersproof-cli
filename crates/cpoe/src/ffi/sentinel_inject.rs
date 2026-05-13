@@ -216,6 +216,19 @@ fn inject_keystroke_inner_v3(
     if timestamp_ns <= 0 {
         return false;
     }
+    // Reject implausible coalesced counts before processing. A single physical
+    // key event coalesces at most a handful of OS-buffered events; values above
+    // 10 indicate a malformed or adversarial caller and are rejected outright
+    // rather than silently clamped.
+    const MAX_COALESCED_COUNT: u64 = 10;
+    if coalesced_count > MAX_COALESCED_COUNT {
+        log::warn!(
+            "FFI keystroke injection rejected: coalesced_count={} exceeds max {}",
+            coalesced_count,
+            MAX_COALESCED_COUNT
+        );
+        return false;
+    }
     let is_key_up = char_value == "UP";
 
     let sentinel = match get_running_sentinel() {

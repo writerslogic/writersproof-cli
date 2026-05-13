@@ -182,7 +182,7 @@ pub fn ffi_sentinel_start() -> FfiResult {
         use std::io::Write;
         let debug_path = std::env::var("CPOE_DATA_DIR")
             .map(|d| format!("{}/sentinel_debug.txt", d))
-            .unwrap_or_else(|_| "/tmp/cpop_sentinel_debug.txt".to_string());
+            .unwrap_or_else(|_| "/tmp/cpoe_sentinel_debug.txt".to_string());
         if let Ok(mut f) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -389,7 +389,7 @@ mod tests {
 
         let dir = crate::ffi::helpers::get_data_dir();
         assert!(dir.is_some(), "get_data_dir() returned None");
-        let dir = dir.unwrap();
+        let dir = dir.expect("get_data_dir() returned None despite is_some() assertion");
         assert!(
             dir.ends_with("CPoE") || dir.ends_with("WritersProof"),
             "data dir should end with CPoE or WritersProof, got: {}",
@@ -427,8 +427,8 @@ mod tests {
     #[test]
     fn test_validate_path_accepts_tmp_file() {
         // Create a temp file so validate_path can canonicalize it.
-        let tmp = std::env::temp_dir().join("cpop_test_validate_path.txt");
-        std::fs::write(&tmp, b"test").expect("write temp file");
+        let tmp = std::env::temp_dir().join("cpoe_test_validate_path.txt");
+        std::fs::write(&tmp, b"test").expect("failed to write temp file for validate_path test");
         let result = crate::sentinel::helpers::validate_path(&tmp);
         assert!(result.is_ok(), "validate_path failed: {result:?}");
         let _ = std::fs::remove_file(&tmp);

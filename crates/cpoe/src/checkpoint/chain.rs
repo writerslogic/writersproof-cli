@@ -190,6 +190,8 @@ impl Chain {
         vdf_params: Parameters,
         entanglement_mode: EntanglementMode,
     ) -> Result<Self> {
+        // Check the original path for symlinks BEFORE canonicalize resolves them.
+        // canonicalize() follows symlinks silently, so we must reject first.
         if fs::symlink_metadata(document_path.as_ref())?
             .file_type()
             .is_symlink()
@@ -198,7 +200,6 @@ impl Chain {
                 "Symlinks not supported for document paths",
             ));
         }
-
         let abs_path = fs::canonicalize(document_path.as_ref())?;
         let path_str = abs_path.to_string_lossy().to_string();
         let path_hash = crate::utils::sha256_of_path(&abs_path);
@@ -305,8 +306,12 @@ impl Chain {
         let (content_hash, content_size) =
             crate::crypto::hash_file_with_size(Path::new(&self.metadata.document_path))?;
 
-        let ordinal = u64::try_from(self.checkpoints.len())
-            .map_err(|_| Error::checkpoint("checkpoint ordinal overflow"))?;
+        let ordinal = u64::try_from(self.checkpoints.len()).map_err(|_| {
+            Error::checkpoint(format!(
+                "checkpoint ordinal overflow: chain has {} checkpoints (max u64)",
+                self.checkpoints.len()
+            ))
+        })?;
         let last_cp = self.checkpoints.last();
         let previous_hash = match last_cp {
             Some(cp) => cp.hash,
@@ -428,7 +433,9 @@ impl Chain {
         fs::rename(&tmp_path, path)?;
         if let Some(parent) = path.parent() {
             if let Ok(dir) = fs::File::open(parent) {
-                let _ = dir.sync_all();
+                if let Err(e) = dir.sync_all() {
+                    log::warn!("checkpoint: parent directory fsync failed after atomic rename: {e}");
+                }
             }
         }
         Ok(())
@@ -486,7 +493,9 @@ impl Chain {
             .map_err(|e| Error::checkpoint(format!("failed to commit chain MAC: {e}")))?;
         if let Some(parent) = path.parent() {
             if let Ok(dir) = fs::File::open(parent) {
-                let _ = dir.sync_all();
+                if let Err(e) = dir.sync_all() {
+                    log::warn!("checkpoint: parent directory fsync failed after atomic rename: {e}");
+                }
             }
         }
         Ok(())

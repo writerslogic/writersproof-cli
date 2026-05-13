@@ -463,8 +463,8 @@ mod tests {
         }
 
         let clc = compute_clc_metrics(&windows, &samples);
-        assert!(clc.is_some());
-        let m = clc.unwrap();
+        assert!(clc.is_some(), "compute_clc_metrics returned None with valid windows and samples");
+        let m = clc.expect("clc is Some per assertion above");
         assert!(m.mean_surprisal_bpw.is_finite());
         assert!(m.mean_surprisal_bpw > 0.0);
     }

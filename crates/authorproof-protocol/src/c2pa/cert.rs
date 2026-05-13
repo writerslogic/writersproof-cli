@@ -68,6 +68,7 @@ pub fn generate_self_signed_cert(signing_key: &SigningKey) -> Result<Vec<u8>> {
     // Take first 20 bytes of SHA-256(public_key) as the serial number.
     let pk_bytes = signing_key.verifying_key().to_bytes();
     let pk_hash = sha2::Sha256::digest(pk_bytes);
+    debug_assert_eq!(pk_hash.len(), 32, "SHA-256 digest must be 32 bytes");
     let serial: SerialNumber = SerialNumber::new(&pk_hash[..20])
         .map_err(|e| Error::Crypto(format!("failed to create serial number: {e}")))?;
 

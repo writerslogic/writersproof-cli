@@ -232,6 +232,7 @@ pub fn sign_event_lamport(
 
 /// Atomically write `data` to `path` via temp-file + fsync + rename.
 /// Uses `tempfile` for an unpredictable temp name to prevent symlink attacks.
+/// Creates the parent directory if it does not already exist.
 pub fn atomic_write(path: &Path, data: &[u8]) -> std::io::Result<()> {
     let parent = path
         .parent()
@@ -242,6 +243,9 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> std::io::Result<()> {
                 "atomic_write: path must include a parent directory",
             )
         })?;
+    // Create parent directory if absent so that NamedTempFile::new_in does not
+    // fail with a cryptic "No such file or directory" OS error.
+    std::fs::create_dir_all(parent)?;
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
     std::io::Write::write_all(&mut tmp, data)?;
     tmp.as_file().sync_all()?;

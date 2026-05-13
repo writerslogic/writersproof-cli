@@ -438,6 +438,23 @@ fn check_content_growth_vs_jitter_density(
         };
     }
 
+    // Guard against very short documents: fewer than 100 chars produces a
+    // kchars value so small that density scores become misleading.  Return
+    // INSUFFICIENT_SCORE to signal that not enough content exists for a
+    // reliable jitter-density assessment rather than producing a spurious
+    // high-density score.
+    if document_length < 100 {
+        return CrossModalCheck {
+            name: "content_growth_vs_jitter_density".into(),
+            passed: true,
+            score: INSUFFICIENT_SCORE,
+            detail: format!(
+                "Document too short for jitter density check ({} chars; min 100)",
+                document_length
+            ),
+        };
+    }
+
     let kchars = document_length as f64 / 1000.0;
     let density = samples.len() as f64 / kchars;
     let passed = density >= MIN_JITTER_DENSITY_PER_KCHAR;

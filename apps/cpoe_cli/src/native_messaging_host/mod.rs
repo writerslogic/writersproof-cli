@@ -68,8 +68,9 @@ fn main() {
             Request::Encrypted { payload } => match decrypt_and_dispatch(&payload) {
                 Ok(resp) => encrypt_response(&resp).unwrap_or(resp),
                 Err(e) => {
+                    eprintln!("Decryption error: {e}");
                     let err = Response::Error {
-                        message: format!("Decryption failed: {e}"),
+                        message: "Decryption failed".into(),
                         code: "DECRYPT_ERROR".into(),
                     };
                     encrypt_response(&err).unwrap_or(err)
@@ -209,7 +210,10 @@ fn handle_hello(client_pubkey_b64: &str) -> Response {
     let server_pubkey_b64 = base64::engine::general_purpose::STANDARD.encode(server_pubkey_bytes);
     let confirm_b64 = base64::engine::general_purpose::STANDARD.encode(&confirm);
 
-    *SECURE_SESSION.lock().unwrap_or_else(|p| p.into_inner()) = Some(session);
+    *SECURE_SESSION.lock().unwrap_or_else(|p| {
+        eprintln!("Warning: SECURE_SESSION mutex poisoned, recovering");
+        p.into_inner()
+    }) = Some(session);
 
     Response::HelloAccept {
         server_pubkey: server_pubkey_b64,

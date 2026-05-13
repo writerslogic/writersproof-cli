@@ -24,7 +24,10 @@ fn with_manager<F, T>(f: F) -> Result<T, String>
 where
     F: FnOnce(&mut FingerprintManager) -> Result<T, String>,
 {
-    let mut guard = manager_lock().lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = manager_lock().lock().unwrap_or_else(|e| {
+        log::warn!("fingerprint mutex poisoned, recovering");
+        e.into_inner()
+    });
 
     if guard.is_none() {
         let data_dir = get_data_dir().ok_or("Cannot determine data directory")?;

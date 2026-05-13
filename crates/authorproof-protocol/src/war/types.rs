@@ -56,6 +56,32 @@ pub struct Block {
     pub ear: Option<super::ear::EarToken>,
 }
 
+impl Block {
+    /// Validate version/EAR field consistency.
+    ///
+    /// WAR/1.0 and WAR/1.1 blocks must not carry EAR fields.
+    /// WAR/2.0 blocks must carry an EAR token.
+    /// Returns `Err` with a description of the violation.
+    pub fn validate(&self) -> Result<(), String> {
+        match self.version {
+            Version::V1_0 | Version::V1_1 => {
+                if self.ear.is_some() {
+                    return Err(format!(
+                        "{} block must not contain an EAR token",
+                        self.version.as_str()
+                    ));
+                }
+            }
+            Version::V2_0 => {
+                if self.ear.is_none() {
+                    return Err("WAR/2.0 block is missing required EAR token".to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The cryptographic seal binding all evidence together.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Seal {

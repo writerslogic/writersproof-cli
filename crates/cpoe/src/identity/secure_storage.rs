@@ -486,6 +486,7 @@ fn save_macos(account: &str, data: &[u8]) -> Result<()> {
     };
     use security_framework_sys::keychain_item::SecItemAdd;
 
+    // Ignore "not found" on pre-delete: the item may not exist yet, which is fine.
     let _ = delete_macos(account);
 
     let mut encoded = general_purpose::STANDARD.encode(data);

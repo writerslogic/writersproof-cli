@@ -165,7 +165,8 @@ pub const CBOR_TAG_ATTESTATION_RESULT: u64 = CBOR_TAG_CWAR;
 
 /// Serialize an EvidencePacket to CBOR with the registered tag.
 pub fn encode_evidence(packet: &crate::rfc::EvidencePacket) -> crate::error::Result<Vec<u8>> {
-    cbor::encode_cpoe(packet).map_err(|e| crate::error::Error::Serialization(e.to_string()))
+    cbor::encode_cpoe(packet)
+        .map_err(|e| crate::error::Error::Serialization(format!("CBOR encode_evidence: {e}")))
 }
 
 /// Deserialize CBOR-tagged bytes into an EvidencePacket.

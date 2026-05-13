@@ -135,6 +135,8 @@ pub(super) fn setup_keystroke_capture(
             Ok(rx) => {
                 let session_clone = Arc::clone(session);
                 let handle = std::thread::spawn(move || {
+                    const MAX_PANICS: u32 = 5;
+                    let mut panic_count: u32 = 0;
                     while let Ok(_event) = rx.recv() {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let mut s = session_clone.lock().unwrap_or_else(|e| {
@@ -146,12 +148,17 @@ pub(super) fn setup_keystroke_capture(
                             }
                         }));
                         if let Err(panic_val) = result {
+                            panic_count += 1;
                             let msg = panic_val
                                 .downcast_ref::<&str>()
                                 .copied()
                                 .or_else(|| panic_val.downcast_ref::<String>().map(|s| s.as_str()))
                                 .unwrap_or("unknown panic");
-                            eprintln!("Warning: keystroke processing panicked: {msg}");
+                            eprintln!("Warning: keystroke processing panicked ({panic_count}/{MAX_PANICS}): {msg}");
+                            if panic_count >= MAX_PANICS {
+                                eprintln!("Error: keystroke thread exceeded panic limit ({MAX_PANICS}), exiting");
+                                break;
+                            }
                         }
                     }
                 });

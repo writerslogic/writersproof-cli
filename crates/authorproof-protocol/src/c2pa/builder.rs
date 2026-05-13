@@ -240,14 +240,28 @@ impl C2paManifestBuilder {
         if let Some(ref url) = self.evidence_url {
             let evidence_hash = Sha256::digest(&self.evidence_bytes);
             let process_start = self.evidence_packet.checkpoints.first().and_then(|cp| {
-                i64::try_from(cp.timestamp).ok().and_then(|ts| {
-                    chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339())
-                })
+                match i64::try_from(cp.timestamp) {
+                    Ok(ts) => chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339()),
+                    Err(_) => {
+                        log::warn!(
+                            "process_start timestamp {} exceeds i64::MAX; omitting from manifest",
+                            cp.timestamp
+                        );
+                        None
+                    }
+                }
             });
             let process_end = self.evidence_packet.checkpoints.last().and_then(|cp| {
-                i64::try_from(cp.timestamp).ok().and_then(|ts| {
-                    chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339())
-                })
+                match i64::try_from(cp.timestamp) {
+                    Ok(ts) => chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339()),
+                    Err(_) => {
+                        log::warn!(
+                            "process_end timestamp {} exceeds i64::MAX; omitting from manifest",
+                            cp.timestamp
+                        );
+                        None
+                    }
+                }
             });
             let ext_ref = ExternalReferenceAssertion {
                 location: HashedExtUri {

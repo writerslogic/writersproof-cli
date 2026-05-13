@@ -170,7 +170,14 @@ impl PerplexityModel {
     /// Convenience: compute perplexity, returning 1.0 on any error.
     /// Use this when the caller doesn't need to distinguish error types.
     pub fn perplexity_or_default(&self, text: &str) -> f64 {
-        self.compute_perplexity(text).unwrap_or(1.0)
+        match self.compute_perplexity(text) {
+            Ok(ppl) if ppl.is_finite() => ppl,
+            Ok(_) | Err(PerplexityError::ComputationFailed) => {
+                log::warn!("perplexity computation produced non-finite result");
+                1.0
+            }
+            Err(_) => 1.0,
+        }
     }
 }
 

@@ -557,7 +557,7 @@ fn analyze_likelihood_model_inner(
         .fold(f64::MIN, f64::max);
 
     // Session posterior: sigmoid of mean LLR (not sum, to be scale-independent).
-    let session_p_cognitive = 1.0 / (1.0 + (-mean_llr).exp());
+    let session_p_cognitive = 1.0 / (1.0 + (-mean_llr.clamp(-700.0, 700.0)).exp());
 
     // Build timestamped timeline: (seconds_from_start, p_cognitive).
     let session_start_ns = samples.first().map(|s| s.timestamp_ns).unwrap_or(0);

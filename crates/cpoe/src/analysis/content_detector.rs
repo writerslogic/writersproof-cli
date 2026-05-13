@@ -21,6 +21,13 @@ static STOP_WORDS: &[&str] = &[
 const WEIGHT_DISCRIMINATOR: f64 = 2.0;
 const WEIGHT_COMMON: f64 = 1.0;
 
+/// Minimum softmax confidence required to return a non-Unknown classification.
+/// Scores below this threshold are reported as `ContextType::Unknown`.
+/// - 0.80+  : High confidence
+/// - 0.60–0.79: Moderate confidence
+/// - <0.60  : Low confidence → Unknown
+const MIN_CLASSIFICATION_CONFIDENCE: f64 = 0.60;
+
 /// Metadata for a single AC pattern entry.
 #[derive(Debug, Clone)]
 struct PatternMeta {
@@ -842,8 +849,7 @@ impl ContentDetector {
         let (best_type, best_score) = candidates[best_idx];
         let _ = sum_exp; // softmax probabilities available for future diagnostics
 
-        // Confidence threshold: require at least 0.60 confidence
-        if best_score < 0.60 {
+        if best_score < MIN_CLASSIFICATION_CONFIDENCE {
             return (ContextType::Unknown, best_score);
         }
 

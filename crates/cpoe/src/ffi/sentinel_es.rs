@@ -65,6 +65,9 @@ pub fn ffi_sentinel_es_ai_tool_detected(
     exec_path: String,
 ) -> bool {
     catch_ffi_panic!(false, {
+    // signing_id is a macOS Team ID + bundle ID (max ~512 bytes);
+    // exec_path is an absolute filesystem path (max 4096 bytes per POSIX PATH_MAX).
+    // Combined max = 4608 bytes. Reject before touching sentinel state.
     if signing_id.len() > 512 || exec_path.len() > 4096 {
         log::warn!("ES AI tool params too long: signing_id={}, exec_path={}", signing_id.len(), exec_path.len());
         return false;
@@ -369,6 +372,8 @@ pub fn ffi_sentinel_dictation_fragment(
         log::warn!("ffi_sentinel_dictation_fragment: params too long");
         return false;
     }
+    // confidence=0.0 is valid: it means "low confidence but recorded" (e.g. background noise).
+    // Only NaN, infinity, and out-of-range values are rejected.
     if !confidence.is_finite() || !(0.0..=1.0).contains(&confidence) {
         log::warn!("ffi_sentinel_dictation_fragment: invalid confidence {confidence}");
         return false;

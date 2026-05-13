@@ -31,9 +31,13 @@ impl TranscriptionDetector {
 
     /// Ratio of net progress to total keystrokes.
     /// Composition: 0.60-0.80, Transcription: >0.92, Perfect: ~1.0
+    ///
+    /// Returns 0.0 for empty documents: no keystrokes means no evidence of
+    /// linearity, not perfect linearity. Returning 1.0 would incorrectly
+    /// flag empty documents as transcription.
     pub fn compute_linearity_score(&self) -> f64 {
         if self.data.total_keystrokes == 0 {
-            return 1.0;
+            return 0.0;
         }
 
         let revision_effort = self.data.deletions + self.data.insertions;

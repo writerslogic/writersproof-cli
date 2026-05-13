@@ -702,8 +702,8 @@ mod tests {
         let samples = make_samples(&ikis);
 
         let result = analyze_cognitive_load(Some(text), &samples);
-        assert!(result.is_some());
-        let metrics = result.unwrap();
+        assert!(result.is_some(), "analyze_cognitive_load returned None with valid text and samples");
+        let metrics = result.expect("result is Some per assertion above");
         assert!(metrics.word_count > 10);
         assert!(metrics.sentence_count >= 3);
         assert!(metrics.composite_score >= 0.0 && metrics.composite_score <= 1.0);

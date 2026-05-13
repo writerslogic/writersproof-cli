@@ -106,6 +106,11 @@ pub fn analyze_labyrinth(
 
     // Truncate to cap O(N²) RQA/Lyapunov at ~1M distance comparisons
     let capped = if keystroke_deltas.len() > MAX_LABYRINTH_DATA_POINTS {
+        log::info!(
+            "labyrinth: truncating {} keystroke deltas to {} for O(N²) cap",
+            keystroke_deltas.len(),
+            MAX_LABYRINTH_DATA_POINTS
+        );
         &keystroke_deltas[keystroke_deltas.len() - MAX_LABYRINTH_DATA_POINTS..]
     } else {
         keystroke_deltas

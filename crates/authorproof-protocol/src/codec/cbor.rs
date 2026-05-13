@@ -259,13 +259,6 @@ pub fn decode_from<T: DeserializeOwned, R: Read>(reader: R) -> Result<T> {
         .take(MAX_CBOR_PAYLOAD as u64)
         .read_to_end(&mut buf)
         .map_err(CodecError::Io)?;
-    if buf.len() > MAX_CBOR_PAYLOAD {
-        return Err(CodecError::Validation(format!(
-            "CBOR payload too large: {} bytes (max {})",
-            buf.len(),
-            MAX_CBOR_PAYLOAD
-        )));
-    }
     if !check_cbor_depth(&buf, MAX_CBOR_DEPTH) {
         return Err(CodecError::Validation(format!(
             "CBOR nesting depth exceeds maximum ({})",

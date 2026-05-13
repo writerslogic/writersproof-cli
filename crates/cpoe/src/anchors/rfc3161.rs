@@ -1093,8 +1093,12 @@ impl AnchorProvider for Rfc3161Provider {
     }
 
     async fn is_available(&self) -> bool {
+        // Use a shorter timeout than the shared client's 30s default
+        // to avoid blocking callers on a simple availability check.
+        let timeout = std::time::Duration::from_secs(5);
         for url in &self.tsa_urls {
-            if let Ok(resp) = self.client.head(url).send().await {
+            let result = tokio::time::timeout(timeout, self.client.head(url).send()).await;
+            if let Ok(Ok(resp)) = result {
                 if resp.status().is_success() || resp.status().as_u16() == 405 {
                     return true;
                 }

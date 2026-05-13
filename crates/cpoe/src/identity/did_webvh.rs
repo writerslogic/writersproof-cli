@@ -353,6 +353,13 @@ impl WebVHIdentity {
                 "restrict state file permissions: {e}"
             )));
         }
+        // sync_all before rename so the data survives a crash between write and rename.
+        {
+            let f = std::fs::File::open(&state_tmp)
+                .map_err(|e| Error::identity(format!("open webvh state tmp for sync: {e}")))?;
+            f.sync_all()
+                .map_err(|e| Error::identity(format!("sync webvh state tmp: {e}")))?;
+        }
         std::fs::rename(&state_tmp, &state_path)
             .map_err(|e| Error::identity(format!("rename webvh state: {e}")))?;
 
@@ -381,10 +388,15 @@ impl WebVHIdentity {
             .to_string();
 
         let state_path = data_dir.join("did_webvh_state.json");
+        if !state_path.exists() {
+            return Err(Error::not_found("did:webvh state file not found; identity may not have been saved"));
+        }
         let path_str = state_path
             .to_str()
             .ok_or_else(|| Error::identity("non-UTF-8 data directory path"))?;
-        let state = DIDWebVHState::load_state(path_str).map_err(map_webvh_err)?;
+        let state = DIDWebVHState::load_state(path_str).map_err(|e| {
+            Error::identity(format!("corrupted did:webvh state (delete and re-create identity to recover): {e}"))
+        })?;
 
         Ok(Self {
             state,
@@ -600,6 +612,15 @@ fn load_signing_key() -> Result<SigningKey, Error> {
     let data_dir =
         data_dir().ok_or_else(|| Error::identity("Data directory not found"))?;
     let key_path = data_dir.join("signing_key");
+    {
+        let lmeta = std::fs::symlink_metadata(&key_path)
+            .map_err(|e| Error::identity(format!("stat signing key: {e}")))?;
+        if lmeta.file_type().is_symlink() {
+            return Err(Error::identity(
+                "signing key path is a symlink; refusing to load (possible attack)",
+            ));
+        }
+    }
     let file = std::fs::File::open(&key_path)
         .map_err(|e| Error::identity(format!("open signing key: {e}")))?;
     #[cfg(unix)]

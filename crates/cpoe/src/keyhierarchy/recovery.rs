@@ -13,11 +13,17 @@ use super::identity::derive_master_identity;
 use super::types::{PufProvider, RatchetState, Session, SessionRecoveryState};
 use super::verification::verify_session_certificate;
 
+/// Maximum age for a session certificate that has no explicit `expires_at`.
+/// Certificates older than this are rejected to limit the recovery window.
+const RECOVERY_MAX_AGE_SECS: i64 = 7 * 24 * 3600; // 7 days
+
 pub fn recover_session(
     puf: &dyn PufProvider,
     recovery: &SessionRecoveryState,
     document_hash: [u8; 32],
 ) -> Result<Session, KeyHierarchyError> {
+    // Constant-time zero check: prevents timing side-channels that could
+    // distinguish "zero session_id" from "non-zero session_id" comparisons.
     if subtle::ConstantTimeEq::ct_eq(
         &recovery.certificate.session_id[..],
         &[0u8; 32][..],
@@ -28,6 +34,19 @@ pub fn recover_session(
     }
 
     verify_session_certificate(&recovery.certificate)?;
+
+    // When the certificate has no explicit expiry, enforce a max recovery age
+    // so stale recovery states cannot be replayed indefinitely.
+    if recovery.certificate.expires_at.is_none() {
+        let age = chrono::Utc::now()
+            .signed_duration_since(recovery.certificate.created_at)
+            .num_seconds();
+        if age > RECOVERY_MAX_AGE_SECS {
+            return Err(KeyHierarchyError::Crypto(
+                "session recovery state has exceeded maximum age".to_string(),
+            ));
+        }
+    }
 
     if recovery.certificate.document_hash != document_hash {
         return Err(KeyHierarchyError::SessionRecoveryFailed);

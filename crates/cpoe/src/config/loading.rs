@@ -45,10 +45,18 @@ impl CpopConfig {
             Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
                 Ok(val) => {
                     if let Some(vdf) = val.get("vdf") {
-                        config.vdf.iterations_per_second = vdf
+                        let parsed = vdf
                             .get("iterations_per_second")
                             .and_then(|v| v.as_u64())
                             .unwrap_or(config.vdf.iterations_per_second);
+                        if parsed == 0 {
+                            log::warn!(
+                                "legacy {}: vdf.iterations_per_second is 0; using default",
+                                cli_path.display()
+                            );
+                        } else {
+                            config.vdf.iterations_per_second = parsed;
+                        }
                     }
                 }
                 Err(e) => {

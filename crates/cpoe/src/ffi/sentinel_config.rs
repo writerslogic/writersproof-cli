@@ -170,7 +170,7 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_config_test");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().unwrap());
+        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("temp dir path is not valid UTF-8"));
 
         // Add a path
         let result = ffi_config_add_excluded_path("/usr/local/exclude_me".to_string());
@@ -202,7 +202,7 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_config_test_ext");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().unwrap());
+        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("temp dir path is not valid UTF-8"));
 
         // Add an extension
         let result = ffi_config_add_allowed_extension(".xyz".to_string());
@@ -241,7 +241,7 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_config_test_dup");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().unwrap());
+        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("temp dir path is not valid UTF-8"));
 
         ffi_config_add_excluded_path("/tmp/dup_test".to_string());
         ffi_config_add_excluded_path("/tmp/dup_test".to_string());

@@ -337,10 +337,12 @@ pub(super) async fn handle_connection_inner<
                 match encode_for_protocol(&response, encode_protocol) {
                     Ok(response_bytes) => {
                         if let Some(ref session) = secure_session {
-                            if send_encrypted(stream, session, &response_bytes)
-                                .await
-                                .is_err()
-                            {
+                            if let Err(e) = send_encrypted(stream, session, &response_bytes).await {
+                                log::warn!(
+                                    "IPC: send response failed on {}: {} (closing connection)",
+                                    transport_label,
+                                    e
+                                );
                                 break;
                             }
                         } else {
@@ -351,10 +353,20 @@ pub(super) async fn handle_connection_inner<
                                     break;
                                 }
                             };
-                            if stream.write_all(&len_bytes).await.is_err() {
+                            if let Err(e) = stream.write_all(&len_bytes).await {
+                                log::warn!(
+                                    "IPC: send response failed on {}: {} (closing connection)",
+                                    transport_label,
+                                    e
+                                );
                                 break;
                             }
-                            if stream.write_all(&response_bytes).await.is_err() {
+                            if let Err(e) = stream.write_all(&response_bytes).await {
+                                log::warn!(
+                                    "IPC: send response failed on {}: {} (closing connection)",
+                                    transport_label,
+                                    e
+                                );
                                 break;
                             }
                         }

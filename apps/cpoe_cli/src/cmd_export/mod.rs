@@ -235,7 +235,21 @@ pub(crate) async fn cmd_export(
     }
 
     let format_lower = format.to_lowercase();
-    let out_path = output.unwrap_or_else(|| default_output_path(file_path, &format_lower));
+    let out_path = match output {
+        Some(p) => {
+            // Reject user-supplied paths that contain parent-directory traversal
+            // components (".."), which could write evidence output outside the
+            // current directory without the user noticing.
+            if p.components().any(|c| c == std::path::Component::ParentDir) {
+                return Err(anyhow!(
+                    "Output path '{}' contains '..'; use an absolute path or a plain filename.",
+                    p.display()
+                ));
+            }
+            p
+        }
+        None => default_output_path(file_path, &format_lower),
+    };
 
     write_evidence_output(&EvidenceOutputContext {
         format_lower: &format_lower,

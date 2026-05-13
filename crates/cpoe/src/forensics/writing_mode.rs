@@ -1053,8 +1053,8 @@ mod tests {
         let deltas = [10, 10, 10, -3, -2, 10, 10, 10, 10, 10, 10, 10, -5, -3, 10, 10, 10, 10, 10, 10];
         let events = make_fast_events(&deltas);
         let ratio = compute_translating_burst_ratio(SortedEvents::new(&events));
-        assert!(ratio.is_some());
-        let r = ratio.unwrap();
+        assert!(ratio.is_some(), "compute_translating_burst_ratio returned None with valid events");
+        let r = ratio.expect("ratio is Some per assertion above");
         assert!(r < 0.80, "composing-like pattern should have ratio < 0.80, got {r}");
         assert!(r > 0.30, "should still have translating bursts, got {r}");
     }

@@ -183,7 +183,8 @@ mod tests {
         let msg = [0xFF; 32];
         let sig = privkey.sign(&msg);
         let bytes = sig.to_bytes().to_vec();
-        let recovered = LamportSignature::from_bytes(&bytes).unwrap();
+        let recovered = LamportSignature::from_bytes(&bytes)
+            .expect("from_bytes should succeed for a valid serialized LamportSignature");
         assert_eq!(recovered.to_bytes(), sig.to_bytes());
     }
 

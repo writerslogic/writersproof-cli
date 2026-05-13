@@ -13,7 +13,10 @@ static DEVICE_IDENTITY: std::sync::Mutex<Option<(bool, [u8; 16], String)>> =
     std::sync::Mutex::new(None);
 
 pub fn device_identity() -> ([u8; 16], String) {
-    let mut guard = DEVICE_IDENTITY.lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = DEVICE_IDENTITY.lock().unwrap_or_else(|e| {
+        log::warn!("DEVICE_IDENTITY mutex poisoned; recovering cached value");
+        e.into_inner()
+    });
     // If we have a persistent (non-ephemeral) identity, return it.
     if let Some((true, id, machine)) = guard.as_ref() {
         return (*id, machine.clone());

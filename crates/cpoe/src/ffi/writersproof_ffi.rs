@@ -55,7 +55,8 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
         }
         Ok(k) => k,
         Err(e) => {
-            return FfiResult::err(format!("WritersProof API key not configured. {e}"));
+            log::warn!("WritersProof API key load failed: {e}");
+            return FfiResult::err("WritersProof API key not configured".to_string());
         }
     };
 

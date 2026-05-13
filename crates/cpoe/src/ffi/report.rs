@@ -365,7 +365,10 @@ fn get_forensics_cached(
     let hit = {
         let mut cache = forensic_cache()
             .lock()
-            .unwrap_or_else(|p| p.into_inner());
+            .unwrap_or_else(|p| {
+                log::warn!("forensic_cache mutex poisoned; recovering cached value");
+                p.into_inner()
+            });
         cache
             .get(&cache_key)
             .filter(|e| e.event_count == events.len())

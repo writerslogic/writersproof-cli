@@ -79,11 +79,13 @@ impl SealedIdentityStore {
 
         let clock = self.provider.clock_info().ok();
 
-        let counter = self
-            .provider
-            .bind(b"identity-seal-counter")
-            .ok()
-            .and_then(|b| b.monotonic_counter);
+        let counter = match self.provider.bind(b"identity-seal-counter") {
+            Ok(b) => b.monotonic_counter,
+            Err(e) => {
+                log::warn!("sealed_identity: bind failed at seal time, counter not recorded: {e}");
+                None
+            }
+        };
 
         let blob = SealedBlob {
             version: SEALED_BLOB_VERSION,

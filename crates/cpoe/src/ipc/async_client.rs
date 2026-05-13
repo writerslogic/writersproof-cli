@@ -211,6 +211,9 @@ impl AsyncIpcClient {
                 .await
                 .map_err(AsyncIpcClientError::ReceiveFailed)?;
             let len = u32::from_le_bytes(len_buf) as usize;
+            // 1024 is intentional: this is the ECDH handshake confirmation frame,
+            // not an application message. MAX_MESSAGE_SIZE applies to post-handshake
+            // encrypted payloads only.
             if len > 1024 {
                 return Err(AsyncIpcClientError::ProtocolError(
                     "Server confirmation too large".into(),
@@ -335,6 +338,10 @@ impl AsyncIpcClient {
                 // Timeout during write may have left a partial frame on the wire.
                 // The stream is now in an indeterminate state; drop it to prevent
                 // the caller from sending further messages on a corrupted channel.
+                log::warn!(
+                    "IPC send timeout after {}s; connection poisoned",
+                    IO_TIMEOUT.as_secs()
+                );
                 self.stream = None;
                 self.secure_session = None;
                 Err(AsyncIpcClientError::Timeout(IO_TIMEOUT))

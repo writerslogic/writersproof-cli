@@ -34,17 +34,17 @@ pub fn validate_orcid(orcid: &str) -> bool {
     }
 
     // ISO 7064 Mod 11,2 check digit verification.
-    let mut total: u32 = 0;
+    let mut total: u64 = 0;
     for c in body.chars() {
-        let digit = c.to_digit(10).unwrap_or(0);
+        let digit = c.to_digit(10).unwrap_or(0) as u64;
         total = (total + digit) * 2;
     }
     let remainder = total % 11;
     let expected = (12 - remainder) % 11;
-    let check_value = if last == 'X' {
+    let check_value: u64 = if last == 'X' {
         10
     } else {
-        last.to_digit(10).unwrap_or(99)
+        last.to_digit(10).unwrap_or(99) as u64
     };
 
     expected == check_value
