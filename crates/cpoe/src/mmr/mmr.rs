@@ -340,8 +340,11 @@ impl Mmr {
             }
         }
 
-        let right_parent = pos + 1;
-        if offset <= pos + 1 {
+        let right_parent = match pos.checked_add(1) {
+            Some(v) => v,
+            None => return Ok((0, 0, false, false)),
+        };
+        if offset <= right_parent {
             let left_sibling = right_parent - offset;
             if left_sibling < size && left_sibling != pos {
                 let left_node = self.store.get(left_sibling)?;

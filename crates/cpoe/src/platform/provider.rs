@@ -55,8 +55,9 @@ impl PlatformProvider for DefaultPlatformProvider {
         }
         #[cfg(not(target_os = "macos"))]
         {
-            Some(std::sync::Arc::new(crate::tpm::SoftwareProvider::new())
-                as std::sync::Arc<dyn crate::tpm::Provider>)
+            crate::tpm::SoftwareProvider::try_new()
+                .map(|p| std::sync::Arc::new(p) as std::sync::Arc<dyn crate::tpm::Provider>)
+                .ok()
         }
     }
 }

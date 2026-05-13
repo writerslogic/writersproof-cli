@@ -4,9 +4,9 @@
 ## Summary
 | Severity | Open | Fixed | Skipped |
 |----------|------|-------|---------|
-| CRITICAL | 52 | 0 | 0 |
-| HIGH     | 260 | 0 | 0 |
-| MEDIUM   | 409 | 0 | 0 |
+| CRITICAL | 0 | 52 | 0 |
+| HIGH     | 66 | 194 | 0 |
+| MEDIUM   | 401 | 8 | 0 |
 
 ## Systemic Issues
 - [ ] **SYS-001** `MISSING_DOCS`, 5 files, MEDIUM
@@ -25,294 +25,84 @@
   Fix: Split into smaller phases: encode_ingredients(), serialize_cawg(), build_manifest_json(); compose sequentially
 
 ## Critical
-- [ ] **C-001** `[security]` `crates/authorproof-protocol/src/rfc/fixed_point.rs:55`: Unsafe macro-generated type conversion: from_float uses i32 as intermediate for ALL fixed-point types (u16, i16, u8, i8). Values scaled to i32::MAX are clamped, then cast to target type. For i8/u8 wit
-  <!-- pid:FP-002-MACRO-CAST-SAFETY | verified:false | first:2026-05-12 -->
-  Impact: Fixed-point arithmetic can silently produce incorrect values due to wrapping conversion. BiologyInvariantClaim uses these types for scoring; incorrect values propagate through validation chain undetec | Fix: Use type-specific bounds clamping before cast: min.max(value).min(max) after scaling. For signed types, clamp to type's actual range, not i32. | Effort: high
 
-- [ ] **C-002** `[error_handling]` `crates/authorproof-protocol/src/rfc/wire_types/attestation.rs:396`: ConfidenceTier validation uses unsafe as u8 cast without range validation before use: confidence_tier as u8 at line 396 casts enum to u8, then checks raw == 0 || raw > 4. However, enums in Rust serial
-  <!-- pid:CP-009 | verified:false | first:2026-05-12 -->
-  Impact: Invalid ConfidenceTier values from malicious CBOR can pass validation if serde deserialization returns an out-of-range enum variant. Enums are type-safe but deserialization errors are silent in valida | Fix: Use ConfidenceTier::try_from(raw) instead of unsafe cast. Add TryFrom impl (already exists in earrs.rs lines 167-181) and use it. Validate: if let Some(tier) = self.confidence_tier { tier.try_from(tie | Effort: low
 
-- [ ] **C-003** `[security]` `crates/authorproof-protocol/src/rfc/wire_types/checkpoint.rs:182`: Hash verification in compute_hash() calls .expect() on known-safe SHA256 operation with hardcoded 32-byte output; expect message claims 'SHA-256 output is 32 bytes' but no runtime guarantee from Sha25
-  <!-- pid:CP-005 | verified:false | first:2026-05-12 -->
-  Impact: Panic if SHA256 crate changes output size (unlikely but possible across versions). However, the real issue: expect() bypasses Result handling in critical cryptographic path. | Fix: Use HashValue::try_sha256() with proper Result propagation instead of expect(). Change: `Ok(HashValue::try_sha256(digest.to_vec())?)` to preserve error handling. | Effort: trivial
 
-- [ ] **C-004** `[security]` `crates/authorproof-protocol/src/rfc/wire_types/packet.rs:295`: Document filename validation includes path traversal check at line 380-384, checking for '/' '\\' and '..' but does not check for null bytes or unicode normalization attacks
-  <!-- pid:CP-015 | verified:false | first:2026-05-12 -->
-  Impact: Filenames like 'document.txt\u0000.exe' (null-byte attack) or 'dökument.txt' vs 'dokument.txt' (normalization) could bypass checks. File extraction code must handle these cases. | Fix: Add explicit null byte check: if name.contains('\0') { return Err(...); }. Add unicode normalization validation if file extraction uses case-sensitive comparison. | Effort: low
 
-- [ ] **C-005** `[security]` `crates/authorproof-protocol/src/rfc/wire_types/packet.rs:307`: Checkpoint sequence validation: if cp.sequence != i as u64 checks that sequences are monotonic, but cast from usize to u64 on line 308 is always safe. However, validation doesn't check for gaps or neg
-  <!-- pid:CP-014 | verified:false | first:2026-05-12 -->
-  Impact: First checkpoint (i=0) must have sequence=0. If sequence != 0, validation fails correctly. But no check prevents sequence == 1 when i == 0 (first checkpoint claims to be second). Downstream code assum | Fix: Validate: `if cp.sequence != i as u64 { return Err(...); }` is correct. No fix needed; current code is sound. DOWNGRADE TO INFO: validates monotonic_ids properly. | Effort: none
 
-- [ ] **C-006** `[security]` `crates/cpoe/src/analysis/hurst.rs:147`: Regression output NaN/Inf is caught but exponent is not clamped to valid range before use
-  <!-- pid:hurst_extreme_slope | verified:false | first:2026-05-12 -->
-  Impact: If slope.is_finite() passes but has extreme values (e.g., slope=1e308), Probability::clamp() may fail to contain it. Exponent classification uses unclamped slope in edge cases. | Fix: Explicitly clamp slope to [0.0, 2.0] after finiteness check: let exponent = slope.clamp(0.0, 2.0); | Effort: low
 
-- [ ] **C-007** `[performance]` `crates/cpoe/src/analysis/labyrinth.rs:238`: O(n²) nested loop in compute_rqa at lines 238-262. For each point i, iterates all points j, then computes sq_dist repeatedly. With MAX_LABYRINTH_DATA_POINTS=1000, this is 1M distance calls per RQA. Th
-  <!-- pid:PERF_001_O_N2_RQA | verified:false | first:2026-05-12 -->
-  Impact: High latency for keystroke+mouse analysis. RQA computation dominates profile. Scaling beyond 1000 points is infeasible. Synchronous blocking call in evidence collection pipeline. | Fix: 1. Use KdTree (already available at labyrinth.rs:300) for nearest neighbor queries instead of all-pairs. 2. Implement epsilon-ball early exit in distance loop. 3. Consider approximate RQA (sample 10%  | Effort: large
 
-- [ ] **C-008** `[performance]` `crates/cpoe/src/analysis/labyrinth.rs:346`: O(n²) nested loop in estimate_correlation_dimension at lines 344-350. For each scale r, computes all pairwise distances (i in 0..n, j in i+1..n). With 4 scales, total is 4 * n*(n-1)/2 = ~2M distance c
-  <!-- pid:PERF_002_O_N2_CORR_DIM | verified:false | first:2026-05-12 -->
-  Impact: Correlation dimension estimation is bottleneck in Labyrinth. Time complexity scales quadratically. Together with RQA (line 238), labyrinth dominates latency budget. | Fix: 1. Use distance histogram from KdTree nearest-neighbor query. 2. Sample random pairs instead of all pairs (confidence interval correction). 3. Implement approximate D2 using Grassberger-Procaccia with | Effort: large
 
-- [ ] **C-009** `[security]` `crates/cpoe/src/analysis/perplexity.rs:160`: Perplexity NaN result returns 1.0 silently - no indication of failure
-  <!-- pid:perp_nan_default | verified:false | first:2026-05-12 -->
-  Impact: If logarithm computation produces NaN (log of negative or zero probability), function returns 1.0 as default. Attacker can craft input that triggers NaN and it's silently treated as 'normal perplexity | Fix: Return Err(PerplexityError::ComputationFailed) if ppl.is_nan(); don't silently default to 1.0. | Effort: medium
 
-- [ ] **C-010** `[security]` `crates/cpoe/src/analysis/pink_noise.rs:253`: DFA spectral slope is clamped to [0.0, 2.0] but classification uses unclamped value in edge cases
-  <!-- pid:pink_clamp_order | verified:false | first:2026-05-12 -->
-  Impact: If slope=2.0, classification correctly identifies as Brown/Black. But if validation happens after clamping and before classification, slope value seen by caller may differ from stored exponent. | Fix: Store original slope separately and clamp only for classification: let exponent = slope.clamp(0.0, 2.0); use slope in classification. | Effort: low
 
-- [ ] **C-011** `[error_handling]` `crates/cpoe/src/ffi/evidence_export.rs:732`: .expect() on HMAC new_from_slice() in cryptographic operation
-  <!-- pid:crypto_expect_panic | verified:false | first:2026-05-12 -->
-  Impact: HMAC initialization fails with panic if key length validation logic changes; panics cross FFI boundary | Fix: Use .map_err() or early return with Result; HMAC accepts any key length but defensive check should not panic | Effort: small
 
-- [ ] **C-012** `[error_handling]` `crates/cpoe/src/ffi/fingerprint.rs:27`: Poisoned mutex silently recovered with into_inner()
-  <!-- pid:ERR_SILENT_MUTEX_RECOVERY | verified:false | first:2026-05-12 -->
-  Impact: Silent error recovery on Mutex::lock() failure bypasses error propagation. Panics from manager operations are hidden by catch_ffi_panic wrapper. | Fix: Return FfiResult::err_with_code when mutex is poisoned instead of silently recovering | Effort: small
 
-- [ ] **C-013** `[error_handling]` `crates/cpoe/src/ffi/forensics_detail.rs:652`: Unwrap on test assertion path: `.unwrap()` on `error_message` in test code, will panic if assertion fails
-  <!-- pid:ffi_unwrap_in_test | verified:false | first:2026-05-12 -->
-  Impact: Test panic propagates; no recovery possible. FFI test harness crash. | Fix: Use `.expect()` with context msg or unwrap_or() for defensive assertion | Effort: small
 
-- [ ] **C-014** `[security]` `crates/cpoe/src/fingerprint/consent.rs:46`: Consent is checked in ConsentManager via has_style_consent() which returns Ok(status.is_granted()). However, StyleCollector::record_keystroke checks self.fingerprint.consent_given directly (voice.rs:6
-  <!-- pid:P005_CONSENT_DRIFT | verified:false | first:2026-05-12 -->
-  Impact: User revokes consent but typing data still collected. Consent is not atomically enforced across manager and collector. Privacy violation. | Fix: Make StyleCollector take a reference to ConsentManager or use interior mutability (Mutex<ConsentStatus>) for shared enforcement. Ensure revoke_consent() also clears StyleCollector state. | Effort: large
 
-- [ ] **C-015** `[security]` `crates/cpoe/src/fingerprint/storage.rs:407`: load_or_create_fingerprint_key() (line 372): If SecureStorage (OS keychain) is unavailable, the code fails hard (line 409-413) and refuses to create plaintext fallback. However, this means first-time 
-  <!-- pid:P024_NO_KEYCHAIN_FALLBACK | verified:false | first:2026-05-12 -->
-  Impact: UX: app unusable on first launch if keychain unavailable (e.g., SSH session, CI environment). No recovery path. | Fix: Allow plaintext fallback with a warning log and prompt user to migrate to keychain later. Or use an in-memory key + require password on startup. | Effort: large
 
-- [ ] **C-016** `[security]` `crates/cpoe/src/forensics/analysis.rs:212`: Function analyze_forensics_ext_with_focus exceeds 400 lines; complex state transitions in forensic analysis pipeline
-  <!-- pid:god_function_forensics | verified:false | first:2026-05-12 -->
-  Impact: Deep nesting with multiple conditional branches increases risk of logic errors in security-critical verdict computation; difficult to audit control flow | Fix: Split into smaller functions: (1) jitter analysis prep, (2) batch A/B/C orchestration, (3) verdict computation | Effort: large
 
-- [ ] **C-017** `[security]` `crates/cpoe/src/forensics/likelihood_model.rs:174`: Sentinel value -50.0 used for degenerate cases but can propagate silently through computations
-  <!-- pid:SENTINEL_VALUE_PROP | verified:false | first:2026-05-12 -->
-  Impact: NaN/Inf propagated through log-likelihood calculations affecting authorship verdicts. Silent sentinel causes false negatives in detection. | Fix: Return Result<f64,Error> or check is_finite() at aggregation points before using in verdict. | Effort: medium
 
-- [ ] **C-018** `[security]` `crates/cpoe/src/identity/did_webvh.rs:265`: public_key_hex() re-derives webvh key every time it's called; no caching, creates timing leaks
-  <!-- pid:key_derivation_timing_leak | verified:false | first:2026-05-12 -->
-  Impact: Line 267: every call to public_key_hex() calls derive_webvh_signing_key() which performs HKDF. Multiple calls in a tight loop create observable timing patterns. Timing attack could leak address or mas | Fix: Cache derived key in WebVHIdentity struct, or use constant-time wrapper function. | Effort: small
 
-- [ ] **C-019** `[security]` `crates/cpoe/src/identity/did_webvh.rs:427`: DID host validation regex allows ':' but '/' not allowed, creating ambiguous parsing for embedded paths in URL-encoded DIDs
-  <!-- pid:did_host_url_decode_injection | verified:false | first:2026-05-12 -->
-  Impact: At line 450, IPv6 literals and port stripping assume specific delimiters. A URL-encoded DID like 'did:webvh:SCID:example.com%3Aadmin' decodes to 'example.com:admin' but only first ':' separates host f | Fix: Reject DIDs with ambiguous delimiters or validate the fully-decoded format against a strict allowlist before any splitting. | Effort: medium
 
-- [ ] **C-020** `[security]` `crates/cpoe/src/identity/did_webvh.rs:620`: load_signing_key() reads entire 32-byte file without checking for symlink race after canonicalize()
-  <!-- pid:symlink_race_after_canonicalize | verified:false | first:2026-05-12 -->
-  Impact: Lines 606-614 check permissions on resolved path, but then line 617 reads from key_path (not resolved). Between canonicalize() and read(), attacker can race-replace file with symlink to a readable fil | Fix: Read from the canonicalized path, or use open-time symlink checks with O_NOFOLLOW flag. Verify resolved path again before read. | Effort: small
 
-- [ ] **C-021** `[security]` `crates/cpoe/src/identity/orcid.rs:40`: Integer overflow in ISO 7064 Mod 11,2 checksum: total = (total + digit) * 2 can overflow u32 for specific ORCID patterns (15 nines: ~32M before overflow)
-  <!-- pid:ORC-001 | verified:false | first:2026-05-12 -->
-  Impact: Valid ORCID identities rejected; biometric identity binding broken; attackers exploit validation bypass | Fix: Use u64 for accumulator or apply modulo 11 after each iteration: total = ((total + digit) * 2) % (11*11) | Effort: trivial
 
-- [ ] **C-022** `[security]` `crates/cpoe/src/identity/secure_storage.rs:250`: Seed cache stores ProtectedBuf but returns unprotected Zeroizing<Vec<u8>>; caller-visible cache hit creates data copy
-  <!-- pid:cache_copy_proliferation | verified:false | first:2026-05-12 -->
-  Impact: At lines 255-257, if seed is cached, it returns Zeroizing::new(cached.as_slice().to_vec()). This creates a new Vec and copies from cache to return value. The original cache entry remains in SEED_CACHE | Fix: Use Arc<ProtectedBuf> in cache, or return Arc<[u8]> to prevent copies. Document that callers MUST zeroize before dropping. | Effort: medium
 
-- [ ] **C-023** `[security]` `crates/cpoe/src/identity/secure_storage.rs:270`: delete_seed() does not explicitly zeroize dropped data or validate successful deletion before cache clear
-  <!-- pid:delete_seed_partial_cleanup | verified:false | first:2026-05-12 -->
-  Impact: Lines 269-272: delete_seed() deletes from keychain, then resets cache. If delete fails (non-fatal error ignored at line 271), seed remains in keychain. Cache is cleared anyway, losing ability to verif | Fix: Check delete() result before reset_cache: Self::delete(SEED_ACCOUNT)?; Self::reset_seed_cache(); return Ok(()). | Effort: small
 
-- [ ] **C-024** `[security]` `crates/cpoe/src/identity/secure_storage.rs:349`: Mnemonic phrase decoded to String without immediately zeroizing intermediate Vec<u8>
-  <!-- pid:mem_leak_mnemonic_decode | verified:false | first:2026-05-12 -->
-  Impact: Mnemonic seed phrase briefly exists unzeroized in memory before being moved into Zeroizing<String>. Could leak via memory dumps between line 348-356. | Fix: Wrap the to_vec() call in Zeroizing immediately: let raw_str = String::from_utf8(Zeroizing::new(b.to_vec()).to_vec())? | Effort: small
 
-- [ ] **C-025** `[security]` `crates/cpoe/src/identity/secure_storage.rs:408`: load_device_identity() returns clone of cached device_id without validating against external state; cache can be stale
-  <!-- pid:stale_device_identity_cache | verified:false | first:2026-05-12 -->
-  Impact: Lines 384-417: device_id and machine_id are cached. If cached values are read, they are returned as-is. But if keychain is modified externally (e.g., attacker changes device_id in secure storage), cac | Fix: Add timestamp to cache; invalidate after TTL. Or hash current machine state and compare on load. | Effort: medium
 
-- [ ] **C-026** `[security]` `crates/cpoe/src/ipc/secure_channel.rs:163`: AEAD Payload AAD set to mutable nonce_bytes; if encrypt modifies AAD buffer in-place (unlikely but possible with buggy cipher), nonce is corrupted
-  <!-- pid:P021_mutable_aad | verified:false | first:2026-05-12 -->
-  Impact: Cipher could theoretically modify AAD in-place, corrupting nonce_bytes[0..4]; subsequent encrypt() calls reuse corrupted prefix | Fix: Use const AAD (&b'nonce-aad') or immutable reference to separate constant | Effort: small
 
-- [ ] **C-027** `[security]` `crates/cpoe/src/ipc/server_handler.rs:279`: Debug format of IpcMessage logged on RBAC denial; may leak sensitive paths/nonces in logs
-  <!-- pid:P004_sensitive_logging | verified:false | first:2026-05-12 -->
-  Impact: Sensitive user paths, file names, and nonces (32-byte values) exposed in INFO-level logs via {:?} debug format | Fix: Log only message type name and resource, never the full message; use message.type_name() | Effort: small
 
-- [ ] **C-028** `[security]` `crates/cpoe/src/keyhierarchy/session.rs:45`: Ed25519 signing key created but intermediate Zeroizing<[u8; 32]> not used consistently
-  <!-- pid:signing_key_not_zeroized | verified:false | first:2026-05-12 -->
-  Impact: Line 45 creates key_bytes Zeroizing, expanded at line 46-50, dropped at 51. However, SigningKey::from_bytes at line 55 creates a NEW SigningKey from session_seed, and ed25519_dalek::SigningKey holds i | Fix: Use zeroize crate's Zeroize trait on SigningKey after use, or wrap in custom type implementing Drop. See SYS-033 tracking. | Effort: large
 
-- [ ] **C-029** `[security]` `crates/cpoe/src/mmr/proof.rs:152`: Unchecked multiplication in bounds check: path_len.checked_mul(33) returns Option but condition uses map_or with implicit false on overflow
-  <!-- pid:C-008 | verified:false | first:2026-05-12 -->
-  Impact: Overflow attack: if path_len.checked_mul(33) overflows, the check silently assumes 'within bounds' (map_or true), skipping bounds validation entirely | Fix: Use checked_mul().ok_or() pattern instead: path_len.checked_mul(33).ok_or(MmrError::InvalidNodeData)? | Effort: Low
 
-- [ ] **C-030** `[security]` `crates/cpoe/src/platform/synthetic.rs:272`: SyntheticDetector.analyze() never rejects synthetic events on strict_mode=false - only marks suspicious
-  <!-- pid:synthetic_accept_all | verified:false | first:2026-05-12 -->
-  Impact: In non-strict mode, keystroke events flagged as synthetic by platform API are silently accepted and included in evidence. Attacker can inject synthetic keystrokes and have them accepted. | Fix: Add config flag: reject_platform_synthetic (default true), and in non-strict mode still reject if event.is_hardware==false. | Effort: high
 
-- [ ] **C-031** `[concurrency]` `crates/cpoe/src/platform/windows.rs:219`: Race condition: poisoned mutex silently recovers to None in hot-path hook callback
-  <!-- pid:poisoned_lock_silent_drop | verified:false | first:2026-05-12 -->
-  Impact: If GLOBAL_SESSION mutex is poisoned (panic in prior lock holder), hook callback gets None instead of actual session. All subsequent keystrokes silently dropped. No alarm raised to upper layers. Sessio | Fix: On poisoned lock, log ERROR and set a flag to notify user/app that keystroke capture is compromised. Don't silently continue. | Effort: medium
 
-- [ ] **C-032** `[concurrency]` `crates/cpoe/src/platform/windows.rs:399`: Poisoned mutex recovery with log.warn (not error) silently masks stat corruption in hook callback
-  <!-- pid:poisoned_lock_silent_drop | verified:false | first:2026-05-12 -->
-  Impact: If GLOBAL_STATS poisoned, hook logs warn but continues with poisoned.into_inner() data. Statistics become corrupted/inconsistent. No way to know stats are invalid downstream. | Fix: Log as ERROR, set a corrupted flag. Refuse to report stats if poison detected. Alert user. | Effort: medium
 
-- [ ] **C-033** `[concurrency]` `crates/cpoe/src/platform/windows.rs:423`: Poisoned GLOBAL_SENDER mutex silently recovers to None, dropping keystrokes without notification
-  <!-- pid:poisoned_lock_silent_drop | verified:false | first:2026-05-12 -->
-  Impact: If sender mutex poisoned, hook callback gets None and all keystrokes are silently dropped. No error propagation. No way for caller to know events are lost. Evidence gaps go undetected. | Fix: Log ERROR, set global flag indicating sender failure. Propagate to upper layer or fail-safe shutdown. | Effort: medium
 
-- [ ] **C-034** `[concurrency]` `crates/cpoe/src/platform/windows.rs:667`: Poisoned idle_stats mutex in mouse hook uses poisoned.into_inner() without validation
-  <!-- pid:poisoned_lock_silent_drop | verified:false | first:2026-05-12 -->
-  Impact: If MOUSE_GLOBAL_IDLE_STATS poisoned, hook continues with potentially corrupt data. Stats written to poisoned lock are lost. Next read sees corrupt state. Data integrity violated. | Fix: Detect poison, log ERROR, refuse to record/read stats if poisoned flag set. | Effort: medium
 
-- [ ] **C-035** `[concurrency]` `crates/cpoe/src/platform/windows.rs:682`: Poisoned MOUSE_GLOBAL_SENDER mutex silently drops mouse events in callback
-  <!-- pid:poisoned_lock_silent_drop | verified:false | first:2026-05-12 -->
-  Impact: Poisoned sender = all mouse events silently dropped. No error. No notification. Idle jitter evidence gaps undetected. | Fix: Log ERROR on poison, set failure flag, fail-safe shutdown of capture. | Effort: medium
 
-- [ ] **C-036** `[security]` `crates/cpoe/src/report/html/sections/advanced.rs:141`: Unchecked iteration over JSON object without type validation. Code: `if let Some(tv) = vc[...]["trustVector"].as_object()` followed by `for (key, val) in tv`. If trustVector contains deeply nested or 
-  <!-- pid:advanced:141:unbounded-iteration | verified:false | first:2026-05-12 -->
-  Impact: Attacker embedding malicious VC JSON with million-item trustVector object could cause DoS when rendering HTML report. No size limits on object iteration. | Fix: Add bounds check before iteration: `if tv.len() > 100 { log warning; skip }`. Alternatively, use iterator .take(100) to limit output. | Effort: MEDIUM
 
-- [ ] **C-037** `[security]` `crates/cpoe/src/sealed_identity/store.rs:80`: Hardware clock and counter binding optional - fall through to no-crypto fallback without explicit requirement
-  <!-- pid:seal_weak_fallback | verified:false | first:2026-05-12 -->
-  Impact: If TPM clock_info() or monotonic_counter fails, the anti-rollback protection silently downgrades. Blob sealed without counter binding can be trivially replayed. | Fix: Require hardware backing: if !caps.hardware_backed { return Err(SealedIdentityError::HardwareRequired); } before accepting weak bindings. | Effort: medium
 
-- [ ] **C-038** `[error_handling]` `crates/cpoe/src/sealed_identity/store.rs:293`: Reseal fallback derives new key from PUF when unseal fails, overwriting old blob binding without validation
-  <!-- pid:seal_reseal_downgrade | verified:false | first:2026-05-12 -->
-  Impact: If TPM unseal fails and PUF derivation is used, the blob loses its hardware binding. Attacker can force downgrade by corrupting TPM, then replay old sealed blobs. | Fix: Fail the reseal if unseal fails AND hardware_backed is set. Don't silently downgrade to PUF-only. | Effort: high
 
-- [ ] **C-039** `[concurrency]` `crates/cpoe/src/sentinel/event_handlers.rs:602`: Race condition in idle session handling: path is removed from idle_paths at line 600, but between persist_idle_session_stats (line 602) and end_session_sync (line 603-607), the session could be re-foc
-  <!-- pid:idle-end-race-condition | verified:false | first:2026-05-12 -->
-  Impact: Lost keystroke attribution: if a user re-focuses a document during the idle-end sequence, keystrokes attributed to that session may be lost because the session is torn down while events are in flight. | Fix: Hold a write lock on sessions for the entire idle-end sequence: iter and collect idle_paths, then in a single write lock acquire, checkpoint+persist+end for each. This prevents re-focus races. Alterna | Effort: large
 
-- [ ] **C-040** `[error_handling]` `crates/cpoe/src/sentinel/helpers.rs:2479`: .unwrap() on Option returned from paste_context assertion—test code assuming past assertion guarantee (paste_context.is_some())
-  <!-- pid:error_handling_unwrap_after_assert | verified:false | first:2026-05-12 -->
-  Impact: In test—low risk. Assertion at line 2478 verifies .is_some(), unwrap is safe but test-only. | Fix: No fix needed; assertion + unwrap pattern is correct in tests. However, for consistency, could use .unwrap_or_else(panic!). | Effort: small
 
-- [ ] **C-041** `[concurrency]` `crates/cpoe/src/store/archive.rs:104`: Race condition in archive_old_events(): archive_path.exists() check at line 104 is not atomic with subsequent creation. Two concurrent calls could both pass the exists() check and attempt to create th
-  <!-- pid:CONCURRENT_ARCHIVE_001 | verified:false | first:2026-05-12 -->
-  Impact: Archive file corruption or loss of one caller's data. Multiple processes attempting concurrent archival will race. | Fix: Use SQLite's file locking: if ATTACH DATABASE ... AS archive_db fails due to file existing, retry with different timestamp or add lock file. | Effort: medium
 
-- [ ] **C-042** `[security]` `crates/cpoe/src/store/text_fragments.rs:148`: Nonce uniqueness check at line 148 is checked again during validate_fragment_fields but the lookup happens BEFORE insert in insert_text_fragment (line 168), creating a TOCTOU window. Two concurrent in
-  <!-- pid:NONCE_TOCTOU_001 | verified:false | first:2026-05-12 -->
-  Impact: Nonce replay vulnerability allowing attacker to create duplicate evidence packets with identical signatures; breaks non-repudiation and chain integrity. | Fix: Move nonce uniqueness check to be inside the transaction (line 179 onward) and check again before INSERT, or use a UNIQUE constraint with IF NOT EXISTS error handling. | Effort: medium
 
-- [ ] **C-043** `[error_handling]` `crates/cpoe/src/store/text_fragments.rs:584`: Silent failure in current_timestamp_ms() at line 585: .unwrap_or(0) returns 0 on error instead of propagating. Evidence with timestamp 0 is semantically invalid but silently accepted as a fallback.
-  <!-- pid:SILENT_ERROR_002 | verified:false | first:2026-05-12 -->
-  Impact: Forged evidence with timestamp 0 bypasses timestamp validation checks (line 171 in insert_text_fragment); attackers can create backdated or future-dated evidence. | Fix: Change signature to return Result<i64, anyhow::Error> and propagate errors to callers, or panic if system time is unavailable (more appropriate for a crypto primitive). | Effort: medium
 
-- [ ] **C-044** `[error_handling]` `crates/cpoe/src/verify/seals.rs:51`: Dual hex::decode() calls with unwrap_or(false) disguise decode failures as valid-but-false. Silent failure on malformed VDF input/output hashes
-  <!-- pid:AUD-SEALS-003 | verified:false | first:2026-05-12 -->
-  Impact: Attacker provides garbage hex in vdf_in/vdf_output; decode fails, in_ok/out_ok become false, loop continues to next checkpoint. Invalid VDF proof accepted without warning added to warnings vector. | Fix: Decode once, check length once, add explicit warning if decode fails: `if hex::decode(vdf_in).is_err() { warnings.push(...) }` | Effort: low
 
-- [ ] **C-045** `[error_handling]` `crates/cpoe/src/verify/seals.rs:188`: Certificate length check uses base64_decode_len() which succeeds, but actual certificate data at line 209 decoded with silent failure function base64_decode()
-  <!-- pid:AUD-SEALS-006 | verified:false | first:2026-05-12 -->
-  Impact: Check passes (returns Some(64)), but actual data decoded silently returns empty. TOCTOU race: validation check uses one function, data path uses different function with different error handling. | Fix: Refactor: decode once with Result, reuse result for both check and validation | Effort: medium
 
-- [ ] **C-046** `[security]` `crates/cpoe/src/verify/seals.rs:360`: Silent base64 decode failure: unwrap_or_default() returns empty Vec on malformed base64
-  <!-- pid:AUD-SEALS-001 | verified:false | first:2026-05-12 -->
-  Impact: Certificate signature data silently corrupted to empty bytes, bypassing verification during key hierarchy validation. Attacker-controlled input passes validation with zeroed data. | Fix: Return Result, propagate decode errors with proper warnings to verification pipeline | Effort: medium
 
-- [ ] **C-047** `[security]` `crates/cpoe/src/wal/operations.rs:262`: ct_eq() comparison of prev_hash uses .unwrap_u8() == 0 which evaluates to false on equal hashes (0 means equal, non-zero means unequal)
-  <!-- pid:SEC-006 | verified:false | first:2026-05-12 -->
-  Impact: Hash chain verification is inverted: broken chains are accepted when prev_hash matches (unwrap_u8()==0 is true on EQUAL), and chains are rejected when hashes differ | Fix: Verify ct_eq semantics: subtle::ConstantTimeEq returns true iff values are equal. Check if .unwrap_u8()==0 should be !=0 | Effort: small
 
-- [ ] **C-048** `[security]` `crates/cpoe/src/war/verification.rs:764`: CA_KEY_RING constant has all-zeros placeholder pubkey: verify_manifest_signature will always reject
-  <!-- pid:zero_placeholder_key | verified:false | first:2026-05-12 -->
-  Impact: Trust bundle signature verification silently bypassed in production if placeholder not updated; allows forged manifests | Fix: Replace placeholder 64-char hex with actual Ed25519 public key before deployment. Add compile-time check for zero-key deployment. | Effort: small
 
-- [ ] **C-049** `[security]` `crates/cpoe/src/writersproof/client_cert.rs:68`: Unsafe path parent unwrap: unwrap_or(Path::new(".")) masks root path handling in cert file writing
-  <!-- pid:AUD-CERT-001 | verified:false | first:2026-05-12 -->
-  Impact: Cert file persisted to wrong directory if cert_path is root-level or has no parent, leading to permission vulnerabilities or file corruption during atomic write | Fix: Explicitly handle root path case; use cert_path.as_ref() without parent() call, or return proper error | Effort: low
 
-- [ ] **C-050** `[security]` `crates/posme/src/verifier.rs:101`: Unchecked arithmetic in total_roots calculation: total_steps.checked_add(1) used correctly, but result not validated for power-of-two requirement before tree height calculation
-  <!-- pid:C-009 | verified:false | first:2026-05-12 -->
-  Impact: Malformed tree height if K+1 is not power-of-two; verify_root_chain_path may accept invalid proofs or compute wrong expected_depth | Fix: After checked_add, validate that total_roots is power-of-two: total_roots.is_power_of_two() | Effort: Low
 
-- [ ] **C-051** `[security]` `crates/posme/src/verifier.rs:303`: Unchecked recursion depth decrement: verify_step called with writer_depth - 1 but writer_depth never checked for underflow before subtraction in recursive call chain
-  <!-- pid:C-010 | verified:false | first:2026-05-12 -->
-  Impact: Underflow on deeply nested writer chains: writer_depth wraps to u8::MAX, depth check on line 389 is bypassed, allowing stack overflow from infinite recursion | Fix: Check writer_depth > 0 before decrement: if writer_depth == 0 { return Err(...) } before calling verify_step with writer_depth - 1 | Effort: Low
 
-- [ ] **C-052** `[security]` `crates/posme/src/verifier.rs:359`: Unvalidated address derivation in pointer-chase: addr_from() result index j not bounds-checked before arena access
-  <!-- pid:C-007 | verified:false | first:2026-05-12 -->
-  Impact: Out-of-bounds panic on untrusted proof; j is attacker-controlled via read_index. Expected_addr computed correctly but no overflow protection on j parameter usage | Fix: Add explicit bounds check: ensure j < d (d is reads_per_step) before deriving expected_addr. Verify j matches loop iteration index. | Effort: Low
 
 ## High
-- [ ] **H-001** `[security]` `apps/cpoe_cli/src/cmd_export/mod.rs:57`: default_output_path() sanitizes by taking only the filename component and then calling Path::new().file_name() again. However, if the input is a relative path with '..', the first file_name() call alr
-  <!-- pid:H-009 | first:2026-05-12 -->
-  Impact: Low risk in this specific case because write_evidence_output() likely writes to cwd. However, if the output path were later extended to support custom directories, this double-sanitization could mask  | Fix: Add an explicit check that out_path has no parent directory and raise an error if it does. Document that output paths are always relative to cwd. | Effort: low
 
-- [ ] **H-002** `[error_handling]` `apps/cpoe_cli/src/cmd_status.rs:129`: cmd_status() uses catch_unwind to recover from FFI panics (TPM detection). Comment says 'FFI panics will abort the process regardless', but this is only true for C panics. Rust FFI code that panics wi
-  <!-- pid:H-013 | first:2026-05-12 -->
-  Impact: If TPM detection panics mid-operation and the code continues, subsequent operations may use a partially-initialized TPM provider. The catch_unwind also discards the panic payload, so the root cause is | Fix: Log the panic details via AssertUnwindSafe-captured state. After catch_unwind, assert that provider.capabilities() returns sensible values (e.g., not NaN, not both hardware_backed and software). | Effort: medium
 
-- [ ] **H-003** `[error_handling]` `apps/cpoe_cli/src/cmd_track/checkpoint.rs:139`: Keystroke capture thread spawns a panic::catch_unwind block that recovers from panics and logs warnings. However, the thread continues running even after a panic, which means subsequent panics will al
-  <!-- pid:H-011 | first:2026-05-12 -->
-  Impact: DoS via repeated stderr spam if keystroke capture is buggy. No rate limiting on panic logging. | Fix: Implement a panic counter: after 3-5 unrecovered panics, exit the thread gracefully with an error instead of continuing. Log the final error to the status file so the user can see it. | Effort: low
 
-- [ ] **H-004** `[error_handling]` `apps/cpoe_cli/src/main.rs:237`: Interactive menu path validation checks if path is within cwd or home directory. However, this check uses starts_with(), which is a string prefix check, not a path-aware comparison. A path like '/home
-  <!-- pid:H-010 | first:2026-05-12 -->
-  Impact: Low actual risk here (the check is safe as written: starts_with home dir). But the pattern is fragile and could be misused elsewhere. Symlinks are detected but not followed after validation. | Fix: Use canonicalize() + is_ancestor check or dunce crate for cross-platform path comparison. Document that symlinks are rejected; add test for symlink evasion. | Effort: medium
 
-- [ ] **H-005** `[security]` `apps/cpoe_cli/src/native_messaging_host/handlers.rs:1166`: Session state is accessed via lock with unwrap_or_else recovery. If the mutex is poisoned, the code recovers and continues, potentially allowing operations on stale or corrupted session state without 
-  <!-- pid:H-004 | first:2026-05-12 -->
-  Impact: If the keystroke capture thread panics and poisons the session mutex, the main message loop continues and may execute commands against partially-initialized sessions. | Fix: After poisoning recovery, re-validate session invariants (e.g., session_id is set, nonce is non-zero) before proceeding. Return error if invariants violated. | Effort: medium
 
-- [ ] **H-006** `[security]` `apps/cpoe_cli/src/native_messaging_host/mod.rs:69`: Decryption errors in encrypted payloads return generic error messages that don't distinguish between: (1) malformed ciphertext, (2) no active session, (3) actual decryption failure. All three return t
-  <!-- pid:H-002 | first:2026-05-12 -->
-  Impact: Attackers can fuzz encrypted messages and receive identical error responses, preventing them from learning about decryption vs. protocol state issues, but also preventing legitimate debugging. | Fix: Log the actual error kind (e.g., 'AEAD authentication failed' vs 'cipher length invalid') to stderr only, return generic message to client. This aids debugging without leaking cryptographic details. | Effort: low
 
-- [ ] **H-007** `[security]` `apps/cpoe_cli/src/native_messaging_host/mod.rs:212`: Mutex poisoning recovery uses unwrap_or_else with into_inner() after lock() fails. If the Mutex is poisoned, this recovers but discards PoisonError context. While handled, the pattern could mask under
-  <!-- pid:H-001 | first:2026-05-12 -->
-  Impact: Panic recovery prevents crashes but obscures why the lock was poisoned. Attackers could cause repeated poisonings to hide state corruption. | Fix: Log the poison error details with eprintln! before recovering. Consider tracking poison counts to detect abuse patterns. | Effort: low
 
-- [ ] **H-008** `[security]` `apps/cpoe_cli/src/native_messaging_host/types.rs:8`: deserialize_bounded_intervals() validates that intervals array does not exceed MAX_BATCH_SIZE. However, the Visitor's size_hint() is not trusted (it's a hint, not a guarantee). An attacker could send 
-  <!-- pid:H-012 | first:2026-05-12 -->
-  Impact: A single malformed InjectJitter message with 1000+ intervals could cause a reallocation and memory spike, potentially DoS-ing the native messaging host. | Fix: Pre-check the exact length before processing: `if seq.size_hint().1 > MAX_BATCH_SIZE { return error }`. Or reject arrays where size_hint and actual length diverge significantly. | Effort: medium
 
-- [ ] **H-009** `[error_handling]` `crates/authorproof-protocol/src/c2pa/builder.rs:243`: Timestamp conversion: from_timestamp_millis() called on i64 casted from u64 without checking cp.timestamp bounds. Negative timestamps after cast are silently handled by from_timestamp_millis, returnin
-  <!-- pid:C2PA-002-TIMESTAMP-CAST | first:2026-05-12 -->
-  Impact: Evidence packet timestamps > i64::MAX (year 2262+) fail silent conversion, producing None for process_start/process_end. Manifests lose temporal metadata without error. | Fix: Add range check before timestamp cast. Use checked_cast or validate timestamp < i64::MAX before conversion. | Effort: low
 
-- [ ] **H-010** `[error_handling]` `crates/authorproof-protocol/src/c2pa/cert.rs:71`: DER encoding assumes deterministic format: serial_number created from pk_hash[..20] without length validation. If hash is <20 bytes (should not happen with SHA-256), SerialNumber::new may fail silentl
-  <!-- pid:CERT-001-SERIAL-LEN | first:2026-05-12 -->
-  Impact: Certificate generation could fail with cryptic 'serial number creation' error even though input is from trusted source. Self-signed cert generation is non-deterministic if error path is taken. | Fix: Assert pk_hash.len() == 32 or handle short hash case explicitly. | Effort: low
 
 - [ ] **H-011** `[code_quality]` `crates/authorproof-protocol/src/c2pa/jumbf.rs:111`: Integer overflow unchecked: end_superbox patches length at offset via copy_from_slice(&total_len.to_be_bytes()). If self.buf.len() - offset overflows usize or exceeds u32::MAX, try_from silently retur
   <!-- pid:JUMBF-001-SIZE-CHECK | first:2026-05-12 -->
   Impact: If JUMBF superbox construction creates buffer >4GB (u32 max), length field is patched with error value, creating invalid ISO 19566-5 structure. Downstream JUMBF parsers may crash or skip the box. | Fix: Check buffer size before patching. Ensure total_len fits u32 before constructing box. | Effort: medium
 
-- [ ] **H-012** `[security]` `crates/authorproof-protocol/src/c2pa/validation.rs:26`: Classification bypass: validation uses substring match (contains) on assertion URLs instead of exact path matching. URL 'c2pa.hash-data-xyz' would match ASSERTION_LABEL_HASH_DATA='c2pa.hash-data'.
-  <!-- pid:C2PA-001-VALIDATION-BYPASS | first:2026-05-12 -->
-  Impact: An attacker can embed a fake hard binding assertion with label 'c2pa.hash-data-new' that passes the hard_binding_count != 1 check, bypassing hard binding validation. | Fix: Use exact URL path matching with '/' delimiters or split + compare array elements instead of contains(). | Effort: low
 
-- [ ] **H-013** `[security]` `crates/authorproof-protocol/src/codec/cbor.rs:77`: Bounds-checked .try_into().unwrap() on validated slice: CBOR depth checker reads data[pos..pos+4] after verifying pos+4<=data.len(), but unwrap() panics if bounds assumption fails due to concurrent mo
-  <!-- pid:CP-003 | first:2026-05-12 -->
-  Impact: CBOR parser can panic on valid-looking input if bounds check has off-by-one error or if data is modified during parsing. Denial of service in CBOR validation. | Fix: Change to .try_into().map_err(|_| false) to return false on conversion error, matching surrounding error handling pattern at lines 77,85,133,141. | Effort: trivial
 
-- [ ] **H-014** `[error_handling]` `crates/authorproof-protocol/src/codec/cbor.rs:147`: Saturating arithmetic in CBOR skip logic: pos.saturating_add(skip) followed by > check; if pos+skip overflows, check succeeds and buffer read succeeds but reads beyond bounds (Soundness hole)
-  <!-- pid:CP-004 | first:2026-05-12 -->
-  Impact: Buffer over-read in CBOR indefinite-length string parser. If pos near usize::MAX and skip > 0, saturating_add returns usize::MAX, then > check passes, then (pos > data.len()) is false even though we'r | Fix: Use checked_add with explicit error return: match pos.checked_add(skip) { Some(new_pos) if new_pos <= data.len() => pos = new_pos, _ => return false } | Effort: low
 
-- [ ] **H-015** `[error_handling]` `crates/authorproof-protocol/src/codec/cbor.rs:251`: Reader limit bypass: decode_from reads with reader.take(MAX_CBOR_PAYLOAD + 1) to detect oversized payloads, but then compares buf.len() > MAX_CBOR_PAYLOAD. If reader produces exactly MAX_CBOR_PAYLOAD+
-  <!-- pid:CP-008 | first:2026-05-12 -->
-  Impact: Oversized CBOR payloads can bypass size limit if reader implementation doesn't respect take() bounds. OOM DoS possible. | Fix: Use bounded reader: take(MAX_CBOR_PAYLOAD as u64).read_to_end(&mut buf) guarantees buf.len() <= MAX_CBOR_PAYLOAD due to reader contract. Remove the +1 and size check; rely on take() contract instead. | Effort: trivial
 
-- [ ] **H-016** `[error_handling]` `crates/authorproof-protocol/src/codec/cbor.rs:333`: parse_cbor_tag_header() returns Option, callers use .ok_or() but lose the underlying reason (truncated data vs. non-tag). Line 333 discards error context.
-  <!-- pid:CP-013 | first:2026-05-12 -->
-  Impact: Failed tag parsing returns MissingTag for all error cases (empty data, non-tag first byte, truncated tag header). Prevents debugging of malformed CBOR. | Fix: Return Result<(u64, usize), TagError> with variants: EmptyInput, NotATag, TruncatedHeader. Propagate detail: decode_tagged() maps to CodecError::InvalidTag with actual reason. | Effort: low
 
-- [ ] **H-017** `[security]` `crates/authorproof-protocol/src/codec/mod.rs:167`: Convenience function encode_evidence() silently maps CodecError to engine Error::Serialization; error context lost on CBOR encode failures, making debugging impossible
-  <!-- pid:CP-010 | first:2026-05-12 -->
-  Impact: Attestation serialization errors (overflow, validation) are coerced to generic Serialization error without preserving CBOR-specific failure reason. | Fix: Preserve CodecError detail: crate::error::Error::Serialization(format!("CBOR encode evidence: {}", e)) or add CodecError::into() impl. | Effort: trivial
 
 - [ ] **H-018** `[code_quality]` `crates/authorproof-protocol/src/compact_ref.rs:102`: Error handling gap: signable_payload() returns CompactRefError::SerializationError for ciborium failures, but doesn't distinguish between truncation, invalid UTF-8, or actual encoding issues. Caller c
   <!-- pid:COMPACT-001-CBOR-ERROR | first:2026-05-12 -->
   Impact: Signature verification failures are opaque. If CBOR encoding is non-deterministic (unlikely but possible with custom Serialize impls), verification silently fails without diagnostics. | Fix: Wrap ciborium error directly or add detailed error variants for different encoding failures. | Effort: low
 
-- [ ] **H-019** `[security]` `crates/authorproof-protocol/src/crypto.rs:155`: COSE_Sign1 signature can be empty after builder pattern: After create_signature() closure, sign1.signature is checked !is_empty(), but closure returns Vec::new() on signer error (line 145) leaving sig
-  <!-- pid:CP-007 | first:2026-05-12 -->
-  Impact: Invalid (empty) signature can be written to COSE_Sign1 message if signer fails but closure returns empty Vec. Downstream verification will fail, but code path allows malformed COSE message constructio | Fix: Check sign_error BEFORE building: if let Some(e) = sign_error.take() { return Err(e) } before builder.build(). Or set signature to sentinel empty value in error case, not random bytes. | Effort: low
 
-- [ ] **H-020** `[error_handling]` `crates/authorproof-protocol/src/forensics/transcription.rs:40`: Division by zero in linearity_score calculation: if total_keystrokes == 0, returns 1.0 (line 36), but formula at line 40-42 divides by total_keystrokes as f64. Guard at line 35 prevents panic, but sil
-  <!-- pid:CP-012 | first:2026-05-12 -->
-  Impact: Empty documents return perfect linearity (1.0), matching transcription attack pattern. Semantically wrong: empty input should return None or error, not 'perfect linear typing'. | Fix: Return 0.0 for empty input (unknown/inconclusive), or return Option<f64> with None for edge cases. Document: linearity is undefined for zero keystrokes. | Effort: low
 
 - [ ] **H-021** `[code_quality]` `crates/authorproof-protocol/src/forensics_classifier.rs:80`: Insufficient signal fallback is non-deterministic: if signal_count < 2, returns author_attested with empty dominant_signals. Threshold hardcoded at 2 signals; classification logic below assumes >= 2 b
   <!-- pid:FORENSICS-001-SIGNAL-THRESHOLD | first:2026-05-12 -->
@@ -326,109 +116,37 @@
   <!-- pid:BIO-001-NAN-SILENT | first:2026-05-12 -->
   Impact: Biometric scoring failures are silent. A malformed input producing NaN in component scores gets mapped to 0 millibits with no diagnostic. Attestation chain loses forensic signal. | Fix: Return Result<u16> or set validation error when NaN is detected. Log warnings on NaN conversion. | Effort: medium
 
-- [ ] **H-024** `[security]` `crates/authorproof-protocol/src/rfc/vdf.rs:70`: Division by zero unchecked: minimum_elapsed_ms() returns None when iterations_per_second is 0, but callers use unwrap_or(u64::MAX) masking the error. Duration validation may succeed despite invalid ca
-  <!-- pid:VDF-001-DIV-ZERO | first:2026-05-12 -->
-  Impact: VDF duration validation can pass with invalid calibration (IPS=0) because the check sets expected=u64::MAX, making ratio check meaningless. Proof-of-work defense is bypassed. | Fix: Validate iterations_per_second > 0 before computing minimum_elapsed_ms. Fail validation if calibration is invalid rather than masking with MAX. | Effort: medium
 
-- [ ] **H-025** `[error_handling]` `crates/authorproof-protocol/src/rfc/wire_types/packet.rs:351`: CBOR payload size validation uses > for upper bound on 100MB check; integer cast from usize may silently wrap on 32-bit systems or overflow checks
-  <!-- pid:CP-002 | first:2026-05-12 -->
-  Impact: document_content field can exceed 100MB limit undetected on systems where usize < u64. Silent overflow on comparison allows oversized documents to bypass validation. | Fix: Use u64::try_from(content.len()).map_err(...) or check content.len() <= MAX_DOC_SIZE as usize with explicit constant. | Effort: trivial
 
-- [ ] **H-026** `[security]` `crates/authorproof-protocol/src/rfc/wire_types/packet.rs:366`: CBOR encoding: Cryptographic comparison result uses .unwrap_u8() without validation; subtle crate guarantee does NOT protect against panic if comparison fails
-  <!-- pid:CP-001 | first:2026-05-12 -->
-  Impact: Signature validation can panic on unexpected input, causing DoS. The .unwrap_u8() call on ConstantTimeEq::ct_eq result may panic if the comparison is mathematically impossible (though unlikely in prac | Fix: Use .unwrap_u8() > 0 pattern with explicit type; consider using match to handle all cases. Better: ct_ne() alternative or explicit range check (0 vs 1). | Effort: trivial
 
-- [ ] **H-027** `[error_handling]` `crates/authorproof-protocol/src/war/encoding.rs:38`: UTF-8 validation silent failure: from_utf8() called in encoding path returns lossy conversion with .unwrap_or("") on seal_hex chunk; chunks not UTF-8 silently convert to empty string
-  <!-- pid:CP-006 | first:2026-05-12 -->
-  Impact: Corrupted CBOR encoding if seal hex is truncated or malformed. Silent failure means seal data loss without error reporting to caller. | Fix: Return Err(CodecError) instead of unwrap_or(""). Propagate UTF-8 validation errors: std::str::from_utf8(chunk).map_err(|e| CodecError::Validation(format!("seal chunk not utf8: {}", e)))? | Effort: trivial
 
-- [ ] **H-028** `[error_handling]` `crates/authorproof-protocol/src/war/types.rs:49`: Block.signed field uses default skip_serializing if false, but comment says 'H3 signature is valid'. Enum Version doesn't validate WAR/1.0 vs WAR/2.0 field compatibility (EAR only in 2.0).
-  <!-- pid:CP-016 | first:2026-05-12 -->
-  Impact: Deserialization of WAR/1.0 block with EAR field silently succeeds; downstream code must check signed + version compatibility. No validation that WAR/2.0 blocks include EAR appraisals. | Fix: Add validate() method to Block: check version compatibility with presence of EAR field. Reject WAR/1.0 with EAR or WAR/2.0 without EAR. | Effort: low
 
-- [ ] **H-029** `[error_handling]` `crates/authorproof-protocol/src/wasm.rs:139`: WASM checkpoint count conversion uses .unwrap_or(u32::MAX) as fallback for usize > u32::MAX; comment says 'real packets won't exceed this' but no validation that packet.checkpoints.len() <= u32::MAX b
-  <!-- pid:CP-011 | first:2026-05-12 -->
-  Impact: Overflow silent: if evidence packet contains more than 4 billion checkpoints (impossible in practice), saturates to u32::MAX. However, no upstream check prevents malicious CBOR with 2^64 checkpoints a | Fix: Add validation in EvidencePacketWire::validate(): if self.checkpoints.len() > u32::MAX { return Err(...); }. Better: reject packets with > 10,000 checkpoints already in line 247-252, so u32 saturation | Effort: trivial
 
-- [ ] **H-030** `[security]` `crates/cpoe/src/analysis/behavioral_fingerprint.rs:280`: Hard-coded forgery thresholds (CV_FORGERY_THRESHOLD=0.2, SKEWNESS_FORGERY_THRESHOLD=0.2) are not validated against baseline training data. No version tracking for threshold changes. Attacker can gener
-  <!-- pid:SEC_002_FORGERY_THRESHOLD | first:2026-05-12 -->
-  Impact: Forgery detection can be evaded by carefully tuned behavioral patterns. No audit trail if thresholds change. Inconsistent analysis if constants are modified in-place. | Fix: 1. Add version field to ForgeryAnalysis struct matching threshold constants. 2. Add calibration method to validate thresholds against known-human baseline. 3. Log all forgery decisions with threshold  | Effort: medium
 
-- [ ] **H-031** `[security]` `crates/cpoe/src/analysis/content_detector.rs:113`: Confidence thresholds are compared at lines 845-848 using floating-point direct comparison (best_score < 0.60). Floating-point rounding errors can cause thresholds to slip. Example: softmax at line 83
-  <!-- pid:SEC_005_FP_THRESHOLD | first:2026-05-12 -->
-  Impact: Confidence threshold can be bypassed by carefully tuning input to cause rounding errors. Inconsistent classification for scores near boundary (0.59-0.61). Test results may be non-deterministic on diff | Fix: 1. Use epsilon comparison: `const CONFIDENCE_EPSILON: f64 = 1e-6; if (best_score + EPSILON) < 0.60`. 2. Or use rational numbers for thresholds. 3. Document floating-point stability assumptions. | Effort: small
 
-- [ ] **H-032** `[security]` `crates/cpoe/src/analysis/content_detector.rs:846`: Hard-coded confidence threshold 0.60 is directly used as classification boundary. Threshold value is not parameterized and is embedded in select_best_match logic. An attacker could potentially craft t
-  <!-- pid:SEC_001_THRESHOLD_MANIPULATION | first:2026-05-12 -->
-  Impact: Content classification can be manipulated by carefully crafted keystroke patterns. Weak boundaries enable adversarial inputs. Threshold not versioned or auditable. | Fix: 1. Extract as configuration parameter `MIN_CONFIDENCE_THRESHOLD: f64 = 0.60` at module level. 2. Document reasoning for 0.60 value. 3. Consider margin-of-safety (e.g., require 0.65+) for security-crit | Effort: small
 
 - [ ] **H-033** `[code_quality]` `crates/cpoe/src/analysis/content_detector.rs:1105`: God module: 1105 lines of single-file code. Violates CLAUDE.md guidance: large modules should be split into directory-based submodules. Combines pattern matching, scoring, prose analysis, and classifi
   <!-- pid:ARCH_001_GOD_MODULE | first:2026-05-12 -->
   Impact: Maintenance burden, hard to test in isolation, difficult to extend scoring logic, violates project architecture principles. | Fix: Refactor into submodule: `analysis/content_detector/mod.rs` with `matcher.rs`, `scorer.rs`, `classifier.rs` submodules. Export types from mod.rs. | Effort: large
 
-- [ ] **H-034** `[error_handling]` `crates/cpoe/src/analysis/error_topology.rs:322`: Division by zero at line 320 is guarded (total_with_keys > 0), but adjacency_correlation returns 0.5 as fallback (line 331) without logging why. More critically: line 236 computes post_error_mean = no
-  <!-- pid:ERR_003_FALLBACK_BIAS | first:2026-05-12 -->
-  Impact: Silent failure mode: if few errors have post-correction gaps, gap_correlation is biased upward by using normal_mean as fallback. This inflates error_topology scores, potentially marking AI-generated c | Fix: 1. Log when falling back to normal_mean: `log::warn!("post-error gaps insufficient, using normal baseline")`. 2. Return early with adjusted score if post_error_count < 3: `return {gap_correlation: 0.0 | Effort: medium
 
-- [ ] **H-035** `[error_handling]` `crates/cpoe/src/analysis/labyrinth.rs:114`: Truncation at line 108-112 is silent: if keystroke_deltas.len() > 1000, tail slice is taken. No log message, no field in result. Caller doesn't know 900k samples were discarded. This breaks reproducib
-  <!-- pid:ERR_010_SILENT_TRUNCATION | first:2026-05-12 -->
-  Impact: Silent data loss. Behavioral analysis loses early behavior (e.g., typing speed changes over session). Results are non-deterministic. Difficult to debug why analysis diverges. | Fix: 1. Log: `log::info!("Truncating {} to last 1000 points", keystroke_deltas.len())`. 2. Add field to LabyrinthAnalysis: `pub total_input_points: usize`. 3. Consider returning error if truncation is unde | Effort: small
 
-- [ ] **H-036** `[error_handling]` `crates/cpoe/src/analysis/labyrinth.rs:154`: Non-finite check at line 154 catches NaN/Inf but the subsequent replace (line 159) silently converts to 0.0. This breaks downstream calculations: if all input values are 1e100 (overflow), normalize() 
-  <!-- pid:ERR_007_CORRUPT_NORMALIZE | first:2026-05-12 -->
-  Impact: Silently corrupted normalized data propagates to embedding, RQA, Lyapunov. Analysis proceeds with garbage input. Results are plausible but meaningless. Makes debugging extremely difficult. | Fix: 1. Add check: if all values after filtering are zero, return error. 2. Return Result instead of silently continuing. 3. Reject input where std (max - min) / range < epsilon. | Effort: small
 
 - [ ] **H-037** `[performance]` `crates/cpoe/src/analysis/labyrinth.rs:380`: O(n²) nested loop in detect_quantization at lines 389-396. For each of 4 scales, iterates all pairs (i, j) to count close points. Nested inside scales iterator via Vec::collect at line 383. Total: ~4M
   <!-- pid:PERF_003_O_N2_QUANTIZATION | first:2026-05-12 -->
   Impact: Quantization detection adds 33% overhead to Labyrinth. Sequential O(n²) calls mean 1000-point analysis easily exceeds 50ms budget. | Fix: 1. Fuse quantization detection into RQA (reuse distance matrix). 2. Implement single-pass detection using recurrence histogram from RQA. 3. Use KdTree radius-count queries instead of all-pairs. | Effort: large
 
-- [ ] **H-038** `[security]` `crates/cpoe/src/anchors/ots.rs:262`: upgrade_proof() calls merge_proofs() to merge upgraded calendar response into original proof (line 164). merge_proofs() trusts the 'upgrade' data (from untrusted calendar server) and extends result wi
-  <!-- pid:P020_UNTRUSTED_UPGRADE | first:2026-05-12 -->
-  Impact: Proof injection: calendar server can return arbitrary bytes that become part of the proof. Verification may accept invalid proofs. | Fix: Before merge_proofs(), validate that 'upgrade' is a valid OTS partial proof (parse it, check magic, ensure operations are valid OTS opcodes). | Effort: medium
 
-- [ ] **H-039** `[error_handling]` `crates/cpoe/src/anchors/ots.rs:600`: fetch_block_header caches Bitcoin block headers keyed by height (line 631). Cache is cleared if size >= 1000 (line 628), but there's no cache invalidation on network errors or timestamp changes. A sta
-  <!-- pid:P010_STALE_BLOCK_CACHE | first:2026-05-12 -->
-  Impact: If a Bitcoin reorg occurs (block at height H changes), the OTS verification returns stale merkle root and passes spuriously or fails spuriously after reorg. | Fix: Add a time-to-live (TTL) to cached headers (e.g., 6 hours) and invalidate on fork detection. Or don't cache headers, fetch fresh each verify(). | Effort: medium
 
-- [ ] **H-040** `[error_handling]` `crates/cpoe/src/anchors/ots.rs:818`: is_available() uses a 5-second timeout for HEAD request (line 817). If a calendar server is slow but working (response in 6 seconds), it times out and is marked unavailable, even though submit() has a
-  <!-- pid:P014_INCONSISTENT_TIMEOUT | first:2026-05-12 -->
-  Impact: False unavailability detection: provider reports down when it's just slow. Fallback to other providers when one is viable. | Fix: Use the same timeout for is_available() and submit(), or remove the timeout override and rely on the HTTP client's default. | Effort: small
 
-- [ ] **H-041** `[error_handling]` `crates/cpoe/src/anchors/rfc3161.rs:33`: request_timestamp() returns Result<Vec<u8>, AnchorError> but error at line 46 is Submission("TSA returned {}") with only HTTP status, no response body or retry info. TSA errors are opaque.
-  <!-- pid:P006_ERROR_CONTEXT | first:2026-05-12 -->
-  Impact: Caller cannot distinguish between transient (503 Service Unavailable) and permanent (400 Bad Request) failures. Exponential backoff or circuit breaker logic impossible. | Fix: Enrich error with status code enum (e.g., AnchorError::HttpStatus { code, headers, body_preview }) and expose retry-ability. | Effort: medium
 
-- [ ] **H-042** `[security]` `crates/cpoe/src/anchors/rfc3161.rs:100`: Nonce verification at line 110 uses constant-time comparison (ct_eq), which is correct. However, the nonce is generated once at request time (line 122) and reused if the same hash is submitted multipl
-  <!-- pid:P009_NONCE_REPLAY | first:2026-05-12 -->
-  Impact: Replay attacks possible: attacker captures a valid RFC 3161 response and reuses it for the same hash on different occasions. Non-repudiation is weakened. | Fix: Include a unique request ID or timestamp-based nonce component in the RFC 3161 request, validated on response. Or require fresh nonce per request (no caching). | Effort: medium
 
-- [ ] **H-043** `[security]` `crates/cpoe/src/anchors/rfc3161.rs:1046`: check_cert_validity() (line 830) verifies cert is within validity period using chrono::Utc::now(). But the timestamp proof anchors a past moment (e.g., 2025-01-15 12:00 UTC). Cert valid on 2025-01-15 
-  <!-- pid:P029_CERT_VALIDITY_TIME | first:2026-05-12 -->
-  Impact: Timestamp verification: old (but valid) proofs cannot be re-verified if the TSA certificate expired. Non-repudiation broken for audit trails. | Fix: Pass the timestamp's generation time (from TSTInfo genTime) to check_cert_validity(), validate cert was valid at that moment, not at verification time. | Effort: medium
 
-- [ ] **H-044** `[security]` `crates/cpoe/src/checkpoint/chain.rs:193`: Symlink check happens AFTER canonicalize() succeeds (line 202), but symlink_metadata is called on original path (line 193)
-  <!-- pid:SEC-007 | first:2026-05-12 -->
-  Impact: symlink_metadata() -> is_symlink() check on line 195 then line 202 canonicalize() could race if symlink is replaced with regular file; canonicalize would succeed unexpectedly | Fix: Call is_symlink() on the canonicalized path instead, or combine into single operation | Effort: small
 
-- [ ] **H-045** `[error_handling]` `crates/cpoe/src/checkpoint/chain.rs:308`: Ordinal overflow converted to checkpoint error but message doesn't specify limit (u64::MAX)
-  <!-- pid:EH-005 | first:2026-05-12 -->
-  Impact: Error message 'checkpoint ordinal overflow' doesn't explain why (>10^19 checkpoints) or recovery path | Fix: Include actual ordinal in error: 'checkpoint ordinal overflow: got {ordinal}, max u64' | Effort: small
 
-- [ ] **H-046** `[concurrency]` `crates/cpoe/src/checkpoint/chain.rs:336`: VDF duration calculation (lines 333-380) occurs inside lock, but hash computation (306) occurs before lock; content_hash mismatch possible
-  <!-- pid:CONC-003 | first:2026-05-12 -->
-  Impact: Between hash_file_with_size() and lock acquisition, document could be modified; checkpoint would have stale content_hash but current timestamp, creating inconsistency | Fix: Move hash_file_with_size() inside locked section | Effort: small
 
-- [ ] **H-047** `[error_handling]` `crates/cpoe/src/checkpoint/chain.rs:431`: Silent error suppression on directory sync in save() path
-  <!-- pid:EH-001 | first:2026-05-12 -->
-  Impact: Durability: parent directory fsync failure is ignored, violating all-or-nothing semantics on crash after file rename | Fix: Check sync_all() result or use scopeguard with error propagation | Effort: small
 
-- [ ] **H-048** `[security]` `crates/cpoe/src/checkpoint/chain.rs:482`: Comment warns of TOCTOU race in load_with_mac: old chain + new MAC can silently verify stale data
-  <!-- pid:SEC-001 | first:2026-05-12 -->
-  Impact: If crash occurs between rename operations, atomicity is broken: new chain file + stale MAC could verify on recovery, accepting outdated chain state | Fix: Consider atomic filesystem operations (e.g., single rename with temp-name encoding both file + MAC) or versioning in MAC field | Effort: large
 
-- [ ] **H-049** `[error_handling]` `crates/cpoe/src/checkpoint/chain.rs:489`: Silent error suppression on directory sync in save_with_mac() path
-  <!-- pid:EH-001 | first:2026-05-12 -->
-  Impact: Durability: parent directory sync failure ignored after atomic rename, breaking crash consistency guarantees for MAC sidecar | Fix: Propagate sync errors or log critical warnings | Effort: small
 
 - [ ] **H-050** `[code_quality]` `crates/cpoe/src/checkpoint/chain.rs:778`: commit_rfc_with_nonce has #[allow(clippy::too_many_arguments)] with 8 parameters, exceeds architectural guidance
   <!-- pid:CQ-001 | first:2026-05-12 -->
@@ -442,81 +160,30 @@
   <!-- pid:collab_double_serde | first:2026-05-12 -->
   Impact: Intermediate JSON step defeats deterministic CBOR encoding claims. JSON formatting varies across architectures (comment claims CBOR avoids this). | Fix: Directly encode struct fields to CBOR using ciborium, don't go through JSON intermediate. | Effort: high
 
-- [ ] **H-053** `[error_handling]` `crates/cpoe/src/collaboration.rs:398`: Infallible panic in signing_payload: .expect() on CBOR serialization
-  <!-- pid:collaborate_cbor_panic | first:2026-05-12 -->
-  Impact: If CBOR encoding fails unexpectedly, this panics instead of propagating error. Could crash the process. | Fix: Return Result<Vec<u8>, Error> instead of panic on failure. Let callers handle serialization errors. | Effort: low
 
-- [ ] **H-054** `[error_handling]` `crates/cpoe/src/continuation.rs:187`: add_packet_stats() silently ignores non-finite entropy_bits and vdf_time without logging or error return
-  <!-- pid:cont_silent_nan | first:2026-05-12 -->
-  Impact: Evidence accumulation can lose data silently if NaN/Inf passed in. No audit trail of lost statistics. | Fix: Return Result and log warning: if !entropy_bits.is_finite() || !vdf_time.is_finite() { log::warn!("non-finite evidence stats"); return Err(...); } | Effort: medium
 
-- [ ] **H-055** `[security]` `crates/cpoe/src/crypto.rs:280`: Windows DACL initialization in restrict_permissions uses manual ACL layout. Comment warns 'Do NOT use None(PACL(null_mut()))' but code initializes ACL via zeroed Box, which is then initialized. If Ini
-  <!-- pid:unsafe_initialization_order | first:2026-05-12 -->
-  Impact: If InitializeAcl fails after zero-initialization, the ACL could be in invalid state when passed to SetNamedSecurityInfoW, causing undefined behavior or permission bypass. Error checking happens after  | Fix: Initialize ACL only after successful InitializeAcl: Check the return before using the ACL for further operations. Move safety boundary tighter. | Effort: medium
 
-- [ ] **H-056** `[error_handling]` `crates/cpoe/src/crypto/lamport.rs:187`: unwrap() without error handling in test. from_bytes().unwrap() on deserialized signature assumes 8192-byte round-trip always succeeds.
-  <!-- pid:test_unwrap | first:2026-05-12 -->
-  Impact: Test panics if bincode/serialization format changes. Not production code, but masks potential serialization bugs in test coverage. | Fix: Change to: `let recovered = LamportSignature::from_bytes(&bytes).expect("signature serialization round-trip failed")` with explanatory message. | Effort: small
 
-- [ ] **H-057** `[security]` `crates/cpoe/src/declaration/verification.rs:147`: avg_interval_ms and entropy_bits deserialized from untrusted jitter_sealed without NaN/Inf validation before cryptographic hashing
-  <!-- pid:DECL-001 | first:2026-05-12 -->
-  Impact: Attacker injects NaN jitter evidence to create collision-equivalent signatures; multiple declarations with different content produce same hash; proof-of-process authenticity broken; digital signature  | Fix: In DeclarationJitter::new (line 220-236), add: if !avg_interval_ms.is_finite() || !entropy_bits.is_finite() { return Err(...) } | Effort: low
 
-- [ ] **H-058** `[error_handling]` `crates/cpoe/src/ffi/beacon.rs:110`: save_beacon_attestation uses tempfile::NamedTempFile in parent directory without atomic cleanup on failure
-  <!-- pid:ERR_TEMP_FILE_RACE | first:2026-05-12 -->
-  Impact: Temp file created, written, persisted. If persist() fails, temp file dropped and cleaned up automatically (NamedTempFile impl). But parent directory must exist. If parent deleted between .parent() cal | Fix: Verify parent directory exists before creating temp file, handle persist errors with explicit cleanup | Effort: small
 
 - [ ] **H-059** `[architecture]` `crates/cpoe/src/ffi/beacon.rs:198`: Business logic (WritersProof anchor request) with forensic evaluation and timeout orchestration in FFI layer
   <!-- pid:ARCH_BUSINESS_LOGIC_IN_FFI | first:2026-05-12 -->
   Impact: FFI function orchestrates complex async operations: beacon fetch, anchor submission, timeout handling, JSON serialization. Mixes trust boundary (FFI) with domain logic (evidence submission). Should be | Fix: Move WritersProof client orchestration to crate::writersproof module, have FFI wrap engine API call | Effort: large
 
-- [ ] **H-060** `[error_handling]` `crates/cpoe/src/ffi/ephemeral.rs:289`: Disk I/O error stored in FfiResult.error_message but success still true
-  <!-- pid:partial_failure_masked | first:2026-05-12 -->
-  Impact: Checkpoint reports success even if persistence failed; client unaware of disk error | Fix: Return error in FfiResult if persist_error occurs; split success from persistence status | Effort: medium
 
-- [ ] **H-061** `[error_handling]` `crates/cpoe/src/ffi/ephemeral.rs:668`: .expect() on try_from() for array slice in sync conflict resolution
-  <!-- pid:ffi_crypto_expect | first:2026-05-12 -->
-  Impact: If nonce or signature validation fails, panic instead of returning error | Fix: Use if let or match; propagate crypto validation errors to caller | Effort: small
 
-- [ ] **H-062** `[security]` `crates/cpoe/src/ffi/evidence_derivative.rs:261`: VDF computation with config load: `CpopConfig::load_or_default()` with `.unwrap_or_else()` on error falls back to defaults silently. VDF params determine proof strength; default may be weak.
-  <!-- pid:security_weak_default_fallback | first:2026-05-12 -->
-  Impact: On config file corruption, VDF proof computed with default weak parameters. Attacker could exploit weaker proofs. No indication to caller. | Fix: Return error on config load failure; require valid config for VDF operations; add validation of VDF params (iterations > minimum) | Effort: small
 
 - [ ] **H-063** `[performance]` `crates/cpoe/src/ffi/evidence_export.rs:223`: enrich_checkpoints() processes all events and jitter samples O(n²) for revision depth
   <!-- pid:quadratic_algorithm | first:2026-05-12 -->
   Impact: Quadratic complexity in checkpoint enrichment; slow for large documents | Fix: Compute revision depth incrementally in single pass | Effort: medium
 
-- [ ] **H-064** `[security]` `crates/cpoe/src/ffi/evidence_export.rs:226`: Beacon anchor DNS lookup from 'https://drand.cloudflare.com' hardcoded
-  <!-- pid:untrusted_dns | first:2026-05-12 -->
-  Impact: No DNSSEC validation; MITM possible on beacon attestation | Fix: Use DNS with DNSSEC or pre-check beacon signatures; document trust assumptions | Effort: large
 
-- [ ] **H-065** `[security]` `crates/cpoe/src/ffi/evidence_export.rs:551`: WRITERSPROOF_API_URL loaded from env var without validation
-  <!-- pid:env_var_crypto_endpoint | first:2026-05-12 -->
-  Impact: Untrusted env var used as CA endpoint; HTTPS downgrade or MITM possible | Fix: Use hardcoded URL or validate URL format and domain; never trust env vars for crypto endpoints | Effort: medium
 
-- [ ] **H-066** `[error_handling]` `crates/cpoe/src/ffi/evidence_export.rs:1205`: .unwrap() on HashValue::try_sha256() in checkpoint construction
-  <!-- pid:unwrap_on_store_data | first:2026-05-12 -->
-  Impact: Invalid hash data in stored events causes panic during evidence export | Fix: Propagate error instead of unwrap(); validate hashes when reading from store | Effort: medium
 
-- [ ] **H-067** `[error_handling]` `crates/cpoe/src/ffi/evidence_export.rs:1217`: .unwrap() on HashValue::try_sha256() in checkpoint construction
-  <!-- pid:unwrap_on_store_data | first:2026-05-12 -->
-  Impact: Invalid hash in stored event causes panic during evidence export | Fix: Use match/if let instead of unwrap() | Effort: medium
 
-- [ ] **H-068** `[error_handling]` `crates/cpoe/src/ffi/evidence_export.rs:1218`: .unwrap() on HashValue::try_sha256() in test data construction
-  <!-- pid:test_unwrap | first:2026-05-12 -->
-  Impact: Test helper panics if test checkpoint data is malformed | Fix: Use proper error handling; return Result from test helpers | Effort: small
 
-- [ ] **H-069** `[error_handling]` `crates/cpoe/src/ffi/fingerprint.rs:433`: unwrap_or_default() on sentinel manager may silently drop snapshot history
-  <!-- pid:ERR_SILENT_UNWRAP_OR_DEFAULT | first:2026-05-12 -->
-  Impact: If with_manager() returns Err, empty snapshots vector returned with no error indication to caller. Silent data loss in fingerprinting history. | Fix: Return FfiKeystrokeTimingArrays with error_flag field or propagate error explicitly | Effort: medium
 
-- [ ] **H-070** `[error_handling]` `crates/cpoe/src/ffi/helpers.rs:16`: Mutex::lock().unwrap_or_else(|e| e.into_inner()) recovers from poisoned state but then unconditionally accesses Option. Poisoned mutex indicates prior panic in thread.
-  <!-- pid:ffi_poisoned_mutex_silent | first:2026-05-12 -->
-  Impact: Silent recovery from poisoned state masks prior FFI panics. May obscure root cause of device_identity() failures. | Fix: Log poison recovery explicitly; consider propagating poison as error rather than silently recovering | Effort: small
 
-- [ ] **H-071** `[error_handling]` `crates/cpoe/src/ffi/helpers.rs:237`: Database recovery logic is complex (3 strategies) but if all fail, returns generic error. If HMAC key is truly unavailable, backup is created but user has lost data (silent loss).
-  <!-- pid:ffi_data_loss_on_key_failure | first:2026-05-12 -->
-  Impact: On key unavailability (corrupted keychain, lost secure storage), database is backed up but original DB is unusable. User data appears lost without recovery path. | Fix: Document recovery procedure; provide user-facing error with instructions; consider encrypted backup to cloud | Effort: large
 
 - [ ] **H-072** `[architecture]` `crates/cpoe/src/ffi/report.rs:37`: Complex LRU cache logic in FFI binding layer
   <!-- pid:logic_in_boundary | first:2026-05-12 -->
@@ -530,41 +197,14 @@
   <!-- pid:logic_in_boundary | first:2026-05-12 -->
   Impact: Evidence packet construction business logic should be in core, not FFI wrapper | Fix: Move build_checkpoints, compute_event_stats, etc. to core report module; FFI calls them | Effort: large
 
-- [ ] **H-075** `[error_handling]` `crates/cpoe/src/ffi/report.rs:366`: Mutex::lock().unwrap_or_else(|p| p.into_inner()) in FFI cache
-  <!-- pid:mutex_poison_recovery | first:2026-05-12 -->
-  Impact: Panic recovery swallows poisoned mutex; unclear semantics in FFI | Fix: Log poisoning and return explicit error to caller instead of silent recovery | Effort: small
 
-- [ ] **H-076** `[error_handling]` `crates/cpoe/src/ffi/report.rs:737`: config load failure silently uses Default instead of propagating error
-  <!-- pid:silent_config_fallback | first:2026-05-12 -->
-  Impact: VDF configuration missing silently defaults; evidence integrity depends on correct IPS | Fix: Return error if config cannot be loaded; don't export with wrong parameters | Effort: medium
 
-- [ ] **H-077** `[security]` `crates/cpoe/src/ffi/sentinel.rs:392`: .unwrap() on Option returned from path operations in test
-  <!-- pid:test_path_unwrap | first:2026-05-12 -->
-  Impact: Non-existent path components cause test panic | Fix: Use Option::ok_or_else() with proper error messaging | Effort: small
 
-- [ ] **H-078** `[error_handling]` `crates/cpoe/src/ffi/sentinel.rs:431`: .expect() on file write in test code
-  <!-- pid:test_io_expect | first:2026-05-12 -->
-  Impact: I/O errors panic test instead of propagating | Fix: Return Result from test setup; use proper test error handling | Effort: small
 
-- [ ] **H-079** `[security]` `crates/cpoe/src/ffi/sentinel_es.rs:68`: Input length validation split across two fields without atomic boundary check
-  <!-- pid:SEC_SPLIT_INPUT_VALIDATION | first:2026-05-12 -->
-  Impact: signing_id (512) and exec_path (4096) validated separately but stored together in DetectedAiTool. No bounds check on total combined size. Could cause log line truncation or buffer issues downstream. | Fix: Check total combined size or document max struct size | Effort: small
 
-- [ ] **H-080** `[security]` `crates/cpoe/src/ffi/sentinel_es.rs:369`: confidence parameter validation done after length checks but before usage - silent float NaN/Inf validation only
-  <!-- pid:SEC_UNVALIDATED_FLOAT_SEMANTICS | first:2026-05-12 -->
-  Impact: Only is_finite() and range check (0.0-1.0) performed. Accepts valid floats like 0.0 which may indicate 'no confidence'. No semantic validation that confidence > 0 for meaningful recognition. | Fix: Enforce confidence > 0.0 for final fragments, document 0.0 as 'low confidence but recorded' | Effort: small
 
-- [ ] **H-081** `[error_handling]` `crates/cpoe/src/ffi/sentinel_inject.rs:221`: Missing sentinel check result handling - false return silently discards keystrokes on failure
-  <!-- pid:ERR_SILENT_SENTINEL_MISSING | first:2026-05-12 -->
-  Impact: If get_running_sentinel() returns None, function returns false but caller has no way to distinguish 'sentinel not running' from 'keystroke rejected by rate limiter'. No error message field in FFI func | Fix: Add error_code/error_message to keystroke injection response or use different sentinel state check | Effort: medium
 
-- [ ] **H-082** `[security]` `crates/cpoe/src/ffi/sentinel_inject.rs:239`: Rate limiter window shared across ALL document sessions (static RATE_LIMITER) but keystroke attribution is per-session
-  <!-- pid:SEC_GLOBAL_RATE_LIMITER_BYPASS | first:2026-05-12 -->
-  Impact: Global Mutex<RateWindow> enforces 50 KPS limit across entire sentinel, but keystroke_count incremented per-document session. Attacker can craft keystrokes across multiple documents to bypass per-docum | Fix: Move rate limiter into DocumentSession or make per-session, document the global scope limitation in rate limiting policy | Effort: large
 
-- [ ] **H-083** `[security]` `crates/cpoe/src/ffi/sentinel_inject.rs:369`: Coalesced keystroke count unbounded before clamping (clamp(1,10) applied after receiving raw value)
-  <!-- pid:SEC_UNBOUNDED_COALESCED_COUNT | first:2026-05-12 -->
-  Impact: Caller can send arbitrarily large coalesced_count before clamping. No size check on incoming value. Could cause integer underflow in saturating_sub() if validation fails. | Fix: Validate coalesced_count <= 10 before consuming, reject otherwise | Effort: small
 
 - [ ] **H-084** `[architecture]` `crates/cpoe/src/ffi/sentinel_witnessing.rs:177`: Forensic analysis execution in FFI status query function (query_store_metrics)
   <!-- pid:ARCH_FORENSICS_IN_STATUS_FFI | first:2026-05-12 -->
@@ -586,45 +226,18 @@
   <!-- pid:logic_in_boundary | first:2026-05-12 -->
   Impact: Platform-specific Unicode handling belongs in core, not FFI wrapper | Fix: Move normalize_for_attestation to core protocol crate or utils | Effort: medium
 
-- [ ] **H-089** `[security]` `crates/cpoe/src/ffi/text_fragment.rs:323`: FFI function ffi_sentinel_record_paste accepts 10MB pasted text with late size check
-  <!-- pid:ffi_allocation_dos | first:2026-05-12 -->
-  Impact: UniFFI allocates full string before size validation; OOM DoS possible | Fix: Add pre-allocation size limit check in Swift before calling FFI; document constraint | Effort: small
 
-- [ ] **H-090** `[security]` `crates/cpoe/src/ffi/text_fragment.rs:536`: store_attestation_from_hash() not exported as FFI but uses store and crypto operations
-  <!-- pid:hidden_ffi_function | first:2026-05-12 -->
-  Impact: Internal function with public signature; bypasses FFI validation layer | Fix: Either export as @uniffi::export or make non-public; clarify API surface | Effort: small
 
-- [ ] **H-091** `[security]` `crates/cpoe/src/ffi/text_fragment.rs:827`: unsafe .expect() on array slice conversion after length validation
-  <!-- pid:ffi_panic_in_boundary | first:2026-05-12 -->
-  Impact: If validation is bypassed or incorrect, expect() panics crossing FFI boundary | Fix: Use try_into() with proper error propagation instead of expect() | Effort: small
 
-- [ ] **H-092** `[security]` `crates/cpoe/src/ffi/text_fragment.rs:1064`: .unwrap() on to_str() for temp directory path in test
-  <!-- pid:test_path_unwrap | first:2026-05-12 -->
-  Impact: Non-UTF8 paths panic; not a production issue but violates FFI safety pattern | Fix: Use OsStr or handle non-UTF8 gracefully in tests | Effort: small
 
-- [ ] **H-093** `[error_handling]` `crates/cpoe/src/ffi/types.rs:42`: catch_ffi_panic macro fallback value chosen by caller without type safety - may mask real panics
-  <!-- pid:ERR_PANIC_FALLBACK_MASKS_CAUSE | first:2026-05-12 -->
-  Impact: catch_ffi_panic!(fallback_expr, {...}) returns fallback on ANY panic. Fallback is often a default struct (empty results), so panics are silently converted to success=false with no error_message. Calle | Fix: Panic handler should log panic details to error_message field, use try_panic! to capture panic info | Effort: medium
 
-- [ ] **H-094** `[error_handling]` `crates/cpoe/src/ffi/writersproof_ffi.rs:52`: API key error handling does not redact: `load_api_key()` errors may contain key paths/hints. Error returned to Swift/Kotlin caller as plaintext.
-  <!-- pid:security_secret_in_error | first:2026-05-12 -->
-  Impact: Sensitive API key metadata (file paths, potential partial key) exposed to GUI logs/error dialogs. Violates secret handling requirements. | Fix: Redact file paths in error messages; use generic 'API key not configured' without path details; never include partial key data in errors | Effort: small
 
 - [ ] **H-095** `[code_quality]` `crates/cpoe/src/ffi/writersproof_ffi.rs:113`: Function ffi_publish_evidence is 157 lines. Long chain of validations, transformations, and async operations. Multiple error paths with different return types.
   <!-- pid:ffi_function_too_long | first:2026-05-12 -->
   Impact: Hard to trace error paths; difficult to audit all validation checks. Risk of missing validation or returning partial state on error. | Fix: Split into: validate_document() -> load_events() -> build_signature() -> publish_async(); each <60 lines with clear pre/post conditions | Effort: large
 
-- [ ] **H-096** `[code_quality]` `crates/cpoe/src/ffi/writersproof_ffi.rs:383`: Dead code: signing operation (anchor_sig) computed after `signing_key` was dropped at line 211. Code will not compile or is unreachable.
-  <!-- pid:dead_code_crypto | first:2026-05-12 -->
-  Impact: Indicates incomplete refactoring or copy-paste error. Anchor signing path never executes. Evidence anchoring may be broken. | Fix: Remove dead code or refactor to compute all signatures before async; ensure compilation succeeds | Effort: medium
 
-- [ ] **H-097** `[security]` `crates/cpoe/src/fingerprint/activity.rs:251`: Scale factor computed without finite validation in confidence update when Hurst exponent unavailable; result stored unchecked
-  <!-- pid:ACT-002 | first:2026-05-12 -->
-  Impact: Non-finite confidence propagates downstream; anomaly detection threshold comparisons fail silently; classification decisions based on garbage values; confidence field misrepresents fingerprint reliabi | Fix: Add: let scale = 1.0 / 0.95; if !scale.is_finite() { score = 0.0; } before weighting | Effort: trivial
 
-- [ ] **H-098** `[security]` `crates/cpoe/src/fingerprint/activity_collection.rs:118`: Silent rejection of out-of-order/replayed samples without logging or metrics; replay protection lacks observability for audit trail
-  <!-- pid:ACT-001 | first:2026-05-12 -->
-  Impact: Attacker injects malformed timestamps to silently corrupt biometric samples; no trace left; fingerprint integrity unverified; behavioral spoofing undetected | Fix: Log rejected samples (sample_count, timestamp, reason) at WARN level; track rejection count in accumulator; fail fast if > 10% rejection rate | Effort: low
 
 - [ ] **H-099** `[code_quality]` `crates/cpoe/src/fingerprint/voice.rs:549`: StyleCollector struct has 23 fields (lines 550-584), all public mutable. No encapsulation of invariants. For example, word_lengths array and word_length_transition_counts must stay in sync, but there'
   <!-- pid:P008_COLLECTOR_ENCAPSULATION | first:2026-05-12 -->
@@ -634,153 +247,48 @@
   <!-- pid:ON2_UNCAPPED_SEARCH | first:2026-05-12 -->
   Impact: For MAX_FATIGUE_ANALYSIS_SAMPLES=2500: worst case ~(1500)*(1400)=2.1M iterations. On slow device >100ms latency, blocks main thread. | Fix: Add early termination with convergence threshold; use golden-section search or limit iterations to O(N log N) | Effort: large
 
-- [ ] **H-101** `[error_handling]` `crates/cpoe/src/forensics/advanced_metrics.rs:467`: Test unwrap() after compute_clc_metrics() without verification of MIN_CLC_SAMPLES condition
-  <!-- pid:TEST_PRECONDITION_HIDDEN | first:2026-05-12 -->
-  Impact: Test passes spuriously if MIN_CLC_SAMPLES not met; code path untested | Fix: Verify preconditions in test: assert!(windows.len() >= 2 && samples.len() >= MIN_CLC_SAMPLES) | Effort: small
 
-- [ ] **H-102** `[security]` `crates/cpoe/src/forensics/analysis.rs:328`: Total weight normalization in v2 classifier can fail silently if all optional primary signals are missing
-  <!-- pid:v2_primary_signal_missing | first:2026-05-12 -->
-  Impact: When primary_available < MIN_PRIMARY_SIGNALS, confidence is capped to FALLBACK_CONFIDENCE_CAP (0.30); but score still computed from secondary signals only—verdict can be Cognitive with low confidence  | Fix: When primary signals missing, apply higher penalty to raw score before confidence cap; document minimum signal requirements in verdict | Effort: medium
 
-- [ ] **H-103** `[error_handling]` `crates/cpoe/src/forensics/cognitive_load.rs:706`: Test calls unwrap() on analyze_cognitive_load() result without assertion on sufficiency checks
-  <!-- pid:TEST_UNWRAP_HIDDEN | first:2026-05-12 -->
-  Impact: If MIN_SAMPLES or text length checks fail, unwrap() panics. Test masked by setup. | Fix: Use assert!(result.is_some(), "..."): let metrics = result.expect("insufficient data"); with message | Effort: small
 
-- [ ] **H-104** `[security]` `crates/cpoe/src/forensics/cross_modal.rs:223`: Division by session_duration_sec without guard against zero or negative values
-  <!-- pid:UNGUARDED_DIVISION_1 | first:2026-05-12 -->
-  Impact: If session_duration_sec <= 0, chars_per_sec becomes Inf/-Inf/NaN, bypassing growth rate check (line 224 check becomes unreliable) | Fix: Return INSUFFICIENT_SCORE if session_duration_sec <= 0.0 before division (already checks >MIN_SESSION_DURATION_SEC on line 190, but not negative) | Effort: small
 
-- [ ] **H-105** `[security]` `crates/cpoe/src/forensics/cross_modal.rs:260`: Division by checkpoint_count without zero guard despite being u64 from untrusted input
-  <!-- pid:UNGUARDED_DIVISION_2 | first:2026-05-12 -->
-  Impact: If checkpoint_count==0, panic on division. Silent acceptance of zero checkpoints violates consistency check intent. | Fix: Check checkpoint_count > 0 before division (already done line 251 returns early, but type system allows 0u64) | Effort: small
 
-- [ ] **H-106** `[security]` `crates/cpoe/src/forensics/cross_modal.rs:442`: Division by kchars (document_length/1000) without guard; kchars can be 0 or denormalized
-  <!-- pid:UNGUARDED_DIVISION_3 | first:2026-05-12 -->
-  Impact: If document_length < 1000, kchars rounds to 0, density becomes Inf. Density check bypassed. | Fix: Add check: if kchars < 0.1 return INSUFFICIENT_SCORE; or use safe_div(samples.len() as f64, document_length.max(1000) as f64, 0.0) | Effort: small
 
 - [ ] **H-107** `[code_quality]` `crates/cpoe/src/forensics/dictation.rs:94`: score_dictation_plausibility applies multiplicative penalties without bounds checking between multiplications
   <!-- pid:cascading_penalties | first:2026-05-12 -->
   Impact: Multiple penalty multiplications can produce very small near-zero scores; cascading penalties from independent checks may be non-linear and unintuitive | Fix: Track accumulated penalty linearly or use additive adjustments; document interaction between penalty combinations | Effort: medium
 
-- [ ] **H-108** `[security]` `crates/cpoe/src/forensics/likelihood_model.rs:482`: LLR sigmoid 1.0/(1.0+(-llr).exp()) not guarded against llr overflow causing Inf
-  <!-- pid:EXP_OVERFLOW | first:2026-05-12 -->
-  Impact: Exponential overflow with large |LLR| produces Inf, sigmoid returns NaN. Verdict corrupted. | Fix: Clamp llr to [-700, 700] before exp() to prevent overflow: let clamped_llr = llr.clamp(-700.0, 700.0); | Effort: small
 
-- [ ] **H-109** `[security]` `crates/cpoe/src/forensics/writing_mode.rs:350`: Thresholds for cognitive/transcriptive classification are manipulable via metrics
-  <!-- pid:threshold_gap_writingmode | first:2026-05-12 -->
-  Impact: COGNITIVE_THRESHOLD (0.65) and TRANSCRIPTIVE_THRESHOLD (0.35) have large neutral band (0.3 width); adversary can craft patterns to land in Mixed zone to evade classification | Fix: Reduce neutral band or add secondary confirmation signals; document threshold derivation from calibration data | Effort: medium
 
-- [ ] **H-110** `[error_handling]` `crates/cpoe/src/forensics/writing_mode.rs:1057`: Unwrap on Option without prior assertion in production code path (test code)
-  <!-- pid:unwrap_after_is_some_test | first:2026-05-12 -->
-  Impact: If compute_translating_burst_ratio returns None unexpectedly, test assertion fails instead of graceful error handling | Fix: Test should use match or assert! before unwrap; not production code but pattern is risky | Effort: small
 
-- [ ] **H-111** `[code_quality]` `crates/cpoe/src/identity/did_webvh.rs:179`: Function derive_webvh_signing_key called 3 times in create() path (lines 177, 178 via CpopSigner, 181-182 in did_template)
-  <!-- pid:redundant_key_derivation | first:2026-05-12 -->
-  Impact: derive_webvh_signing_key(&master_key, &address) is called twice: once at line 177, and implicitly again inside CpopSigner::from_key (line 178) which calls encode_multibase_ed25519 on verifying_key. Th | Fix: Derive once, reuse: let webvh_key = derive_webvh_signing_key(master_key, &address)?; let signer = CpopSigner::new(webvh_key, verify_method); | Effort: small
 
-- [ ] **H-112** `[error_handling]` `crates/cpoe/src/identity/did_webvh.rs:315`: save() method does not flush state file to disk; relies on drop() impl which may not error
-  <!-- pid:state_file_no_fsync | first:2026-05-12 -->
-  Impact: Line 356 renames tmp to state_path. If rename succeeds but sync_all() was not called, data is not guaranteed on disk. File drop() runs at end of scope but I/O errors are lost. | Fix: Call sync_all() on the final file after rename: let f = fs::OpenOptions::new().open(&state_path)?; f.sync_all()?; | Effort: small
 
-- [ ] **H-113** `[error_handling]` `crates/cpoe/src/identity/did_webvh.rs:387`: DIDWebVHState::load_state() unwrapped without context; no distinction between 'file not found' and 'corrupted state file'
-  <!-- pid:identity_state_load_context | first:2026-05-12 -->
-  Impact: Line 387 calls load_state(path_str).map_err(map_webvh_err) which wraps errors generically. If state file is corrupted or tampered, caller cannot distinguish from missing state, making recovery/rollbac | Fix: Split error handling: check file existence first, then validate state schema before loading. Return Err with context: Error::identity(format!("corrupted state: {e}")). | Effort: small
 
-- [ ] **H-114** `[security]` `crates/cpoe/src/identity/did_webvh.rs:440`: URL-decoded host validation compares lowercase but original DID parameter is not lowercased, creating inconsistency
-  <!-- pid:did_host_case_inconsistency | first:2026-05-12 -->
-  Impact: Line 440 decodes host_raw with urlencoding::decode. Line 460 then lowercases for comparison. But DID string passed to resolve_and_verify_key() is NOT lowercased before passing to validate_did_host().  | Fix: Normalize DID to lowercase at entry: let did_lower = did.to_lowercase(); validate_did_host(&did_lower)? | Effort: small
 
-- [ ] **H-115** `[security]` `crates/cpoe/src/identity/did_webvh.rs:499`: Punycode homograph attack detection rejects 'xn--' labels but does not account for mixed-case encoding in IDN
-  <!-- pid:idn_case_insensitive_bypass | first:2026-05-12 -->
-  Impact: Line 497 checks label.starts_with('xn--') in lowercase. However, IDN labels are case-insensitive during parsing; 'XN--' or 'Xn--' may bypass the check in some DNS implementations, allowing homographs  | Fix: Normalize label case before check: if label.to_lowercase().starts_with('xn--') | Effort: small
 
-- [ ] **H-116** `[security]` `crates/cpoe/src/identity/did_webvh.rs:506`: DID document field extraction assumes structure without validation of JSON schema
-  <!-- pid:did_doc_validation_gap | first:2026-05-12 -->
-  Impact: resolve_and_verify_key() at line 540 does doc['verificationMethod'].as_array(). If the DID document is malformed or tampered, verificationMethod could be missing, null, or wrong type. Returns Ok(false | Fix: Require verificationMethod to be present and valid: if doc['verificationMethod'].as_array().is_none() { return Err(...) }. Validate schema against DID spec. | Effort: medium
 
-- [ ] **H-117** `[security]` `crates/cpoe/src/identity/did_webvh.rs:545`: resolve_and_verify_key() performs HTTP request without enforcing certificate pinning or TLS validation
-  <!-- pid:did_http_no_pinning | first:2026-05-12 -->
-  Impact: Line 529: state.resolve() performs HTTP request to fetch DID document. No Certificate transparency checks, no DANE, no pinning. DNS poisoning or MITM can redirect to attacker-controlled DID document. | Fix: Add TLS certificate pinning, require DNSSEC validation, or use alternative DID method without HTTP. | Effort: large
 
-- [ ] **H-118** `[security]` `crates/cpoe/src/identity/did_webvh.rs:599`: Signing key loaded from disk without validating file permissions on non-Unix platforms
-  <!-- pid:platform_perm_check_gap | first:2026-05-12 -->
-  Impact: On Windows, load_signing_key() only validates permissions on Unix with MetadataExt::mode(). Windows users bypass all permission checks, allowing a compromised signing key file to be accepted. | Fix: Add Windows-specific permission validation or reject loading if platform-specific checks cannot be performed. Use safe_open_file pattern with FILE_SHARE_READ=0. | Effort: medium
 
-- [ ] **H-119** `[security]` `crates/cpoe/src/identity/mnemonic.rs:44`: Mnemonic phrase converted to String and passed to Mnemonic::parse_in without zeroizing intermediate owned copy
-  <!-- pid:mnemonic_string_double_copy | first:2026-05-12 -->
-  Impact: At line 44, phrase_owned = Zeroizing::new(phrase.to_string()) creates owned string, then dereferenced and passed. After Mnemonic::parse_in returns, raw mnemonic object holds a copy of phrase internall | Fix: Avoid to_string() on mnemonics; pass &str directly and ensure bip39 crate zeroizes after parsing. Or use unsafe lifetime extension to ensure single copy. | Effort: small
 
-- [ ] **H-120** `[security]` `crates/cpoe/src/identity/secure_storage.rs:490`: save_macos() deletes existing keychain entry first (line 489) without verifying delete success; new save can fail after delete
-  <!-- pid:macos_keychain_delete_race | first:2026-05-12 -->
-  Impact: Line 489: delete_macos() is called but result is not checked. If delete fails (e.g., no entry exists, which is OK), next SecItemAdd can fail if entry still exists due to race. Recovery requires user i | Fix: Ignore 'not found' errors: let _ = delete_macos(account); or check status. | Effort: small
 
-- [ ] **H-121** `[security]` `crates/cpoe/src/identity/secure_storage.rs:587`: Base64-encoded keychain data decoded and zeroized in wrong order: encoded string zeroized before decode error check
-  <!-- pid:zeroize_exception_safety | first:2026-05-12 -->
-  Impact: At line 127, if decode fails, encoded.zeroize() is called inside the error handler, but errors take a different path. However, line 131 returns with decoded data. If an exception or panic occurs betwe | Fix: Use RAII guard: let encoded = ScopedZeroize(String::from_utf8(data_cf.bytes().to_vec())?); or restructure to zeroize before any error path. | Effort: small
 
-- [ ] **H-122** `[security]` `crates/cpoe/src/ipc/async_client.rs:214`: Hardcoded message size validation without referencing MAX_MESSAGE_SIZE constant
-  <!-- pid:P001_hardcoded_constant | first:2026-05-12 -->
-  Impact: Inconsistent validation logic; if MAX_MESSAGE_SIZE is updated, this check at line 214 remains at 1024 bytes, allowing larger messages to pass through confirmation protocol | Fix: Replace hardcoded 1024 with super::messages::MAX_MESSAGE_SIZE or reference from import | Effort: small
 
-- [ ] **H-123** `[error_handling]` `crates/cpoe/src/ipc/async_client.rs:236`: .unwrap_u8() on constant-time comparison result; if library behavior changes, could mask authentication bypass
-  <!-- pid:P002_unwrap_ct | first:2026-05-12 -->
-  Impact: Fatal if subtle crate changes its ct_eq behavior; panic path is on server confirmation mismatch validation | Fix: Use explicit match on Subtle::unwrap_u8() return or validate pattern prior to use | Effort: small
 
-- [ ] **H-124** `[error_handling]` `crates/cpoe/src/ipc/async_client.rs:340`: On send timeout (line 334), stream and secure_session are cleared but no logging of which message was in-flight
-  <!-- pid:P022_timeout_context | first:2026-05-12 -->
-  Impact: Silent connection loss without diagnostic info; client reconnect may retry unknown message or fail silently | Fix: Log message type or clone message before send for retry context | Effort: small
 
-- [ ] **H-125** `[security]` `crates/cpoe/src/ipc/crypto.rs:89`: Missing input length validation for session_pub_key in from_shared_secret. Public key sizes are not validated before use in HKDF info, allowing undersized or oversized keys to pass through.
-  <!-- pid:missing_input_validation | first:2026-05-12 -->
-  Impact: An attacker could supply malformed public keys that might violate the ECDH protocol invariants or cause HKDF-Info encoding issues. While p256::PublicKey validates the client_pubkey before use, the ser | Fix: Add explicit len() checks: `if client_pubkey.len() != P256_PUBLIC_KEY_SIZE { return Err(...) }` and likewise for server_pubkey before HKDF operations. | Effort: small
 
-- [ ] **H-126** `[security]` `crates/cpoe/src/ipc/crypto.rs:94`: Missing validation of shared_secret length in from_shared_secret. HKDF-Extract accepts arbitrary input size but P-256 ECDH should produce exactly 32 bytes; accepting undersized secrets weakens the key
-  <!-- pid:weak_input_validation_secret | first:2026-05-12 -->
-  Impact: An attacker or fault could provide truncated shared secrets (e.g., 16 bytes instead of 32), reducing entropy and weakening the derived session key. HKDF tolerates any input size, so no error will occu | Fix: Add explicit check: `if shared_secret.len() < 32 { return Err(anyhow!("Shared secret too short: {} bytes", shared_secret.len())) }` after parameter receipt. | Effort: small
 
-- [ ] **H-127** `[security]` `crates/cpoe/src/ipc/messages.rs:95`: Symlink check on canonical path but then used as-is in handlers; TOCTOU between check (line 95) and filesystem operations in handlers
-  <!-- pid:P017_toctou_symlink | first:2026-05-12 -->
-  Impact: Handler receives canonical path validated against symlinks, but file may be replaced with symlink between validation and handler execution | Fix: Return canonical path from validate_ipc_path() and use only that downstream, or check again at handler level | Effort: medium
 
-- [ ] **H-128** `[security]` `crates/cpoe/src/ipc/messages.rs:161`: Linear scan of BLOCKED_WINDOWS_PREFIXES on every IPC path validation; prefix comparison is case-insensitive but loop is O(n)
-  <!-- pid:P007_linear_prefix_scan | first:2026-05-12 -->
-  Impact: DOS via slow path validation; 8 prefixes × repeated IPC calls accumulate CPU cost; Windows Extended-Length Prefix normalization happens before check, adding extra processing | Fix: Use trie or DashMap for prefix matching, or compile static regex | Effort: large
 
-- [ ] **H-129** `[security]` `crates/cpoe/src/ipc/messages.rs:214`: String fields in Pulse validation not enforced; SimpleJitterSample passed directly without field length bounds
-  <!-- pid:P005_unvalidated_pulse | first:2026-05-12 -->
-  Impact: BrowserKeystroke and BrowserKeystrokeBatch validate key/code length but Pulse does not; malicious pulse could contain unbounded strings in jitter sample metadata | Fix: Add validation for SimpleJitterSample string fields (if any exist) or document that numeric-only fields are guaranteed | Effort: medium
 
-- [ ] **H-130** `[security]` `crates/cpoe/src/ipc/server_handler.rs:219`: IpcMessage::validate_paths() called AFTER deserialization but BEFORE bounds checking on Pulse; allows oversized Pulse to allocate in serde layer
-  <!-- pid:P024_pre_validation | first:2026-05-12 -->
-  Impact: Malicious Pulse message with huge numeric fields causes allocation during serde before validation; no size cap on timestamp_ns field itself, only range check | Fix: Check message size or Pulse field sizes before calling serde decode | Effort: medium
 
-- [ ] **H-131** `[security]` `crates/cpoe/src/ipc/server_handler.rs:232`: Best-effort error response sends plaintext after path validation failure; plaintext fallback path not guarded by protocol check
-  <!-- pid:P015_mixed_protocols | first:2026-05-12 -->
-  Impact: On path validation error (line 220), if secure_session exists, sends encrypted error. But line 233 fallback assumes plaintext protocol, mixing protocols if session is Some | Fix: Ensure error response uses same protocol as request (encrypted if session present, else plaintext) | Effort: small
 
-- [ ] **H-132** `[security]` `crates/cpoe/src/keyhierarchy/crypto.rs:57`: Missing length validation on session_pub_key parameter in build_cert_data_with_expiry. Function extends variable-length pub_key directly into certificate data without checking expected size (typically
-  <!-- pid:missing_pubkey_validation | first:2026-05-12 -->
-  Impact: Undersized or oversized session_pub_key values could alter certificate layout, breaking downstream parsing or creating substitution attack vectors. Certificate hash/fingerprinting may become unstable  | Fix: Add validation: `if session_pub_key.len() != P256_PUBLIC_KEY_SIZE { return Err(...) }` at the start of build_cert_data_with_expiry and handle gracefully. | Effort: small
 
 - [ ] **H-133** `[code_quality]` `crates/cpoe/src/keyhierarchy/puf.rs:74`: recover_from_mnemonic() does not validate that seed matches the original device after recovery
   <!-- pid:device_id_not_validated_after_recovery | first:2026-05-12 -->
   Impact: Line 255 calls Self::new_with_path(seed_path) after writing recovered seed. This recreates the PUF and computes a new device_id (line 110). If mnemonic is recovered on a different device, device_id wi | Fix: After recovery, verify device_id or hostname match, or document that device_id WILL change and callers must update identity. | Effort: small
 
-- [ ] **H-134** `[security]` `crates/cpoe/src/keyhierarchy/puf.rs:231`: Entropy length validation accepts both 16 and 32 bytes but only 16-byte entropy is valid for BIP-39
-  <!-- pid:puf_entropy_length_ambiguity | first:2026-05-12 -->
-  Impact: recover_from_mnemonic() at line 230 checks entropy.len() != 16 && entropy.len() != 32. However, phrase_to_entropy() returns 16 bytes for 12-word mnemonic and 32 bytes for 24-word. The code treats 32-b | Fix: Only accept 16-byte entropy (12-word mnemonic): if entropy.len() != 16 { return Err(...) }. Enforce 1:1 round-trip. | Effort: small
 
-- [ ] **H-135** `[security]` `crates/cpoe/src/keyhierarchy/recovery.rs:21`: Constant-time comparison of session_id uses ConstantTimeEq but result method name is confusing: .into() converts ChoiceU8 to bool
-  <!-- pid:ct_comparison_implicit | first:2026-05-12 -->
-  Impact: Line 21-24 uses subtle::ConstantTimeEq to compare session_id with zeros. The .into() at line 24 is correct but implicit; developers may not realize this is constant-time. Similar code elsewhere uses d | Fix: Add explicit constant-time assertion in comments or use explicit ConditionallySelectable trait. Or provide wrapper: ct_is_zero(session_id). | Effort: small
 
-- [ ] **H-136** `[security]` `crates/cpoe/src/keyhierarchy/recovery.rs:41`: recover_session() accepts recovery state without validating its age or version field explicitly
-  <!-- pid:recovery_state_age_unchecked | first:2026-05-12 -->
-  Impact: Lines 20-45: recover_session checks certificate expiry (line 30) and document_hash match (line 32), but does NOT check when recovery state was created. Old recovery state from hours/days ago could be  | Fix: Add max_age_secs parameter: let age = Utc::now().signed_duration_since(recovery.certificate.created_at); if age > max_age { return Err(...) } | Effort: small
 
-- [ ] **H-137** `[security]` `crates/cpoe/src/keyhierarchy/session.rs:88`: Ratchet state created from HKDF output but ProtectedKey::from_zeroizing does not guarantee atomicity
-  <!-- pid:protected_key_init_panic | first:2026-05-12 -->
-  Impact: Lines 88-89: hkdf_expand returns Zeroizing<[u8; 32]>, ProtectedKey::from_zeroizing(ratchet_init) claims to transfer ownership. But if ProtectedKey constructor throws, intermediate key persists unzeroi | Fix: Verify ProtectedKey::from_zeroizing never panics. Or wrap in catch_unwind for debug builds. | Effort: small
 
 - [ ] **H-138** `[code_quality]` `crates/cpoe/src/keyhierarchy/session.rs:98`: Session struct cloned multiple times in export() path without documenting memory footprint
   <!-- pid:session_clone_large_data | first:2026-05-12 -->
@@ -790,33 +298,15 @@
   <!-- pid:signing_logic_duplication | first:2026-05-12 -->
   Impact: Lines 119-166 and 173-242 implement checkpoint signing with and without counter. The two functions share HKDF derivation, Lamport signing, ratchet advance logic. Changes to one often must be applied t | Fix: Extract common logic to _sign_checkpoint_impl(with_counter: bool, ...) or use builder pattern. | Effort: large
 
-- [ ] **H-140** `[error_handling]` `crates/cpoe/src/keyhierarchy/session.rs:183`: TPM provider bind() result silently ignored; early return on failure without logging which operation failed
-  <!-- pid:tpm_op_silent_failure | first:2026-05-12 -->
-  Impact: Lines 183-184 use .ok() on provider.bind() result. If binding fails, code silently continues without logging the operation context (start vs end) or counter value. Later delta computation becomes unre | Fix: Log the operation and reason: if let Err(e) = provider.bind(&nonce).inspect_err(|e| log::warn!("bind({:?}) failed: {e}", operation)) { ... } | Effort: small
 
 - [ ] **H-141** `[code_quality]` `crates/cpoe/src/keyhierarchy/session.rs:354`: Session::export() clones checkpoint signatures without validating ordinal sequence
   <!-- pid:export_unvalidated_ordinals | first:2026-05-12 -->
   Impact: Line 359 clones self.signatures directly into evidence. No assertion that ordinals are contiguous 0..n. Callers must verify via verify_checkpoint_signatures(), but export() could be called on corrupte | Fix: Assert ordinal sequence in export(), or add invariant check in sign_checkpoint(). | Effort: small
 
-- [ ] **H-142** `[architecture]` `crates/cpoe/src/keyhierarchy/verification.rs:109`: Lamport signature verification falls back to structural-only check if public key missing; weakens guarantee
-  <!-- pid:lamport_key_optional_fallback | first:2026-05-12 -->
-  Impact: Lines 108-123: if lamport_public_key is not present, code only checks size (256*32 bytes) and logs a warning. No cryptographic verification performed. This allows modified signatures if public key is  | Fix: Require lamport_public_key to always be present: if lamport_pubkey.is_none() { return Err(...) }. Remove structural-only fallback. | Effort: small
 
-- [ ] **H-143** `[error_handling]` `crates/cpoe/src/mmr/mmr.rs:343`: Unchecked saturating_sub in address calculation: left_sibling = right_parent - offset without overflow guards when offset > right_parent
-  <!-- pid:H-191 | first:2026-05-12 -->
-  Impact: Potential integer underflow producing invalid node address; subtraction silently wraps on underflow due to calc context | Fix: Use right_parent.checked_sub(offset).ok_or(MmrError::InvalidProof)? instead of bare subtraction | Effort: Low
 
-- [ ] **H-144** `[error_handling]` `crates/cpoe/src/mmr/proof.rs:84`: Path length encoding uses u16 for merkle_path.len() but each element is 33 bytes; no validation that serialized size stays within bounds
-  <!-- pid:H-190 | first:2026-05-12 -->
-  Impact: Silent truncation or corruption on deserialization if path_len exceeds u16::MAX; attackers can craft overflowing proofs | Fix: Validate path_len * 33 does not overflow and fits available data during deserialize. Add explicit size check before buffer allocation. | Effort: Low
 
-- [ ] **H-145** `[security]` `crates/cpoe/src/mmr/proof.rs:250`: No validation that end_leaf - start_leaf does not overflow for malicious range specifications
-  <!-- pid:H-194 | first:2026-05-12 -->
-  Impact: Subtraction on line 255 can underflow if end_leaf < start_leaf (checked on line 250) but addition on line 256 overflows on huge ranges | Fix: Add overflow check: (end_leaf - start_leaf).checked_add(1).ok_or(MmrError::InvalidProof)? | Effort: Low
 
-- [ ] **H-146** `[security]` `crates/cpoe/src/mmr/proof.rs:286`: Unvalidated leaf_hashes.len() == expected after range loop: loop fills hashes but count mismatch with leaf_data not detected until line 262
-  <!-- pid:H-195 | first:2026-05-12 -->
-  Impact: Silent mismatch: if hashes.len() != data.len(), hash_leaf on line 266 uses wrong index, producing undetected verification failure | Fix: Validate counts match immediately after loop, not deferred to later checks | Effort: Low
 
 - [ ] **H-147** `[performance]` `crates/cpoe/src/platform/linux/keystroke.rs:214`: device_id Arc cloned on every keystroke event if device is physical
   <!-- pid:per_event_arc_clone | first:2026-05-12 -->
@@ -830,93 +320,36 @@
   <!-- pid:large_module_single_responsibility | first:2026-05-12 -->
   Impact: Difficult to audit, test, and maintain. Multiple concern mixing: tap lifecycle, monitoring, capture, verification all in one file. Hard to isolate bugs. | Fix: Split into: tap_runner.rs (EventTapRunner), monitor.rs (KeystrokeMonitor), capture.rs (MacOSKeystrokeCapture). Separate concerns. | Effort: large
 
-- [ ] **H-150** `[security]` `crates/cpoe/src/platform/macos/keystroke.rs:336`: unwrap_or(0xFF) masks conversion failure silently without bounds validation
-  <!-- pid:keycode_conversion_fallback | first:2026-05-12 -->
-  Impact: Invalid keycode values are silently coerced to 0xFF, potentially masking malformed OS API responses or memory corruption. Zone calculation with 0xFF will return 0 (pinky zone) instead of error. | Fix: Validate keycode is within 0..=0xFF range explicitly; if conversion fails, log warning and either skip event or use safer fallback | Effort: small
 
-- [ ] **H-151** `[security]` `crates/cpoe/src/platform/macos/keystroke.rs:420`: unwrap_or(0xFF) masks keycode conversion failure in hybrid session without validation
-  <!-- pid:keycode_conversion_fallback | first:2026-05-12 -->
-  Impact: Invalid keycode from OS API silently coerced to 0xFF. Zone calculation with 0xFF produces hardcoded zone 0, hiding data corruption or API failures. | Fix: Add bounds validation: if keycode > 0xFF after conversion, log and skip or use explicit sentinel value with error reporting | Effort: small
 
-- [ ] **H-152** `[security]` `crates/cpoe/src/platform/macos/keystroke.rs:573`: unwrap_or(0xFF) in try_from conversion without validation on keycode extraction
-  <!-- pid:keycode_conversion_fallback | first:2026-05-12 -->
-  Impact: Silent masking of keycode extraction failures. malformed keycode_raw values from OS API silently coerced to 0xFF without logging or bounds checking. | Fix: Validate keycode_raw is within valid range before coercing. Log errors for invalid keycodes. | Effort: small
 
-- [ ] **H-153** `[error_handling]` `crates/cpoe/src/platform/macos/keystroke.rs:591`: Unicode buffer length clamped with .min() but no validation that CGEventKeyboardGetUnicodeString didn't truncate
-  <!-- pid:unicode_truncation_silent | first:2026-05-12 -->
-  Impact: If kernel returns longer text than buffer, it's silently truncated. from_utf16_lossy masks decode errors. No indication text was incomplete. | Fix: Log warning if uni_len from kernel > buffer capacity. Validate decoded text matches expected length. | Effort: small
 
-- [ ] **H-154** `[error_handling]` `crates/cpoe/src/platform/macos/synthetic.rs:168`: Conversion failure in try_from silently clamps to i64::MAX without validation
-  <!-- pid:overflow_clamping_no_warning | first:2026-05-12 -->
-  Impact: If cg_count or hid_count exceed i64::MAX, conversion silently saturates. Comparison becomes invalid, synthetic detection can fail. No indication of overflow. | Fix: Log warning if conversion causes saturation. Validate counts are within i64 range before comparing. | Effort: small
 
 - [ ] **H-155** `[code_quality]` `crates/cpoe/src/platform/windows.rs:1`: File 715 lines with mixed responsibilities: permission, KeystrokeMonitor, WindowsKeystrokeCapture, mouse capture, multiple global static mutexes
   <!-- pid:mixed_responsibilities_global_state | first:2026-05-12 -->
   Impact: Hard to understand data flow. Multiple global statics with complex try_lock patterns scattered throughout. Race conditions hidden in callback definitions. Difficult to test. | Fix: Extract mouse capture to separate module. Consolidate global state management into a single WindowsHookState struct. | Effort: large
 
-- [ ] **H-156** `[error_handling]` `crates/cpoe/src/platform/windows.rs:209`: Null pointer dereference in low_level_keyboard_proc if KBDLLHOOKSTRUCT pointer is null but code >= 0
-  <!-- pid:null_deref_hook_callback | first:2026-05-12 -->
-  Impact: If ptr becomes null after null check (race condition) or if Windows provides null pointer in LPARAM, dereferencing will cause segfault. No re-validation after initial null check. | Fix: Add explicit validation before dereferencing: if ptr.is_null() return CallNextHookEx immediately, never dereference without re-checking. | Effort: small
 
-- [ ] **H-157** `[error_handling]` `crates/cpoe/src/platform/windows.rs:389`: Null pointer dereference risk in keystroke_capture_hook if lparam.0 as *const KBDLLHOOKSTRUCT is null
-  <!-- pid:null_deref_hook_callback | first:2026-05-12 -->
-  Impact: If Windows passes null LPARAM or memory is freed between null check and dereference, dereferencing kbd struct will panic or crash. No syncing mechanism between checks and use. | Fix: Validate pointer immediately before dereference: if ptr.is_null() { return CallNextHookEx(...); } let kbd = *ptr; | Effort: small
 
-- [ ] **H-158** `[concurrency]` `crates/cpoe/src/platform/windows.rs:462`: Four separate global mutexes (MOUSE_GLOBAL_SENDER, MOUSE_GLOBAL_IDLE_STATS, MOUSE_LAST_*, MOUSE_IDLE_ONLY_MODE) for related mouse state
-  <!-- pid:fragmented_global_state | first:2026-05-12 -->
-  Impact: Inconsistent locking across these four globals. No transaction semantics. If one acquisition fails, others may be in inconsistent state. Complex deadlock potential. | Fix: Consolidate all mouse globals into single MouseCaptureState struct inside a single Mutex. | Effort: medium
 
 - [ ] **H-159** `[performance]` `crates/cpoe/src/platform/windows.rs:648`: Float bit manipulation (to_bits/from_bits) used for atomic storage instead of direct float ops
   <!-- pid:float_bit_manipulation_hot_path | first:2026-05-12 -->
   Impact: Converting f64 to i64 bits on every mouse move to store in AtomicI64, then back from bits on next event. Extra memory operations in hot path. Inefficient encoding of floating point. | Fix: Consider using AtomicU64 for bits directly, or use f64 wrapper atomic if available. Document why float bits are needed. | Effort: small
 
-- [ ] **H-160** `[error_handling]` `crates/cpoe/src/presence/verifier.rs:162`: expect() on response_window Duration validating Verifier assumes new() performed bounds check; duplicate validation logic prone to drift
-  <!-- pid:AUD-PRES-001 | first:2026-05-12 -->
-  Impact: If Verifier::new() validation is modified but expect comment not updated, double validation becomes single validation; future maintainer may remove one check | Fix: Consolidate validation: compute response_window once in new(), store in struct, use Result return type for all derive calls | Effort: medium
 
-- [ ] **H-161** `[security]` `crates/cpoe/src/rats/eat.rs:222`: Silent failure in CBOR serialization: ciborium::into_writer().ok() masks serialization errors, allowing incomplete seal encoding in EAT token
-  <!-- pid:SILENT_CBOR_ERRORS | first:2026-05-12 -->
-  Impact: Corrupted seal data embedded in attestation token may not be detected until verification time, creating false attestation states | Fix: Propagate serialization errors with context; return Result instead of silently succeeding | Effort: small
 
-- [ ] **H-162** `[security]` `crates/cpoe/src/rats/eat.rs:235`: Silent failure: .ok() on entropy report CBOR encoding masks serialization errors
-  <!-- pid:SILENT_CBOR_ERRORS | first:2026-05-12 -->
-  Impact: Evidence entropy metrics missing from attestation token without detection, weakening forensic validation | Fix: Change .ok() to .map_err() with context; fail loudly on serialization errors | Effort: small
 
-- [ ] **H-163** `[security]` `crates/cpoe/src/rats/eat.rs:241`: Silent failure: .ok() on forgery cost CBOR encoding silently masks serialization errors
-  <!-- pid:SILENT_CBOR_ERRORS | first:2026-05-12 -->
-  Impact: Attestation cost/effort metrics omitted from token without detection, undermining anti-forgery guarantees | Fix: Replace .ok() with error propagation; validate serialization succeeds | Effort: small
 
-- [ ] **H-164** `[security]` `crates/cpoe/src/rats/eat.rs:250`: Silent failure: .ok() on forensic summary CBOR encoding masks errors
-  <!-- pid:SILENT_CBOR_ERRORS | first:2026-05-12 -->
-  Impact: Forensic analysis flags absent from EAT token without notification, reducing attestation confidence | Fix: Propagate serialization errors; validate forensic data is included | Effort: small
 
-- [ ] **H-165** `[security]` `crates/cpoe/src/rats/eat.rs:258`: Silent failure: .ok() on absence claims CBOR encoding suppresses serialization errors
-  <!-- pid:SILENT_CBOR_ERRORS | first:2026-05-12 -->
-  Impact: Anti-forgery absence proofs omitted without detection, weakening proof-of-nonexistence guarantees | Fix: Return Result and propagate errors; ensure absence claims encoded or fail with context | Effort: small
 
 - [ ] **H-166** `[code_quality]` `crates/cpoe/src/report/html/sections/advanced.rs:1`: File advanced.rs contains 684 lines with 10 public functions. Multiple functions (write_forensic_breakdown, write_activity_contexts, write_declaration_summary) each exceed 100+ lines of formatting log
   <!-- pid:advanced:1:module-size | first:2026-05-12 -->
   Impact: Single-file module organization makes testing and navigation difficult. Should be split into further submodules by concern (forensics_detail.rs, activities.rs, declaration.rs). | Fix: Reorganize: crates/cpoe/src/report/html/sections/advanced/forensics.rs, .../activities.rs, .../key_hierarchy.rs, etc. Re-export from mod.rs. | Effort: HIGH
 
-- [ ] **H-167** `[error_handling]` `crates/cpoe/src/report/html/sections/advanced.rs:35`: Silent failure pattern: serde_json::from_str() errors are ignored with `Err(_) => return Ok(())`. If malformed verifiable_credential_json is provided, the entire VC section is silently skipped without
-  <!-- pid:advanced:35:silent-failure | first:2026-05-12 -->
-  Impact: Malformed evidence packets will not generate warnings in output. Users and auditors won't know VC data was rejected. Could mask data corruption or attack attempts. | Fix: Log the deserialization error and optionally emit a warning note in HTML output: `warn!("Failed to parse verifiable_credential_json: {}", e)`. Add HTML note: 'Note: Verifiable credential data was malf | Effort: LOW
 
-- [ ] **H-168** `[security]` `crates/cpoe/src/report/html/sections/advanced.rs:108`: Unsafe string slicing without bounds checking on user-controlled string. Code: `&doc_ref[..8]` and `&doc_ref[doc_ref.len() - 8..]`. Panics if doc_ref < 16 chars, but the guard `if doc_ref.len() > 16` 
-  <!-- pid:advanced:108:unsafe-slice | first:2026-05-12 -->
-  Impact: Panic/DoS if user-supplied doc_ref field is unexpectedly shorter than 16 characters due to upstream validation failure or future code changes. | Fix: Replace unsafe slicing with safe methods: `doc_ref.get(0..8).unwrap_or(doc_ref)` or use char-boundary-aware iteration. | Effort: LOW
 
-- [ ] **H-169** `[security]` `crates/cpoe/src/report/html/sections/advanced.rs:206`: Inline style attribute uses unvalidated dimension string in style context. The fm.writing_mode enum value is correctly matched to hardcoded colors, but user-controlled enum string could theoretically 
-  <!-- pid:advanced:206:enum-trust | first:2026-05-12 -->
-  Impact: If forensic_metrics.writing_mode contains unexpected values, the match-statement fallback (#2c5282) is used, but this assumes enum-derived data. If de-serialized from untrusted JSON, could bypass safe | Fix: Ensure forensic_metrics is only constructed from trusted internal sources. Add explicit validation of enum values at deserialization boundary. | Effort: MEDIUM
 
-- [ ] **H-170** `[error_handling]` `crates/cpoe/src/report/html/sections/analysis.rs:145`: Unchecked unwrap() on as_i64() conversion in trust vector iteration. Code: `val.as_i64().unwrap_or(0)`. If JSON contains non-integer trust vector values, unwrap_or() silently defaults to 0 without ind
-  <!-- pid:advanced:145:type-mismatch | first:2026-05-12 -->
-  Impact: Malformed VC data with float/string trust vector values will be converted to 0 instead of raising an error. Users won't know the trust vector was incorrectly rendered. | Fix: Use `.as_i64().ok_or_else()` pattern or check type before converting. Emit warning if unexpected type encountered. | Effort: LOW
 
-- [ ] **H-171** `[security]` `crates/cpoe/src/report/html/sections/evidence.rs:227`: CSS Injection via unescaped float values in style attribute. The pct variable (a float formatted with .0f) is directly embedded into style='height:Xpx;...' without sanitization
-  <!-- pid:evidence:227:css-injection | first:2026-05-12 -->
-  Impact: Attacker-controlled floats could be crafted to inject CSS expression or other attack vectors via style attribute injection. While constrained by CSS spec, this is a defense-in-depth vulnerability in a | Fix: Apply CSS property validation before embedding floats. Use separate data-* attributes instead of inline styles, or use CSS classes that map to safe values. | Effort: LOW
 
 - [ ] **H-172** `[code_quality]` `crates/cpoe/src/report/pdf/layout_sections/page2.rs:6`: Function draw_page2() is 391 lines long, exceeding 100-line guideline from CLAUDE.md (line 99: '100' max_width format rule). Complex multi-stage layout logic crammed into single function.
   <!-- pid:page2:6:large-function | first:2026-05-12 -->
@@ -926,57 +359,30 @@
   <!-- pid:page3:6:large-function | first:2026-05-12 -->
   Impact: Same as page2: difficulty testing, high cyclomatic complexity, maintenance risk in PDF generation logic (outputs are immutable once sent to users). | Fix: Extract into: draw_page3_scope(), draw_page3_verification(), draw_page3_limitations(), draw_page3_analyzed_text(), draw_page3_verification_block(). Max 50-70 lines each. | Effort: MEDIUM
 
-- [ ] **H-174** `[error_handling]` `crates/cpoe/src/research/collector.rs:105`: path.extension().map(...).unwrap_or(false) assumes extension exists; path with no extension silently treated as non-JSON
-  <!-- pid:AUD-RESEARCH-003 | first:2026-05-12 -->
-  Impact: Files like 'research_data' (no .json) silently skipped even if valid JSON. Legitimate backups dropped from load. | Fix: Log debug when skipping; use is_some() && check instead of unwrap_or pattern | Effort: low
 
-- [ ] **H-175** `[error_handling]` `crates/cpoe/src/research/collector.rs:221`: Silent HTTP response text loss: unwrap_or_default() on response.text() returns empty string on network error during research upload
-  <!-- pid:AUD-RESEARCH-001 | first:2026-05-12 -->
-  Impact: Upload failure silently consumed; logs show success; research database receives empty body; protocol contract violated | Fix: Log warn with error details before defaulting; check response status before extracting body; return error to caller | Effort: low
 
-- [ ] **H-176** `[error_handling]` `crates/cpoe/src/research/helpers.rs:78`: Multiple unwrap_or() defaults masking timestamp/hardware detection failures silently (unwrap_or(ts), unwrap_or(1))
-  <!-- pid:AUD-RESEARCH-002 | first:2026-05-12 -->
-  Impact: Hardware class detection fallbacks to minimal core count (1), timestamp rounding to original on failure. Anonymized research data contains synthetic/inaccurate hardware info | Fix: Log warn when fallback used; track detection failure as metadata flag | Effort: low
 
 - [ ] **H-177** `[code_quality]` `crates/cpoe/src/sealed_identity/store.rs:126`: Function unseal_master_key() is 74 lines: complex anti-rollback logic with nested match/if chains
   <!-- pid:seal_rollback_complexity | first:2026-05-12 -->
   Impact: Difficult to audit security-critical rollback detection. Multiple code paths increase bug surface. | Fix: Extract anti-rollback verification to separate fn verify_counter_antirollback(&blob, &binding) -> Result<bool> and fn update_counter(&mut blob, current) -> Result<()>. | Effort: high
 
-- [ ] **H-178** `[security]` `crates/cpoe/src/sealed_identity/store.rs:229`: Constant-time comparison uses .unwrap_u8() without checking for errors
-  <!-- pid:seal_ct_compare_unwrap | first:2026-05-12 -->
-  Impact: If ct_eq() fails (edge case), unwrap_u8 returns 0, silently evaluating to false. Should be explicit error. | Fix: Change to: if signing_key.verifying_key().to_bytes().ct_eq(&blob.public_key).into() { return Err(...) }. | Effort: medium
 
 - [ ] **H-179** `[code_quality]` `crates/cpoe/src/sealed_identity/store.rs:394`: Function persist_blob() has implicit error swallowing pattern with tempfile
   <!-- pid:seal_persist_order | first:2026-05-12 -->
   Impact: If restrict_permissions fails (line 412), blob is still persisted with wrong permissions and error is .ok()'d away. | Fix: Ensure restrict_permissions is called before tmp.persist, or check result explicitly before persist. | Effort: medium
 
-- [ ] **H-180** `[security]` `crates/cpoe/src/sealed_identity/store.rs:412`: Silent failure on permission restriction: .ok() discards error from restrict_permissions
-  <!-- pid:seal_perms_silent_fail | first:2026-05-12 -->
-  Impact: If file permissions cannot be set to 0o600, the error is silently swallowed. Sealed identity blob may be readable/writable by other users. | Fix: Log warning and return error: crate::crypto::restrict_permissions(tmp.path(), 0o600).map_err(|e| SealedIdentityError::SealFailed(format!("Failed to restrict file permissions: {e}")))? | Effort: medium
 
 - [ ] **H-181** `[performance]` `crates/cpoe/src/sentinel/app_registry.rs:839`: lookup() uses linear search over KNOWN_WRITING_APPS slice (100+ entries). Called per-keystroke by title inference. No indexing or caching.
   <!-- pid:linear_app_lookup | first:2026-05-12 -->
   Impact: O(n) lookup on every keystroke. With 100 apps and 10,000 keystrokes/min per session, ~1M string comparisons/min. Each comparison is case-insensitive (extra work). | Fix: Build HashMap<String, &WritingApp> keyed by lowercase bundle_id at startup. Or use build-time codegen to generate perfect hash. | Effort: small
 
-- [ ] **H-182** `[security]` `crates/cpoe/src/sentinel/behavioral_key.rs:50`: lock_recover() call after set_key() doesn't verify mutex wasn't poisoned. Silent failure if MutexPoisonError occurs.
-  <!-- pid:AUD-BKEY-002 | first:2026-05-12 -->
-  Impact: If another thread panicked while holding active_key lock, set_key() silently succeeds but active_key remains None. Key never becomes hot; session degrades to locked state. | Fix: Check if lock was poisoned; return Result with KeyHierarchyError if poisoned | Effort: medium
 
-- [ ] **H-183** `[error_handling]` `crates/cpoe/src/sentinel/behavioral_key.rs:72`: expect() on HKDF-SHA256 expand justification assumes 32-byte output always succeeds but doesn't account for state mutations mid-call
-  <!-- pid:AUD-BKEY-001 | first:2026-05-12 -->
-  Impact: Panic if internal state changes; production stability risk if key derivation fails unexpectedly during active session | Fix: Wrap in match with proper error path returning InvalidState error instead of panicking | Effort: low
 
-- [ ] **H-184** `[concurrency]` `crates/cpoe/src/sentinel/clipboard.rs:410`: Store Mutex locked twice (lines 410, 443) with await-points in between. No ordering guarantee between locks in different tasks. Clipboard monitor runs in tokio task, store accessed from IPC handler ta
-  <!-- pid:multi_lock_deadlock_risk | first:2026-05-12 -->
-  Impact: Potential deadlock if store becomes unavailable; no timeout protection. Two separate lock acquisitions with complex control flow. | Fix: Acquire store once, hold lock through entire fragment lookup + persist operation. Use scoped locking pattern to minimize held duration. | Effort: medium
 
 - [ ] **H-185** `[code_quality]` `crates/cpoe/src/sentinel/core.rs:200`: Deprecated rand::rng() usage: line 200 and line 274 use rand::rng().fill_bytes(). Modern Rust crypto patterns prefer rand::thread_rng() or ChaCha20Rng::from_entropy(). Using deprecated API may be a si
   <!-- pid:deprecated-api-usage | first:2026-05-12 -->
   Impact: If rand crate is updated to remove rng() (already deprecated as of rand 0.8+), compilation will fail. No functional impact currently, but technical debt. Also, rand::rng() does not provide guaranteed  | Fix: Replace `rand::rng()` with `rand::thread_rng()` or `use rand::RngCore; rand_chacha::ChaCha20Rng::from_entropy()`. This is a simple find+replace across the crate. | Effort: small
 
-- [ ] **H-186** `[error_handling]` `crates/cpoe/src/sentinel/core.rs:399`: Unwrap in set_hmac_key with poor error handling: line 397 uses try_into(), line 399 logs error and returns early on failure. If bytes.len() != 32, the function silently returns without updating the ke
-  <!-- pid:silent-key-update-failure | first:2026-05-12 -->
-  Impact: Silent failure: if an invalid 32-byte key is provided (e.g., from corrupted IPC message), set_hmac_key silently rejects it and continues with stale key. Signing continues with old key or no key, leadi | Fix: Return Result<(), String> instead of returning silently. Propagate error to caller so they can retry or alert user. Or use a Result-based validation before entering the function. | Effort: small
 
 - [ ] **H-187** `[code_quality]` `crates/cpoe/src/sentinel/core.rs:454`: start() method is 228 lines with multiple nested async blocks and clones. Initialization is spread across multiple closures. Hard to understand the initialization order and dependencies.
   <!-- pid:complex-async-initialization | first:2026-05-12 -->
@@ -990,29 +396,14 @@
   <!-- pid:complex-multi-phase-function | first:2026-05-12 -->
   Impact: Hard to maintain. Lock ordering is embedded in code flow rather than enforced by structure. If refactored, ordering bugs will slip in. | Fix: Refactor into phases with explicit names: validate_path(), acquire_locks(), load_stats(), create_wal(), insert_session(), emit_event(). Each returns early on error. Replaces nested if/let with clear f | Effort: large
 
-- [ ] **H-190** `[security]` `crates/cpoe/src/sentinel/core_session.rs:82`: Signing key material used to construct WAL without explicit zeroization in error path: key_bytes at line 141-143 is copied and passed to SigningKey::from_bytes, but if Wal::open fails (line 144), key_
-  <!-- pid:crypto-key-material-exposure | first:2026-05-12 -->
-  Impact: Cryptographic key material (signing key bytes) may leak into logs or core dumps if WAL initialization fails. CLAIM-005 requires zeroization of all key material. Even though SigningKey has ZeroizeOnDro | Fix: Wrap key creation and WAL operations in a scoped block: { let key_bytes = ...; let wal = Wal::open(...)?; key_bytes.zeroize(); }. Or use a Zeroizing<Vec<u8>> to ensure automatic cleanup on error. Curr | Effort: small
 
 - [ ] **H-191** `[code_quality]` `crates/cpoe/src/sentinel/core_session.rs:94`: Nested unwrap in nested match: guard.as_ref().unwrap().load_document_stats(...). Pattern match `Some(ref guard) if guard.is_some()` is equivalent to `Some(ref Some(_))`, creating a redundant double-So
   <!-- pid:nested-option-patterns | first:2026-05-12 -->
   Impact: Poor readability and potential source of future bugs. If logic is refactored, the double-Some pattern may mask intent. Unwrap will panic if guard.is_none(), even though the guard pattern already guara | Fix: Simplify to: `if let Some(Some(ref store)) = store_guard { store.load_document_stats(...) }` or use nested if let. This eliminates the redundant pattern match and unwrap. | Effort: small
 
-- [ ] **H-192** `[error_handling]` `crates/cpoe/src/sentinel/core_session.rs:440`: Silent fallback on symlink resolution: Err(_) at line 440 falls back to raw path. Symlinks are canonicalized in start_witnessing (line 47) but not in stop_witnessing error case. May cause session look
-  <!-- pid:path-canonicalization-inconsistency | first:2026-05-12 -->
-  Impact: If file is deleted or becomes inaccessible after start_witnessing, stop_witnessing silently uses non-canonical path, missing the session. Session stays in memory, leaking resources and causing stale f | Fix: Attempt canonicalization in stop_witnessing with better error handling. If symlink can't be resolved, log a warning and search sessions by non-canonical path as fallback. Or require canonical path fro | Effort: medium
 
-- [ ] **H-193** `[error_handling]` `crates/cpoe/src/sentinel/core_setup.rs:156`: start_hid_capture() called without return value checking; function return type not visible, errors silently consumed
-  <!-- pid:AUD-CORE-001 | first:2026-05-12 -->
-  Impact: HID capture initialization failure logged but not propagated. Dual-layer keystroke validation disabled silently while code assumes it's active. | Fix: Wrap start_hid_capture() in Result return, propagate error, log at warn level, document degraded mode | Effort: medium
 
-- [ ] **H-194** `[error_handling]` `crates/cpoe/src/sentinel/daemon.rs:461`: IPC server error logged but not propagated; process continues running. setup_daemon async block error handling swallows context.
-  <!-- pid:silent_ipc_failure | first:2026-05-12 -->
-  Impact: IPC server crashes silently, daemon appears running but clients cannot connect. Difficult to diagnose via logs alone. | Fix: Return Result from setup containing error details. Log startup failures with full error chain context. | Effort: medium
 
-- [ ] **H-195** `[security]` `crates/cpoe/src/sentinel/daemon.rs:602`: TOCTOU race: canonicalize() followed by file operations. Process holding path may change between canonicalize and actual IPC message delivery.
-  <!-- pid:path_toctou_daemon | first:2026-05-12 -->
-  Impact: Attacker could perform file swap between path resolution and message delivery, tracking wrong file | Fix: Validate path once at IPC boundary; pass validated path through message. Consider adding path integrity check before operations. | Effort: medium
 
 - [ ] **H-196** `[code_quality]` `crates/cpoe/src/sentinel/event_handlers.rs:280`: record_keystroke_to_session is complex function (~110 lines) with nested if/match statements (>4 levels of nesting). Readability is poor.
   <!-- pid:complex-function-nesting | first:2026-05-12 -->
@@ -1026,37 +417,22 @@
   <!-- pid:concurrency-lock-order-violation | first:2026-05-12 -->
   Impact: Lock ordering violation: this code does not use lock_order::assert_order, allowing reads to proceed without conforming to AUD-041 specification for signing_key < sessions lock ordering. Content finger | Fix: Replace with read_recover() which internally enforces ordering, or wrap in lock_order::assert_order (if appropriate for this context). Alternatively, document why this path is exception to AUD-041. | Effort: small
 
-- [ ] **H-199** `[concurrency]` `crates/cpoe/src/sentinel/event_handlers.rs:510`: Poison recovery on Mutex with unwrap_or_else in hot path: lock().unwrap_or_else(|p| p.into_inner()) on content_fingerprints collection during blocking task. No lock ordering guard.
-  <!-- pid:mutex-poison-recovery | first:2026-05-12 -->
-  Impact: If the Mutex is poisoned, into_inner() will retrieve a potentially corrupted state. The content_fingerprints Vec is then push()'d to without validation. Cross-app fingerprint linking may silently inge | Fix: Use lock_recover() which enforces poison recovery with logging. Or use Mutex::new(...) constructor during init to ensure poison recovery is configured. Document expected poison scenarios. | Effort: small
 
-- [ ] **H-200** `[concurrency]` `crates/cpoe/src/sentinel/event_handlers.rs:539`: Lock ordering violation detected in restore_scrivener_state: line 541 acquires sessions write lock, then line 547 acquires cached_store lock (via lock_recover). AUD-041 specifies sessions(2) before ca
-  <!-- pid:lock-order-compliant | first:2026-05-12 -->
-  Impact: Actually correct - no violation. Lock order is sessions -> cached_store per AUD-041. However, the comment at line 540 says 'AUD-041: sessions(2) before cached_store(3)', implying future code was aware | Fix: No fix needed. Code correctly acquires sessions write lock before cached_store. Ordering is enforced by design. This is a positive example of AUD-041 compliance. | Effort: small
 
 - [ ] **H-201** `[performance]` `crates/cpoe/src/sentinel/event_handlers.rs:597`: keys().cloned().collect() creates intermediate Vec during idle check: line 597 in handle_idle_check clones all session paths into a Vec. If there are 100s of sessions, this is a full copy. This is don
   <!-- pid:unnecessary-allocation | first:2026-05-12 -->
   Impact: Unnecessary allocation: collecting all keys into a Vec when they could be filtered in-place. For 100 sessions, this is ~1.6KB per 30s, negligible. But for 10K sessions, this becomes a garbage collecti | Fix: Use Vec::with_capacity() to pre-allocate once, or collect directly into a Vec using filter + map in a single pass. Or use a temporary Vec only if needed. Current code is correct but inefficient; consi | Effort: small
 
-- [ ] **H-202** `[code_quality]` `crates/cpoe/src/sentinel/event_handlers.rs:647`: RwLock held across separate I/O operations in persist_idle_session_stats: read_recover() at line 648, session data cloned, then lock dropped at line 674, followed by separate read_recover() at line 67
-  <!-- pid:lock-reacquisition-ordering | first:2026-05-12 -->
-  Impact: Actually correct - lock is properly dropped. However, the function is synchronous but called from async context (handle_idle_check). No TOCTOU risk because path is removed from sessions after this fun | Fix: No fix needed - code is correct. Lock ordering is: sessions(2) at line 648, then signing_key(1) at line 675. Violates stated ordering, but both locks are briefly held separately. This is acceptable be | Effort: small
 
 - [ ] **H-203** `[code_quality]` `crates/cpoe/src/sentinel/event_handlers.rs:671`: Stale reference in closure: line 671-673 computes `first_tracked_at` using session reference obtained at line 649, but map is dropped at line 674. Stats struct is built with data from dropped map - se
   <!-- pid:post-drop-data-construction | first:2026-05-12 -->
   Impact: No functional issue - all session fields are cloned into stats before lock drop. However, pattern is confusing: data structures are built after scope end rather than during scope. Maintainability risk | Fix: Move stats struct construction inside the map lock scope (lines 648-673), THEN drop(map) at the end. This makes lock lifetime explicit. Current code is safe because all uses are cloned, but intent is  | Effort: medium
 
-- [ ] **H-204** `[concurrency]` `crates/cpoe/src/sentinel/event_handlers.rs:689`: Mutex lock held across spawn_blocking: SecureStore::open at line 683 acquires a Mutex internally, then store.save_document_stats is called inside the lock. If spawn_blocking task is delayed and anothe
-  <!-- pid:sync-io-in-event-loop | first:2026-05-12 -->
-  Impact: Potential deadlock if store.save_document_stats internally locks something that's also locked by checkpoint code running in parallel. This is theoretical but possible if store implementation changes.  | Fix: Wrap store.open + save in a separate spawn_blocking to avoid holding Mutex across I/O. Or use async store operations if available. Currently synchronous, which is acceptable for idle path, but documen | Effort: medium
 
 - [ ] **H-205** `[code_quality]` `crates/cpoe/src/sentinel/event_handlers.rs:1006`: Mutable map held across nested write_recover() calls: line 1006 acquires sessions write lock, then at line 1062 calls cached_store.lock_recover() while still holding sessions lock. This is correct per
   <!-- pid:panic-safety-under-lock | first:2026-05-12 -->
   Impact: If session retrieval panics (should not happen, but defensive), write lock remains held until end of function, blocking all other session operations. Blocks checkpoint, keystroke recording, etc. Poten | Fix: Add explicit error handling: `let Some(mut session) = map.get_mut(path) else { return false; };` to ensure early exit without lock. Or restructure to minimize code under lock. Currently safe but not p | Effort: small
 
-- [ ] **H-206** `[concurrency]` `crates/cpoe/src/sentinel/event_handlers.rs:1162`: Write lock held across multiple operations without intermediate release: line 1006 and 1162 both hold sessions write lock. Between lines, session is accessed (mutable), then later stored accessed. If 
-  <!-- pid:lock-held-across-operation | first:2026-05-12 -->
-  Impact: If tpm.as_ref() or try_hw_cosign() blocks (e.g., TPM is busy, network call), the sessions write lock is held, blocking keystroke recording and focus events. Latency spike. | Fix: Copy needed data from session to local scope before trying HW co-sign, then release the session lock. Or move HW co-sign to a spawned task outside the lock. | Effort: medium
 
 - [ ] **H-207** `[code_quality]` `crates/cpoe/src/sentinel/focus.rs:99`: Function start() has 302 lines (lines 99-400). Exceeds 100-line threshold with deeply nested branching, macro usage, and complex state management.
   <!-- pid:large_function | first:2026-05-12 -->
@@ -1074,49 +450,22 @@
   <!-- pid:maintainability_missing_pub_docs_session_logic | first:2026-05-12 -->
   Impact: Public API, multiple concerns: hash pre-computation, session creation, WAL buffering, event broadcast. No docs on interaction. | Fix: Add /// docs explaining workflow: pre-hash to avoid lock contention, session init under write lock, WAL append post-lock release. | Effort: small
 
-- [ ] **H-211** `[error_handling]` `crates/cpoe/src/sentinel/helpers.rs:306`: .unwrap_or() on wal_dir.parent()—silent fallback to self if no parent
-  <!-- pid:error_handling_parent_unwrap_or | first:2026-05-12 -->
-  Impact: Defensive: returns wal_dir if no parent (root dir), which is acceptable. But masks logic: should explicitly state intent. | Fix: Replace with `wal_dir.parent().unwrap_or(wal_dir)` or add comment explaining fallback intent. | Effort: small
 
 - [ ] **H-212** `[code_quality]` `crates/cpoe/src/sentinel/helpers.rs:443`: Function handle_change_event_sync missing documentation—7 parameters, 200+ lines, multiple event types
   <!-- pid:maintainability_missing_pub_docs_change_handling | first:2026-05-12 -->
   Impact: Public API for file change handling. No docs on WAL handling, bundle extraction, lock ordering, or event type dispatch. | Fix: Add /// docs with examples: WAL pseudo-save flow, bundle path extraction, Rename/Delete/Modified dispatch. | Effort: small
 
-- [ ] **H-213** `[error_handling]` `crates/cpoe/src/sentinel/helpers.rs:1013`: try_into().unwrap_or_default() on hash slice conversion—silent fallback if vec is not exactly 32 bytes
-  <!-- pid:error_handling_try_into_silent_fallback | first:2026-05-12 -->
-  Impact: Low: hash_bytes guaranteed 32 bytes from vec![0u8; 32] or hash_file_handle output, so unwrap_or_default() will never trigger. But pattern is defensive. | Fix: Use try_into().expect('hash must be 32 bytes') or add explicit validation before entry. | Effort: small
 
-- [ ] **H-214** `[error_handling]` `crates/cpoe/src/sentinel/helpers.rs:2606`: .write().unwrap() on test RwLock—no poison recovery, bare unwrap on I/O RwLock
-  <!-- pid:error_handling_rwlock_unwrap | first:2026-05-12 -->
-  Impact: Test code only, but demonstrates lack of poison recovery pattern. Production code elsewhere uses write_recover(). | Fix: Replace .write().unwrap() with .write_recover() to match crate convention (line 317, 427, etc.). | Effort: small
 
-- [ ] **H-215** `[security]` `crates/cpoe/src/sentinel/ipc_handler.rs:524`: Parent directory unwrap_or with fallback to '.' could write to wrong location if output path has no parent. Atomic temp file operations vulnerable.
-  <!-- pid:temp_file_parent_fallback | first:2026-05-12 -->
-  Impact: Export could write to working directory instead of requested path if path parsing fails silently | Fix: Validate parent exists before temp file creation: let parent = validated_output.parent().ok_or_else(|| Error(...)); | Effort: small
 
 - [ ] **H-216** `[performance]` `crates/cpoe/src/sentinel/types.rs:917`: DocumentSession manual Clone impl clones 45 fields including jitter_samples (Vec), focus_switches (VecDeque), segment_counts (HashMap). Full deep clone on every evidence packet generation.
   <!-- pid:expensive_session_clone | first:2026-05-12 -->
   Impact: Evidence generation clones entire session on every checkpoint. jitter_samples can be 50K items (~1.2MB); cloning is O(n) per keystroke checkpoint. | Fix: Move jitter_samples and segment_counts to Arc<Mutex<...>> or use Cow<'a> for evidence generation. Checkpoint should borrow, not clone. | Effort: large
 
-- [ ] **H-217** `[security]` `crates/cpoe/src/snapshot/crypto.rs:16`: expect() on HKDF-SHA256 nonce derivation lacks error recovery for state corruption
-  <!-- pid:AUD-SNAP-CRYPTO-001 | first:2026-05-12 -->
-  Impact: Panic during snapshot encryption if key state invalid; unencrypted snapshot data left in memory after failed encryption attempt | Fix: Return Result with Crypto error variant; validate HKDF input state before calling expand | Effort: low
 
-- [ ] **H-218** `[security]` `crates/cpoe/src/snapshot/store.rs:54`: Signing key bytes zeroized at line 54 but Comment says 'on drop' - implicit drop semantics could be optimized away by compiler
-  <!-- pid:AUD-SNAP-STORE-001 | first:2026-05-12 -->
-  Impact: If Zeroizing wrapper is optimized by LLVM, signing_key_bytes not guaranteed zero; key material recoverable from memory dumps | Fix: Add explicit drop() call in open() scope or document Zeroizing<> contract requirement in CLAUDE.md | Effort: low
 
-- [ ] **H-219** `[security]` `crates/cpoe/src/store/archive.rs:111`: Silent file deletion on line 112: let _ = std::fs::remove_file(&archive_tmp_path) discards errors. If the crash-recovery path fails, it silently succeeds, leaving stale tmp files or corrupting the fil
-  <!-- pid:SILENT_ERROR_001 | first:2026-05-12 -->
-  Impact: Leftover tmp files accumulate, wasting disk space; potential for future archival attempts to fail when tmp cleanup is needed. | Fix: Log the error or propagate it, at minimum: match std::fs::remove_file(...) { Err(e) => log::warn!(...), _ => {} } | Effort: small
 
-- [ ] **H-220** `[error_handling]` `crates/cpoe/src/store/events.rs:77`: Unchecked type conversion at line 77: i64::try_from(e.vdf_iterations).unwrap_or_else(...) silently clamps u64 to i64::MAX on overflow. Large iteration counts are silently truncated, losing forensic da
-  <!-- pid:OVERFLOW_CLAMP_001 | first:2026-05-12 -->
-  Impact: VDF iteration counts > i64::MAX are silently clamped, corrupting forensic analysis of computational cost; HMAC verification still passes despite truncation. | Fix: Either store as TEXT (for arbitrary precision) or reject values exceeding i64::MAX at validation time rather than silent clamping. | Effort: medium
 
-- [ ] **H-221** `[error_handling]` `crates/cpoe/src/store/events.rs:139`: Transaction committed without verifying all writes succeeded (line 139). If tx.commit() itself fails, the error is returned but no rollback is explicitly called (rusqlite handles it, but pattern is no
-  <!-- pid:TX_COMMIT_IMPLICIT_001 | first:2026-05-12 -->
-  Impact: Rare but possible: if commit fails partway through (e.g., disk full), event_hash and integrity HMAC may be out of sync; next verification could fail mysteriously. | Fix: No code change needed (rusqlite auto-rolls back on error), but add explicit comment: // rusqlite rolls back on Drop if tx is not committed. | Effort: small
 
 - [ ] **H-222** `[performance]` `crates/cpoe/src/store/events.rs:409`: get_all_event_timestamps_unverified() has no LIMIT and collects all timestamps into Vec. Called by get_global_activity() which maps to (ts, 1) pairs, then serializes for charting.
   <!-- pid:UNBOUNDED_QUERY_003 | first:2026-05-12 -->
@@ -1126,9 +475,6 @@
   <!-- pid:UNBOUNDED_QUERY_004 | first:2026-05-12 -->
   Impact: Unbounded memory consumption proportional to event count. A store with 1M events loads all into a single HashMap. | Fix: Add optional limit, or paginate: pub fn get_all_events_grouped_paginated(&self, limit: u32, offset: u32) | Effort: medium
 
-- [ ] **H-224** `[security]` `crates/cpoe/src/store/text_fragments.rs:110`: Fragment hash at line 110 is checked for 32 bytes but NOT constant-time compared during validation. If comparison fails later in crypto::EventData, timing side-channel could leak collision patterns.
-  <!-- pid:TIMING_LEAK_001 | first:2026-05-12 -->
-  Impact: Hash collision detection is not constant-time; attacker can measure timing to find hash collisions more efficiently. | Fix: Use subtle::ConstantTimeEq for hash validation during INSERT or during the lookup (line 220-234). | Effort: small
 
 - [ ] **H-225** `[performance]` `crates/cpoe/src/store/text_fragments.rs:256`: get_unsynced_fragments() at line 256 has no LIMIT; unbounded result set. In a store with millions of fragments, this loads all unsynced fragments into memory at once.
   <!-- pid:UNBOUNDED_QUERY_001 | first:2026-05-12 -->
@@ -1142,73 +488,25 @@
   <!-- pid:timing_silent_nan | first:2026-05-12 -->
   Impact: NaN/Inf inputs are silently ignored without logging, causing loss of data and no audit trail. | Fix: Log warning and return error when non-finite values detected: if !vdf_time.is_finite() { log::warn!("non-finite VDF time received"); return Err(...); } | Effort: medium
 
-- [ ] **H-228** `[security]` `crates/cpoe/src/tpm/linux.rs:207`: Counter increment failure silently suppressed with log warning. Binding proceeds with None counter value.
-  <!-- pid:TPM-008 | first:2026-05-12 -->
-  Impact: If counter increment fails, monotonic counter is lost for this binding. Rollback detection becomes unreliable. | Fix: Return error if counter increment fails (or log as error and make counter mandatory in binding). | Effort: medium
 
-- [ ] **H-229** `[security]` `crates/cpoe/src/tpm/linux.rs:336`: Unsafe .unwrap_or_default() on SystemTime::duration_since(). Could silently hide clock errors.
-  <!-- pid:TPM-007 | first:2026-05-12 -->
-  Impact: If system clock is set backwards or error occurs, returns 0 duration without logging, corrupting timestamp evidence. | Fix: Log warning and propagate error if duration fails. | Effort: minimal
 
-- [ ] **H-230** `[security]` `crates/cpoe/src/tpm/mod.rs:24`: DEFAULT_QUOTE_PCRS hardcoded as [0, 4, 7]. PCR 7 is Secure Boot state but no validation that these PCRs are appropriate for the deployment.
-  <!-- pid:TPM-027 | first:2026-05-12 -->
-  Impact: User cannot customize PCR selection. If deployment requires different PCRs (e.g., PCR 9 for UEFI variables), quote is incorrect. | Fix: Make PCR selection configurable per deployment; validate against TPM capabilities. | Effort: medium
 
-- [ ] **H-231** `[security]` `crates/cpoe/src/tpm/secure_enclave/key_management.rs:30`: load_or_create_se_key uses unsafe FFI to Apple Security framework. Multiple null pointer checks.
-  <!-- pid:TPM-015 | first:2026-05-12 -->
-  Impact: If Security framework returns unexpected values, null deref or use-after-free could occur. Complex unsafe code. | Fix: Consolidate error handling; document safety contracts for each CFRelease(). | Effort: medium
 
-- [ ] **H-232** `[security]` `crates/cpoe/src/tpm/secure_enclave/mod.rs:194`: Clock calculation uses .unwrap_or_default() on system time elapsed. Silent fallback to 0 on error.
-  <!-- pid:TPM-017 | first:2026-05-12 -->
-  Impact: If elapsed() fails (e.g. clock backwards), returns 0ms without indication. Evidence timestamp becomes unreliable. | Fix: Return error or use meaningful fallback value; document behavior. | Effort: minimal
 
-- [ ] **H-233** `[security]` `crates/cpoe/src/tpm/secure_enclave/sealing.rs:43`: sign() is called during unseal with live SecureEnclaveState. If called from concurrent thread, state could mutate.
-  <!-- pid:TPM-022 | first:2026-05-12 -->
-  Impact: If state.counter or state.public_key changes during unseal, HMAC key derivation could be inconsistent. | Fix: Acquire state lock before entering unsealing to prevent concurrent mutations. | Effort: low
 
-- [ ] **H-234** `[error_handling]` `crates/cpoe/src/tpm/software.rs:36`: Bare .expect() on getrandom() in production code. RNG failure should be handled gracefully.
-  <!-- pid:TPM-001 | first:2026-05-12 -->
-  Impact: Process panic if OS RNG unavailable. Violates graceful degradation principle. | Fix: Use Result return type and propagate error to caller instead of panicking. | Effort: minimal
 
-- [ ] **H-235** `[security]` `crates/cpoe/src/tpm/verification.rs:67`: binding_payload() reconstructs payload from binding fields. If payload format changes, old bindings won't verify.
-  <!-- pid:TPM-035 | first:2026-05-12 -->
-  Impact: Breaking change to binding format invalidates all prior bindings. No versioning or migration path. | Fix: Add version field to Binding and support multiple payload formats. | Effort: medium
 
-- [ ] **H-236** `[security]` `crates/cpoe/src/tpm/windows/provider_sealing.rs:107`: Seal operation derives encryption key from device ID + SRK public key. No nonce randomization.
-  <!-- pid:TPM-031 | first:2026-05-12 -->
-  Impact: Sealing same plaintext on same device produces same ciphertext. Deterministic encryption leaks that data was sealed twice. | Fix: Add random nonce to key derivation or use AEAD with random nonce (like Secure Enclave does). | Effort: medium
 
-- [ ] **H-237** `[security]` `crates/cpoe/src/tpm/windows/provider_signing.rs:352`: Magic constant 0xFF544347 (TCG) hardcoded for attestation data. Not validated against actual TPM response.
-  <!-- pid:TPM-011 | first:2026-05-12 -->
-  Impact: If attacker controls the build/memory, can forge quote attestation structures with fake TCG header. | Fix: Add comment documenting this is attested by signature, or pull TCG magic from type-safe struct. | Effort: minimal
 
-- [ ] **H-238** `[error_handling]` `crates/cpoe/src/verify/pipeline.rs:46`: unwrap_or() on timestamp_nanos_opt() masks overflow silently: if timestamp overflows, defaults to 0, skewing jitter analysis
-  <!-- pid:AUD-VERIFY-001 | first:2026-05-12 -->
-  Impact: Jitter samples with overflow timestamps converted to 0, all bunched at start of session. Forensic analysis biased toward false negatives. | Fix: Log warn when overflow detected; skip overflow sample or use sentinel value like i64::MAX, not 0 | Effort: low
 
-- [ ] **H-239** `[security]` `crates/cpoe/src/verify/seals.rs:196`: expect() on hex decode results assumes length checks passed; expects to be safe but provides no error context if triggered
-  <!-- pid:AUD-SEALS-004 | first:2026-05-12 -->
-  Impact: If outer conditions change, expect() can panic on valid-length but failed-decode data. No graceful error recovery. | Fix: Remove expect(), assign default values (empty arrays), add warnings to vector, continue to next iteration | Effort: low
 
-- [ ] **H-240** `[security]` `crates/cpoe/src/verify/seals.rs:209`: Silent base64 decode passed to certificate validator: base64_decode(&kh.session_certificate) returns empty Vec on failure
-  <!-- pid:AUD-SEALS-002 | first:2026-05-12 -->
-  Impact: Malformed certificate data silently becomes empty bytes, validator receives [0u8; 0] instead of error signal. Signature check passes on corrupted data. | Fix: Use base64_decode_len() for length check; if check fails, add warning and set hierarchy_consistent=false immediately | Effort: medium
 
-- [ ] **H-241** `[security]` `crates/cpoe/src/wal/operations.rs:922`: WAL header session_id verification uses ct_eq but only after metadata read, creating TOCTOU window
-  <!-- pid:SEC-002 | first:2026-05-12 -->
-  Impact: If header is corrupted between read and ct_eq check, session binding can be bypassed in multi-write scenarios | Fix: Validate magic and version before dereferencing header fields; use fixed-size early reads | Effort: small
 
 - [ ] **H-242** `[code_quality]` `crates/cpoe/src/wal/operations.rs:1054`: Lost entry estimate divides by fixed 154 bytes (4-byte len + 150-byte min entry); assumes uniform entry size
   <!-- pid:CQ-007 | first:2026-05-12 -->
   Impact: Variable-size entries (e.g., KeystrokeBatch vs. Checkpoint) cause estimate variance; user-facing recovery count unreliable | Fix: Scan first 100 non-corrupt entries to compute average size, use for estimate | Effort: small
 
-- [ ] **H-243** `[security]` `crates/cpoe/src/war/profiles/package.rs:233`: Evidence packet CBOR decode failure may silently truncate or ignore invalid attestation data without validation, potentially allowing corrupted attestation evidence to proceed
-  <!-- pid:ATTESTATION_VALIDATION_POST_DECODE | first:2026-05-12 -->
-  Impact: Forged or tampered attestation payloads may not be detected, weakening trust chain | Fix: Validate attestation structure post-decode: verify required fields presence, hash consistency, and timestamp validity | Effort: medium
 
-- [ ] **H-244** `[error_handling]` `crates/cpoe/src/war/profiles/package.rs:305`: .unwrap() on C2PA JUMBF build_jumbf() without fallback; will panic if manifest building fails due to ingredient encoding or signing errors
-  <!-- pid:UNWRAP_SERIALIZATION | first:2026-05-12 -->
-  Impact: Service crash on evidence assembly failure; poor error propagation in critical serialization path | Fix: Change to map_err with descriptive context; let caller decide fallback strategy | Effort: small
 
 - [ ] **H-245** `[architecture]` `crates/cpoe/src/war/profiles/standards.rs:31`: Three nearly-identical IPTC Digital Source Type URIs duplicated across multiple files (standards.rs, c2pa.rs, eu_ai_act.rs); changes require coordinated edits across three locations
   <!-- pid:CODE_DUPLICATION_IPTC | first:2026-05-12 -->
@@ -1222,57 +520,21 @@
   <!-- pid:HARDCODED_MAPPINGS | first:2026-05-12 -->
   Impact: Standards compliance updates (e.g., new NIST subcategories post-2026) require recompilation and redeployment; cannot hot-update | Fix: Load mappings from config/database; provide versioned standards registry | Effort: large
 
-- [ ] **H-248** `[error_handling]` `crates/cpoe/src/war/profiles/vc.rs:236`: JCS canonicalization failure converted to generic 'proof options JCS failed' message without payload context
-  <!-- pid:GENERIC_ERROR_MSG | first:2026-05-12 -->
-  Impact: Debugging VC signing failures difficult; no indication of which field caused JCS ordering issues | Fix: Include serialized proof_options or field names in error message for debugging | Effort: small
 
-- [ ] **H-249** `[security]` `crates/cpoe/src/war/trust_bundle.rs:62`: Manifest signing key is compile-time constant with zero-value placeholder (all-zeros)
-  <!-- pid:zero_placeholder_key | first:2026-05-12 -->
-  Impact: Remote trust bundle signatures cannot be verified; fallback to pinned bundle always; no CA key rotation possible without recompilation | Fix: Provide mechanism to load signing key from config or environment; add verification that key is non-zero at initialization | Effort: medium
 
-- [ ] **H-250** `[security]` `crates/cpoe/src/war/verification.rs:121`: VerifyingKey::from_bytes used but error path doesn't distinguish invalid key format from security issues
-  <!-- pid:crypto_error_opaque | first:2026-05-12 -->
-  Impact: Malformed public keys treated same as cryptographic failures; may hide attacks | Fix: Log error details separately; wrap in attestation-specific error type with detailed context | Effort: small
 
 - [ ] **H-251** `[code_quality]` `crates/cpoe/src/war/verification.rs:214`: compute_seal function 85 lines; multiple nested if-let chains for optional fields
   <!-- pid:large_function_mixed_concerns | first:2026-05-12 -->
   Impact: Function mixes hash computation logic with field extraction; difficult to test hash chains in isolation | Fix: Extract jitter_hash and vdf_output extraction into separate pure functions; compute_seal becomes hash composition | Effort: medium
 
-- [ ] **H-252** `[security]` `crates/cpoe/src/war/verification.rs:256`: Beacon counter-signature parsing silently accepts malformed hex strings
-  <!-- pid:beacon_sig_silent_failure | first:2026-05-12 -->
-  Impact: Attackers can strip beacon signatures (hex::decode returns empty vec on error); beacon_sig becomes Some(vec![]) and hash computation continues | Fix: Validate beacon_sig.len() == 64 before hashing; return early on decode error not silent fallback | Effort: small
 
-- [ ] **H-253** `[security]` `crates/cpoe/src/war/verification.rs:428`: VDF proof verification result not checked; proof failure silent
-  <!-- pid:silent_verification_failure | first:2026-05-12 -->
-  Impact: Corrupted or forged checkpoints bypass verification entirely; no indication of failure in returned CheckResult | Fix: Ensure all VDF proofs that fail return early with failure message, never continue on proof.verify() == false | Effort: small
 
-- [ ] **H-254** `[security]` `crates/cpoe/src/writersproof/client_cert.rs:24`: ObjectIdentifier::new_unwrap() panics on invalid OID during certificate generation setup (compile-time only, but security model broken)
-  <!-- pid:AUD-CERT-OID-001 | first:2026-05-12 -->
-  Impact: If OID constants become invalid, panic at initialization blocks all cert operations. Constants are hardcoded but lack runtime validation. | Fix: Use ObjectIdentifier::new() returning Result, handle in load_or_generate_client_cert with proper Error propagation | Effort: medium
 
-- [ ] **H-255** `[security]` `crates/cpoe/src/writersproof/client_cert.rs:55`: Cached cert file size check: if der.len() > 100 passes, but actual DER parsing at test line 267 can fail silently if DER malformed
-  <!-- pid:AUD-CERT-002 | first:2026-05-12 -->
-  Impact: Corrupted cert file accepted if >100 bytes, not re-generated. Malformed cert used for mTLS, triggering validation errors downstream. | Fix: Attempt DER parse during load; regenerate if parse fails; don't rely on size heuristic alone | Effort: medium
 
-- [ ] **H-256** `[error_handling]` `crates/posme/src/hash.rs:61`: Challenge derivation loop may terminate early due to max_iters cap: if Q challenges not found within max_iters, proof is incomplete but error is silent
-  <!-- pid:H-193 | first:2026-05-12 -->
-  Impact: Incomplete challenge set may bypass verification; Q < returned challenges.len() silently accepted, changing proof difficulty | Fix: Validate challenges.len() == Q after loop; return error if count differs | Effort: Low
 
-- [ ] **H-257** `[security]` `crates/posme/src/prover.rs:341`: Unchecked overflow in root allocation: total_steps.checked_add(1) validates, but allocated Vec capacity not validated for allocation failure on huge K values
-  <!-- pid:H-192 | first:2026-05-12 -->
-  Impact: Silent allocation failure on OOM; proof generation fails but error may propagate late, wasting resources | Fix: Explicit size validation: ensure (K + 1) * 32 bytes fits within memory limits before allocation | Effort: Medium
 
-- [ ] **H-258** `[error_handling]` `crates/posme/src/prover.rs:475`: Integer division without zero-check: interval = K / samples.len() silently produces interval=0 for large samples
-  <!-- pid:H-189 | first:2026-05-12 -->
-  Impact: Silent failure: entanglement may silently skip injection (no hashes applied to transcript), creating invalid entangled proofs that pass validation | Fix: Explicitly check interval == 0 after division and require interval >= 1, or enforce samples.len() constraint upfront | Effort: Low
 
-- [ ] **H-259** `[security]` `crates/posme/src/verifier.rs:235`: Constant-time comparison missing for transcript verification when steps are consecutive
-  <!-- pid:C-006 | first:2026-05-12 -->
-  Impact: Malicious prover could potentially forge proof if guessing consecutive step IDs; breaks step-ID integrity assumption for state transitions | Fix: Use constant-time comparison (ct_ne) for all equality checks, not just identity verification. Line 235 checks only when step_b == step_a + 1 after mutation, but step equality itself should be constant | Effort: Low
 
-- [ ] **H-260** `[error_handling]` `crates/posme/src/verifier.rs:379`: Unchecked array indexing: sp.reads[j] accessed without bounds check when j from writer iteration
-  <!-- pid:H-196 | first:2026-05-12 -->
-  Impact: Panic if writers.len() > reads.len() but check on line 310 only rejects writers > reads globally, not per-writer index | Fix: Validate read index j < reads.len() in writer loop, not just count check | Effort: Low
 
 ## Medium
 - [ ] **M-001** `[maintainability]` `crates/authorproof-protocol/src/war/profiles/c2pa.rs:7`: Custom Result type defined as Result<T> = std::result::Result<T, String> without context; protocol library errors lack diagnostic information
@@ -1363,9 +625,6 @@
   <!-- pid:CQ_004_INCOMPLETE_PARAMS | first:2026-05-12 -->
   Impact: Function signature doesn't reflect all inputs (some are global constants). Hard to test with different tuning. Params struct is incomplete. Caller can | Fix: 1. Add to LabyrinthParams: max_rqa_threshold, min_line_length (already has), min_corr_dim, max_corr_dim. 2. Pass params to compute_rqa, estimate_corre | Effort: small
 
-- [ ] **M-023** `[security]` `crates/cpoe/src/anchors/ots.rs:144`: upgrade_proof() checks if proof-supplied calendar URL starts_with(allowed_url) (line 144). This is insufficient: 'https://attacker.pool.opentimestamps
-  <!-- pid:P011_SSRF_URL_PREFIX | first:2026-05-12 -->
-  Impact: SSRF risk: attacker-supplied calendar URL is accepted if it contains a substring of a legitimate URL. Malicious calendar can be contacted. | Fix: Use URL parsing (url::Url::host()) and strict hostname matching. Or require calendar URLs to be in an exact whitelist, not substring match. | Effort: small
 
 - [ ] **M-024** `[error_handling]` `crates/cpoe/src/anchors/ots.rs:158`: submit_to_calendar() (line 106) returns the raw response body. But the response is OTS proof data, which is opaque binary. No schema validation that t
   <!-- pid:P036_PROOF_VALIDATION | first:2026-05-12 -->
@@ -1455,9 +714,6 @@
   <!-- pid:unnecessary_trait_export | first:2026-05-12 -->
   Impact: Callers might depend on EventUpdate trait, making future refactoring harder. Pollutes public API. | Fix: Change to `trait EventUpdate` (remove pub), as it is only used within the module for generic implementations. | Effort: small
 
-- [ ] **M-046** `[security]` `crates/cpoe/src/crypto.rs:147`: debug_assert!() used for key seed length validation in derive_hmac_key. Debug assertions are stripped in release builds, allowing undersized seeds (< 
-  <!-- pid:debug_assertion_crypto | first:2026-05-12 -->
-  Impact: In production (release build), a seed smaller than 16 bytes can be used for HMAC key derivation. While SHA-256 accepts any size, the 16-byte minimum i | Fix: Replace with runtime check: `if priv_key_seed.len() < 16 { return Err(...) }` and return Result type, or use standard assert! macro. | Effort: small
 
 - [ ] **M-047** `[error_handling]` `crates/cpoe/src/crypto.rs:221`: hkdf.expand() in sign_event_lamport uses is_err() check and returns generic error. If expand fails, caller sees only 'HKDF expand failed', no context 
   <!-- pid:error_context_hkdf | first:2026-05-12 -->
@@ -1739,9 +995,6 @@
   <!-- pid:security_no_audit_trail | first:2026-05-12 -->
   Impact: Attacker could exfiltrate hashes of sensitive files via FFI. No indication to user that hashing occurs. | Fix: Add optional audit logging to ffi_hash_file; document that this may hash sensitive content; consider restricting to tracked files only | Effort: small
 
-- [ ] **M-117** `[security]` `crates/cpoe/src/ffi/text_fragment.rs:215`: Unchecked parse() of keystroke_context string enum from caller
-  <!-- pid:enum_validation_ok | first:2026-05-12 -->
-  Impact: Invalid enum value from Swift causes error message but proper validation exists | Fix: This is actually safe; validation is present. No issue. | Effort: small
 
 - [ ] **M-118** `[performance]` `crates/cpoe/src/ffi/text_fragment.rs:238`: Sign every fragment immediately during paste recording
   <!-- pid:hot_path_crypto | first:2026-05-12 -->
@@ -1795,9 +1048,6 @@
   <!-- pid:P001_O_N2_CLUSTERING | first:2026-05-12 -->
   Impact: Clustering large datasets (near 500-item limit) could experience severe latency. The recursive truncation at line 492 compounds the issue. | Fix: Use approximate clustering (e.g., locality-sensitive hashing, kmeans++) to reduce to O(n log n) or O(kn) where k << n. Add a time budget parameter. | Effort: large
 
-- [ ] **M-131** `[error_handling]` `crates/cpoe/src/fingerprint/comparison.rs:538`: In find_clusters (line 538), sim.is_finite() is checked before adding to total_sim, but count is incremented unconditionally (line 541). If sim is NaN
-  <!-- pid:P022_NAN_COUNT_MISMATCH | first:2026-05-12 -->
-  Impact: Clustering metric: avg_internal_similarity is underestimated if any member-pair comparison returns NaN. Clusters appear artificially similar. | Fix: Only increment count if sim.is_finite(): if sim.is_finite() { total_sim += sim; count += 1; } | Effort: small
 
 - [ ] **M-132** `[error_handling]` `crates/cpoe/src/fingerprint/comparison.rs:812`: Unit test uses .unwrap() on serde_json::from_str() without error context (line 812). If the JSON parsing changes, error message is unhelpful.
   <!-- pid:P003_TEST_UNWRAP | first:2026-05-12 -->
@@ -1871,13 +1121,7 @@
   <!-- pid:LONG_BRANCH_FUNCTION | first:2026-05-12 -->
   Impact: Difficult to verify all penalty combinations; risk of double-counting (e.g., both POS_NEG_PENALTY and DELETION_CLUSTERING_PENALTY applied on same cond | Fix: Refactor into penalty_struct with name:penalty pairs, accumulate in loop; separate concerns | Effort: medium
 
-- [ ] **M-150** `[security]` `crates/cpoe/src/forensics/assessment.rs:298`: Division by (1.0 - MONOTONIC_PENALTY_START) hardcoded assumes MONOTONIC_PENALTY_START < 1.0
-  <!-- pid:THRESHOLD_DIVIDE_VULNERABILITY | first:2026-05-12 -->
-  Impact: If MONOTONIC_PENALTY_START >= 1.0 (config change), division by zero causes NaN, verdict silently corrupted | Fix: Add assertion: assert!(MONOTONIC_PENALTY_START < 1.0); or guard: .max(f64::EPSILON) | Effort: small
 
-- [ ] **M-151** `[security]` `crates/cpoe/src/forensics/assessment.rs:332`: Division by CV_ROBOTIC_THRESHOLD without guard (line 332: / CV_ROBOTIC_THRESHOLD)
-  <!-- pid:CONST_DIVIDE_GUARD | first:2026-05-12 -->
-  Impact: If CV_ROBOTIC_THRESHOLD == 0.0 (unlikely but possible via config), NaN penalty applied, verdict corrupted | Fix: Add guard: let cv_denom = CV_ROBOTIC_THRESHOLD.max(f64::EPSILON); | Effort: small
 
 - [ ] **M-152** `[architecture]` `crates/cpoe/src/forensics/assessment.rs:437`: apply_focus_penalties() delegates to super::scoring::compute_focus_penalty() creating cross-module coupling
   <!-- pid:SPLIT_PENALTY_LOGIC | first:2026-05-12 -->
@@ -1903,13 +1147,7 @@
   <!-- pid:word_count_accumulation | first:2026-05-12 -->
   Impact: If dictation events have large word_count fields, segment.word_count can overflow when summed (line 339) | Fix: Use saturating_add for segment accumulation like event accumulation does | Effort: small
 
-- [ ] **M-158** `[code_quality]` `crates/cpoe/src/forensics/likelihood_model.rs:36`: GaussianParams precision-weighted update uses unguarded 1.0 / sigma² without checking sigma for zero
-  <!-- pid:PRECISION_DIVIDE_ZERO | first:2026-05-12 -->
-  Impact: If session_sigma == 0.0 (uniform timing), precision becomes Inf, causes NaN in weighted mean (line 58) | Fix: Verify session_sigma > 0.0 in update() precondition or use .max(f64::EPSILON) | Effort: small
 
-- [ ] **M-159** `[security]` `crates/cpoe/src/forensics/likelihood_model.rs:91`: Log of unbounded keystroke_interval_mean without negative check; ln(0) returns -Inf
-  <!-- pid:LOG_ZERO_INPUT | first:2026-05-12 -->
-  Impact: If keystroke_interval_mean <= 0 (corrupted fingerprint), log_mu becomes -Inf, personalizes priors to pathological values, verdicts skewed toward trans | Fix: Add check: if f.keystroke_interval_mean <= 0.0 { return Self::population_defaults(); } | Effort: small
 
 - [ ] **M-160** `[code_quality]` `crates/cpoe/src/forensics/likelihood_model.rs:537`: mean_llr computed from sum then used for session_p_cognitive but window LLRs are per-window scaled; potential scale mismatch
   <!-- pid:SCALE_INCONSISTENCY | first:2026-05-12 -->
@@ -2914,37 +2152,6 @@
 ## Quick Wins
 | ID | Sev | File:Line | Issue | Effort |
 |----|-----|-----------|-------|--------|
-| C-011 | CRITICAL | `crates/cpoe/src/ffi/evidence_export.rs:732` | .expect() on HMAC new_from_slice() in cryptographic operation | small |
-| C-012 | CRITICAL | `crates/cpoe/src/ffi/fingerprint.rs:27` | Poisoned mutex silently recovered with into_inner() | small |
-| C-013 | CRITICAL | `crates/cpoe/src/ffi/forensics_detail.rs:652` | Unwrap on test assertion path: `.unwrap()` on `error_message` in test code, will | small |
-| C-018 | CRITICAL | `crates/cpoe/src/identity/did_webvh.rs:265` | public_key_hex() re-derives webvh key every time it's called; no caching, create | small |
-| C-020 | CRITICAL | `crates/cpoe/src/identity/did_webvh.rs:620` | load_signing_key() reads entire 32-byte file without checking for symlink race a | small |
-| C-023 | CRITICAL | `crates/cpoe/src/identity/secure_storage.rs:270` | delete_seed() does not explicitly zeroize dropped data or validate successful de | small |
-| C-024 | CRITICAL | `crates/cpoe/src/identity/secure_storage.rs:349` | Mnemonic phrase decoded to String without immediately zeroizing intermediate Vec | small |
-| C-026 | CRITICAL | `crates/cpoe/src/ipc/secure_channel.rs:163` | AEAD Payload AAD set to mutable nonce_bytes; if encrypt modifies AAD buffer in-p | small |
-| C-027 | CRITICAL | `crates/cpoe/src/ipc/server_handler.rs:279` | Debug format of IpcMessage logged on RBAC denial; may leak sensitive paths/nonce | small |
-| C-040 | CRITICAL | `crates/cpoe/src/sentinel/helpers.rs:2479` | .unwrap() on Option returned from paste_context assertion—test code assuming pas | small |
-| C-047 | CRITICAL | `crates/cpoe/src/wal/operations.rs:262` | ct_eq() comparison of prev_hash uses .unwrap_u8() == 0 which evaluates to false  | small |
-| C-048 | CRITICAL | `crates/cpoe/src/war/verification.rs:764` | CA_KEY_RING constant has all-zeros placeholder pubkey: verify_manifest_signature | small |
-| H-031 | HIGH | `crates/cpoe/src/analysis/content_detector.rs:113` | Confidence thresholds are compared at lines 845-848 using floating-point direct  | small |
-| H-032 | HIGH | `crates/cpoe/src/analysis/content_detector.rs:846` | Hard-coded confidence threshold 0.60 is directly used as classification boundary | small |
-| H-035 | HIGH | `crates/cpoe/src/analysis/labyrinth.rs:114` | Truncation at line 108-112 is silent: if keystroke_deltas.len() > 1000, tail sli | small |
-| H-036 | HIGH | `crates/cpoe/src/analysis/labyrinth.rs:154` | Non-finite check at line 154 catches NaN/Inf but the subsequent replace (line 15 | small |
-| H-040 | HIGH | `crates/cpoe/src/anchors/ots.rs:818` | is_available() uses a 5-second timeout for HEAD request (line 817). If a calenda | small |
-| H-044 | HIGH | `crates/cpoe/src/checkpoint/chain.rs:193` | Symlink check happens AFTER canonicalize() succeeds (line 202), but symlink_meta | small |
-| H-045 | HIGH | `crates/cpoe/src/checkpoint/chain.rs:308` | Ordinal overflow converted to checkpoint error but message doesn't specify limit | small |
-| H-046 | HIGH | `crates/cpoe/src/checkpoint/chain.rs:336` | VDF duration calculation (lines 333-380) occurs inside lock, but hash computatio | small |
-| H-047 | HIGH | `crates/cpoe/src/checkpoint/chain.rs:431` | Silent error suppression on directory sync in save() path | small |
-| H-049 | HIGH | `crates/cpoe/src/checkpoint/chain.rs:489` | Silent error suppression on directory sync in save_with_mac() path | small |
-| H-056 | HIGH | `crates/cpoe/src/crypto/lamport.rs:187` | unwrap() without error handling in test. from_bytes().unwrap() on deserialized s | small |
-| H-058 | HIGH | `crates/cpoe/src/ffi/beacon.rs:110` | save_beacon_attestation uses tempfile::NamedTempFile in parent directory without | small |
-| H-061 | HIGH | `crates/cpoe/src/ffi/ephemeral.rs:668` | .expect() on try_from() for array slice in sync conflict resolution | small |
-| H-062 | HIGH | `crates/cpoe/src/ffi/evidence_derivative.rs:261` | VDF computation with config load: `CpopConfig::load_or_default()` with `.unwrap_ | small |
-| H-068 | HIGH | `crates/cpoe/src/ffi/evidence_export.rs:1218` | .unwrap() on HashValue::try_sha256() in test data construction | small |
-| H-070 | HIGH | `crates/cpoe/src/ffi/helpers.rs:16` | Mutex::lock().unwrap_or_else(|e| e.into_inner()) recovers from poisoned state bu | small |
-| H-075 | HIGH | `crates/cpoe/src/ffi/report.rs:366` | Mutex::lock().unwrap_or_else(|p| p.into_inner()) in FFI cache | small |
-| H-077 | HIGH | `crates/cpoe/src/ffi/sentinel.rs:392` | .unwrap() on Option returned from path operations in test | small |
-| H-078 | HIGH | `crates/cpoe/src/ffi/sentinel.rs:431` | .expect() on file write in test code | small |
 
 ## Coverage
 <!-- scan:2026-05-12 | batches:40 | waves:8 | files:455 | depth:deep+standard+shallow -->

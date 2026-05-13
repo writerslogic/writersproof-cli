@@ -545,6 +545,12 @@ pub fn ffi_provision_ca_cert() -> FfiResult {
     let result = rt.block_on(async {
         let base_url = std::env::var("WRITERSPROOF_API_URL")
             .unwrap_or_else(|_| "https://api.writersproof.com".to_string());
+        if !base_url.starts_with("https://") {
+            let preview: String = base_url.chars().take(40).collect();
+            return Err(format!(
+                "WRITERSPROOF_API_URL must use HTTPS: {preview}"
+            ));
+        }
         let client = crate::writersproof::WritersProofClient::new(&base_url)
             .map_err(|e| format!("Failed to create WritersProof client: {e}"))?;
 
@@ -691,13 +697,13 @@ fn enrich_checkpoints(
                 .map(|s| s.duration_since_last_ns / 1_000_000) // ns → ms
                 .collect();
             let entropy_centibits = estimate_entropy_centibits(&intervals);
-            let jitter_seal = compute_jitter_seal(&intervals, ev.content_hash);
-
-            cp.jitter_binding =
-                Some(authorproof_protocol::rfc::wire_types::JitterBindingWire {
-                    intervals,
-                    entropy_estimate: entropy_centibits,
-                    jitter_seal,
+            cp.jitter_binding = compute_jitter_seal(&intervals, ev.content_hash)
+                .map(|jitter_seal| {
+                    authorproof_protocol::rfc::wire_types::JitterBindingWire {
+                        intervals,
+                        entropy_estimate: entropy_centibits,
+                        jitter_seal,
+                    }
                 });
         }
 
@@ -723,20 +729,23 @@ fn estimate_entropy_centibits(intervals_ms: &[u64]) -> u64 {
 }
 
 /// HMAC-SHA256 seal over jitter intervals bound to content hash.
-fn compute_jitter_seal(intervals_ms: &[u64], content_hash: [u8; 32]) -> Vec<u8> {
+fn compute_jitter_seal(intervals_ms: &[u64], content_hash: [u8; 32]) -> Option<Vec<u8>> {
     use hmac::{Hmac, Mac};
     use sha2::Sha256 as HmacSha256;
 
     type HmacSha = Hmac<HmacSha256>;
-    // HMAC accepts any non-empty key; a 32-byte content_hash always satisfies this.
-    // new_from_slice only fails for empty key (InvalidLength), which cannot happen here.
-    let mut mac =
-        HmacSha::new_from_slice(&content_hash).expect("HMAC accepts any key length");
+    let mut mac = match HmacSha::new_from_slice(&content_hash) {
+        Ok(m) => m,
+        Err(e) => {
+            log::error!("HMAC init failed for jitter seal: {e}");
+            return None;
+        }
+    };
     mac.update(b"cpoe-jitter-seal-v1");
     for &iki in intervals_ms {
         mac.update(&iki.to_le_bytes());
     }
-    mac.finalize().into_bytes().to_vec()
+    Some(mac.finalize().into_bytes().to_vec())
 }
 
 /// Build baseline verification from sentinel session behavioral data.

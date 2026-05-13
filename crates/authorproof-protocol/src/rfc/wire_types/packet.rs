@@ -300,6 +300,11 @@ impl EvidencePacketWire {
                     MAX_STRING_LEN
                 )));
             }
+            if name.contains('\0') {
+                return Err(CodecError::Validation(
+                    "document filename contains null byte".into(),
+                ));
+            }
         }
 
         for (i, cp) in self.checkpoints.iter().enumerate() {

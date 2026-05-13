@@ -333,7 +333,10 @@ impl KeystrokeMonitor {
                 // is a valid field constant for key events.
                 let keycode =
                     unsafe { CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_KEYCODE) };
-                let keycode_u16 = u16::try_from(keycode).unwrap_or(0xFF);
+                let keycode_u16 = u16::try_from(keycode).unwrap_or_else(|_| {
+                    log::warn!("keycode {keycode} out of u16 range, defaulting to 0xFF");
+                    0xFF
+                });
                 let zone_i = crate::jitter::keycode_to_zone(keycode_u16);
                 let zone = if zone_i >= 0 { zone_i as u8 } else { 0xFF };
 
@@ -588,7 +591,15 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                         uni_buf.as_mut_ptr(),
                     );
                 }
-                let uni_len = (uni_len as usize).min(uni_buf.len());
+                let raw_uni_len = uni_len as usize;
+                let uni_len = raw_uni_len.min(uni_buf.len());
+                if raw_uni_len > uni_buf.len() {
+                    log::warn!(
+                        "CGEventKeyboardGetUnicodeString returned {raw_uni_len} chars, \
+                         truncating to buffer size {}",
+                        uni_buf.len()
+                    );
+                }
                 let (char_value, composed_text) = if uni_len > 0 {
                     let decoded = String::from_utf16_lossy(&uni_buf[..uni_len]);
                     let first_char = decoded.chars().next();

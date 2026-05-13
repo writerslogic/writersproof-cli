@@ -34,7 +34,10 @@ pub(in crate::report::html) fn write_verifiable_credential(
 
     let vc: serde_json::Value = match serde_json::from_str(vc_json) {
         Ok(v) => v,
-        Err(_) => return Ok(()),
+        Err(e) => {
+            log::warn!("Failed to parse verifiable credential JSON: {e}");
+            return Ok(());
+        }
     };
 
     html.push_str(r#"<div class="info-box" style="margin-top:16px">"#);
@@ -105,7 +108,9 @@ pub(in crate::report::html) fn write_verifiable_credential(
     }
     if let Some(doc_ref) = vc["credentialSubject"]["processAttestation"]["documentRef"].as_str() {
         let short = if doc_ref.len() > 16 {
-            format!("{}...{}", &doc_ref[..8], &doc_ref[doc_ref.len() - 8..])
+            let start = doc_ref.get(..8).unwrap_or(doc_ref);
+            let end = doc_ref.get(doc_ref.len().saturating_sub(8)..).unwrap_or("");
+            format!("{start}...{end}")
         } else {
             doc_ref.to_string()
         };

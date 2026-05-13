@@ -42,7 +42,7 @@ pub struct GaussianParams {
 
 impl GaussianParams {
     pub fn new(mu: f64, sigma: f64) -> Self {
-        Self { mu, sigma, count: 0 }
+        Self { mu, sigma: sigma.max(f64::EPSILON), count: 0 }
     }
 
     /// Bayesian update using new session data (precision-weighted).

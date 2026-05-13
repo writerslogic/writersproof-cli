@@ -180,7 +180,10 @@ impl Session {
             return Err(KeyHierarchyError::RatchetWiped);
         }
 
-        let binding = provider.bind(&checkpoint_hash).ok();
+        let binding = provider.bind(&checkpoint_hash).map_err(|e| {
+            log::warn!("TPM bind failed (falling back to software-only): {e}");
+            e
+        }).ok();
         let current_counter = binding.as_ref().and_then(|b| b.monotonic_counter);
 
         let previous_counter = self.signatures.last().and_then(|s| s.counter_value);

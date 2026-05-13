@@ -30,20 +30,32 @@ impl Default for SoftwareProvider {
 }
 
 impl SoftwareProvider {
-    pub fn new() -> Self {
+    /// Create a new software TPM provider, returning an error if the OS RNG
+    /// is unavailable.
+    pub fn try_new() -> std::result::Result<Self, TpmError> {
         let mut seed = Zeroizing::new([0u8; 32]);
-        getrandom::getrandom(seed.as_mut_slice())
-            .expect("OS RNG unavailable — cannot create software TPM");
+        getrandom::getrandom(seed.as_mut_slice()).map_err(|e| {
+            log::error!("OS RNG unavailable: {e}");
+            TpmError::NotAvailable
+        })?;
         let seed_hash = Sha256::digest(seed.as_slice());
         let device_id = format!("sw-{}", crate::utils::short_hex_id(&seed_hash));
         let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
-        Self {
+        Ok(Self {
             signing_key,
             state: Mutex::new(SoftwareState {
                 device_id,
                 counter: 0,
             }),
-        }
+        })
+    }
+
+    /// Create a new software TPM provider.
+    ///
+    /// # Panics
+    /// Panics if the OS RNG is unavailable (should never happen on supported platforms).
+    pub fn new() -> Self {
+        Self::try_new().expect("OS RNG unavailable — cannot create software TPM")
     }
 
     /// Create a provider from an existing signing key.

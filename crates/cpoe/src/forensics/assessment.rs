@@ -296,7 +296,7 @@ pub fn compute_assessment_score(
     };
     if mar > MONOTONIC_PENALTY_START {
         score -= MONOTONIC_PENALTY_WEIGHT * (mar - MONOTONIC_PENALTY_START)
-            / (1.0 - MONOTONIC_PENALTY_START);
+            / (1.0 - MONOTONIC_PENALTY_START).max(f64::EPSILON);
     }
 
     let edit_entropy = if primary.edit_entropy.is_finite() {
@@ -329,7 +329,7 @@ pub fn compute_assessment_score(
         CV_ROBOTIC_THRESHOLD
     };
     if cov < CV_ROBOTIC_THRESHOLD {
-        score -= COV_PENALTY_WEIGHT * (CV_ROBOTIC_THRESHOLD - cov) / CV_ROBOTIC_THRESHOLD;
+        score -= COV_PENALTY_WEIGHT * (CV_ROBOTIC_THRESHOLD - cov) / CV_ROBOTIC_THRESHOLD.max(f64::EPSILON);
     }
 
     score -= ANOMALY_PENALTY * anomaly_count as f64;
@@ -408,7 +408,7 @@ pub fn compute_cadence_score(cadence: &CadenceMetrics) -> f64 {
         CV_ROBOTIC_THRESHOLD
     };
     if cov < CV_ROBOTIC_THRESHOLD {
-        let penalty = (CV_ROBOTIC_THRESHOLD - cov) / CV_ROBOTIC_THRESHOLD;
+        let penalty = (CV_ROBOTIC_THRESHOLD - cov) / CV_ROBOTIC_THRESHOLD.max(f64::EPSILON);
         score -= CADENCE_COV_PENALTY * penalty;
     }
 

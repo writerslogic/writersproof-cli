@@ -71,14 +71,18 @@ pub fn derive_challenges(
         }
         counter += 1;
     }
-    debug_assert_eq!(
-        challenges.len(),
-        q as usize,
-        "challenge derivation incomplete: got {} of {} in {} iterations",
-        challenges.len(),
-        q,
-        max_iters
-    );
+    if challenges.len() != q as usize {
+        // If the hash space is too small relative to total_steps, we may not
+        // be able to derive Q unique indices.  Return what we have rather than
+        // silently accepting an incomplete challenge set — the verifier MUST
+        // reject proofs with fewer challenges than expected.
+        log::warn!(
+            "challenge derivation incomplete: got {} of {} in {} iterations",
+            challenges.len(),
+            q,
+            max_iters
+        );
+    }
     challenges
 }
 

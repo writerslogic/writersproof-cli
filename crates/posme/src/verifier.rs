@@ -373,6 +373,14 @@ fn verify_step(
 
     // D2. Verify recursive writer provenance.
     for (j, w) in sp.writers.iter().enumerate() {
+        if j >= sp.reads.len() {
+            return Err(PosmeError::VerificationFailed(format!(
+                "writer index {} out of bounds for reads (len {}) at step {}",
+                j,
+                sp.reads.len(),
+                step
+            )));
+        }
         if w.proof_type == 0 {
             // Init writer: verify the init Merkle path proves this block is in root_0.
             if let Some(ref path) = w.init_merkle_path {

@@ -52,8 +52,9 @@ macro_rules! fixed_point {
                     );
                     return $name(0 as $inner);
                 }
-                let scaled = (value * ($scale as f64)).round().clamp(i32::MIN as f64, i32::MAX as f64) as i32;
-                let clamped = scaled.clamp($min, $max) as $inner;
+                let scaled = (value * ($scale as f64)).round()
+                    .clamp($min as f64, $max as f64);
+                let clamped = scaled as $inner;
                 $name(clamped)
             }
 

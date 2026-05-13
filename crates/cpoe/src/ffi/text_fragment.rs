@@ -822,14 +822,14 @@ pub fn ffi_resolve_sync_conflict(
     if let Some(ref frag) = remote_fragment {
         let hash_arr: &[u8; 32] = match frag.fragment_hash.as_slice().try_into() {
             Ok(a) => a,
-            Err(_) => return FfiSyncResult::err(&format!(
+            Err(_) => return FfiSyncResult::err(format!(
                 "fragment_hash length {} != 32",
                 frag.fragment_hash.len()
             )),
         };
         let sig_arr: &[u8; 64] = match frag.source_signature.as_slice().try_into() {
             Ok(a) => a,
-            Err(_) => return FfiSyncResult::err(&format!(
+            Err(_) => return FfiSyncResult::err(format!(
                 "source_signature length {} != 64",
                 frag.source_signature.len()
             )),

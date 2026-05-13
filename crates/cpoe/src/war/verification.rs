@@ -254,10 +254,17 @@ pub fn compute_seal(packet: &Packet, declaration: &Declaration) -> Result<Seal, 
     // If beacon_attestation is Some but wp_signature is malformed, fail hard —
     // silent fallback would allow beacon stripping attacks.
     let beacon_sig = match &packet.beacon_attestation {
-        Some(b) => Some(
-            hex::decode(&b.wp_signature)
-                .map_err(|e| format!("invalid beacon wp_signature hex: {e}"))?,
-        ),
+        Some(b) => {
+            let decoded = hex::decode(&b.wp_signature)
+                .map_err(|e| format!("invalid beacon wp_signature hex: {e}"))?;
+            if decoded.is_empty() {
+                return Err(
+                    "beacon wp_signature is empty; cannot bind empty signature"
+                        .to_string(),
+                );
+            }
+            Some(decoded)
+        }
         None => None,
     };
 

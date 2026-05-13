@@ -48,8 +48,26 @@ pub(super) fn verify_seals_structural(
     for cp in &packet.checkpoints {
         if let (Some(vdf_in), Some(vdf_out)) = (&cp.vdf_input, &cp.vdf_output) {
             // Verify VDF input/output are well-formed 32-byte hex
-            let in_ok = hex::decode(vdf_in).map(|b| b.len() == 32).unwrap_or(false);
-            let out_ok = hex::decode(vdf_out).map(|b| b.len() == 32).unwrap_or(false);
+            let in_ok = match hex::decode(vdf_in) {
+                Ok(b) => b.len() == 32,
+                Err(e) => {
+                    log::warn!(
+                        "Checkpoint {} VDF input hex decode failed: {e}",
+                        cp.ordinal
+                    );
+                    false
+                }
+            };
+            let out_ok = match hex::decode(vdf_out) {
+                Ok(b) => b.len() == 32,
+                Err(e) => {
+                    log::warn!(
+                        "Checkpoint {} VDF output hex decode failed: {e}",
+                        cp.ordinal
+                    );
+                    false
+                }
+            };
 
             if !in_ok || !out_ok {
                 warnings.push(format!(

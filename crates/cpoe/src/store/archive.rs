@@ -109,7 +109,12 @@ impl SecureStore {
         }
         // Clean up a leftover .tmp from a previous crash (DELETE never committed).
         if archive_tmp_path.exists() {
-            let _ = std::fs::remove_file(&archive_tmp_path);
+            if let Err(e) = std::fs::remove_file(&archive_tmp_path) {
+                log::warn!(
+                    "Failed to clean up leftover archive tmp file {}: {e}",
+                    archive_tmp_path.display()
+                );
+            }
         }
 
         // Find the chain link: the last event hash among events being archived.

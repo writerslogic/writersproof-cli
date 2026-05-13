@@ -3883,6 +3883,7 @@ name = "posme"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "log",
  "serde",
  "subtle 2.6.1",
 ]

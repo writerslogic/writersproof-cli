@@ -52,6 +52,15 @@ pub(crate) fn build_cert_data_with_expiry(
     document_hash: [u8; 32],
     expires_at: Option<DateTime<Utc>>,
 ) -> Vec<u8> {
+    // Ed25519 public keys must be exactly 32 bytes.  A wrong-length key
+    // produces an ambiguous cert_data blob (no length prefix) that cannot
+    // be verified, and could allow certificate substitution.
+    debug_assert_eq!(
+        session_pub_key.len(),
+        32,
+        "session_pub_key must be 32 bytes (Ed25519), got {}",
+        session_pub_key.len()
+    );
     let mut data = Vec::with_capacity(32 + 32 + 8 + 32 + 9);
     data.extend_from_slice(&session_id);
     data.extend_from_slice(session_pub_key);

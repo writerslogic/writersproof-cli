@@ -297,7 +297,7 @@ pub fn ffi_sentinel_es_terminal_editor_exec(
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
 
-    if !TERMINAL_EDITORS.iter().any(|&e| e == editor_name) {
+    if !TERMINAL_EDITORS.contains(&editor_name) {
         log::debug!("ffi_sentinel_es_terminal_editor_exec: unrecognised editor {editor_name:?}");
         return false;
     }

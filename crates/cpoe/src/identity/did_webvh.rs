@@ -160,6 +160,7 @@ pub struct WebVHIdentity {
     pub(crate) state: DIDWebVHState,
     pub(crate) address: String,
     pub(crate) did: String,
+    pubkey_hex_cache: std::cell::OnceCell<String>,
 }
 
 impl WebVHIdentity {
@@ -215,6 +216,7 @@ impl WebVHIdentity {
             state,
             address,
             did,
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         })
     }
 
@@ -265,8 +267,13 @@ impl WebVHIdentity {
 
     /// Returns the hex-encoded public key of the derived webvh signing key.
     pub fn public_key_hex(&self, master_key: &SigningKey) -> Result<String, Error> {
+        if let Some(cached) = self.pubkey_hex_cache.get() {
+            return Ok(cached.clone());
+        }
         let derived = derive_webvh_signing_key(master_key, &self.address)?;
-        Ok(crate::utils::crypto_types::Ed25519Pubkey::from(derived.verifying_key()).to_hex())
+        let hex = crate::utils::crypto_types::Ed25519Pubkey::from(derived.verifying_key()).to_hex();
+        let _ = self.pubkey_hex_cache.set(hex.clone());
+        Ok(hex)
     }
 
     /// Update the DID document.
@@ -402,6 +409,7 @@ impl WebVHIdentity {
             state,
             address,
             did,
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         })
     }
 }
@@ -448,7 +456,12 @@ fn validate_did_host(did: &str) -> Result<(), Error> {
             "did:webvh DID missing host component".to_string(),
         ));
     }
-    // URL-decode (e.g. %3A for embedded colons), then strip optional port.
+    if host_raw.contains("%3A") || host_raw.contains("%3a") {
+        return Err(Error::identity(
+            "did:webvh host contains percent-encoded colon (ambiguous delimiter)".to_string(),
+        ));
+    }
+    // URL-decode, then strip optional port.
     let decoded = urlencoding::decode(host_raw)
         .map(|c| c.into_owned())
         .map_err(|_| {
@@ -621,7 +634,18 @@ fn load_signing_key() -> Result<SigningKey, Error> {
             ));
         }
     }
-    let file = std::fs::File::open(&key_path)
+    let canonical = key_path.canonicalize().map_err(|e| {
+        Error::identity(format!("canonicalize signing key path: {e}"))
+    })?;
+    let canonical_data_dir = data_dir.canonicalize().map_err(|e| {
+        Error::identity(format!("canonicalize data directory: {e}"))
+    })?;
+    if !canonical.starts_with(&canonical_data_dir) {
+        return Err(Error::identity(
+            "signing key path resolves outside data directory (possible symlink attack)",
+        ));
+    }
+    let file = std::fs::File::open(&canonical)
         .map_err(|e| Error::identity(format!("open signing key: {e}")))?;
     #[cfg(unix)]
     {
@@ -1068,6 +1092,7 @@ mod tests {
             state: DIDWebVHState::default(),
             address: "example.com".to_string(),
             did: "did:webvh:abc123:example.com".to_string(),
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         };
         assert_eq!(identity.address(), "example.com");
     }
@@ -1079,6 +1104,7 @@ mod tests {
             state: DIDWebVHState::default(),
             address: "example.com".to_string(),
             did: "did:webvh:abc123:example.com".to_string(),
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         };
         assert!(!identity.did().is_empty());
         assert!(identity.did().starts_with("did:webvh:"));
@@ -1091,6 +1117,7 @@ mod tests {
             state: DIDWebVHState::default(),
             address: "example.com".to_string(),
             did: "did:webvh:abc123:example.com".to_string(),
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         };
         assert!(!identity.is_deactivated());
     }
@@ -1102,6 +1129,7 @@ mod tests {
             state: DIDWebVHState::default(),
             address: "example.com".to_string(),
             did: "did:webvh:abc123:example.com".to_string(),
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         };
         assert_eq!(identity.log_entry_count(), 0);
     }
@@ -1113,6 +1141,7 @@ mod tests {
             state: DIDWebVHState::default(),
             address: "example.com".to_string(),
             did: "did:webvh:abc123:example.com".to_string(),
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         };
         assert!(identity.created_at().is_none());
     }
@@ -1124,6 +1153,7 @@ mod tests {
             state: DIDWebVHState::default(),
             address: "example.com".to_string(),
             did: "did:webvh:abc123:example.com".to_string(),
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         };
         assert!(identity.updated_at().is_none());
     }
@@ -1136,6 +1166,7 @@ mod tests {
             state: DIDWebVHState::default(),
             address: "example.com".to_string(),
             did: "did:webvh:abc123:example.com".to_string(),
+            pubkey_hex_cache: std::cell::OnceCell::new(),
         };
         let hex_key = identity.public_key_hex(&master).unwrap();
         assert_eq!(hex_key.len(), 64);

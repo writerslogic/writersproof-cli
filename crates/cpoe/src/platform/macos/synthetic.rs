@@ -165,8 +165,14 @@ pub fn validate_dual_layer(cg_count: u64, hid_count: u64) -> DualLayerValidation
         };
     }
 
-    let cg_i64 = i64::try_from(cg_count).unwrap_or(i64::MAX);
-    let hid_i64 = i64::try_from(hid_count).unwrap_or(i64::MAX);
+    let cg_i64 = i64::try_from(cg_count).unwrap_or_else(|_| {
+        log::warn!("cg_count {cg_count} exceeds i64::MAX, clamping");
+        i64::MAX
+    });
+    let hid_i64 = i64::try_from(hid_count).unwrap_or_else(|_| {
+        log::warn!("hid_count {hid_count} exceeds i64::MAX, clamping");
+        i64::MAX
+    });
     let discrepancy = cg_i64.saturating_sub(hid_i64);
 
     // Small discrepancies are normal due to timing; flag only >10% excess

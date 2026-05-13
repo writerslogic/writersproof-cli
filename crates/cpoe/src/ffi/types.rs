@@ -15,6 +15,7 @@ pub trait FfiErrResult {
 macro_rules! impl_ffi_err {
     ($ty:ty) => {
         impl $crate::ffi::types::FfiErrResult for $ty {
+            #[allow(clippy::needless_update)]
             fn ffi_err(msg: impl Into<String>) -> Self {
                 Self {
                     success: false,

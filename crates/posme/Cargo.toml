@@ -8,6 +8,7 @@ description = "Proof of Sequential Memory Execution (draft-condrey-cfrg-posme)"
 
 [dependencies]
 blake3 = "1.8"
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 subtle = "2.6"
 
