@@ -252,26 +252,38 @@ fn inject_keystroke_inner_v3(
     // Rate limiting: reject if injection rate exceeds MAX_INJECT_RATE_PER_SEC.
     // Uses monotonic Instant (not caller-supplied timestamp) to prevent bypass
     // via crafted timestamps. H-017: Mutex-guarded window prevents races.
+    // Sliding window: when the window expires, carry over the fraction of
+    // events that fall within the new window to prevent 2x bursts at boundary.
     {
         let mut window = match RATE_LIMITER.lock() {
             Ok(w) => w,
             Err(poisoned) => poisoned.into_inner(),
         };
         let now = Instant::now();
-        let elapsed = window
-            .start
-            .map_or(true, |s| now.duration_since(s).as_secs() >= 1);
-        if elapsed {
-            window.start = Some(now);
-            window.count = 1;
-        } else {
-            window.count += 1;
-            if window.count > MAX_INJECT_RATE_PER_SEC {
-                log::warn!(
-                    "FFI keystroke injection rate exceeded ({}/s); rejecting",
-                    window.count
-                );
-                return false;
+        match window.start {
+            Some(start) if now.duration_since(start).as_secs() < 1 => {
+                window.count += 1;
+                if window.count > MAX_INJECT_RATE_PER_SEC {
+                    log::warn!(
+                        "FFI keystroke injection rate exceeded ({}/s); rejecting",
+                        window.count
+                    );
+                    return false;
+                }
+            }
+            Some(start) => {
+                let elapsed_ms = now.duration_since(start).as_millis() as u64;
+                let carry = if elapsed_ms < 2000 {
+                    window.count.saturating_mul(1000u64.saturating_sub(elapsed_ms.min(1000))) / 1000
+                } else {
+                    0
+                };
+                window.start = Some(now);
+                window.count = carry + 1;
+            }
+            None => {
+                window.start = Some(now);
+                window.count = 1;
             }
         }
     }
@@ -420,7 +432,9 @@ fn inject_keystroke_inner_v3(
                 session.keystroke_count = session.keystroke_count.saturating_sub(increment);
                 if pushed {
                     session.jitter_sample_index.remove(&sample.timestamp_ns);
-                    session.jitter_samples.pop();
+                    if session.jitter_samples.last().map(|s| s.timestamp_ns) == Some(sample.timestamp_ns) {
+                        session.jitter_samples.pop();
+                    }
                 }
             } else {
                 // Record semantic and device classification only for validated

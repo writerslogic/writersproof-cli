@@ -1351,23 +1351,39 @@ const GIT_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 fn run_git_command(args: &[&str], cwd: &Path) -> Option<String> {
     use std::process::Command;
 
-    let output = Command::new("git")
+    let mut child = Command::new("git")
         .args(args)
         .current_dir(cwd)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .ok()?
-        .wait_with_output()
         .ok()?;
 
-    if !output.status.success() {
-        return None;
+    // 5-second timeout to prevent hangs on NFS, credential prompts, etc.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return None;
+                }
+                let output = child.wait_with_output().ok()?;
+                return String::from_utf8(output.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string());
+            }
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    log::warn!("git command timed out after 5s: {:?}", args);
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(_) => return None,
+        }
     }
-
-    String::from_utf8(output.stdout)
-        .ok()
-        .map(|s| s.trim().to_string())
 }
 
 /// Find the git repository root by walking up from the given path.
@@ -1672,20 +1688,17 @@ pub fn detect_save_as(
 /// Uses `open_nofollow` to prevent symlink-following TOCTOU attacks.
 pub fn detect_file_encoding(path: &Path) -> super::types::FileEncoding {
     use super::types::FileEncoding;
+    use std::io::{Read, Seek};
 
-    let file = match open_nofollow(path.to_str().unwrap_or("")) {
+    let mut file = match open_nofollow(path.to_str().unwrap_or("")) {
         Ok(f) => f,
         Err(_) => return FileEncoding::Unknown,
     };
 
     let mut buf = [0u8; 4];
-    let n = {
-        use std::io::Read;
-        let mut reader = std::io::BufReader::new(file);
-        match reader.read(&mut buf) {
-            Ok(n) => n,
-            Err(_) => return FileEncoding::Unknown,
-        }
+    let n = match file.read(&mut buf) {
+        Ok(n) => n,
+        Err(_) => return FileEncoding::Unknown,
     };
 
     if n == 0 {
@@ -1714,16 +1727,11 @@ pub fn detect_file_encoding(path: &Path) -> super::types::FileEncoding {
         return FileEncoding::Utf16Be;
     }
 
-    // No BOM: check if content is pure ASCII.
-    let file2 = match open_nofollow(path.to_str().unwrap_or("")) {
-        Ok(f) => f,
-        Err(_) => return FileEncoding::Utf8,
-    };
+    // No BOM: seek back to start and check if content is pure ASCII.
     let mut sample = [0u8; 512];
     let sample_n = {
-        use std::io::Read;
-        let mut reader = std::io::BufReader::new(file2);
-        reader.read(&mut sample).unwrap_or(0)
+        let _ = file.seek(std::io::SeekFrom::Start(0));
+        file.read(&mut sample).unwrap_or(0)
     };
     if sample_n > 0 && sample[..sample_n].iter().all(|&b| b < 128) {
         return FileEncoding::Ascii;
