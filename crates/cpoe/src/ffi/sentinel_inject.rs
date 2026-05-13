@@ -330,25 +330,25 @@ fn inject_keystroke_inner_v3(
         }
     }
     if source_state_id == SOURCE_STATE_PRIVATE {
+        log::debug!("[FFI_INJECT] REJECTED: source_state_id=PRIVATE (-1)");
         return false;
     }
     // When NSEvent.addGlobalMonitorForEvents delivers events without a backing
     // CGEvent (sandboxed apps), all three fields are 0. Accept these as trusted
     // in-process FFI injections from KeystrokeMonitorService.
     let is_unverified_ffi = source_state_id == 0 && keyboard_type == 0 && source_pid == 0;
+    log::debug!(
+        "[FFI_INJECT] source: state_id={} kbd_type={} pid={} unverified={}",
+        source_state_id, keyboard_type, source_pid, is_unverified_ffi
+    );
     if !is_unverified_ffi {
-        // keyboard_type 0 = no physical keyboard (synthetic). Values up to ~255
-        // are valid Apple keyboard types (e.g. 106 = JIS, 44/45 = standard US).
         if keyboard_type == 0 {
+            log::debug!("[FFI_INJECT] REJECTED: keyboard_type=0 (synthetic)");
             return false;
         }
-        // source_pid is the PID of the app that received the event, not the
-        // event source. For NSEvent.addGlobalMonitorForEvents with a CGEvent
-        // backing, this is the frontmost app's PID — completely normal for
-        // hardware keyboard events. Only reject events sourced from our own
-        // process (self-injection).
         let own_pid = std::process::id() as i64;
         if source_pid == own_pid {
+            log::debug!("[FFI_INJECT] REJECTED: self-injection (pid={})", own_pid);
             return false;
         }
         if source_state_id != SOURCE_STATE_HID_SYSTEM {
@@ -396,13 +396,13 @@ fn inject_keystroke_inner_v3(
 
     // Only count keystrokes when a tracked document is focused.
     let focus = sentinel.current_focus();
-    crate::sentinel::trace!("[FFI_INJECT] focus={:?} keycode={}", focus, keycode);
+    log::debug!("[FFI_INJECT] focus={:?} keycode={}", focus, keycode);
     if let Some(ref path) = focus {
         let mut sessions_guard = sentinel.sessions.write_recover();
         if let Some(session) = sessions_guard.get_mut(path) {
             let increment = coalesced_count.clamp(1, 10);
             session.keystroke_count = session.keystroke_count.saturating_add(increment);
-            crate::sentinel::trace!(
+            log::debug!(
                 "[FFI_INJECT] COUNTED {:?} total={}",
                 path,
                 session.keystroke_count
@@ -428,7 +428,15 @@ fn inject_keystroke_inner_v3(
             // fields zero) require a higher plausibility threshold since they
             // cannot be validated against HID system state (H-006).
             let min_confidence = if is_unverified_ffi { 0.5 } else { 0.1 };
+            log::debug!(
+                "[FFI_INJECT] validation: confidence={:.2} min={:.2} unverified={} keycode={} source_pid={}",
+                validation.confidence, min_confidence, is_unverified_ffi, keycode, source_pid
+            );
             if validation.confidence < min_confidence {
+                log::debug!(
+                    "[FFI_INJECT] REJECTED keystroke: confidence {:.2} < {:.2}",
+                    validation.confidence, min_confidence
+                );
                 session.keystroke_count = session.keystroke_count.saturating_sub(increment);
                 if pushed {
                     session.jitter_sample_index.remove(&sample.timestamp_ns);

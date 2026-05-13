@@ -180,9 +180,9 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                 let info = provider.get_active_window();
 
                 if info.is_none() {
-                    // No focused app (transient system UI, Mission Control, full-screen animation).
-                    // Start the pending-loss timer if we had a focused app.
+                    log::debug!("[POLL] no active window (transient UI / Mission Control)");
                     if !last_app.is_empty() && pending_loss.is_none() {
+                        log::debug!("[POLL] starting pending loss timer for {}", last_app);
                         pending_loss = Some((last_app.clone(), Instant::now()));
                     }
                     // Check if pending loss has expired past the debounce window.
@@ -249,6 +249,14 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     // Same app — cancel any pending loss (was a transient bounce).
                     pending_loss = None;
 
+                    // Check for intra-app document switch.
+                    if info.path.is_some() && info.path != last_path {
+                        log::debug!(
+                            "[POLL] intra-app doc switch: {:?} -> {:?} (win {:?} -> {:?})",
+                            last_path, info.path, last_window_number, info.window_number
+                        );
+                    }
+
                     // Check for Space transition: same app but different window visible.
                     if info.window_number.is_some()
                         && info.window_number != last_window_number
@@ -283,8 +291,10 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         }
                         last_window_number = info.window_number;
                     } else if info.path.is_some() && info.path != last_path {
-                        // App unchanged but document path changed (intra-app document switch
-                        // or AX query latency resolving the path for the first time).
+                        log::debug!(
+                            "[POLL] intra-app path change: {:?} -> {:?}",
+                            last_path, info.path
+                        );
                         let app_name = info.application.clone();
                         if is_terminal || config.is_app_allowed(&info.application, &app_name) {
                             if let Some(ref old_path) = last_path {
@@ -315,6 +325,10 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     }
                 } else {
                     // Different app detected.
+                    log::debug!(
+                        "[POLL] app switch: {} -> {} (path={:?})",
+                        last_app, current_app, info.path
+                    );
                     if pending_loss.is_none() {
                         pending_loss = Some((last_app.clone(), Instant::now()));
                     }
@@ -326,7 +340,10 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     };
                     if let Some((ref lost_app, started)) = pending_loss {
                         if started.elapsed() >= effective_debounce {
-                            // Confirmed real focus change — emit FocusLost for old app.
+                            log::debug!(
+                                "[POLL] debounce expired: {} -> {} (elapsed={:?}ms)",
+                                lost_app, current_app, started.elapsed().as_millis()
+                            );
                             if !lost_app.is_empty() {
                                 send_or_break!(FocusEvent {
                                     event_type: FocusEventType::FocusLost,
@@ -371,6 +388,10 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 false
                             };
 
+                            log::debug!(
+                                "[POLL] app_allowed={} app={} path={:?}",
+                                app_allowed, effective_app, effective_path
+                            );
                             if app_allowed {
                                 send_or_break!(FocusEvent {
                                     event_type: FocusEventType::FocusGained,
@@ -384,6 +405,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 });
                                 last_path = effective_path;
                             } else {
+                                log::debug!("[POLL] app NOT allowed, clearing last_path");
                                 last_path = None;
                             }
 

@@ -70,7 +70,7 @@ impl MacOSFocusMonitor {
                 .or(cg_title);
             let title_str = window_title.unwrap_or_default();
 
-            super::trace!(
+            log::debug!(
                 "[AX_PROBE] app={} bundle={} ax_path={:?} title={:?}",
                 app_name,
                 bundle_id_str,
@@ -83,42 +83,39 @@ impl MacOSFocusMonitor {
                     &title_str,
                     Some(&bundle_id_str),
                 )?;
+                log::debug!("[AX_PROBE] title inferred: {:?} (absolute={})", inferred, std::path::Path::new(&inferred).is_absolute());
                 if std::path::Path::new(&inferred).is_absolute() {
                     return Some(inferred);
                 }
-                // Bare filename from title — try to resolve it against the
-                // process's open file descriptors. This handles Electron apps
-                // (VS Code, Cursor, Zed) where AXDocument is unavailable but
-                // the window title contains the filename.
                 let open_docs =
                     super::process_files::open_documents_for_pid(pid as u32);
+                log::debug!("[AX_PROBE] FD scan: {} open docs for pid {}", open_docs.len(), pid);
                 if let Some(matched) = open_docs.iter().find(|f| {
                     f.path
                         .file_name()
                         .map(|n| n.to_string_lossy().eq_ignore_ascii_case(&inferred))
                         .unwrap_or(false)
                 }) {
+                    log::debug!("[AX_PROBE] FD match: {:?}", matched.path);
                     return Some(matched.path.to_string_lossy().into_owned());
                 }
-                // No FD match — use title:// so focus switches still work.
+                log::debug!("[AX_PROBE] no FD match, using title:// fallback");
                 Some(format!("title://{}/{}", bundle_id_str, inferred))
             });
 
             // Last resort: enumerate open file descriptors to find documents.
             let doc_path = doc_path.or_else(|| {
+                log::debug!("[AX_PROBE] last resort FD scan for pid {}", pid);
                 let open_docs =
                     super::process_files::open_documents_for_pid(pid as u32);
-                open_docs
+                let found = open_docs
                     .into_iter()
                     .find(|f| f.writable)
-                    .map(|f| f.path.to_string_lossy().into_owned())
+                    .map(|f| f.path.to_string_lossy().into_owned());
+                log::debug!("[AX_PROBE] FD writable result: {:?}", found);
+                found
             });
 
-            // If still no path, create a title:// virtual path so focus
-            // switches work correctly for any app. Without this, an empty
-            // path causes keystrokes to stick on the previously focused
-            // document. The downstream is_app_allowed() check in
-            // handle_focus_event_sync filters blocked apps.
             let doc_path = doc_path.or_else(|| {
                 if !bundle_id_str.is_empty() {
                     let suffix = if title_str.is_empty() {
@@ -126,11 +123,14 @@ impl MacOSFocusMonitor {
                     } else {
                         title_str.clone()
                     };
+                    log::debug!("[AX_PROBE] final title:// fallback: {}/{}", bundle_id_str, suffix);
                     Some(format!("title://{}/{}", bundle_id_str, suffix))
                 } else {
                     None
                 }
             });
+
+            log::debug!("[AX_PROBE] final doc_path={:?}", doc_path);
 
             Some(WindowInfo {
                 is_document: doc_path.is_some(),
@@ -168,6 +168,12 @@ impl MacOSFocusMonitor {
             } else {
                 self.query_focused_element_attribute(pid, attr_source.1)
             };
+            log::debug!(
+                "[AX_DOC] source={} attr={} raw={:?}",
+                if attr_source.0 { "window" } else { "element" },
+                attr_source.1,
+                raw
+            );
             if let Some(raw) = raw {
                 if let Some(path) = raw.strip_prefix("file://") {
                     if let Ok(decoded) = urlencoding::decode(path) {

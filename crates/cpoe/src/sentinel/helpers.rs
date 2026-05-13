@@ -38,7 +38,7 @@ pub fn handle_focus_event_sync(
         matches!(guard.as_deref(), Some(t) if !event.path.is_empty() && event.path != t)
     };
     if exit_targeted {
-        super::trace!(
+        log::debug!(
             "[FOCUS] targeted mode: auto-following focus to {:?}",
             event.path
         );
@@ -68,7 +68,7 @@ pub fn handle_focus_event_sync(
     );
 
     if !config.is_app_allowed(&event.app_bundle_id, &event.app_name) {
-        super::trace!(
+        log::debug!(
             "[FOCUS] BLOCKED app={} bundle={}",
             event.app_name,
             event.app_bundle_id
@@ -78,7 +78,7 @@ pub fn handle_focus_event_sync(
             focus.clone()
         };
         if let Some(path) = path_to_unfocus {
-            super::trace!("[FOCUS] unfocusing {:?} due to blocked app", path);
+            log::debug!("[FOCUS] unfocusing {:?} due to blocked app", path);
             unfocus_document_sync(&path, sessions, session_events_tx);
             *current_focus.write_recover() = None;
         }
@@ -95,7 +95,7 @@ pub fn handle_focus_event_sync(
         let excluded = config.is_path_excluded(p);
         let ext_blocked = !excluded && !config.is_extension_allowed(p);
         if excluded || ext_blocked {
-            super::trace!(
+            log::debug!(
                 "[FOCUS] FILTERED path={:?} excluded={} ext_blocked={}",
                 event.path, excluded, ext_blocked
             );
@@ -114,18 +114,18 @@ pub fn handle_focus_event_sync(
         FocusEventType::FocusGained => {
             let doc_path = if event.path.is_empty() {
                 if !event.shadow_id.is_empty() {
-                    super::trace!("[FOCUS] using shadow://{}", event.shadow_id);
+                    log::debug!("[FOCUS] using shadow://{}", event.shadow_id);
                     format!("shadow://{}", event.shadow_id)
                 } else {
                     let fallback = { current_focus.read_recover().clone() };
                     if let Some(path) = fallback {
-                        super::trace!("[FOCUS] empty path, fallback to {:?}", path);
+                        log::debug!("[FOCUS] empty path, fallback to {:?}", path);
                         if let Some(session) = sessions.write_recover().get_mut(path.as_str()) {
                             session.focus_gained();
                         }
                         return;
                     }
-                    super::trace!("[FOCUS] empty path, no fallback, dropping");
+                    log::debug!("[FOCUS] empty path, no fallback, dropping");
                     return;
                 }
             } else {
@@ -147,7 +147,7 @@ pub fn handle_focus_event_sync(
                 }
             };
 
-            super::trace!("[FOCUS] doc_path={:?}", doc_path);
+            log::debug!("[FOCUS] doc_path={:?}", doc_path);
 
             let path_to_unfocus = {
                 let focus = current_focus.read_recover();
@@ -205,7 +205,7 @@ pub fn handle_focus_event_sync(
             // arriving during focus_document_sync I/O are attributed to the
             // incoming document rather than dropped (the session will be
             // created momentarily by focus_document_sync).
-            super::trace!("[FOCUS] set current_focus={:?}", doc_path);
+            log::debug!("[FOCUS] set current_focus={:?}", doc_path);
             *current_focus.write_recover() = Some(doc_path.clone());
 
             focus_document_sync(
@@ -224,7 +224,7 @@ pub fn handle_focus_event_sync(
                 let focus = current_focus.read_recover();
                 focus.clone()
             };
-            super::trace!(
+            log::debug!(
                 "[FOCUS] FocusLost, clearing current_focus (was {:?})",
                 prev_path
             );

@@ -266,16 +266,22 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         .iter()
         .map(|s| (s.path.as_str(), s.app_bundle_id.as_str(), s.keystroke_count))
         .collect();
-    crate::sentinel::trace!(
-        "[STATUS] focus={:?} capture_active={} sessions={:?}",
+    log::debug!(
+        "[STATUS] focus={:?} capture_active={} session_count={} sessions={:?}",
         current_path,
         capture_active,
+        session_paths.len(),
         session_paths
     );
     let focused_session = current_path
         .as_ref()
         .and_then(|p| sessions.iter().find(|s| &s.path == p));
     let doc_has_focus = focused_session.is_some();
+    log::debug!(
+        "[STATUS] focused_session_found={} current_focus={:?}",
+        doc_has_focus,
+        current_path
+    );
     let session = focused_session.or_else(|| {
         sessions
             .iter()
@@ -284,15 +290,16 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
     });
     let session = match session {
         Some(s) => {
-            crate::sentinel::trace!(
-                "[STATUS] showing session path={:?} keystrokes={}",
+            log::debug!(
+                "[STATUS] showing session path={:?} keystrokes={} has_focus={}",
                 s.path,
-                s.total_keystrokes()
+                s.total_keystrokes(),
+                s.has_focus
             );
             s
         }
         None => {
-            crate::sentinel::trace!("[STATUS] no session found");
+            log::debug!("[STATUS] no session found, returning not_tracking");
             return not_tracking(capture_active);
         }
     };
