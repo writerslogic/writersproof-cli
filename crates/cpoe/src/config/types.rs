@@ -373,13 +373,28 @@ impl Default for SentinelConfig {
                 "org.kde.konsole".to_string(),
             ],
             track_unknown_apps: true,
-            excluded_paths: vec![
+            excluded_paths: {
+                let home = dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("/nonexistent"));
+                let lib = home.join("Library");
+                vec![
                 PathBuf::from("/tmp"),
                 PathBuf::from("/var"),
                 PathBuf::from("/private/tmp"),
-                dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("/nonexistent"))
-                    .join("Library"),
+                // Exclude ~/Library subdirectories that contain caches, state,
+                // and framework data — but NOT ~/Library/Mobile Documents which
+                // is iCloud Drive (Desktop & Documents folders live there when
+                // iCloud sync is enabled).
+                lib.join("Application Support"),
+                lib.join("Caches"),
+                lib.join("Preferences"),
+                lib.join("Logs"),
+                lib.join("Cookies"),
+                lib.join("Containers"),
+                lib.join("Group Containers"),
+                lib.join("Saved Application State"),
+                lib.join("Developer"),
+                lib.join("Frameworks"),
                 PathBuf::from("node_modules"),
                 PathBuf::from(".git"),
                 PathBuf::from("DerivedData"),
@@ -387,7 +402,7 @@ impl Default for SentinelConfig {
                 PathBuf::from("target"),
                 PathBuf::from("dist"),
                 PathBuf::from(".venv"),
-            ],
+            ]},
             allowed_extensions: vec![
                 // Plain text
                 "txt", "md", "markdown", "text", "rtf", // Writing apps
