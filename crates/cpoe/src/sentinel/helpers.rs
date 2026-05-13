@@ -73,9 +73,32 @@ pub fn handle_focus_event_sync(
             event.app_name,
             event.app_bundle_id
         );
+        // Only unfocus if the currently focused session belongs to the blocked
+        // app. The HybridFocusTracker can deliver stale polling FocusLost events
+        // for the previous app AFTER the AXObserver already set focus to the new
+        // (allowed) app. Unconditionally clearing current_focus here would destroy
+        // the correct AXObserver focus.
         let path_to_unfocus = {
             let focus = current_focus.read_recover();
-            focus.clone()
+            if let Some(ref path) = *focus {
+                let belongs_to_blocked = sessions.read_recover()
+                    .get(path.as_str())
+                    .map(|s| {
+                        s.app_bundle_id.eq_ignore_ascii_case(&event.app_bundle_id)
+                    })
+                    .unwrap_or(false);
+                if belongs_to_blocked {
+                    Some(path.clone())
+                } else {
+                    log::debug!(
+                        "[FOCUS] skipping unfocus: current session {:?} does not belong to blocked app {}",
+                        path, event.app_bundle_id
+                    );
+                    None
+                }
+            } else {
+                None
+            }
         };
         if let Some(path) = path_to_unfocus {
             log::debug!("[FOCUS] unfocusing {:?} due to blocked app", path);
@@ -224,13 +247,27 @@ pub fn handle_focus_event_sync(
                 let focus = current_focus.read_recover();
                 focus.clone()
             };
+            // Only clear current_focus if the FocusLost event matches what is
+            // currently focused. The HybridFocusTracker's polling watchdog can
+            // deliver a stale FocusLost for the OLD document after the AXObserver
+            // already set current_focus to the NEW document. Clearing
+            // unconditionally would destroy the correct AXObserver focus.
+            let should_clear = if event.path.is_empty() {
+                true // Generic app-level FocusLost (no specific path)
+            } else if let Some(ref current) = prev_path {
+                *current == event.path
+            } else {
+                false
+            };
             log::debug!(
-                "[FOCUS] FocusLost, clearing current_focus (was {:?})",
-                prev_path
+                "[FOCUS] FocusLost: event_path={:?} current={:?} should_clear={}",
+                event.path, prev_path, should_clear
             );
-            if let Some(path) = prev_path {
-                unfocus_document_sync(&path, sessions, session_events_tx);
-                *current_focus.write_recover() = None;
+            if should_clear {
+                if let Some(path) = prev_path {
+                    unfocus_document_sync(&path, sessions, session_events_tx);
+                    *current_focus.write_recover() = None;
+                }
             }
         }
     }
