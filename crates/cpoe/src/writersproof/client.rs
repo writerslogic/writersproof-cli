@@ -421,9 +421,10 @@ impl WritersProofClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("[unreadable: {e}]"));
+            let truncated = &body[..(0..=body.len().min(200)).rev().find(|&i| body.is_char_boundary(i)).unwrap_or(0)];
             log::warn!("publish: failed: HTTP {status}");
             return Err(Error::crypto(format!(
-                "publish failed: HTTP {status}: {body}"
+                "publish failed: HTTP {status}: {truncated}"
             )));
         }
 
@@ -728,6 +729,15 @@ impl WritersProofClient {
                 )));
             }
         }
+        if let Some(ct) = resp.headers().get(reqwest::header::CONTENT_TYPE) {
+            if let Ok(ct_str) = ct.to_str() {
+                if !ct_str.contains("json") {
+                    log::warn!(
+                        "json_response: unexpected Content-Type: {ct_str}; parsing as JSON anyway"
+                    );
+                }
+            }
+        }
         let bytes = resp
             .bytes()
             .await
@@ -773,9 +783,10 @@ impl WritersProofClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("[unreadable: {e}]"));
+            let truncated = &body[..(0..=body.len().min(200)).rev().find(|&i| body.is_char_boundary(i)).unwrap_or(0)];
             log::warn!("issue_credential: failed: HTTP {status}");
             return Err(Error::crypto(format!(
-                "credential issue failed: HTTP {status}: {body}"
+                "credential issue failed: HTTP {status}: {truncated}"
             )));
         }
 
