@@ -311,7 +311,19 @@ pub fn handle_focus_event_sync(
             // already set current_focus to the NEW document. Clearing
             // unconditionally would destroy the correct AXObserver focus.
             let should_clear = if event.path.is_empty() {
-                true // Generic app-level FocusLost (no specific path)
+                // Generic app-level FocusLost — only clear if the currently
+                // focused session belongs to the same app that lost focus.
+                // Otherwise a stale FocusLost from the polling debounce for
+                // the OLD app would clear the NEW app's focus that AXObserver
+                // already set correctly.
+                if let Some(ref current) = prev_path {
+                    sessions.read_recover()
+                        .get(current.as_str())
+                        .map(|s| s.app_bundle_id.eq_ignore_ascii_case(&event.app_bundle_id))
+                        .unwrap_or(true)
+                } else {
+                    false
+                }
             } else if let Some(ref current) = prev_path {
                 *current == event.path
             } else {
