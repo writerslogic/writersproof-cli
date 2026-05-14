@@ -172,6 +172,64 @@ pub fn handle_focus_event_sync(
 
             log::debug!("[FOCUS] doc_path={:?}", doc_path);
 
+            // When a title:// session's window title changes (e.g. VS Code
+            // shows first-line-of-content for unsaved files), re-key the
+            // existing session to the new title rather than creating a new
+            // session. The #w{window_id} suffix is the stable identifier.
+            if doc_path.starts_with("title://") {
+                if let Some(wid_pos) = doc_path.rfind("#w") {
+                    let wid_suffix = &doc_path[wid_pos..];
+                    let mut sessions_map = sessions.write_recover();
+                    let old_key = sessions_map
+                        .keys()
+                        .find(|k| k.ends_with(wid_suffix) && **k != doc_path)
+                        .cloned();
+                    if let Some(old_key) = old_key {
+                        if let Some(mut session) = sessions_map.remove(&old_key) {
+                            log::debug!(
+                                "[FOCUS] re-keying title session: {:?} -> {:?}",
+                                old_key, doc_path
+                            );
+                            session.path = doc_path.clone();
+                            session.window_title = event.window_title.clone();
+                            sessions_map.insert(doc_path.clone(), session);
+                            // Also upgrade to real path if AXDocument resolved
+                        }
+                    }
+                    drop(sessions_map);
+                }
+            }
+
+            // When a title:// session gets a real AXDocument path (user saved
+            // the file), upgrade the session to the real path so keystroke
+            // attribution uses the filesystem path going forward.
+            if !doc_path.starts_with("title://") && !doc_path.starts_with("shadow://") {
+                if let Some(wid) = event.window_id {
+                    let wid_suffix = format!("#w{}", wid);
+                    let mut sessions_map = sessions.write_recover();
+                    let old_key = sessions_map
+                        .keys()
+                        .find(|k| k.starts_with("title://") && k.ends_with(&wid_suffix))
+                        .cloned();
+                    if let Some(old_key) = old_key {
+                        if !sessions_map.contains_key(&doc_path) {
+                            if let Some(mut session) = sessions_map.remove(&old_key) {
+                                log::info!(
+                                    "[FOCUS] upgrading title session to real path: {:?} -> {:?}",
+                                    old_key, doc_path
+                                );
+                                session.origin_temp_path = Some(old_key);
+                                session.path = doc_path.clone();
+                                session.evidence_confidence =
+                                    super::types::EvidenceConfidence::Full;
+                                sessions_map.insert(doc_path.clone(), session);
+                            }
+                        }
+                    }
+                    drop(sessions_map);
+                }
+            }
+
             let path_to_unfocus = {
                 let focus = current_focus.read_recover();
                 if let Some(ref current) = *focus {
