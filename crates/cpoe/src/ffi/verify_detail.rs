@@ -58,6 +58,7 @@ pub fn ffi_verify_evidence_detailed(path: String) -> FfiVerifyDetail {
         checkpoint_flags: vec![],
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_verify_evidence_detailed: path={}", path);
     let (_, tier_num, tier_label) = detect_attestation_tier_info();
 
     let err = |msg: String| FfiVerifyDetail {

@@ -146,6 +146,7 @@ pub fn ffi_create_authorship_credential(
     confidence: f64,
 ) -> FfiCredentialResult {
     catch_ffi_panic!(FfiCredentialResult::ffi_err("engine internal error"), {
+    log::debug!("ffi_create_authorship_credential: session_id={}, attestation_tier={}", session_id, attestation_tier);
     if session_id.is_empty() {
         return FfiCredentialResult::err("Session ID is required");
     }
@@ -190,6 +191,7 @@ pub fn ffi_create_authorship_credential(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sign_credential(credential_cbor_hex: String) -> FfiSignedCredentialResult {
     catch_ffi_panic!(FfiSignedCredentialResult::ffi_err("engine internal error"), {
+    log::debug!("ffi_sign_credential: credential_cbor_hex_len={}", credential_cbor_hex.len());
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,
         Err(e) => return FfiSignedCredentialResult::err(format!("Invalid hex: {e}")),
@@ -219,6 +221,7 @@ pub fn ffi_verify_credential(
     public_key_hex: String,
 ) -> FfiVerificationResult {
     catch_ffi_panic!(FfiVerificationResult::ffi_err("engine internal error"), {
+    log::debug!("ffi_verify_credential: signed_cbor_hex_len={}", signed_cbor_hex.len());
     let signed_bytes = match hex::decode(&signed_cbor_hex) {
         Ok(b) => b,
         Err(e) => return FfiVerificationResult::err(format!("Invalid signed hex: {e}")),
@@ -252,6 +255,7 @@ pub fn ffi_verify_credential(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_credential_status(credential_cbor_hex: String) -> FfiCredentialStatusResult {
     catch_ffi_panic!(FfiCredentialStatusResult::ffi_err("engine internal error"), {
+    log::debug!("ffi_get_credential_status: credential_cbor_hex_len={}", credential_cbor_hex.len());
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,
         Err(e) => return FfiCredentialStatusResult::err(format!("Invalid hex: {e}")),

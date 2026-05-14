@@ -202,6 +202,7 @@ pub fn ffi_text_fragment_store(
     confidence: f64,
 ) -> FfiTextFragmentStoreResult {
     catch_ffi_panic!(FfiTextFragmentStoreResult::err("engine internal error"), {
+    log::debug!("ffi_text_fragment_store: session_id={}, app_bundle_id={}", session_id, app_bundle_id);
     if text_content.is_empty() {
         return FfiTextFragmentStoreResult::err("Text content is empty");
     }
@@ -259,6 +260,7 @@ pub fn ffi_text_fragment_store(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_text_fragment_lookup(fragment_hash_hex: String) -> Option<FfiTextFragment> {
     catch_ffi_panic!(None, {
+    log::debug!("ffi_text_fragment_lookup: fragment_hash_hex={}", fragment_hash_hex);
     let hash_bytes = match crate::utils::crypto_types::HexHash::from_hex(&fragment_hash_hex) {
         Ok(h) => h.0,
         Err(_) => {
@@ -290,6 +292,7 @@ pub fn ffi_text_fragment_lookup(fragment_hash_hex: String) -> Option<FfiTextFrag
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_text_fragment_list_for_session(session_id: String) -> Vec<FfiTextFragment> {
     catch_ffi_panic!(vec![], {
+    log::debug!("ffi_text_fragment_list_for_session: session_id={}", session_id);
     let store = match open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -330,6 +333,7 @@ pub fn ffi_sentinel_record_paste(
     detection_confidence: f64,
 ) -> FfiPasteRecordResult {
     catch_ffi_panic!(FfiPasteRecordResult::err("engine internal error"), {
+    log::debug!("ffi_sentinel_record_paste: char_count={}, app_bundle_id={}", char_count, app_bundle_id);
     if char_count < 0 {
         return FfiPasteRecordResult::err("char_count must be non-negative");
     }
@@ -433,6 +437,7 @@ pub fn ffi_attest_text(
     window_title: String,
 ) -> FfiAttestTextResult {
     catch_ffi_panic!(FfiAttestTextResult::err("engine internal error"), {
+    log::debug!("ffi_attest_text: app_bundle_id={}, text_len={}", app_bundle_id, text_content.len());
     const MAX_ATTEST_TEXT_SIZE: usize = 10 * 1024 * 1024;
     if text_content.len() > MAX_ATTEST_TEXT_SIZE {
         return FfiAttestTextResult::err(format!(
@@ -598,6 +603,7 @@ crate::ffi::types::impl_ffi_err!(FfiSyncResult);
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_mark_fragment_for_sync(fragment_id: i64) -> FfiSyncResult {
     catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
+    log::debug!("ffi_mark_fragment_for_sync: fragment_id={}", fragment_id);
     let store = try_ffi!(open_store(), FfiSyncResult);
 
     match store.mark_fragment_for_sync(fragment_id) {
@@ -615,6 +621,7 @@ pub fn ffi_update_fragment_sync_state(
     cloudkit_record_id: Option<String>,
 ) -> FfiSyncResult {
     catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
+    log::debug!("ffi_update_fragment_sync_state: fragment_id={}, state={}", fragment_id, state);
     let store = try_ffi!(open_store(), FfiSyncResult);
 
     const VALID_STATES: &[&str] = &["pending", "syncing", "synced", "failed", "conflict"];
@@ -633,6 +640,7 @@ pub fn ffi_update_fragment_sync_state(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_pending_sync_count() -> i64 {
     catch_ffi_panic!(-1, {
+    log::debug!("ffi_get_pending_sync_count");
     let store = match open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -671,6 +679,7 @@ pub fn ffi_apply_remote_fragment(
     cloudkit_record_id: Option<String>,
 ) -> FfiTextFragmentStoreResult {
     catch_ffi_panic!(FfiTextFragmentStoreResult::err("engine internal error"), {
+    log::debug!("ffi_apply_remote_fragment: session_id={}, fragment_hash_hex={}", session_id, fragment_hash_hex);
     if timestamp_ms <= 0 {
         return FfiTextFragmentStoreResult::err("timestamp_ms must be positive");
     }
@@ -773,6 +782,7 @@ pub fn ffi_resolve_sync_conflict(
     remote_cloudkit_record_id: Option<String>,
 ) -> FfiSyncResult {
     catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
+    log::debug!("ffi_resolve_sync_conflict: fragment_id={}, strategy={}", fragment_id, strategy);
     use crate::store::text_fragments::SyncResolutionStrategy;
 
     let strat = match strategy.as_str() {

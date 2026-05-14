@@ -37,6 +37,7 @@ fn load_config() -> Result<crate::config::CpopConfig, String> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_excluded_paths() -> Vec<String> {
     catch_ffi_panic!(Vec::new(), {
+    log::debug!("ffi_config_get_excluded_paths called");
     match load_config() {
         Ok(c) => c
             .sentinel
@@ -56,6 +57,7 @@ pub fn ffi_config_get_excluded_paths() -> Vec<String> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_add_excluded_path(path: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_config_add_excluded_path: path={}", path);
     if path.is_empty() {
         return FfiResult::err("Path cannot be empty");
     }
@@ -80,6 +82,7 @@ pub fn ffi_config_add_excluded_path(path: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_remove_excluded_path(path: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_config_remove_excluded_path: path={}", path);
     let target = PathBuf::from(&path);
     with_config_mut(|config| {
         config.sentinel.excluded_paths.retain(|p| p != &target);
@@ -93,6 +96,7 @@ pub fn ffi_config_remove_excluded_path(path: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_allowed_extensions() -> Vec<String> {
     catch_ffi_panic!(Vec::new(), {
+    log::debug!("ffi_config_get_allowed_extensions called");
     match load_config() {
         Ok(c) => c.sentinel.allowed_extensions,
         Err(e) => {
@@ -107,6 +111,7 @@ pub fn ffi_config_get_allowed_extensions() -> Vec<String> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_add_allowed_extension(extension: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_config_add_allowed_extension: extension={}", extension);
     let ext = extension.trim_start_matches('.').to_lowercase();
     if ext.is_empty() {
         return FfiResult::err("Extension cannot be empty");
@@ -128,6 +133,7 @@ pub fn ffi_config_add_allowed_extension(extension: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_remove_allowed_extension(extension: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_config_remove_allowed_extension: extension={}", extension);
     let ext = extension.trim_start_matches('.').to_lowercase();
     with_config_mut(|config| {
         config
@@ -144,6 +150,7 @@ pub fn ffi_config_remove_allowed_extension(extension: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_research_enabled() -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_config_get_research_enabled called");
     match load_config() {
         Ok(c) => c.research.contribute_to_research,
         Err(_) => false,
@@ -155,6 +162,7 @@ pub fn ffi_config_get_research_enabled() -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_set_research_enabled(enabled: bool) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_config_set_research_enabled: enabled={}", enabled);
     with_config_mut(|config| {
         config.research.contribute_to_research = enabled;
     })

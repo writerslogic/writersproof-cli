@@ -12,6 +12,7 @@ use crate::{MutexRecover, RwLockRecover};
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_sentinel_start_witnessing: path={}", path);
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -44,6 +45,7 @@ pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_sentinel_stop_witnessing: path={}", path);
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -93,6 +95,7 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
         focus_duration: String::new(),
         permission_state: FfiPermissionState::Unknown,
     }, {
+    log::debug!("ffi_sentinel_status called");
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -147,6 +150,7 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_permission_state() -> FfiPermissionState {
     catch_ffi_panic!(FfiPermissionState::Unknown, {
+    log::debug!("ffi_sentinel_permission_state called");
     use crate::sentinel::permission_monitor::PermissionState;
     match get_sentinel() {
         Some(s) => match *s.permission_state.lock_recover() {
@@ -248,6 +252,7 @@ fn not_tracking(capture_active: bool) -> FfiWitnessingStatus {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
     catch_ffi_panic!(not_tracking(false), {
+    log::debug!("ffi_sentinel_witnessing_status called");
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,

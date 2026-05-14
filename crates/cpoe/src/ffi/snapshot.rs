@@ -74,6 +74,7 @@ pub fn ffi_snapshot_save(document_path: String, plaintext: String) -> FfiSnapsho
         size_warning: None,
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_snapshot_save: document_path={}", document_path);
     const MAX_SNAPSHOT_SIZE: usize = 50 * 1024 * 1024; // 50 MB
     if plaintext.len() > MAX_SNAPSHOT_SIZE {
         return FfiSnapshotSaveResult {
@@ -137,6 +138,7 @@ pub fn ffi_snapshot_save(document_path: String, plaintext: String) -> FfiSnapsho
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_list(document_path: String) -> Vec<FfiSnapshotEntry> {
     catch_ffi_panic!(vec![], {
+    log::debug!("ffi_snapshot_list: document_path={}", document_path);
     if crate::sentinel::helpers::validate_path(&document_path).is_err() {
         return Vec::new();
     }
@@ -172,6 +174,7 @@ pub fn ffi_snapshot_list(document_path: String) -> Vec<FfiSnapshotEntry> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_get(snapshot_id: i64) -> FfiSnapshotContent {
     catch_ffi_panic!(FfiSnapshotContent::err("engine internal error"), {
+    log::debug!("ffi_snapshot_get: snapshot_id={}", snapshot_id);
     let store = match open_snapshot_store() {
         Ok(s) => s,
         Err(e) => return FfiSnapshotContent::err(e),
@@ -186,6 +189,7 @@ pub fn ffi_snapshot_get(snapshot_id: i64) -> FfiSnapshotContent {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_diff(snapshot_id: i64, current_text: String) -> Vec<FfiDiffOp> {
     catch_ffi_panic!(vec![], {
+    log::debug!("ffi_snapshot_diff: snapshot_id={}", snapshot_id);
     let store = match open_snapshot_store() {
         Ok(s) => s,
         Err(e) => {
@@ -213,6 +217,7 @@ pub fn ffi_snapshot_diff(snapshot_id: i64, current_text: String) -> Vec<FfiDiffO
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_mark_draft(snapshot_id: i64, label: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_snapshot_mark_draft: snapshot_id={}, label={}", snapshot_id, label);
     if label.len() > 256 {
         return FfiResult::err("Draft label too long (max 256 bytes)");
     }
@@ -237,6 +242,7 @@ pub fn ffi_snapshot_restore(
     current_text: String,
 ) -> FfiSnapshotContent {
     catch_ffi_panic!(FfiSnapshotContent::err("engine internal error"), {
+    log::debug!("ffi_snapshot_restore: document_path={}, snapshot_id={}", document_path, snapshot_id);
     if crate::sentinel::helpers::validate_path(&document_path).is_err() {
         return FfiSnapshotContent::err("Invalid document path");
     }

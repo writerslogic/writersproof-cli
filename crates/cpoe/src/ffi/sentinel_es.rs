@@ -21,6 +21,7 @@ use std::time::SystemTime;
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_write(path: String, pid: i32, signing_id: String) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_es_file_write: path={}, pid={}, signing_id={}", path, pid, signing_id);
     let sentinel = match get_running_sentinel() {
         Some(s) => s,
         None => return false,
@@ -65,6 +66,7 @@ pub fn ffi_sentinel_es_ai_tool_detected(
     exec_path: String,
 ) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_es_ai_tool_detected: signing_id={}, pid={}, ppid={}, exec_path={}", signing_id, pid, ppid, exec_path);
     // signing_id is a macOS Team ID + bundle ID (max ~512 bytes);
     // exec_path is an absolute filesystem path (max 4096 bytes per POSIX PATH_MAX).
     // Combined max = 4608 bytes. Reject before touching sentinel state.
@@ -144,6 +146,7 @@ pub fn ffi_sentinel_es_ai_tool_detected(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_es_file_rename: old_path={}, new_path={}", old_path, new_path);
     if old_path.len() > 4096 {
         return false;
     }
@@ -197,6 +200,7 @@ pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_es_file_open: path={}, pid={}", path, pid);
     if path.len() > 4096 {
         return false;
     }
@@ -284,6 +288,7 @@ pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_capture_gap(missed_count: u32) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_es_capture_gap: missed_count={}", missed_count);
     let sentinel = match get_running_sentinel() {
         Some(s) => s,
         None => return false,
@@ -308,6 +313,7 @@ pub fn ffi_sentinel_es_capture_gap(missed_count: u32) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_set_challenge_nonce: nonce_len={}", nonce.len());
     if nonce.len() > 1024 {
         log::warn!(
             "Challenge nonce too long ({} bytes), rejecting",
@@ -330,6 +336,7 @@ pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_ai_tools_active() -> Vec<String> {
     catch_ffi_panic!(vec![], {
+    log::debug!("ffi_sentinel_es_ai_tools_active called");
     let sentinel = match get_running_sentinel() {
         Some(s) => s,
         None => return Vec::new(),
@@ -375,6 +382,7 @@ pub fn ffi_sentinel_es_terminal_editor_exec(
     file_arg: String,
 ) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_es_terminal_editor_exec: editor_path={}, file_arg={}", editor_path, file_arg);
     if editor_path.len() > 4096 || file_arg.len() > 4096 {
         log::warn!(
             "ffi_sentinel_es_terminal_editor_exec: args too long ({}/{})",
@@ -423,6 +431,7 @@ pub fn ffi_sentinel_dictation_begin(
     ambient_noise_db: f32,
 ) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_dictation_begin: doc_path={}, es_speech_pid={}, audio_transport_type={}, ambient_noise_db={}", doc_path, es_speech_pid, audio_transport_type, ambient_noise_db);
     if doc_path.len() > 4096 || device_uid_hash_hex.len() > 16 {
         log::warn!("ffi_sentinel_dictation_begin: params too long");
         return false;
@@ -462,6 +471,7 @@ pub fn ffi_sentinel_dictation_fragment(
     speaker_output_active: bool,
 ) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_dictation_fragment: doc_path={}, word_count={}, confidence={}, correction_count={}, transcript_len={}, speaker_output_active={}", doc_path, word_count, confidence, correction_count, transcript_text.len(), speaker_output_active);
     if doc_path.len() > 4096 || transcript_text.len() > 65536 {
         log::warn!("ffi_sentinel_dictation_fragment: params too long");
         return false;
@@ -506,6 +516,7 @@ pub fn ffi_sentinel_dictation_end(
     cross_window_similarity: f32,
 ) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_sentinel_dictation_end: doc_path={}, speaker_output_active={}, keystrokes_during={}, cross_window_similarity={}", doc_path, speaker_output_active, keystrokes_during, cross_window_similarity);
     if doc_path.len() > 4096 {
         log::warn!("ffi_sentinel_dictation_end: doc_path too long");
         return false;

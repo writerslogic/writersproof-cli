@@ -13,6 +13,7 @@ use super::evidence::device_identity;
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_link_derivative(source_path: String, export_path: String, message: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_link_derivative: source_path={}, export_path={}", source_path, export_path);
     let source = try_ffi!(
         crate::sentinel::helpers::validate_path(&source_path)
             .map_err(|e| format!("Invalid source path: {e}")),
@@ -168,6 +169,7 @@ pub fn ffi_export_c2pa_manifest(
     output_path: String,
 ) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_export_c2pa_manifest: evidence_path={}, document_path={}", evidence_path, document_path);
     let evidence_file = try_ffi!(
         crate::sentinel::helpers::validate_path(&evidence_path)
             .map_err(|e| format!("Invalid evidence path: {e}")),

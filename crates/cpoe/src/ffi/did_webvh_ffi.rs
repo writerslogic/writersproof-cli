@@ -31,6 +31,7 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_create_webvh_identity(address: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_create_webvh_identity: address={}", address);
     if address.len() > 2048 {
         return FfiResult::err("Address too long");
     }
@@ -76,6 +77,7 @@ pub fn ffi_create_webvh_identity(address: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_webvh_did() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_get_webvh_did");
     match WebVHIdentity::load() {
         Ok(identity) => FfiResult::ok(identity.did().to_string()),
         Err(e) => {
@@ -93,6 +95,7 @@ pub fn ffi_get_webvh_did() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_active_did() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_get_active_did");
     match crate::identity::did_webvh::load_active_did() {
         Ok(did) => FfiResult::ok(did),
         Err(e) => {
@@ -110,6 +113,7 @@ pub fn ffi_get_active_did() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_deactivate_webvh_identity() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_deactivate_webvh_identity");
     let signing_key = match load_signing_key() {
         Ok(k) => k,
         Err(e) => {

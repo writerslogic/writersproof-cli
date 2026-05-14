@@ -57,6 +57,7 @@ pub fn ffi_probe_app(bundle_id: String) -> FfiProbeResult {
         confidence: String::new(),
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_probe_app: bundle_id={}", bundle_id);
     let result = crate::sentinel::app_discovery::probe_app(&bundle_id);
     FfiProbeResult {
         success: true,
@@ -81,6 +82,7 @@ pub fn ffi_add_user_writing_app(
     confidence: String,
 ) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_add_user_writing_app: bundle_id={}, display_name={}", bundle_id, display_name);
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => return FfiResult::err("Cannot determine data directory"),
@@ -113,6 +115,7 @@ pub fn ffi_add_user_writing_app(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_remove_user_writing_app(bundle_id: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_remove_user_writing_app: bundle_id={}", bundle_id);
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => return FfiResult::err("Cannot determine data directory"),
@@ -134,6 +137,7 @@ pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
         apps: Vec::new(),
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_list_user_writing_apps");
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => {
@@ -173,6 +177,7 @@ pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_discover_recent_documents(max_age_hours: u64) -> Vec<String> {
     catch_ffi_panic!(Vec::new(), {
+    log::debug!("ffi_discover_recent_documents: max_age_hours={}", max_age_hours);
     let home = match dirs::home_dir() {
         Some(h) => h,
         None => return Vec::new(),

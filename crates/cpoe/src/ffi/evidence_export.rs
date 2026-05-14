@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_export_evidence_json: path={} tier={} output={}", path, tier, output);
     let output_path = match crate::sentinel::helpers::validate_path(&output) {
         Ok(p) => p,
         Err(e) => return FfiResult::err(format!("Invalid output path: {e}")),
@@ -39,6 +40,7 @@ pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> F
 /// Export stored events for a file as a CBOR evidence packet at the given tier.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiResult {
+    log::debug!("ffi_export_evidence: path={} tier={} output={}", path, tier, output);
     export_evidence_inner(path, tier, output, None, None)
 }
 
@@ -52,6 +54,7 @@ pub fn ffi_export_evidence_range(
     start_ns: i64,
     end_ns: i64,
 ) -> FfiResult {
+    log::debug!("ffi_export_evidence_range: path={} tier={} output={} start_ns={} end_ns={}", path, tier, output, start_ns, end_ns);
     export_evidence_inner(path, tier, output, Some(start_ns), Some(end_ns))
 }
 
@@ -510,6 +513,7 @@ fn collect_repair_history(data_dir: &std::path::Path) -> Vec<String> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_provision_ca_cert() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_provision_ca_cert");
     use crate::ffi::types::try_ffi;
 
     let signing_key = try_ffi!(
@@ -932,6 +936,7 @@ fn collect_composition_mode_limitations(path: &str, event_count: usize) -> Vec<S
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_compact_ref(path: String) -> String {
     catch_ffi_panic!(String::new(), {
+    log::debug!("ffi_get_compact_ref: path={}", path);
     let path = match crate::sentinel::helpers::validate_path(&path) {
         Ok(p) => p.to_string_lossy().to_string(),
         Err(_) => return String::new(),
@@ -967,6 +972,7 @@ pub fn ffi_get_compact_ref(path: String) -> String {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_extract_document: cpoe_path={} output_path={}", cpoe_path, output_path);
     let cpoe_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&cpoe_path)
             .map(|p| p.to_string_lossy().to_string())

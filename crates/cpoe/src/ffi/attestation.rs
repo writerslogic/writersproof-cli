@@ -20,6 +20,7 @@ pub fn ffi_get_attestation_info() -> FfiAttestationInfo {
         has_secure_clock: false,
         device_id: String::new(),
     }, {
+    log::debug!("ffi_get_attestation_info");
     let (_, tier_num, tier_label) = detect_attestation_tier_info();
 
     let provider = crate::tpm::detect_provider();
@@ -40,6 +41,7 @@ pub fn ffi_get_attestation_info() -> FfiAttestationInfo {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_reseal_identity() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_reseal_identity");
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => {
@@ -71,6 +73,7 @@ pub fn ffi_reseal_identity() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_is_hardware_bound() -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_is_hardware_bound");
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => return false,
@@ -103,6 +106,7 @@ pub fn ffi_sign_attestation_challenge(challenge_b64: String) -> FfiAttestationRe
         os_version: String::new(),
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_sign_attestation_challenge: challenge_b64_len={}", challenge_b64.len());
     // Reject oversized challenges before decoding (challenge should be ~32–64 bytes,
     // base64-encoded ≈ 44–88 chars; cap at 4KB to prevent memory DoS).
     const MAX_CHALLENGE_B64_LEN: usize = 4096;
@@ -198,6 +202,7 @@ pub fn ffi_get_device_public_key() -> FfiDeviceKey {
         device_id: String::new(),
         hardware_bound: false,
     }, {
+    log::debug!("ffi_get_device_public_key");
     let provider = crate::tpm::detect_provider();
     let caps = provider.capabilities();
     let public_key = provider.public_key();

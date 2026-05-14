@@ -48,6 +48,7 @@ pub fn ffi_get_provenance_metrics(session_id: String) -> FfiProvenanceMetrics {
         error_message: Some("engine internal error".to_string()),
     };
     catch_ffi_panic!(empty, {
+    log::debug!("ffi_get_provenance_metrics: session_id={}", session_id);
     let store = match crate::ffi::helpers::open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -128,6 +129,7 @@ pub fn ffi_get_provenance_metrics_for_document(path: String) -> FfiProvenanceMet
         error_message: Some("engine internal error".to_string()),
     };
     catch_ffi_panic!(fallback, {
+    log::debug!("ffi_get_provenance_metrics_for_document: path={}", path);
     let empty = FfiProvenanceMetrics {
         success: false,
         total_fragments: 0,
@@ -196,6 +198,7 @@ pub fn ffi_compute_process_score(path: String) -> FfiProcessScore {
         meets_threshold: false,
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_compute_process_score: path={}", path);
     let (_path, _store, events) = match crate::ffi::helpers::load_events_for_path(&path) {
         Ok(v) => v,
         Err(e) => {
@@ -264,6 +267,7 @@ pub fn ffi_calibrate_swf() -> FfiCalibrationResult {
         iterations_per_second: 0,
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_calibrate_swf");
     match crate::vdf::calibrate(Duration::from_secs(1)) {
         Ok(params) => {
             // Defense-in-depth: validate even though calibrate() now checks internally.

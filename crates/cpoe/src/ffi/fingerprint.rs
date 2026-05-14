@@ -55,6 +55,7 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
         activity_enabled: false,
         activity_samples: 0,
     }, {
+    log::debug!("ffi_get_fingerprint_status");
     match with_manager(|mgr| {
         let status = mgr.status();
         Ok(FfiFingerprintStatus {
@@ -87,6 +88,7 @@ pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
         total_samples: 0,
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_get_fingerprint_summary");
     match with_manager(|mgr| {
         let status = mgr.status();
         let activity = mgr.current_activity_fingerprint();
@@ -222,6 +224,7 @@ pub fn ffi_grant_style_consent() -> FfiConsentResult {
         consent_given: false,
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_grant_style_consent");
     match with_manager(|mgr| {
         mgr.consent_manager
             .grant_consent()
@@ -248,6 +251,7 @@ pub fn ffi_grant_style_consent() -> FfiConsentResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_revoke_style_consent() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_revoke_style_consent");
     match with_manager(|mgr| {
         mgr.disable_style()
             .map_err(|e| format!("Failed to revoke consent: {e}"))?;
@@ -265,6 +269,7 @@ pub fn ffi_revoke_style_consent() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_reset_fingerprint() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_reset_fingerprint");
     match with_manager(|mgr| {
         mgr.reset_session();
         let profiles = mgr
@@ -286,6 +291,7 @@ pub fn ffi_reset_fingerprint() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_fingerprint_json() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_export_fingerprint_json");
     match with_manager(|mgr| {
         let author_fp = mgr.current_author_fingerprint();
         let json = serde_json::to_string_pretty(&author_fp)
@@ -412,6 +418,7 @@ pub fn ffi_list_fingerprint_profiles() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
     catch_ffi_panic!(vec![], {
+    log::debug!("ffi_get_fingerprint_history");
     with_manager(|mgr| {
         let snapshots = mgr.get_snapshots();
         let result = snapshots
@@ -447,6 +454,7 @@ pub fn ffi_get_keystroke_timing_arrays() -> FfiKeystrokeTimingArrays {
         iki_ns: Vec::new(),
         sample_count: 0,
     }, {
+    log::debug!("ffi_get_keystroke_timing_arrays");
     use super::sentinel::get_running_sentinel;
     use crate::RwLockRecover;
 

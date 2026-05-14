@@ -892,6 +892,7 @@ pub fn ffi_build_war_report(path: String) -> FfiWarReportResult {
         report: None,
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_build_war_report: path={}", path);
     match build_war_report_for_path(&path) {
         Ok((report, guilloche_seed_hex)) => FfiWarReportResult {
             success: true,
@@ -915,6 +916,7 @@ pub fn ffi_render_war_html(path: String) -> FfiHtmlResult {
         html: None,
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_render_war_html: path={}", path);
     match build_war_report_for_path(&path) {
         Ok((report, _)) => {
             let html = render_html(&report);

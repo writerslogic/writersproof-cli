@@ -37,6 +37,7 @@ pub fn ffi_collaboration_signing_payload(
     checkpoint_ranges: Vec<FfiCheckpointRange>,
 ) -> Vec<u8> {
     catch_ffi_panic!(Vec::new(), {
+    log::debug!("ffi_collaboration_signing_payload: role={}", role);
     let role_enum: CollaboratorRole = match role.as_str() {
         "primary_author" => CollaboratorRole::PrimaryAuthor,
         "co_author" => CollaboratorRole::CoAuthor,
@@ -87,6 +88,7 @@ pub fn ffi_collaboration_verify_attestation(
     signature_hex: String,
 ) -> bool {
     catch_ffi_panic!(false, {
+    log::debug!("ffi_collaboration_verify_attestation: role={}", role);
     let role_enum: CollaboratorRole = match role.as_str() {
         "primary_author" => CollaboratorRole::PrimaryAuthor,
         "co_author" => CollaboratorRole::CoAuthor,

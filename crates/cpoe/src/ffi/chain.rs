@@ -48,6 +48,7 @@ pub fn ffi_get_checkpoint_chain(path: String) -> FfiChainSummary {
         checkpoints: vec![],
         error_message: Some("engine internal error".to_string()),
     }, {
+    log::debug!("ffi_get_checkpoint_chain: path={}", path);
     let err = |msg: String| FfiChainSummary {
         success: false,
         document_path: path.clone(),

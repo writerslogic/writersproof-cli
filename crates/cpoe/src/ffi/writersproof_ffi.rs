@@ -14,6 +14,7 @@ use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_anchor_to_writers_proof: document_path={}", document_path);
     if document_path.len() > 4096 {
         return FfiResult::err("Document path too long".to_string());
     }
@@ -118,6 +119,7 @@ pub fn ffi_publish_evidence(
 ) -> crate::ffi::types::FfiPublishResult {
     use crate::ffi::types::{FfiErrResult, FfiPublishResult};
     catch_ffi_panic!(FfiPublishResult::ffi_err("engine internal error"), {
+    log::debug!("ffi_publish_evidence: document_path={} attestation_len={} ai_declaration={}", document_path, attestation.len(), ai_declaration.is_some());
 
     const MAX_ATTESTATION_LEN: usize = 1_000_000;
     if attestation.is_empty() {
@@ -283,6 +285,7 @@ pub fn ffi_sync_text_attestation(
     app_bundle_id: String,
 ) -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_sync_text_attestation: content_hash={} tier={} writersproof_id={} app_bundle_id={}", content_hash, tier, writersproof_id, app_bundle_id);
     if content_hash.len() != 64 || !content_hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return FfiResult::err("content_hash must be 64 hex characters".to_string());
     }
@@ -450,6 +453,7 @@ pub fn ffi_sync_text_attestation(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_drain_text_attestation_queue() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_drain_text_attestation_queue");
     let api_key = match load_api_key() {
         Ok(k) if k.is_empty() => {
             return FfiResult::err("Not authenticated".to_string());

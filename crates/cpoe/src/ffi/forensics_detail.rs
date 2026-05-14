@@ -226,6 +226,7 @@ crate::ffi::types::impl_ffi_err!(FfiForensicBreakdown);
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
     catch_ffi_panic!(FfiForensicBreakdown::error("engine internal error".to_string()), {
+    log::debug!("ffi_get_forensic_breakdown: path={}", path);
     let (path, _store, events) = try_ffi!(load_events_for_path(&path), FfiForensicBreakdown);
 
     if events.is_empty() {
@@ -539,6 +540,7 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         composition_mode: "unknown".into(),
         error_message: Some("engine internal error".into()),
     }, {
+    log::debug!("ffi_get_live_scores: path={}", path);
     let sentinel = match super::sentinel::get_sentinel() {
         Some(s) => s,
         None => {

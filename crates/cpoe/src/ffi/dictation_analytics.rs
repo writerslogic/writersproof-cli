@@ -70,6 +70,7 @@ impl FfiDictationAnalytics {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_dictation_analytics(path: String) -> FfiDictationAnalytics {
     catch_ffi_panic!(FfiDictationAnalytics::err("engine internal error"), {
+        log::debug!("ffi_get_dictation_analytics: path={}", path);
         if path.len() > 4096 {
             return FfiDictationAnalytics::err("path too long");
         }

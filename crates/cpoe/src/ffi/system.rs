@@ -102,6 +102,7 @@ pub fn ffi_get_status() -> FfiStatus {
         swf_iterations_per_second: 0,
         error_message: Some("engine internal error".to_string()),
     }, {
+        log::debug!("ffi_get_status called");
         // SWF calibration is independent of engine init — always report it.
         // Report 0 if not yet calibrated so the UI shows "Not calibrated".
         let swf_iters = crate::ffi::forensics::calibrated_params()
@@ -172,6 +173,7 @@ pub fn ffi_get_status() -> FfiStatus {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
     catch_ffi_panic!(vec![], {
+    log::debug!("ffi_list_tracked_files called");
     let store = match open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -337,6 +339,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_log(path: String) -> Vec<FfiLogEntry> {
     catch_ffi_panic!(vec![], {
+        log::debug!("ffi_get_log: path={}", path);
         // Virtual paths (ephemeral://, title://, shadow://) are internal identifiers,
         // not filesystem paths; skip canonicalize-based validation for them.
         let path = if path.starts_with("ephemeral://")
@@ -396,6 +399,7 @@ pub fn ffi_get_dashboard_metrics() -> FfiDashboardMetrics {
             error_message: Some("engine internal error".to_string()),
         },
         {
+            log::debug!("ffi_get_dashboard_metrics called");
             let store = match open_store() {
                 Ok(s) => s,
                 Err(e) => {
@@ -462,6 +466,7 @@ pub fn ffi_get_dashboard_metrics() -> FfiDashboardMetrics {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_activity_data(days: u32) -> Vec<FfiActivityPoint> {
     catch_ffi_panic!(vec![], {
+        log::debug!("ffi_get_activity_data: days={}", days);
         if days > 3650 {
             log::warn!("ffi_get_activity_data: days={days} exceeds 3650, capping");
         }
@@ -508,6 +513,7 @@ pub fn ffi_get_activity_data(days: u32) -> Vec<FfiActivityPoint> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_identity_mnemonic() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        log::debug!("ffi_get_identity_mnemonic called");
         match crate::identity::secure_storage::SecureStorage::load_mnemonic() {
             Ok(Some(phrase)) => FfiResult::ok((*phrase).clone()),
             Ok(None) => FfiResult::err("No identity mnemonic found".to_string()),
@@ -520,6 +526,7 @@ pub fn ffi_get_identity_mnemonic() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_set_snapshots_enabled(enabled: bool) {
     catch_ffi_panic!((), {
+        log::debug!("ffi_set_snapshots_enabled: enabled={}", enabled);
         if let Some(sentinel) = crate::ffi::sentinel::get_sentinel() {
             sentinel.set_snapshots_enabled(enabled);
         }
@@ -539,6 +546,7 @@ pub fn ffi_engine_version() -> FfiEngineVersion {
             build_profile: String::new(),
         },
         {
+            log::debug!("ffi_engine_version called");
             let mut features = vec!["ffi".to_string()];
             if cfg!(feature = "cpoe_jitter") {
                 features.push("cpoe_jitter".to_string());
@@ -561,6 +569,7 @@ pub fn ffi_engine_version() -> FfiEngineVersion {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_snapshot_path(file_path: String, checkpoint_ordinal: u64) -> String {
     catch_ffi_panic!(String::new(), {
+        log::debug!("ffi_get_snapshot_path: file_path={}, checkpoint_ordinal={}", file_path, checkpoint_ordinal);
         if crate::sentinel::helpers::validate_path(&file_path).is_err() {
             return String::new();
         }
@@ -593,6 +602,7 @@ pub fn ffi_get_snapshot_path(file_path: String, checkpoint_ordinal: u64) -> Stri
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_hash_file(path: String) -> String {
     catch_ffi_panic!(String::new(), {
+        log::debug!("ffi_hash_file: path={}", path);
         let file_path = match crate::sentinel::helpers::validate_path(&path) {
             Ok(p) => p,
             Err(e) => {
@@ -616,6 +626,7 @@ pub fn ffi_hash_file(path: String) -> String {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_detect_co_edited_files(min_switches: u32) -> Vec<crate::ffi::types::FfiCoEditedPair> {
     catch_ffi_panic!(vec![], {
+        log::debug!("ffi_detect_co_edited_files: min_switches={}", min_switches);
         let sentinel = match crate::ffi::sentinel::get_sentinel() {
             Some(s) => s,
             None => return vec![],
