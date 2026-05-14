@@ -19,6 +19,8 @@ use crate::error::{Error, Result};
 /// Write data to a temp file in the same directory, then rename for atomicity (EH-016).
 fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     crate::crypto::atomic_write(path, data)?;
+    #[cfg(unix)]
+    crate::crypto::restrict_permissions(path, 0o600)?;
     Ok(())
 }
 

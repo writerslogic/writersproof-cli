@@ -521,7 +521,8 @@ impl Chain {
                 Error::checkpoint("chain MAC file has wrong length (expected 32 bytes)")
             })?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Self::load(path); // No MAC sidecar → legacy fallback
+                log::warn!("MAC sidecar missing for chain file {:?}; loading without verification (legacy chain)", path);
+                return Self::load(path);
             }
             Err(e) => return Err(Error::checkpoint(format!("failed to read chain MAC: {e}"))),
         };

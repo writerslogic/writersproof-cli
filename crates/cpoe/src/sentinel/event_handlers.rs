@@ -314,14 +314,6 @@ impl EventLoopCtx {
                 .jitter_sample_index
                 .insert(sample.timestamp_ns, idx);
         }
-        session.cognitive.record_keystroke(
-            event.char_value,
-            event.timestamp_ns,
-            duration_since_last_ns,
-            0, // size_delta populated at checkpoint time
-            0, // file_size populated at checkpoint time
-        );
-
         let validation = crate::forensics::validate_keystroke_event(
             event.timestamp_ns,
             event.keycode,
@@ -345,6 +337,14 @@ impl EventLoopCtx {
             );
             return;
         }
+
+        session.cognitive.record_keystroke(
+            event.char_value,
+            event.timestamp_ns,
+            duration_since_last_ns,
+            0, // size_delta populated at checkpoint time
+            0, // file_size populated at checkpoint time
+        );
 
         // Advance incremental jitter hash chain only for accepted
         // samples that were actually buffered.
@@ -519,6 +519,9 @@ impl EventLoopCtx {
                                 link.app_b, link.session_b_id,
                                 link.fingerprint_distance,
                             );
+                        }
+                        if store.len() >= 1000 {
+                            store.drain(..100);
                         }
                         store.push((sid, app, fp));
                     }
@@ -1061,6 +1064,11 @@ impl EventLoopCtx {
         };
 
         let sk_for_frag = sk_opt.clone();
+        // Lock ordering note: cached_store(3) is acquired here WITHOUT
+        // sessions(2) because sessions was already dropped above and is
+        // not re-acquired in this scope. This block ends before the
+        // hw_cosign path below, which acquires sessions(2) then
+        // cached_store(3) per AUD-041. No overlapping holds, no cycle.
         if let Some(ref mut store) = *self.cached_store.lock_recover() {
             let stats = crate::store::DocumentStats {
                 file_path: path.to_string(),
