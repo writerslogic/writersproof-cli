@@ -28,6 +28,7 @@ impl Sentinel {
         &self,
         file_path: &Path,
     ) -> std::result::Result<(), (IpcErrorCode, String)> {
+        log::debug!("start_witnessing: entry path={}", file_path.display());
         // H-002: Reject relative paths to prevent directory traversal via crafted titles.
         if !file_path.is_absolute() {
             return Err((
@@ -195,6 +196,7 @@ impl Sentinel {
     /// Commit a checkpoint for the given file path if the session has new keystrokes.
     /// Returns true if a checkpoint was committed, false otherwise.
     pub fn commit_checkpoint_for_path(&self, path: &str) -> bool {
+        log::debug!("commit_checkpoint_for_path: entry path={}", path);
         if !self.running.load(std::sync::atomic::Ordering::SeqCst) {
             return false;
         }

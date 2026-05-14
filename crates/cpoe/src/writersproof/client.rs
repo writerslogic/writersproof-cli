@@ -58,6 +58,7 @@ impl WritersProofClient {
     ///
     /// `POST /v1/nonce`
     pub async fn request_nonce(&self, hardware_key_id: &str) -> Result<NonceResponse> {
+        log::debug!("request_nonce: hardware_key_id={hardware_key_id}");
         let url = format!("{}/v1/nonce", self.base_url);
         let body = serde_json::json!({ "hardwareKeyId": hardware_key_id });
         let mut req = self.client.post(&url).json(&body);
@@ -68,22 +69,30 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("nonce request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("request_nonce: failed: {e}");
+                Error::crypto(format!("nonce request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("request_nonce: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "nonce request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<NonceResponse>(resp).await
+        let result = Self::json_response::<NonceResponse>(resp).await?;
+        log::debug!("request_nonce: success");
+        Ok(result)
     }
 
     /// Enroll a device with WritersProof.
     ///
     /// `POST /v1/enroll`
     pub async fn enroll(&self, req: EnrollRequest) -> Result<EnrollResponse> {
+        log::debug!("enroll: starting enrollment");
         let url = format!("{}/v1/enroll", self.base_url);
         let mut http_req = self.client.post(&url).json(&req);
         if let Some(ref jwt) = self.jwt {
@@ -93,16 +102,23 @@ impl WritersProofClient {
         let resp = http_req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("enroll request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("enroll: failed: {e}");
+                Error::crypto(format!("enroll request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("enroll: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "enroll request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<EnrollResponse>(resp).await
+        let result = Self::json_response::<EnrollResponse>(resp).await?;
+        log::debug!("enroll: success");
+        Ok(result)
     }
 
     /// Submit evidence for attestation.
@@ -118,6 +134,10 @@ impl WritersProofClient {
         hardware_key_id: &str,
         signing_key: &SigningKey,
     ) -> Result<AttestResponse> {
+        log::debug!(
+            "attest: session evidence_len={}, hardware_key_id={hardware_key_id}",
+            evidence_cbor.len()
+        );
         let hkid_bytes = hardware_key_id.as_bytes();
         let mut sign_payload = zeroize::Zeroizing::new(Vec::with_capacity(
             4 + nonce.len() + 4 + hkid_bytes.len() + 4 + evidence_cbor.len(),
@@ -150,22 +170,30 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("attest request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("attest: failed: {e}");
+                Error::crypto(format!("attest request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("attest: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "attest request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<AttestResponse>(resp).await
+        let result = Self::json_response::<AttestResponse>(resp).await?;
+        log::debug!("attest: success");
+        Ok(result)
     }
 
     /// Get an attestation certificate by ID.
     ///
     /// `GET /v1/certificates/:id`
     pub async fn get_certificate(&self, id: &str) -> Result<Vec<u8>> {
+        log::debug!("get_certificate: id={id}");
         // Validate certificate ID to prevent path traversal (e.g., "../../admin/keys")
         if !id
             .chars()
@@ -185,12 +213,17 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("certificate request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("get_certificate: failed: {e}");
+                Error::crypto(format!("certificate request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("get_certificate: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "certificate request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
@@ -216,6 +249,7 @@ impl WritersProofClient {
             }
             body.extend_from_slice(&chunk);
         }
+        log::debug!("get_certificate: success, {} bytes", body.len());
         Ok(body)
     }
 
@@ -223,6 +257,7 @@ impl WritersProofClient {
     ///
     /// `GET /v1/crl`
     pub async fn get_crl(&self) -> Result<Vec<u8>> {
+        log::debug!("get_crl: requesting revocation list");
         let url = format!("{}/v1/crl", self.base_url);
         let mut req = self.client.get(&url);
         if let Some(ref jwt) = self.jwt {
@@ -232,12 +267,17 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("CRL request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("get_crl: failed: {e}");
+                Error::crypto(format!("CRL request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("get_crl: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "CRL request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
@@ -263,6 +303,7 @@ impl WritersProofClient {
             }
             body.extend_from_slice(&chunk);
         }
+        log::debug!("get_crl: success, {} bytes", body.len());
         Ok(body)
     }
 
@@ -270,6 +311,7 @@ impl WritersProofClient {
     ///
     /// `POST /v1/anchor`
     pub async fn anchor(&self, req: AnchorRequest) -> Result<AnchorResponse> {
+        log::debug!("anchor: submitting anchor request");
         let url = format!("{}/v1/anchor", self.base_url);
         let mut http_req = self.client.post(&url).json(&req);
         if let Some(ref jwt) = self.jwt {
@@ -279,16 +321,23 @@ impl WritersProofClient {
         let resp = http_req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("anchor request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("anchor: failed: {e}");
+                Error::crypto(format!("anchor request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("anchor: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "anchor request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<AnchorResponse>(resp).await
+        let result = Self::json_response::<AnchorResponse>(resp).await?;
+        log::debug!("anchor: success");
+        Ok(result)
     }
 
     /// Submit a text attestation to WritersProof for public verification.
@@ -298,6 +347,7 @@ impl WritersProofClient {
         &self,
         req: super::types::TextAttestationRequest,
     ) -> Result<super::types::TextAttestationResponse> {
+        log::debug!("submit_text_attestation: content_hash={}", req.content_hash);
         if req.content_hash.len() != 64 || !req.content_hash.chars().all(|c| c.is_ascii_hexdigit())
         {
             return Err(Error::crypto("content_hash must be 64 hex characters"));
@@ -322,16 +372,23 @@ impl WritersProofClient {
         let resp = http_req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("text-attestation request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("submit_text_attestation: failed: {e}");
+                Error::crypto(format!("text-attestation request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("submit_text_attestation: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "text-attestation request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<super::types::TextAttestationResponse>(resp).await
+        let result = Self::json_response::<super::types::TextAttestationResponse>(resp).await?;
+        log::debug!("submit_text_attestation: success");
+        Ok(result)
     }
 
     /// Publish evidence to WritersProof and receive a canonical URL.
@@ -341,6 +398,7 @@ impl WritersProofClient {
         &self,
         req: super::types::PublishRequest,
     ) -> Result<super::types::PublishResponse> {
+        log::debug!("publish: submitting publish request");
         let url = format!("{}/v1/publish", self.base_url);
         let mut http_req = self.client.post(&url).json(&req);
         if let Some(ref jwt) = self.jwt {
@@ -352,7 +410,10 @@ impl WritersProofClient {
         let resp = http_req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("publish request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("publish: failed: {e}");
+                Error::crypto(format!("publish request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -360,12 +421,15 @@ impl WritersProofClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("[unreadable: {e}]"));
+            log::warn!("publish: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "publish failed: HTTP {status}: {body}"
             )));
         }
 
-        Self::json_response::<super::types::PublishResponse>(resp).await
+        let result = Self::json_response::<super::types::PublishResponse>(resp).await?;
+        log::debug!("publish: success");
+        Ok(result)
     }
 
     /// Fetch temporal beacon attestation from WritersProof.
@@ -381,6 +445,7 @@ impl WritersProofClient {
         checkpoint_hash: &str,
         timeout_secs: u64,
     ) -> Result<BeaconResponse> {
+        log::debug!("fetch_beacon: timeout_secs={timeout_secs}");
         let url = format!("{}/v1/beacon", self.base_url);
         let req = BeaconRequest {
             checkpoint_hash: checkpoint_hash.to_string(),
@@ -400,20 +465,28 @@ impl WritersProofClient {
         let resp = http_req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("beacon request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("fetch_beacon: failed: {e}");
+                Error::crypto(format!("beacon request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("fetch_beacon: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "beacon request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<BeaconResponse>(resp).await
+        let result = Self::json_response::<BeaconResponse>(resp).await?;
+        log::debug!("fetch_beacon: success");
+        Ok(result)
     }
 
     /// Start a tracking session on the server with an initial hash.
     pub async fn start_session(&self, session_id: &Hex64, initial_hash: &Hex64) -> Result<()> {
+        log::debug!("start_session: session_id={session_id}");
         let url = format!("{}/v1/sessions/{}", self.base_url, session_id);
         let req = serde_json::json!({
             "action": "start",
@@ -428,6 +501,7 @@ impl WritersProofClient {
         session_id: &Hex64,
         current_hash: &Hex64,
     ) -> Result<()> {
+        log::debug!("update_session_hash: session_id={session_id}");
         let url = format!("{}/v1/sessions/{}", self.base_url, session_id);
         let req = serde_json::json!({
             "action": "update",
@@ -438,6 +512,7 @@ impl WritersProofClient {
 
     /// Signal the end of tracking and request the server to wipe the session hashes.
     pub async fn end_session(&self, session_id: &Hex64, final_hash: &Hex64) -> Result<()> {
+        log::debug!("end_session: session_id={session_id}");
         let url = format!("{}/v1/sessions/{}", self.base_url, session_id);
         let req = serde_json::json!({
             "action": "end",
@@ -455,14 +530,20 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("session update failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("send_session_update: failed: {e}");
+                Error::crypto(format!("session update failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("send_session_update: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "session update failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
+        log::debug!("send_session_update: success");
         Ok(())
     }
 
@@ -473,6 +554,7 @@ impl WritersProofClient {
     /// Returns a 30-second TTL nonce that must be bound into the next
     /// checkpoint hash to prove the checkpoint was built in real time.
     pub async fn request_challenge(&self, session_id: &Hex64) -> Result<ChallengeResponse> {
+        log::debug!("request_challenge: session_id={session_id}");
         let url = format!("{}/v1/sessions/{}/challenge", self.base_url, session_id);
         let mut req = self.client.post(&url);
         if let Some(ref jwt) = self.jwt {
@@ -482,16 +564,23 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("challenge request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("request_challenge: failed: {e}");
+                Error::crypto(format!("challenge request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("request_challenge: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "challenge request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<ChallengeResponse>(resp).await
+        let result = Self::json_response::<ChallengeResponse>(resp).await?;
+        log::debug!("request_challenge: success");
+        Ok(result)
     }
 
     /// Send a pulse: atomically log current hash and fetch fresh 30-second nonce.
@@ -511,6 +600,7 @@ impl WritersProofClient {
     ///
     /// A `PulseResponse` containing the fresh nonce, its ID, and TTL.
     pub async fn pulse(&self, session_id: &Hex64, current_hash: &Hex64) -> Result<PulseResponse> {
+        log::debug!("pulse: session_id={session_id}");
         let url = format!("{}/v1/sessions/{}/pulse", self.base_url, session_id);
         let body = PulseRequest {
             current_hash: current_hash.as_str().to_owned(),
@@ -523,22 +613,30 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("pulse request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("pulse: failed: {e}");
+                Error::crypto(format!("pulse request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("pulse: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "pulse request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<PulseResponse>(resp).await
+        let result = Self::json_response::<PulseResponse>(resp).await?;
+        log::debug!("pulse: success");
+        Ok(result)
     }
 
     /// Verify an evidence packet.
     ///
     /// `POST /v1/verify`
     pub async fn verify(&self, evidence_cbor: &[u8]) -> Result<VerifyResponse> {
+        log::debug!("verify: evidence_len={}", evidence_cbor.len());
         let url = format!("{}/v1/verify", self.base_url);
         let mut req = self
             .client
@@ -553,17 +651,23 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("verify request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("verify: failed: {e}");
+                Error::crypto(format!("verify request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("verify: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "verify request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
         let mut response = Self::json_response::<VerifyResponse>(resp).await?;
         response.sanitize();
+        log::debug!("verify: success");
         Ok(response)
     }
 
@@ -581,6 +685,7 @@ impl WritersProofClient {
         nonce_id: &str,
         checkpoint_hash: &Hex64,
     ) -> Result<()> {
+        log::debug!("confirm_nonce: session_id={session_id}");
         let url = format!("{}/v1/sessions/{}/confirm", self.base_url, session_id);
         let body = ConfirmNonceRequest {
             nonce_id: nonce_id.to_string(),
@@ -593,13 +698,19 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("confirm_nonce request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("confirm_nonce: failed: {e}");
+                Error::crypto(format!("confirm_nonce request failed: {e}"))
+            })?;
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("confirm_nonce: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "confirm_nonce failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
+        log::debug!("confirm_nonce: success");
         Ok(())
     }
 
@@ -639,6 +750,7 @@ impl WritersProofClient {
         &self,
         req: CredentialIssueRequest,
     ) -> Result<CredentialIssueResponse> {
+        log::debug!("issue_credential: requesting credential issuance");
         let url = format!("{}/v1/credentials/issue", self.base_url);
         let mut http_req = self.client.post(&url).json(&req);
         if let Some(ref jwt) = self.jwt {
@@ -650,7 +762,10 @@ impl WritersProofClient {
         let resp = http_req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("credential issue request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("issue_credential: failed: {e}");
+                Error::crypto(format!("credential issue request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -658,12 +773,15 @@ impl WritersProofClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("[unreadable: {e}]"));
+            log::warn!("issue_credential: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "credential issue failed: HTTP {status}: {body}"
             )));
         }
 
-        Self::json_response::<CredentialIssueResponse>(resp).await
+        let result = Self::json_response::<CredentialIssueResponse>(resp).await?;
+        log::debug!("issue_credential: success");
+        Ok(result)
     }
 
     /// Get the status of an issued credential.
@@ -674,6 +792,7 @@ impl WritersProofClient {
         &self,
         credential_id: &str,
     ) -> Result<CredentialStatusResponse> {
+        log::debug!("get_credential_status: credential_id={credential_id}");
         if !credential_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -693,16 +812,23 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("credential status request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("get_credential_status: failed: {e}");
+                Error::crypto(format!("credential status request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("get_credential_status: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "credential status request failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
-        Self::json_response::<CredentialStatusResponse>(resp).await
+        let result = Self::json_response::<CredentialStatusResponse>(resp).await?;
+        log::debug!("get_credential_status: success");
+        Ok(result)
     }
 
     /// Revoke an issued credential.
@@ -710,6 +836,7 @@ impl WritersProofClient {
     /// `POST /v1/credentials/:id/revoke`
     #[allow(dead_code)]
     pub async fn revoke_credential(&self, credential_id: &str) -> Result<()> {
+        log::debug!("revoke_credential: credential_id={credential_id}");
         if !credential_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -733,15 +860,21 @@ impl WritersProofClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| Error::crypto(format!("credential revoke request failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("revoke_credential: failed: {e}");
+                Error::crypto(format!("credential revoke request failed: {e}"))
+            })?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            log::warn!("revoke_credential: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "credential revoke failed: HTTP {}",
-                resp.status()
+                status
             )));
         }
 
+        log::debug!("revoke_credential: success");
         Ok(())
     }
 

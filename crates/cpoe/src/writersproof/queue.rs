@@ -52,6 +52,10 @@ impl OfflineQueue {
         hardware_key_id: &str,
         signing_key: &SigningKey,
     ) -> Result<String> {
+        log::debug!(
+            "enqueue: evidence_len={}, hardware_key_id={hardware_key_id}",
+            evidence_cbor.len()
+        );
         // Include DST and random nonce in signed payload to prevent replay (EH-015).
         let queue_nonce: [u8; 16] = rand::random();
         let mut sign_buf = Vec::with_capacity(
@@ -87,6 +91,7 @@ impl OfflineQueue {
             .map_err(|e| Error::checkpoint(format!("queue serialize failed: {e}")))?;
         atomic_write(&path, &data)?;
 
+        log::debug!("enqueue: queued as {id}");
         Ok(id)
     }
 
@@ -143,6 +148,7 @@ impl OfflineQueue {
         signing_key: &SigningKey,
     ) -> Result<Vec<AttestResponse>> {
         let entries = self.list()?;
+        log::debug!("drain: processing {} queued entries", entries.len());
         let mut results = Vec::new();
 
         for mut entry in entries {
@@ -189,6 +195,7 @@ impl OfflineQueue {
             }
         }
 
+        log::debug!("drain: completed, {} successful", results.len());
         Ok(results)
     }
 
@@ -239,6 +246,10 @@ impl OfflineQueue {
         &self,
         request: super::types::TextAttestationRequest,
     ) -> Result<String> {
+        log::debug!(
+            "enqueue_text_attestation: content_hash={}",
+            request.content_hash
+        );
         let id = format!(
             "{}-{}",
             Utc::now().format("%Y%m%d%H%M%S"),
@@ -258,6 +269,7 @@ impl OfflineQueue {
         let data = serde_json::to_vec_pretty(&entry)
             .map_err(|e| Error::checkpoint(format!("text queue serialize: {e}")))?;
         atomic_write(&path, &data)?;
+        log::debug!("enqueue_text_attestation: queued as {id}");
         Ok(id)
     }
 

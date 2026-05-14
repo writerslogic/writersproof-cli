@@ -403,11 +403,13 @@ pub fn focus_document_sync(
         session.window_title = event.window_title.clone();
 
         if was_new {
+            log::debug!("focus_document_sync: new session created for {}", path);
             Some((
                 session.session_id.clone(),
                 create_session_start_payload(session),
             ))
         } else {
+            log::debug!("focus_document_sync: resumed existing session for {}", path);
             None
         }
     }; // write lock released here

@@ -287,6 +287,7 @@ impl EventLoopCtx {
         let Some(ref path) = focused_path else {
             return;
         };
+        log::debug!("record_keystroke_to_session: path={}", path);
         let mut map = self.sessions.write_recover();
         super::trace!(
             "[KEYSTROKE] focus={:?} sessions={:?} kc={}",
@@ -412,6 +413,7 @@ impl EventLoopCtx {
 
     /// Handle a focus event and optionally start a bundle monitor.
     pub(super) fn handle_focus_branch(&mut self, event: FocusEvent) {
+        log::debug!("handle_focus_branch: type={:?} app={}", event.event_type, event.app_bundle_id);
         handle_focus_event_sync(
             event,
             &self.sessions,

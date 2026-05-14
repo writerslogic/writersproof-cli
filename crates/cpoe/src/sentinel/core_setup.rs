@@ -77,6 +77,7 @@ impl Sentinel {
         &self,
         running: &Arc<AtomicBool>,
     ) -> mpsc::Receiver<crate::platform::KeystrokeEvent> {
+        log::debug!("setup_keystroke_bridge: initializing keystroke capture");
         let (keystroke_tx, keystroke_rx) =
             tokio::sync::mpsc::channel::<crate::platform::KeystrokeEvent>(EVENT_CHANNEL_BUFFER);
         // Keep a sender clone alive on the struct so restart_keystroke_capture and the
@@ -164,6 +165,7 @@ impl Sentinel {
         &self,
         running: &Arc<AtomicBool>,
     ) -> mpsc::Receiver<crate::platform::MouseEvent> {
+        log::debug!("setup_mouse_bridge: initializing mouse capture");
         let (mouse_tx, mouse_rx) =
             tokio::sync::mpsc::channel::<crate::platform::MouseEvent>(EVENT_CHANNEL_BUFFER);
         let mouse_running = Arc::clone(running);

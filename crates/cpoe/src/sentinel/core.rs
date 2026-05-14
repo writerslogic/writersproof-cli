@@ -600,6 +600,7 @@ impl Sentinel {
             let mut permission_check_interval = interval(Duration::from_secs(30));
 
             super::trace!("[EVENT_LOOP] started");
+            log::debug!("sentinel event loop entering main select loop");
 
             loop {
                 tokio::select! {
@@ -644,6 +645,7 @@ impl Sentinel {
                 }
             }
 
+            log::debug!("sentinel event loop exited main select loop");
             if let Err(e) = focus_monitor.stop() {
                 log::debug!("focus monitor stop: {e}");
             }

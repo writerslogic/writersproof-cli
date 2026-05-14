@@ -598,7 +598,9 @@ impl SentinelFocusTracker for HybridFocusTracker {
                     .map(|d| d < DEDUP_WINDOW)
                     .unwrap_or(false);
 
-                if !dominated {
+                if dominated {
+                    log::debug!("hybrid focus: deduplicated event within DEDUP_WINDOW");
+                } else {
                     last_emitted = Some(event.timestamp);
                     if focus_tx.send(event).await.is_err() {
                         break;

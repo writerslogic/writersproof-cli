@@ -303,6 +303,7 @@ impl Chain {
         vdf_duration: Option<Duration>,
         vdf_cost_multiplier: u32,
     ) -> Result<Checkpoint> {
+        log::debug!("checkpoint commit_internal: path={}", self.metadata.document_path);
         let (content_hash, content_size) =
             crate::crypto::hash_file_with_size(Path::new(&self.metadata.document_path))?;
 
@@ -414,6 +415,7 @@ impl Chain {
             checkpoint.hash = checkpoint.compute_hash();
         }
         self.checkpoints.push(checkpoint.clone());
+        log::debug!("checkpoint committed: ordinal={} path={}", checkpoint.ordinal, self.metadata.document_path);
         Ok(checkpoint)
     }
 
