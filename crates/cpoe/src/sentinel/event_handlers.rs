@@ -613,6 +613,19 @@ impl EventLoopCtx {
             self.bundle_monitors.lock_recover().remove(path);
             self.last_fingerprint_time.remove(path.as_str());
         }
+        // Prune stale sessions: unfocused, zero keystrokes, created >1 hour ago.
+        {
+            let mut map = self.sessions.write_recover();
+            map.retain(|_, s| {
+                s.is_focused()
+                    || s.keystroke_count > 0
+                    || s.start_time
+                        .elapsed()
+                        .unwrap_or_default()
+                        < Duration::from_secs(3600)
+            });
+        }
+
         self.check_capture_health();
     }
 

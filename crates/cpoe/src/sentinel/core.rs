@@ -610,6 +610,11 @@ impl Sentinel {
                             Ok(event) => ctx.handle_session_event(event),
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                                 log::warn!("Session event receiver lagged, missed {n} events");
+                                if let Some(ref path) = *ctx.current_focus.read_recover() {
+                                    if let Some(session) = ctx.sessions.write_recover().get_mut(path.as_str()) {
+                                        session.capture_gaps = session.capture_gaps.saturating_add(n as u32);
+                                    }
+                                }
                             }
                             Err(_) => break,
                         }
