@@ -609,6 +609,7 @@ impl Sentinel {
         device_uid_hash: [u8; 8],
         ambient_noise_db: f32,
     ) -> bool {
+        log::debug!("begin_dictation: doc_path={doc_path}, es_speech_pid={es_speech_pid}");
         // AUD-041: acquire signing_key before sessions.
         let key = {
             #[cfg(debug_assertions)]
@@ -686,6 +687,9 @@ impl Sentinel {
         text_hash: [u8; 32],
         speaker_output_active: bool,
     ) -> bool {
+        log::debug!(
+            "record_dictation_fragment: doc_path={doc_path}, word_count={word_count}, confidence={confidence}"
+        );
         let key = {
             #[cfg(debug_assertions)]
             let _guard =
@@ -754,6 +758,7 @@ impl Sentinel {
         keystrokes_during_caller: u32,
         cross_window_similarity: f32,
     ) -> bool {
+        log::debug!("end_dictation: doc_path={doc_path}, keystrokes_during={keystrokes_during_caller}");
         let key = {
             #[cfg(debug_assertions)]
             let _guard =

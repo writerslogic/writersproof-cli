@@ -195,6 +195,7 @@ impl ClipboardMonitor {
     /// Returns an error only if initialization fails critically.
     /// Safe to call multiple times.
     pub fn new() -> std::result::Result<Self, ClipboardError> {
+        log::debug!("ClipboardMonitor::new");
         Ok(ClipboardMonitor {
             monitored_apps: Arc::new(RwLock::new(default_monitored_apps())),
             last_change_count: Arc::new(std::sync::atomic::AtomicI32::new(0)),
@@ -207,6 +208,7 @@ impl ClipboardMonitor {
     ///
     /// Returns error if limit (50 apps) exceeded.
     pub fn add_monitored_app(&self, bundle_id: String) -> std::result::Result<(), ClipboardError> {
+        log::debug!("add_monitored_app: bundle_id={bundle_id}");
         if bundle_id.is_empty() || bundle_id.len() > 256 {
             return Err(ClipboardError::Other("Invalid bundle ID length".into()));
         }
@@ -252,6 +254,7 @@ impl ClipboardMonitor {
         signing_key: Arc<RwLock<super::behavioral_key::BehavioralKey>>,
         cancel: CancellationToken,
     ) -> std::result::Result<(), ClipboardError> {
+        log::debug!("ClipboardMonitor::monitor_loop started");
         loop {
             match self.check_clipboard_change().await {
                 Ok(Some(mut copy_event)) => {
@@ -522,6 +525,7 @@ impl ClipboardMonitor {
         &self,
         bundle_id: &str,
     ) -> std::result::Result<bool, ClipboardError> {
+        log::debug!("verify_paste_source_bundle_id: bundle_id={bundle_id}");
         if bundle_id.is_empty() {
             return Ok(false);
         }

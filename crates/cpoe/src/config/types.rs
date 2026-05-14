@@ -450,6 +450,7 @@ impl SentinelConfig {
     /// bundle IDs are conventionally lowercase but not enforced; Windows app
     /// names vary in casing).
     pub fn is_app_allowed(&self, bundle_id: &str, app_name: &str) -> bool {
+        log::trace!("is_app_allowed: bundle_id={bundle_id}, app_name={app_name}");
         for blocked in &self.blocked_apps {
             if blocked.eq_ignore_ascii_case(bundle_id) || blocked.eq_ignore_ascii_case(app_name) {
                 return false;
@@ -471,6 +472,7 @@ impl SentinelConfig {
     /// Absolute excluded paths match via `starts_with`. Single-component
     /// excluded paths (e.g. "node_modules") match any path component.
     pub fn is_path_excluded(&self, path: &Path) -> bool {
+        log::trace!("is_path_excluded: path={}", path.display());
         for excluded in &self.excluded_paths {
             if path.starts_with(excluded) {
                 return true;
@@ -492,6 +494,7 @@ impl SentinelConfig {
     /// Empty `allowed_extensions` means all extensions are allowed.
     /// Extensionless files are always allowed (unsaved documents, Makefile, etc.).
     pub fn is_extension_allowed(&self, path: &Path) -> bool {
+        log::trace!("is_extension_allowed: path={}", path.display());
         if self.allowed_extensions.is_empty() {
             return true;
         }
@@ -506,6 +509,7 @@ impl SentinelConfig {
 
     /// Validate sentinel config values (nonzero intervals, consistent bounds).
     pub fn validate(&self) -> Result<()> {
+        log::debug!("SentinelConfig::validate called");
         fn require_nonzero(val: u64, name: &str) -> Result<()> {
             if val == 0 {
                 return Err(Error::validation(format!("{name} must be > 0")));
