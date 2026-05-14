@@ -74,6 +74,7 @@ impl AuthorFingerprint {
     /// `alpha` controls how much weight the `recent` fingerprint receives
     /// (0.0 = keep old, 1.0 = fully replace with recent).
     pub fn update_with_ema(&mut self, recent: &AuthorFingerprint, alpha: f64) {
+        log::debug!("AuthorFingerprint::update_with_ema: id={}, alpha={}", self.id, alpha);
         use super::activity::WeightedDistribution;
 
         let alpha = alpha.clamp(0.0, 1.0);
@@ -110,6 +111,7 @@ impl AuthorFingerprint {
     }
 
     pub fn merge(&mut self, other: &AuthorFingerprint) {
+        log::debug!("AuthorFingerprint::merge: self_id={}, other_id={}", self.id, other.id);
         self.activity.merge(&other.activity);
         if let Some(other_style) = &other.style {
             if let Some(ref mut style) = self.style {

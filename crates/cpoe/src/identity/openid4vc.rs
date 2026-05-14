@@ -72,6 +72,7 @@ pub struct ClaimDescriptor {
 /// for the `ProcessAttestationCredential` type with claims covering
 /// author identity, process verdict, and evidence references.
 pub fn writersproof_issuer_metadata() -> CredentialIssuerMetadata {
+    log::debug!("writersproof_issuer_metadata");
     let claims = vec![
         ClaimDescriptor {
             name: "author_did".into(),

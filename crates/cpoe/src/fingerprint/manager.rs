@@ -25,6 +25,7 @@ pub struct FingerprintManager {
 
 impl FingerprintManager {
     pub fn new(storage_path: &Path) -> Result<Self> {
+        log::debug!("FingerprintManager::new: storage_path={}", storage_path.display());
         let storage = FingerprintStorage::new(storage_path)?;
         let consent_manager = ConsentManager::new(storage_path)?;
 
@@ -40,6 +41,7 @@ impl FingerprintManager {
     }
 
     pub fn with_config(config: FingerprintConfig) -> Result<Self> {
+        log::debug!("FingerprintManager::with_config: storage_path={}", config.storage_path.display());
         let storage = FingerprintStorage::new(&config.storage_path)?;
         let consent_manager = ConsentManager::new(&config.storage_path)?;
 
@@ -81,6 +83,7 @@ impl FingerprintManager {
     }
 
     pub fn request_style_consent(&mut self) -> Result<bool> {
+        log::debug!("FingerprintManager::request_style_consent");
         let granted = self.consent_manager.begin_consent_request()?;
         if granted {
             self.enable_style_internal()?;
@@ -89,6 +92,7 @@ impl FingerprintManager {
     }
 
     pub fn enable_style(&mut self) -> Result<()> {
+        log::debug!("FingerprintManager::enable_style");
         if !self.consent_manager.has_style_consent()? {
             return Err(anyhow::anyhow!(
                 "Style fingerprinting requires consent. Call request_style_consent() first."
@@ -109,6 +113,7 @@ impl FingerprintManager {
     }
 
     pub fn disable_style(&mut self) -> Result<()> {
+        log::debug!("FingerprintManager::disable_style");
         self.config.style_enabled = false;
         self.style_collector = None;
         self.consent_manager.revoke_consent()?;
@@ -218,6 +223,7 @@ impl FingerprintManager {
     }
 
     pub fn save_current(&mut self) -> Result<ProfileId> {
+        log::debug!("FingerprintManager::save_current");
         let fingerprint = self.current_author_fingerprint();
         let id = fingerprint.id.clone();
         self.storage.save(&fingerprint)?;
@@ -226,20 +232,24 @@ impl FingerprintManager {
     }
 
     pub fn load(&self, id: &ProfileId) -> Result<AuthorFingerprint> {
+        log::debug!("FingerprintManager::load: id={}", id);
         self.storage.load(id)
     }
 
     pub fn list_profiles(&self) -> Result<Vec<StoredProfile>> {
+        log::debug!("FingerprintManager::list_profiles");
         self.storage.list_profiles()
     }
 
     pub fn compare(&self, id1: &ProfileId, id2: &ProfileId) -> Result<FingerprintComparison> {
+        log::debug!("FingerprintManager::compare: id1={}, id2={}", id1, id2);
         let fp1 = self.storage.load(id1)?;
         let fp2 = self.storage.load(id2)?;
         Ok(comparison::compare_fingerprints(&fp1, &fp2))
     }
 
     pub fn delete(&mut self, id: &ProfileId) -> Result<()> {
+        log::debug!("FingerprintManager::delete: id={}", id);
         self.storage.delete(id)?;
         if self.current_profile_id.as_ref() == Some(id) {
             self.current_profile_id = None;
@@ -248,6 +258,7 @@ impl FingerprintManager {
     }
 
     pub fn reset_session(&mut self) {
+        log::debug!("FingerprintManager::reset_session");
         self.activity_accumulator.reset();
         if let Some(ref mut collector) = self.style_collector {
             collector.reset();
@@ -256,6 +267,7 @@ impl FingerprintManager {
 
     #[cfg(feature = "cpoe_jitter")]
     pub fn current_author_fingerprint_with_phys_ratio(&self, phys_ratio: f64) -> AuthorFingerprint {
+        log::debug!("FingerprintManager::current_author_fingerprint_with_phys_ratio: phys_ratio={}", phys_ratio);
         let mut activity = (*self.current_activity_fingerprint()).clone();
         activity.set_phys_ratio(phys_ratio);
 

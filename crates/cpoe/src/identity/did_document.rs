@@ -59,6 +59,7 @@ fn encode_multibase_ed25519(public_key: &[u8]) -> String {
 ///
 /// Returns `None` if `public_key` is not exactly 32 bytes.
 pub fn did_key_from_public(public_key: &[u8]) -> Option<String> {
+    log::debug!("did_key_from_public: key_len={}", public_key.len());
     if public_key.len() != 32 {
         return None;
     }
@@ -71,6 +72,7 @@ pub fn did_key_from_public(public_key: &[u8]) -> Option<String> {
 /// multicodec prefix `0xed01`). For `did:web`, a WritersProof API service
 /// endpoint is included.
 pub fn generate_did_document(did: &str, public_key: &[u8]) -> DidDocument {
+    log::debug!("generate_did_document: did={}, key_len={}", did, public_key.len());
     let multibase = encode_multibase_ed25519(public_key);
     let key_id = format!("{}#keys-1", did);
 

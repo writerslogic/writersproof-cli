@@ -137,6 +137,7 @@ pub fn derive_webvh_signing_key(
     master_key: &SigningKey,
     address: &str,
 ) -> Result<SigningKey, Error> {
+    log::debug!("derive_webvh_signing_key: address={}", address);
     let address = address.to_ascii_lowercase();
     validate_address(&address)?;
     let seed = crate::keyhierarchy::hkdf_expand(
@@ -174,6 +175,7 @@ impl WebVHIdentity {
         address: impl Into<String>,
     ) -> Result<Self, Error> {
         let address = address.into();
+        log::debug!("WebVHIdentity::create: address={}", address);
         validate_address(&address)?;
         let webvh_key = derive_webvh_signing_key(master_key, &address)?;
         let signer = CpopSigner::from_key(webvh_key);
@@ -282,6 +284,7 @@ impl WebVHIdentity {
         doc: Value,
         master_key: &SigningKey,
     ) -> Result<(), Error> {
+        log::debug!("WebVHIdentity::update_document: did={}", self.did);
         let webvh_key = derive_webvh_signing_key(master_key, &self.address)?;
         let signer = CpopSigner::from_key(webvh_key);
         self.state
@@ -297,6 +300,7 @@ impl WebVHIdentity {
         new_keys: Vec<Multibase>,
         master_key: &SigningKey,
     ) -> Result<(), Error> {
+        log::debug!("WebVHIdentity::rotate_keys: did={}, new_keys_count={}", self.did, new_keys.len());
         let webvh_key = derive_webvh_signing_key(master_key, &self.address)?;
         let signer = CpopSigner::from_key(webvh_key);
         self.state
@@ -308,6 +312,7 @@ impl WebVHIdentity {
 
     /// Deactivate the did:webvh identity.
     pub async fn deactivate(&mut self, master_key: &SigningKey) -> Result<(), Error> {
+        log::debug!("WebVHIdentity::deactivate: did={}", self.did);
         let webvh_key = derive_webvh_signing_key(master_key, &self.address)?;
         let signer = CpopSigner::from_key(webvh_key);
         self.state
@@ -319,6 +324,7 @@ impl WebVHIdentity {
 
     /// Save the did:webvh state to disk.
     pub fn save(&self) -> Result<(), Error> {
+        log::debug!("WebVHIdentity::save: did={}", self.did);
         let data_dir = data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
         std::fs::create_dir_all(&data_dir)
             .map_err(|e| Error::identity(format!("create data directory: {e}")))?;
@@ -375,6 +381,7 @@ impl WebVHIdentity {
 
     /// Load a previously saved did:webvh identity from disk.
     pub fn load() -> Result<Self, Error> {
+        log::debug!("WebVHIdentity::load");
         let data_dir = data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
 
         let meta_path = data_dir.join("did_webvh_meta.json");
@@ -422,6 +429,7 @@ impl WebVHIdentity {
 ///
 /// Falls back to did:key derived from the signing key on disk.
 pub fn load_active_did() -> Result<String, Error> {
+    log::debug!("load_active_did");
     if let Ok(identity) = WebVHIdentity::load() {
         return Ok(identity.did);
     }
@@ -533,6 +541,7 @@ pub async fn resolve_and_verify_key(
     expected_pubkey: &[u8; 32],
     version_time: Option<chrono::DateTime<chrono::FixedOffset>>,
 ) -> Result<bool, Error> {
+    log::debug!("resolve_and_verify_key: did={}", did);
     if !did.starts_with("did:webvh:") {
         return Err(Error::identity(format!(
             "not a did:webvh identifier: {did}"
@@ -589,6 +598,7 @@ pub async fn verify_packet_author_did(
     signing_public_key: &[u8; 32],
     packet_created_ms: u64,
 ) -> Result<bool, Error> {
+    log::debug!("verify_packet_author_did: author_did={}, packet_created_ms={}", author_did, packet_created_ms);
     const MAX_REASONABLE_MS: u64 = 32503680000000; // year 3000
     if packet_created_ms > MAX_REASONABLE_MS {
         return Err(Error::identity(format!(

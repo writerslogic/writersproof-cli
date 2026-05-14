@@ -183,6 +183,7 @@ pub struct ComparisonComponents {
 
 /// Full pairwise comparison of two author fingerprints.
 pub fn compare_fingerprints(a: &AuthorFingerprint, b: &AuthorFingerprint) -> FingerprintComparison {
+    log::debug!("compare_fingerprints: a={}, b={}", a.id, b.id);
     let activity_similarity = a.activity.similarity(&b.activity);
 
     let iki_sim = a
@@ -381,6 +382,7 @@ impl ProfileMatcher {
         target: &AuthorFingerprint,
         candidates: &[AuthorFingerprint],
     ) -> Vec<MatchResult> {
+        log::debug!("ProfileMatcher::find_matches: target={}, candidates={}", target.id, candidates.len());
         let mut results: Vec<_> = candidates
             .iter()
             .filter(|c| c.id != target.id)
@@ -412,6 +414,7 @@ impl ProfileMatcher {
         target: &AuthorFingerprint,
         candidates: &[AuthorFingerprint],
     ) -> Option<MatchResult> {
+        log::debug!("ProfileMatcher::find_best_match: target={}, candidates={}", target.id, candidates.len());
         self.find_matches(target, candidates).into_iter().next()
     }
 
@@ -421,6 +424,7 @@ impl ProfileMatcher {
         target: &AuthorFingerprint,
         candidate: &AuthorFingerprint,
     ) -> VerificationResult {
+        log::debug!("ProfileMatcher::verify_match: target={}, candidate={}", target.id, candidate.id);
         let comparison = compare_fingerprints(target, candidate);
 
         VerificationResult {

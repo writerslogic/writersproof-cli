@@ -32,6 +32,7 @@ pub struct MnemonicHandler;
 impl MnemonicHandler {
     /// Generate a random 12-word BIP-39 mnemonic phrase, zeroized on drop.
     pub fn generate() -> Zeroizing<String> {
+        log::debug!("MnemonicHandler::generate");
         let mut entropy = [0u8; 16];
         rand::rng().fill(&mut entropy);
         let mnemonic = Mnemonic::from_entropy(&entropy).expect("16-byte entropy is valid BIP-39");
@@ -41,6 +42,7 @@ impl MnemonicHandler {
 
     /// Derive a 64-byte seed by combining mnemonic entropy with silicon PUF.
     pub fn derive_silicon_seed(phrase: &str) -> Result<SensitiveSeed> {
+        log::debug!("MnemonicHandler::derive_silicon_seed: phrase_len={}", phrase.len());
         let phrase_owned = Zeroizing::new(phrase.to_string());
         let mnemonic = Mnemonic::parse_in(Language::English, &*phrase_owned)
             .map_err(|_| anyhow!("Invalid mnemonic phrase"))?;
@@ -58,6 +60,7 @@ impl MnemonicHandler {
 
     /// Compute a short hex fingerprint binding the mnemonic to this machine.
     pub fn get_machine_fingerprint(phrase: &str) -> Result<String> {
+        log::debug!("MnemonicHandler::get_machine_fingerprint: phrase_len={}", phrase.len());
         let seed = Self::derive_silicon_seed(phrase)?;
         let mut hasher = Sha256::new();
         hasher.update(seed.as_ref());
@@ -66,6 +69,7 @@ impl MnemonicHandler {
 
     /// Extract raw entropy bytes from a BIP-39 mnemonic phrase.
     pub fn phrase_to_entropy(phrase: &str) -> Result<Zeroizing<Vec<u8>>> {
+        log::debug!("MnemonicHandler::phrase_to_entropy: phrase_len={}", phrase.len());
         let mnemonic = Mnemonic::parse_in(Language::English, phrase)
             .map_err(|_| anyhow!("Invalid mnemonic"))?;
         Ok(Zeroizing::new(mnemonic.to_entropy()))
@@ -73,6 +77,7 @@ impl MnemonicHandler {
 
     /// Convert raw entropy bytes into a BIP-39 mnemonic phrase, zeroized on drop.
     pub fn entropy_to_phrase(entropy: &[u8]) -> Result<Zeroizing<String>> {
+        log::debug!("MnemonicHandler::entropy_to_phrase: entropy_len={}", entropy.len());
         let mnemonic = Mnemonic::from_entropy(entropy).map_err(|_| anyhow!("Invalid entropy"))?;
         Ok(Zeroizing::new(mnemonic.to_string()))
     }

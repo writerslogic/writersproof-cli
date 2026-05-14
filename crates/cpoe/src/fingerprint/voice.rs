@@ -67,6 +67,7 @@ impl StyleFingerprint {
 
     /// Weighted merge by `total_chars`.
     pub fn merge(&mut self, other: &StyleFingerprint) {
+        log::debug!("StyleFingerprint::merge: self_chars={}, other_chars={}", self.total_chars, other.total_chars);
         let total = self.total_chars + other.total_chars;
         if total == 0 {
             return;

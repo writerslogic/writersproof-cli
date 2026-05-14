@@ -28,6 +28,7 @@ pub enum FingerprintMaturity {
 impl FingerprintMaturity {
     /// Derive maturity from a session count and the configured thresholds.
     pub fn from_session_count(count: u32, bootstrap_n: u32, advisory_n: u32) -> Self {
+        log::debug!("FingerprintMaturity::from_session_count: count={}, bootstrap_n={}, advisory_n={}", count, bootstrap_n, advisory_n);
         // Clamp advisory_n so it is always > bootstrap_n; if misconfigured, treat
         // both thresholds as bootstrap_n to avoid silent enforcement before readiness.
         let advisory_n = advisory_n.max(bootstrap_n + 1);

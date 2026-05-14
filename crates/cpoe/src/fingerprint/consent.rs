@@ -96,6 +96,7 @@ pub struct ConsentManager {
 impl ConsentManager {
     /// Load existing consent record from `base_path`, or initialize default.
     pub fn new(base_path: &Path) -> Result<Self> {
+        log::debug!("ConsentManager::new: base_path={}", base_path.display());
         let consent_file = base_path.join("style_consent.json");
 
         let mut record: ConsentRecord = if consent_file.exists() {
@@ -138,6 +139,7 @@ impl ConsentManager {
     /// granted. Caller must display `CONSENT_EXPLANATION` and call
     /// `grant_consent`/`deny_consent` based on user input.
     pub fn begin_consent_request(&mut self) -> Result<bool> {
+        log::debug!("ConsentManager::begin_consent_request");
         if self.record.first_requested.is_none() {
             self.record.first_requested = Some(Utc::now());
             self.save()?;
@@ -148,6 +150,7 @@ impl ConsentManager {
 
     /// Record consent grant with timestamp and explanation hash.
     pub fn grant_consent(&mut self) -> Result<()> {
+        log::debug!("ConsentManager::grant_consent");
         self.record.status = ConsentStatus::Granted;
         self.record.granted_at = Some(Utc::now());
         self.record.consent_version = CONSENT_VERSION.to_string();
@@ -157,6 +160,7 @@ impl ConsentManager {
     }
 
     pub fn deny_consent(&mut self) -> Result<()> {
+        log::debug!("ConsentManager::deny_consent");
         self.record.status = ConsentStatus::Denied;
         self.save()?;
         Ok(())
@@ -164,6 +168,7 @@ impl ConsentManager {
 
     /// Revoke consent. Caller is responsible for deleting style data.
     pub fn revoke_consent(&mut self) -> Result<()> {
+        log::debug!("ConsentManager::revoke_consent: current_status={:?}", self.record.status);
         if self.record.status != ConsentStatus::Granted {
             return Err(anyhow!("Cannot revoke consent that was not granted"));
         }

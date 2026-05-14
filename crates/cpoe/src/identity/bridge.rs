@@ -46,6 +46,7 @@ pub struct BridgedIdentity {
 impl BridgedIdentity {
     /// Create a self-sovereign identity (did:key only, no CAWG bridge).
     pub fn self_sovereign(did: &str) -> Self {
+        log::debug!("BridgedIdentity::self_sovereign: did={}", did);
         Self {
             mode: IdentityBridgeMode::SelfSovereign,
             author_did: did.to_string(),
@@ -57,6 +58,7 @@ impl BridgedIdentity {
 
     /// Create an ICA-bridged identity.
     pub fn with_ica(did: &str, ica_credential: serde_json::Value) -> Self {
+        log::debug!("BridgedIdentity::with_ica: did={}", did);
         Self {
             mode: IdentityBridgeMode::IdentityClaimsAggregator,
             author_did: did.to_string(),
@@ -68,6 +70,7 @@ impl BridgedIdentity {
 
     /// Create a did:web identity with X.509 binding.
     pub fn with_x509(did: &str, x509_pem: String) -> Self {
+        log::debug!("BridgedIdentity::with_x509: did={}", did);
         Self {
             mode: IdentityBridgeMode::DidWebWithX509,
             author_did: did.to_string(),

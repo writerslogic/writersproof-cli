@@ -18,6 +18,7 @@ pub struct OrcidIdentity {
 /// ORCID iDs consist of 4 groups of 4 digits separated by hyphens, where the
 /// last character is a check digit (0-9 or X) computed per ISO 7064 Mod 11,2.
 pub fn validate_orcid(orcid: &str) -> bool {
+    log::debug!("validate_orcid: orcid={}", orcid);
     let stripped: String = orcid.chars().filter(|c| *c != '-').collect();
     if stripped.len() != 16 {
         return false;
@@ -54,6 +55,7 @@ pub fn validate_orcid(orcid: &str) -> bool {
 ///
 /// Returns `Some("did:orcid:<orcid>")` if the ORCID is valid, or `None` if invalid.
 pub fn orcid_to_did(orcid: &str) -> Option<String> {
+    log::debug!("orcid_to_did: orcid={}", orcid);
     if validate_orcid(orcid) {
         Some(format!("did:orcid:{}", orcid))
     } else {

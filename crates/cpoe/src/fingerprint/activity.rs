@@ -99,6 +99,7 @@ impl Default for ActivityFingerprint {
 impl ActivityFingerprint {
     /// Build from raw jitter samples, computing all sub-distributions.
     pub fn from_samples(samples: &[SimpleJitterSample]) -> Self {
+        log::debug!("ActivityFingerprint::from_samples: count={}", samples.len());
         if samples.len() < 2 {
             return Self {
                 sample_count: samples.len() as u64,
@@ -146,6 +147,7 @@ impl ActivityFingerprint {
 
     /// Weighted merge of `other` into `self` by sample count.
     pub fn merge(&mut self, other: &ActivityFingerprint) {
+        log::debug!("ActivityFingerprint::merge: self_samples={}, other_samples={}", self.sample_count, other.sample_count);
         let total = self.sample_count + other.sample_count;
         if total == 0 {
             return;
@@ -220,6 +222,7 @@ impl ActivityFingerprint {
 
     /// Weighted similarity score (0.0-1.0) against another fingerprint.
     pub fn similarity(&self, other: &ActivityFingerprint) -> f64 {
+        log::debug!("ActivityFingerprint::similarity: self_id={}, other_id={}", self.id, other.id);
         let iki_sim = self.iki_distribution.similarity(&other.iki_distribution);
         let zone_sim = self.zone_profile.similarity(&other.zone_profile);
         let pause_sim = self.pause_signature.similarity(&other.pause_signature);

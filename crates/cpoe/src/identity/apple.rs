@@ -14,6 +14,7 @@ pub struct SecureEnclaveIdentity {
 impl SecureEnclaveIdentity {
     /// Load a Secure Enclave key by its Keychain label.
     pub fn load(label: &str) -> Result<Self> {
+        log::debug!("SecureEnclaveIdentity::load: label={}", label);
         let mut search = ItemSearchOptions::default();
         search.class(ItemClass::key());
         search.label(label);
@@ -34,6 +35,7 @@ impl SecureEnclaveIdentity {
 
     /// Sign a 32-byte hash using ECDSA via the Secure Enclave.
     pub fn sign(&self, hash: &[u8; 32]) -> Result<Vec<u8>> {
+        log::debug!("SecureEnclaveIdentity::sign: hash_len={}", hash.len());
         let signature = self
             .key
             .create_signature(Algorithm::ECDSASignatureMessageX962SHA256, hash)
