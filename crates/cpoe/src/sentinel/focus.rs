@@ -580,7 +580,7 @@ impl SentinelFocusTracker for HybridFocusTracker {
         // transition. We suppress polling FocusLost events that arrive
         // within FOCUS_GAINED_GUARD of the last emitted FocusGained.
         let merge_handle = tokio::spawn(async move {
-            let mut last_emitted: Option<SystemTime> = None;
+            let mut last_emitted: Option<(SystemTime, FocusEventType, String)> = None;
             let mut last_focus_gained_at: Option<SystemTime> = None;
             const DEDUP_WINDOW: Duration = Duration::from_millis(200);
             const FOCUS_GAINED_GUARD: Duration = Duration::from_secs(3);
@@ -596,9 +596,14 @@ impl SentinelFocusTracker for HybridFocusTracker {
                     else => break,
                 };
 
-                // Deduplicate: skip events within DEDUP_WINDOW of last emitted.
-                let dominated = last_emitted
-                    .and_then(|prev| event.timestamp.duration_since(prev).ok())
+                // Deduplicate: skip events within DEDUP_WINDOW that have the
+                // same type AND same path. Different paths (intra-app document
+                // switch) are always forwarded even if timestamps are close.
+                let dominated = last_emitted.as_ref()
+                    .filter(|(_, prev_type, prev_path)| {
+                        *prev_type == event.event_type && *prev_path == event.path
+                    })
+                    .and_then(|(prev_ts, _, _)| event.timestamp.duration_since(*prev_ts).ok())
                     .map(|d| d < DEDUP_WINDOW)
                     .unwrap_or(false);
 
@@ -627,7 +632,7 @@ impl SentinelFocusTracker for HybridFocusTracker {
                     last_focus_gained_at = Some(event.timestamp);
                 }
 
-                last_emitted = Some(event.timestamp);
+                last_emitted = Some((event.timestamp, event.event_type, event.path.clone()));
                 if focus_tx.send(event).await.is_err() {
                     break;
                 }
