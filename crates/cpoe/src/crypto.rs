@@ -29,7 +29,13 @@ pub fn hash_file(path: &Path) -> std::io::Result<[u8; 32]> {
 /// Eliminates TOCTOU races vs separate `fs::metadata` call.
 /// Rejects files larger than [`MAX_FILE_SIZE`](crate::MAX_FILE_SIZE) to prevent
 /// unbounded I/O on oversized inputs.
+///
+/// For directories (macOS packages like .scriv, .pages), hashes the
+/// concatenation of all regular file paths and sizes within the package.
 pub fn hash_file_with_size(path: &Path) -> std::io::Result<([u8; 32], u64)> {
+    if path.is_dir() {
+        return hash_package_dir(path);
+    }
     let file = File::open(path)?;
     let len = file.metadata()?.len();
     if len > crate::MAX_FILE_SIZE {
@@ -43,6 +49,39 @@ pub fn hash_file_with_size(path: &Path) -> std::io::Result<([u8; 32], u64)> {
         ));
     }
     hash_file_handle(file)
+}
+
+fn hash_package_dir(dir: &Path) -> std::io::Result<([u8; 32], u64)> {
+    use sha2::Digest;
+    let mut hasher = Sha256::new();
+    let mut total_size: u64 = 0;
+    let mut entries: Vec<(String, u64)> = Vec::new();
+
+    fn walk(base: &Path, current: &Path, depth: u8, out: &mut Vec<(String, u64)>) {
+        if depth > 5 { return; }
+        let Ok(rd) = std::fs::read_dir(current) else { return };
+        for entry in rd.flatten() {
+            let ft = match entry.file_type() { Ok(t) => t, Err(_) => continue };
+            if ft.is_file() {
+                let rel = entry.path().strip_prefix(base).unwrap_or(&entry.path()).to_string_lossy().into_owned();
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                out.push((rel, size));
+            } else if ft.is_dir() {
+                walk(base, &entry.path(), depth + 1, out);
+            }
+        }
+    }
+
+    walk(dir, dir, 0, &mut entries);
+    entries.sort();
+    for (path, size) in &entries {
+        hasher.update(path.as_bytes());
+        hasher.update(b":");
+        hasher.update(size.to_le_bytes());
+        hasher.update(b"\n");
+        total_size += size;
+    }
+    Ok((hasher.finalize().into(), total_size))
 }
 
 /// Compute SHA-256 hash from an already-opened file handle, returning (hash, bytes_read).

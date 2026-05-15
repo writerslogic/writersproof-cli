@@ -56,6 +56,12 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
         activity_samples: 0,
     }, {
     log::debug!("ffi_get_fingerprint_status");
+    // Read live sample count from the sentinel's shared accumulator
+    // (the FingerprintManager's own accumulator is not fed from the
+    // keystroke injection path).
+    let live_activity_samples = super::sentinel::get_running_sentinel()
+        .map(|s| s.activity_accumulator.read_recover().sample_count() as u64)
+        .unwrap_or(0);
     match with_manager(|mgr| {
         let status = mgr.status();
         Ok(FfiFingerprintStatus {
@@ -63,7 +69,7 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
             style_samples: status.style_samples as u64,
             style_consent: status.style_consent,
             activity_enabled: status.activity_enabled,
-            activity_samples: status.activity_samples as u64,
+            activity_samples: live_activity_samples,
         })
     }) {
         Ok(s) => s,
