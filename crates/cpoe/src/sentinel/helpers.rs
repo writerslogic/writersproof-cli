@@ -313,9 +313,6 @@ pub fn handle_focus_event_sync(
             let should_clear = if event.path.is_empty() {
                 // Generic app-level FocusLost — only clear if the currently
                 // focused session belongs to the same app that lost focus.
-                // Otherwise a stale FocusLost from the polling debounce for
-                // the OLD app would clear the NEW app's focus that AXObserver
-                // already set correctly.
                 if let Some(ref current) = prev_path {
                     sessions.read_recover()
                         .get(current.as_str())

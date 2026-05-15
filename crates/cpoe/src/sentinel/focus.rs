@@ -574,11 +574,16 @@ impl SentinelFocusTracker for HybridFocusTracker {
             }
         }
 
-        // Merge task: deduplicates events from AX and polling by timestamp proximity.
+        // Merge task: deduplicates events from AX and polling sources.
+        // The AXObserver fires near-instantly on app switch; the polling
+        // watchdog fires ~2s later with a stale FocusLost for the same
+        // transition. We suppress polling FocusLost events that arrive
+        // within FOCUS_GAINED_GUARD of the last emitted FocusGained.
         let merge_handle = tokio::spawn(async move {
-            // Track last emitted event timestamp to suppress duplicates.
             let mut last_emitted: Option<SystemTime> = None;
+            let mut last_focus_gained_at: Option<SystemTime> = None;
             const DEDUP_WINDOW: Duration = Duration::from_millis(200);
+            const FOCUS_GAINED_GUARD: Duration = Duration::from_secs(3);
 
             loop {
                 if !running.load(Ordering::Acquire) {
@@ -591,8 +596,7 @@ impl SentinelFocusTracker for HybridFocusTracker {
                     else => break,
                 };
 
-                // Deduplicate: if the event timestamp is within DEDUP_WINDOW of
-                // the last emitted event for the same event type, skip it.
+                // Deduplicate: skip events within DEDUP_WINDOW of last emitted.
                 let dominated = last_emitted
                     .and_then(|prev| event.timestamp.duration_since(prev).ok())
                     .map(|d| d < DEDUP_WINDOW)
@@ -600,11 +604,32 @@ impl SentinelFocusTracker for HybridFocusTracker {
 
                 if dominated {
                     log::debug!("hybrid focus: deduplicated event within DEDUP_WINDOW");
-                } else {
-                    last_emitted = Some(event.timestamp);
-                    if focus_tx.send(event).await.is_err() {
-                        break;
+                    continue;
+                }
+
+                // Suppress stale FocusLost from polling when AXObserver
+                // already delivered FocusGained for the new document.
+                if event.event_type == FocusEventType::FocusLost {
+                    let suppressed = last_focus_gained_at
+                        .and_then(|gained| event.timestamp.duration_since(gained).ok())
+                        .map(|d| d < FOCUS_GAINED_GUARD)
+                        .unwrap_or(false);
+                    if suppressed {
+                        log::debug!(
+                            "hybrid focus: suppressed stale FocusLost for {} (FocusGained was recent)",
+                            event.app_bundle_id
+                        );
+                        continue;
                     }
+                }
+
+                if event.event_type == FocusEventType::FocusGained {
+                    last_focus_gained_at = Some(event.timestamp);
+                }
+
+                last_emitted = Some(event.timestamp);
+                if focus_tx.send(event).await.is_err() {
+                    break;
                 }
             }
         });
