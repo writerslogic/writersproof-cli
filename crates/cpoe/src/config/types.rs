@@ -371,6 +371,9 @@ impl Default for SentinelConfig {
                 "io.alacritty".to_string(),
                 "org.gnome.Terminal".to_string(),
                 "org.kde.konsole".to_string(),
+                // System overlays (not document contexts)
+                "com.apple.Spotlight".to_string(),
+                "com.apple.notificationcenterui".to_string(),
             ],
             track_unknown_apps: true,
             excluded_paths: {

@@ -16,6 +16,8 @@ const TRANSIENT_BUNDLES: &[&str] = &[
     "com.apple.dock",
     "com.apple.exposelauncher",
     "com.apple.systemuiserver",
+    "com.apple.Spotlight",
+    "com.apple.notificationcenterui",
 ];
 
 #[derive(Debug)]
