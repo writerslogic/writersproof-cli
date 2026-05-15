@@ -574,16 +574,24 @@ impl SentinelFocusTracker for HybridFocusTracker {
             }
         }
 
-        // Merge task: deduplicates events from AX and polling sources.
-        // The AXObserver fires near-instantly on app switch; the polling
-        // watchdog fires ~2s later with a stale FocusLost for the same
-        // transition. We suppress polling FocusLost events that arrive
-        // within FOCUS_GAINED_GUARD of the last emitted FocusGained.
+        // AX-primary architecture: AXObserver is the authoritative source.
+        // Polling only acts as a corrector/watchdog.
+        //
+        // - AX events are forwarded immediately (they fire within ms of
+        //   the actual app/document switch).
+        // - Polling FocusGained events are forwarded ONLY if AXObserver
+        //   hasn't fired in the last AX_SILENCE_THRESHOLD (watchdog mode),
+        //   or if the polling event reveals a different path than the last
+        //   AX event (correction mode for intra-app tab switches that AX
+        //   doesn't capture).
+        // - Polling FocusLost events are ALWAYS dropped — unfocusing is
+        //   handled implicitly when a new FocusGained arrives (the
+        //   handle_focus_event_sync handler unfocuses the old session
+        //   before focusing the new one).
         let merge_handle = tokio::spawn(async move {
-            let mut last_emitted: Option<(SystemTime, FocusEventType, String)> = None;
-            let mut last_focus_gained_at: Option<SystemTime> = None;
-            const DEDUP_WINDOW: Duration = Duration::from_millis(200);
-            const FOCUS_GAINED_GUARD: Duration = Duration::from_secs(3);
+            let mut last_ax_event_at: Option<Instant> = None;
+            let mut last_emitted_path: Option<String> = None;
+            const AX_SILENCE_THRESHOLD: Duration = Duration::from_secs(5);
 
             loop {
                 if !running.load(Ordering::Acquire) {
@@ -591,50 +599,56 @@ impl SentinelFocusTracker for HybridFocusTracker {
                 }
 
                 let event = tokio::select! {
-                    Some(e) = ax_bridge_rx.recv() => e,
+                    Some(e) = ax_bridge_rx.recv() => {
+                        // AX event: always forward, always authoritative.
+                        last_ax_event_at = Some(Instant::now());
+                        last_emitted_path = Some(e.path.clone());
+                        log::debug!(
+                            "hybrid: AX event {:?} path={:?} app={}",
+                            e.event_type, e.path, e.app_bundle_id
+                        );
+                        if focus_tx.send(e).await.is_err() { break; }
+                        continue;
+                    },
                     Some(e) = poll_rx.recv() => e,
                     else => break,
                 };
 
-                // Deduplicate: skip events within DEDUP_WINDOW that have the
-                // same type AND same path. Different paths (intra-app document
-                // switch) are always forwarded even if timestamps are close.
-                let dominated = last_emitted.as_ref()
-                    .filter(|(_, prev_type, prev_path)| {
-                        *prev_type == event.event_type && *prev_path == event.path
-                    })
-                    .and_then(|(prev_ts, _, _)| event.timestamp.duration_since(*prev_ts).ok())
-                    .map(|d| d < DEDUP_WINDOW)
-                    .unwrap_or(false);
-
-                if dominated {
-                    log::debug!("hybrid focus: deduplicated event within DEDUP_WINDOW");
+                // Polling event received. Decide whether to forward.
+                if event.event_type == FocusEventType::FocusLost {
+                    // Never forward polling FocusLost — unfocusing is handled
+                    // by the FocusGained handler's path_to_unfocus logic.
+                    log::debug!(
+                        "hybrid: dropped polling FocusLost for {}",
+                        event.app_bundle_id
+                    );
                     continue;
                 }
 
-                // Suppress stale FocusLost from polling when AXObserver
-                // already delivered FocusGained for the new document.
-                if event.event_type == FocusEventType::FocusLost {
-                    let suppressed = last_focus_gained_at
-                        .and_then(|gained| event.timestamp.duration_since(gained).ok())
-                        .map(|d| d < FOCUS_GAINED_GUARD)
-                        .unwrap_or(false);
-                    if suppressed {
-                        log::debug!(
-                            "hybrid focus: suppressed stale FocusLost for {} (FocusGained was recent)",
-                            event.app_bundle_id
-                        );
-                        continue;
+                // Polling FocusGained: forward if AX is silent (watchdog) or
+                // if polling found a different path (correction).
+                let ax_silent = last_ax_event_at
+                    .map(|t| t.elapsed() >= AX_SILENCE_THRESHOLD)
+                    .unwrap_or(true);
+
+                let path_differs = last_emitted_path.as_ref()
+                    .map(|p| *p != event.path)
+                    .unwrap_or(true);
+
+                if ax_silent || path_differs {
+                    log::debug!(
+                        "hybrid: forwarding poll FocusGained (ax_silent={} path_differs={}) path={:?}",
+                        ax_silent, path_differs, event.path
+                    );
+                    last_emitted_path = Some(event.path.clone());
+                    if focus_tx.send(event).await.is_err() {
+                        break;
                     }
-                }
-
-                if event.event_type == FocusEventType::FocusGained {
-                    last_focus_gained_at = Some(event.timestamp);
-                }
-
-                last_emitted = Some((event.timestamp, event.event_type, event.path.clone()));
-                if focus_tx.send(event).await.is_err() {
-                    break;
+                } else {
+                    log::debug!(
+                        "hybrid: dropped redundant poll FocusGained (AX already handled) path={:?}",
+                        event.path
+                    );
                 }
             }
         });

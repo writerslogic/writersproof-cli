@@ -717,11 +717,14 @@ fn ax_observer_run_loop(
         }
 
         // Run the CFRunLoop for a short interval, then check for app changes.
+        // 100ms keeps the PID re-registration responsive while avoiding
+        // busy-looping. AX notifications fire within the run loop, so shorter
+        // intervals also reduce AX event delivery latency.
         // SAFETY: CFRunLoopRunInMode is safe to call on the current thread's run loop.
         unsafe {
             core_foundation_sys::runloop::CFRunLoopRunInMode(
                 core_foundation_sys::runloop::kCFRunLoopDefaultMode,
-                0.5, // 500ms
+                0.1, // 100ms
                 0,   // returnAfterSourceHandled = false
             );
         }
