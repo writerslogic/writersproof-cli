@@ -378,9 +378,19 @@ pub fn focus_document_sync(
 ) {
     // Skip directories and paths that don't look like documents.
     // Virtual keys (shadow://, title://) bypass filesystem checks.
+    // macOS packages (.scriv, .pages, .rtfd, etc.) are directories that
+    // act as single-file documents — allow them through.
+    const PACKAGE_EXTENSIONS: &[&str] = &[
+        "scriv", "scrivx", "pages", "key", "numbers", "rtfd",
+        "band", "graffle", "mindnode", "oo3",
+    ];
     if !path.starts_with("shadow://") {
         let p = std::path::Path::new(path);
-        if p.is_dir() {
+        let is_package = p.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| PACKAGE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+            .unwrap_or(false);
+        if p.is_dir() && !is_package {
             return;
         }
         // Block known non-document extensions (media, archives, binaries).
