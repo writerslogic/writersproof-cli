@@ -180,9 +180,9 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                 let info = provider.get_active_window();
 
                 if info.is_none() {
-                    log::debug!("[POLL] no active window (transient UI / Mission Control)");
+                    log::trace!("[POLL] no active window (transient UI / Mission Control)");
                     if !last_app.is_empty() && pending_loss.is_none() {
-                        log::debug!("[POLL] starting pending loss timer for {}", last_app);
+                        log::trace!("[POLL] starting pending loss timer for {}", last_app);
                         pending_loss = Some((last_app.clone(), Instant::now()));
                     }
                     // Check if pending loss has expired past the debounce window.
@@ -405,7 +405,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 });
                                 last_path = effective_path;
                             } else {
-                                log::debug!("[POLL] app NOT allowed, clearing last_path");
+                                log::trace!("[POLL] app NOT allowed, clearing last_path");
                                 last_path = None;
                             }
 

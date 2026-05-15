@@ -89,30 +89,30 @@ impl MacOSFocusMonitor {
                 }
                 let open_docs =
                     super::process_files::open_documents_for_pid(pid as u32);
-                log::debug!("[AX_PROBE] FD scan: {} open docs for pid {}", open_docs.len(), pid);
+                log::trace!("[AX_PROBE] FD scan: {} open docs for pid {}", open_docs.len(), pid);
                 if let Some(matched) = open_docs.iter().find(|f| {
                     f.path
                         .file_name()
                         .map(|n| n.to_string_lossy().eq_ignore_ascii_case(&inferred))
                         .unwrap_or(false)
                 }) {
-                    log::debug!("[AX_PROBE] FD match: {:?}", matched.path);
+                    log::trace!("[AX_PROBE] FD match: {:?}", matched.path);
                     return Some(matched.path.to_string_lossy().into_owned());
                 }
-                log::debug!("[AX_PROBE] no FD match, using title:// fallback");
+                log::trace!("[AX_PROBE] no FD match, using title:// fallback");
                 Some(format!("title://{}/{}", bundle_id_str, inferred))
             });
 
             // Last resort: enumerate open file descriptors to find documents.
             let doc_path = doc_path.or_else(|| {
-                log::debug!("[AX_PROBE] last resort FD scan for pid {}", pid);
+                log::trace!("[AX_PROBE] last resort FD scan for pid {}", pid);
                 let open_docs =
                     super::process_files::open_documents_for_pid(pid as u32);
                 let found = open_docs
                     .into_iter()
                     .find(|f| f.writable)
                     .map(|f| f.path.to_string_lossy().into_owned());
-                log::debug!("[AX_PROBE] FD writable result: {:?}", found);
+                log::trace!("[AX_PROBE] FD writable result: {:?}", found);
                 found
             });
 
@@ -123,7 +123,7 @@ impl MacOSFocusMonitor {
                     } else {
                         title_str.clone()
                     };
-                    log::debug!("[AX_PROBE] final title:// fallback: {}/{}", bundle_id_str, suffix);
+                    log::trace!("[AX_PROBE] final title:// fallback: {}/{}", bundle_id_str, suffix);
                     Some(format!("title://{}/{}", bundle_id_str, suffix))
                 } else {
                     None
@@ -168,7 +168,7 @@ impl MacOSFocusMonitor {
             } else {
                 self.query_focused_element_attribute(pid, attr_source.1)
             };
-            log::debug!(
+            log::trace!(
                 "[AX_DOC] source={} attr={} raw={:?}",
                 if attr_source.0 { "window" } else { "element" },
                 attr_source.1,

@@ -337,7 +337,7 @@ fn inject_keystroke_inner_v3(
     // CGEvent (sandboxed apps), all three fields are 0. Accept these as trusted
     // in-process FFI injections from KeystrokeMonitorService.
     let is_unverified_ffi = source_state_id == 0 && keyboard_type == 0 && source_pid == 0;
-    log::debug!(
+    log::trace!(
         "[FFI_INJECT] source: state_id={} kbd_type={} pid={} unverified={}",
         source_state_id, keyboard_type, source_pid, is_unverified_ffi
     );
@@ -428,7 +428,7 @@ fn inject_keystroke_inner_v3(
             // fields zero) require a higher plausibility threshold since they
             // cannot be validated against HID system state (H-006).
             let min_confidence = if is_unverified_ffi { 0.5 } else { 0.1 };
-            log::debug!(
+            log::trace!(
                 "[FFI_INJECT] validation: confidence={:.2} min={:.2} unverified={} keycode={} source_pid={}",
                 validation.confidence, min_confidence, is_unverified_ffi, keycode, source_pid
             );
