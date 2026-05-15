@@ -204,30 +204,41 @@ pub fn handle_focus_event_sync(
             // the file), upgrade the session to the real path so keystroke
             // attribution uses the filesystem path going forward.
             if !doc_path.starts_with("title://") && !doc_path.starts_with("shadow://") {
-                if let Some(wid) = event.window_id {
-                    let wid_suffix = format!("#w{}", wid);
-                    let mut sessions_map = sessions.write_recover();
-                    let old_key = sessions_map
-                        .keys()
-                        .find(|k| k.starts_with("title://") && k.ends_with(&wid_suffix))
-                        .cloned();
+                let mut sessions_map = sessions.write_recover();
+                if !sessions_map.contains_key(&doc_path) {
+                    // Try window_id match first, then fall back to app bundle match.
+                    let old_key = event.window_id
+                        .map(|wid| format!("#w{}", wid))
+                        .and_then(|wid_suffix| {
+                            sessions_map.keys()
+                                .find(|k| k.starts_with("title://") && k.ends_with(&wid_suffix))
+                                .cloned()
+                        })
+                        .or_else(|| {
+                            // Fallback: if there's exactly one title:// session for this
+                            // app, upgrade it (covers apps that report window_id=None).
+                            let app_prefix = format!("title://{}/", event.app_bundle_id);
+                            let matches: Vec<_> = sessions_map.keys()
+                                .filter(|k| k.starts_with(&app_prefix))
+                                .cloned()
+                                .collect();
+                            if matches.len() == 1 { Some(matches[0].clone()) } else { None }
+                        });
                     if let Some(old_key) = old_key {
-                        if !sessions_map.contains_key(&doc_path) {
-                            if let Some(mut session) = sessions_map.remove(&old_key) {
-                                log::info!(
-                                    "[FOCUS] upgrading title session to real path: {:?} -> {:?}",
-                                    old_key, doc_path
-                                );
-                                session.origin_temp_path = Some(old_key);
-                                session.path = doc_path.clone();
-                                session.evidence_confidence =
-                                    super::types::EvidenceConfidence::Full;
-                                sessions_map.insert(doc_path.clone(), session);
-                            }
+                        if let Some(mut session) = sessions_map.remove(&old_key) {
+                            log::info!(
+                                "[FOCUS] upgrading title session to real path: {:?} -> {:?}",
+                                old_key, doc_path
+                            );
+                            session.origin_temp_path = Some(old_key);
+                            session.path = doc_path.clone();
+                            session.evidence_confidence =
+                                super::types::EvidenceConfidence::Full;
+                            sessions_map.insert(doc_path.clone(), session);
                         }
                     }
-                    drop(sessions_map);
                 }
+                drop(sessions_map);
             }
 
             let path_to_unfocus = {
