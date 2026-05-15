@@ -3,6 +3,7 @@
 //! FFI bindings for fingerprint management — status, consent, export.
 
 use super::helpers::get_data_dir;
+use crate::RwLockRecover;
 use super::types::{
     catch_ffi_panic, FfiConsentResult, FfiFingerprintDimension, FfiFingerprintSnapshot,
     FfiFingerprintStatus, FfiFingerprintSummary, FfiFingerprintVerification,
