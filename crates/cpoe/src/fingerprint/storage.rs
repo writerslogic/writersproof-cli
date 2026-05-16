@@ -151,7 +151,9 @@ impl FingerprintStorage {
         let ciphertext = self.encrypt(&plaintext)?;
         fs::write(&path, &ciphertext)?;
         #[cfg(unix)]
-        let _ = crate::crypto::restrict_permissions(&path, 0o600);
+        if let Err(e) = crate::crypto::restrict_permissions(&path, 0o600) {
+            log::warn!("failed to restrict permissions on {}: {e}", path.display());
+        }
 
         let mtime = fs::metadata(&path)
             .and_then(|m| m.modified())
@@ -439,15 +441,21 @@ fn secure_delete_file(path: &Path) {
     let size = match fs::metadata(path) {
         Ok(m) => m.len() as usize,
         Err(_) => {
-            let _ = fs::remove_file(path);
+            if let Err(e) = fs::remove_file(path) {
+                log::debug!("secure_delete: remove_file {}: {e}", path.display());
+            }
             return;
         }
     };
     let mut random = vec![0u8; size];
     if getrandom::getrandom(&mut random).is_ok() {
-        let _ = fs::write(path, &random);
+        if let Err(e) = fs::write(path, &random) {
+            log::warn!("secure_delete: overwrite failed {}: {e}", path.display());
+        }
     }
-    let _ = fs::remove_file(path);
+    if let Err(e) = fs::remove_file(path) {
+        log::warn!("secure_delete: remove_file failed {}: {e}", path.display());
+    }
 }
 
 #[cfg(test)]

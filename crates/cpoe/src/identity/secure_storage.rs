@@ -487,7 +487,9 @@ fn save_macos(account: &str, data: &[u8]) -> Result<()> {
     use security_framework_sys::keychain_item::SecItemAdd;
 
     // Ignore "not found" on pre-delete: the item may not exist yet, which is fine.
-    let _ = delete_macos(account);
+    if let Err(e) = delete_macos(account) {
+        log::debug!("pre-delete before save (expected on first write): {e}");
+    }
 
     let mut encoded = general_purpose::STANDARD.encode(data);
     let encoded_cf = CFData::from_buffer(encoded.as_bytes());
@@ -665,10 +667,10 @@ fn migrate_macos_keychain() {
             return;
         }
 
-        // If data_dir already exists, resolve symlinks and verify it's
-        // still under the home directory to prevent redirection attacks.
+        // If data_dir already exists, atomically resolve and validate it
+        // stays under the home directory to prevent redirection attacks.
         if data_dir.exists() {
-            match std::fs::canonicalize(&data_dir) {
+            match crate::utils::fs::canonicalize_validated(&data_dir) {
                 Ok(resolved) => {
                     let canonical_home = match std::fs::canonicalize(&home_dir) {
                         Ok(p) => p,
@@ -738,7 +740,9 @@ fn migrate_macos_keychain() {
                             let data = Zeroizing::new(data);
                             match save_macos(account, &data) {
                                 Ok(()) => {
-                                    let _ = entry.delete_password();
+                                    if let Err(e) = entry.delete_password() {
+                                        log::warn!("failed to delete old keyring entry during migration: {e}");
+                                    }
                                 }
                                 Err(e) => {
                                     log::warn!("Keychain migration failed for {account}: {e}");

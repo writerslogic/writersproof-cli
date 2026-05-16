@@ -167,7 +167,9 @@ pub fn ffi_create_authorship_credential(
         return FfiCredentialResult::err("No text fragments found for session");
     }
 
-    let author_did = super::helpers::load_did().ok();
+    let author_did = super::helpers::load_did()
+        .map_err(|e| log::debug!("DID not available for credential: {e}"))
+        .ok();
 
     let credential = AuthorshipCredential::from_session(
         &session_id,

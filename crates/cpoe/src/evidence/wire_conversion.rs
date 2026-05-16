@@ -136,7 +136,9 @@ pub fn chain_to_wire_with_signatures(
         author_did: {
             #[cfg(feature = "did-webvh")]
             {
-                crate::identity::did_webvh::load_active_did().ok()
+                crate::identity::did_webvh::load_active_did()
+                    .map_err(|e| log::debug!("DID not available for wire conversion: {e}"))
+                    .ok()
             }
             #[cfg(not(feature = "did-webvh"))]
             {

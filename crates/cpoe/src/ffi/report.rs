@@ -321,7 +321,9 @@ fn build_process_flags(
 }
 
 fn load_signing_key_and_seed() -> (Option<ed25519_dalek::SigningKey>, String, String) {
-    let loaded_key = crate::ffi::helpers::load_signing_key().ok();
+    let loaded_key = crate::ffi::helpers::load_signing_key()
+        .map_err(|e| log::warn!("load signing key for report: {e}"))
+        .ok();
     let (key_fp, guilloche_seed_hex) = match loaded_key.as_ref() {
         Some(signing_key) => {
             let vk = signing_key.verifying_key();
@@ -866,7 +868,9 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         author_did: {
             #[cfg(feature = "did-webvh")]
             {
-                crate::identity::did_webvh::load_active_did().ok()
+                crate::identity::did_webvh::load_active_did()
+                    .map_err(|e| log::debug!("DID not available for report: {e}"))
+                    .ok()
             }
             #[cfg(not(feature = "did-webvh"))]
             {

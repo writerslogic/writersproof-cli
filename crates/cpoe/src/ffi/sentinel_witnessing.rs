@@ -3,16 +3,12 @@
 //! FFI functions for witnessing start/stop/status.
 
 use super::sentinel::get_sentinel;
-use crate::ffi::types::{
-    catch_ffi_panic, try_ffi, FfiPermissionState, FfiResult, FfiSentinelStatus, FfiWitnessingStatus,
-};
-use crate::{MutexRecover, RwLockRecover};
+use crate::ffi::types::{try_ffi, FfiResult, FfiSentinelStatus, FfiWitnessingStatus};
+use crate::RwLockRecover;
 
 /// Start witnessing a specific file path.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
-    log::debug!("ffi_sentinel_start_witnessing: path={}", path);
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -38,14 +34,11 @@ pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
         Ok(()) => FfiResult::ok(format!("Now witnessing: {}", validated_path.display())),
         Err((_code, msg)) => FfiResult::err(msg),
     }
-    })
 }
 
 /// Stop witnessing a specific file path.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
-    log::debug!("ffi_sentinel_stop_witnessing: path={}", path);
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -65,7 +58,6 @@ pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
         Ok(()) => FfiResult::ok(format!("Stopped witnessing: {}", validated_path.display())),
         Err((_code, msg)) => FfiResult::err(msg),
     }
-    })
 }
 
 fn format_duration(total_secs: i64) -> String {
@@ -86,16 +78,6 @@ fn format_duration(total_secs: i64) -> String {
 /// Get current sentinel status.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_status() -> FfiSentinelStatus {
-    catch_ffi_panic!(FfiSentinelStatus {
-        running: false,
-        tracked_file_count: 0,
-        tracked_files: vec![],
-        uptime_secs: 0,
-        keystroke_count: 0,
-        focus_duration: String::new(),
-        permission_state: FfiPermissionState::Unknown,
-    }, {
-    log::debug!("ffi_sentinel_status called");
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -107,7 +89,6 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
                 uptime_secs: 0,
                 keystroke_count: 0,
                 focus_duration: String::new(),
-                permission_state: FfiPermissionState::Unknown,
             };
         }
     };
@@ -119,19 +100,12 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
         .read_recover()
         .to_session_summary();
 
-    let total_focus_ms: i64 = sentinel
-        .sessions()
-        .iter()
-        .map(|s| s.total_focus_duration().as_millis() as i64)
-        .sum();
-
-    let permission_state = {
-        use crate::sentinel::permission_monitor::PermissionState;
-        match *sentinel.permission_state.lock_recover() {
-            PermissionState::Full => FfiPermissionState::Full,
-            PermissionState::KeystrokeDegraded => FfiPermissionState::KeystrokeDegraded,
-            PermissionState::Revoked => FfiPermissionState::Revoked,
-        }
+    let total_focus_ms: i64 = {
+        let sessions_map = sentinel.sessions.read_recover();
+        sessions_map
+            .values()
+            .map(|s| s.total_focus_duration().as_millis() as i64)
+            .sum()
     };
 
     FfiSentinelStatus {
@@ -141,26 +115,7 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
         uptime_secs: summary.duration_secs,
         keystroke_count: summary.keystroke_count,
         focus_duration: format_duration(total_focus_ms / 1000),
-        permission_state,
     }
-    })
-}
-
-/// Return the current permission state for keystroke capture.
-#[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_sentinel_permission_state() -> FfiPermissionState {
-    catch_ffi_panic!(FfiPermissionState::Unknown, {
-    log::debug!("ffi_sentinel_permission_state called");
-    use crate::sentinel::permission_monitor::PermissionState;
-    match get_sentinel() {
-        Some(s) => match *s.permission_state.lock_recover() {
-            PermissionState::Full => FfiPermissionState::Full,
-            PermissionState::KeystrokeDegraded => FfiPermissionState::KeystrokeDegraded,
-            PermissionState::Revoked => FfiPermissionState::Revoked,
-        },
-        None => FfiPermissionState::Unknown,
-    }
-    })
 }
 
 /// Fallback score from cadence when store is unavailable or has insufficient data.
@@ -245,14 +200,32 @@ fn not_tracking(capture_active: bool) -> FfiWitnessingStatus {
         session_activity: String::new(),
         total_deletions: 0,
         undo_count: 0,
+        words_per_minute: 0.0,
     }
+}
+
+/// Snapshot of session data extracted under the sessions read lock,
+/// avoiding a full DocumentSession clone for the status poll.
+struct SessionSnapshot {
+    path: String,
+    keystroke_count: u64,
+    elapsed_secs: f64,
+    change_count: u64,
+    save_count: u64,
+    event_confidence: f64,
+    doc_has_focus: bool,
+    total_focus_ms: i64,
+    focus_switches: Vec<crate::sentinel::types::FocusSwitchRecord>,
+    editing_ratio: f64,
+    session_activity: String,
+    total_deletions: u64,
+    undo_count: u64,
+    words_per_minute: f64,
 }
 
 /// Get live witnessing metrics for the first active session.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
-    catch_ffi_panic!(not_tracking(false), {
-    log::debug!("ffi_sentinel_witnessing_status called");
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
@@ -261,104 +234,113 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
 
     let capture_active = sentinel.is_keystroke_capture_active();
 
-    // Show the most relevant session:
-    // 1. The currently focused document (if it has a session)
-    // 2. A manually-tracked document (started via UI, has app_bundle_id = "cli")
-    // 3. Any active session as fallback
+    // Extract only the data we need under a single read lock, avoiding
+    // clone of all DocumentSession objects (SYS-008 hot-path optimization).
     let current_path = sentinel.current_focus();
-    let sessions = sentinel.sessions();
-    let session_paths: Vec<(&str, &str, u64)> = sessions
-        .iter()
-        .map(|s| (s.path.as_str(), s.app_bundle_id.as_str(), s.keystroke_count))
-        .collect();
-    log::debug!(
-        "[STATUS] focus={:?} capture_active={} session_count={} sessions={:?}",
-        current_path,
-        capture_active,
-        session_paths.len(),
-        session_paths
-    );
-    let focused_session = current_path
-        .as_ref()
-        .and_then(|p| sessions.iter().find(|s| &s.path == p));
-    let doc_has_focus = focused_session.is_some();
-    log::debug!(
-        "[STATUS] focused_session_found={} current_focus={:?}",
-        doc_has_focus,
-        current_path
-    );
-    let session = focused_session.or_else(|| {
-        sessions
-            .iter()
-            .find(|s| s.app_bundle_id == "cli")
-            .or_else(|| sessions.iter().max_by_key(|s| s.total_keystrokes()))
-    });
-    let session = match session {
-        Some(s) => {
-            log::debug!(
-                "[STATUS] showing session path={:?} keystrokes={} has_focus={}",
-                s.path,
-                s.total_keystrokes(),
-                s.has_focus
-            );
-            s
-        }
-        None => {
-            log::debug!("[STATUS] no session found, returning not_tracking");
-            return not_tracking(capture_active);
-        }
-    };
+    let snapshot = {
+        let sessions_map = sentinel.sessions.read_recover();
 
-    let keystroke_count = session.total_keystrokes();
+        #[cfg(debug_assertions)]
+        {
+            let session_paths: Vec<(&str, &str, u64)> = sessions_map
+                .iter()
+                .map(|(p, s)| (p.as_str(), s.app_bundle_id.as_str(), s.keystroke_count))
+                .collect();
+            crate::sentinel::trace!(
+                "[STATUS] focus={:?} capture_active={} sessions={:?}",
+                current_path,
+                capture_active,
+                session_paths
+            );
+        }
+
+        // Find the best session: focused > cli > max keystrokes
+        let focused_session = current_path
+            .as_ref()
+            .and_then(|p| sessions_map.get(p.as_str()));
+        let doc_has_focus = focused_session.is_some();
+        let session = focused_session.or_else(|| {
+            sessions_map
+                .values()
+                .find(|s| s.app_bundle_id == "cli")
+                .or_else(|| sessions_map.values().max_by_key(|s| s.total_keystrokes()))
+        });
+        let session = match session {
+            Some(s) => {
+                crate::sentinel::trace!(
+                    "[STATUS] showing session path={:?} keystrokes={}",
+                    s.path,
+                    s.total_keystrokes()
+                );
+                s
+            }
+            None => {
+                crate::sentinel::trace!("[STATUS] no session found");
+                return not_tracking(capture_active);
+            }
+        };
+
+        // Extract all needed fields under the lock; avoid cloning the entire session.
+        // focus_switches is cloned here because analyze_focus_patterns needs &[FocusSwitchRecord].
+        SessionSnapshot {
+            path: session.path.clone(),
+            keystroke_count: session.total_keystrokes(),
+            elapsed_secs: session.start_time.elapsed().unwrap_or_default().as_secs_f64(),
+            change_count: u64::from(session.change_count),
+            save_count: u64::from(session.save_count),
+            event_confidence: session.average_event_confidence(),
+            doc_has_focus,
+            total_focus_ms: session.total_focus_ms,
+            focus_switches: session.focus_switches.iter().cloned().collect(),
+            editing_ratio: session.semantic_counts.editing_ratio(),
+            session_activity: session
+                .semantic_counts
+                .session_activity_type()
+                .map(|t| t.to_string())
+                .unwrap_or_default(),
+            total_deletions: session.semantic_counts.total_deletions(),
+            undo_count: session.semantic_counts.undo,
+            words_per_minute: session.recent_wpm(),
+        }
+    }; // read lock released
+
     log::debug!(
         "witnessing: doc={} doc_keystrokes={} focus={:?}",
-        session.path,
-        keystroke_count,
-        sentinel.current_focus()
+        snapshot.path,
+        snapshot.keystroke_count,
+        current_path
     );
-
-    let elapsed_secs = session
-        .start_time
-        .elapsed()
-        .unwrap_or_default()
-        .as_secs_f64();
 
     let host_paste_chars = sentinel.take_last_paste_chars();
 
-    let cadence_score = sentinel.document_cadence_score(&session.path);
+    let cadence_score = sentinel.document_cadence_score(&snapshot.path);
 
     let focus = crate::forensics::analysis::analyze_focus_patterns(
-        &Vec::from(session.focus_switches.clone()),
-        session.total_focus_ms,
+        &snapshot.focus_switches,
+        snapshot.total_focus_ms,
     );
     let focus_penalty = crate::forensics::compute_focus_penalty(&focus);
 
-    let metrics = query_store_metrics(&session.path, cadence_score, focus_penalty);
-
-    let last_paste_chars = host_paste_chars;
+    let metrics = query_store_metrics(&snapshot.path, cadence_score, focus_penalty);
 
     FfiWitnessingStatus {
         is_tracking: true,
-        document_path: Some(session.path.clone()),
-        keystroke_count,
-        elapsed_secs,
-        change_count: u64::from(session.change_count),
-        save_count: u64::from(session.save_count),
+        document_path: Some(snapshot.path),
+        keystroke_count: snapshot.keystroke_count,
+        elapsed_secs: snapshot.elapsed_secs,
+        change_count: snapshot.change_count,
+        save_count: snapshot.save_count,
         event_count: metrics.event_count,
         forensic_score: metrics.forensic_score,
-        last_paste_chars,
-        event_confidence: session.average_event_confidence(),
-        document_has_focus: doc_has_focus,
+        last_paste_chars: host_paste_chars,
+        event_confidence: snapshot.event_confidence,
+        document_has_focus: snapshot.doc_has_focus,
         keystroke_capture_active: capture_active,
         error_message: metrics.error,
-        editing_ratio: session.semantic_counts.editing_ratio(),
-        session_activity: session
-            .semantic_counts
-            .session_activity_type()
-            .map(|t| t.to_string())
-            .unwrap_or_default(),
-        total_deletions: session.semantic_counts.total_deletions(),
-        undo_count: session.semantic_counts.undo,
+        editing_ratio: snapshot.editing_ratio,
+        session_activity: snapshot.session_activity,
+        total_deletions: snapshot.total_deletions,
+        undo_count: snapshot.undo_count,
+        words_per_minute: snapshot.words_per_minute,
     }
-    })
 }

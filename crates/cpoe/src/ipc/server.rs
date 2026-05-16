@@ -265,8 +265,9 @@ impl IpcServer {
                         }
                     }
                     _ = shutdown_rx.recv() => {
-                        // Intentionally ignored: socket may already be removed
-                        let _ = std::fs::remove_file(&self.socket_path);
+                        if let Err(e) = std::fs::remove_file(&self.socket_path) {
+                            log::debug!("socket cleanup on shutdown: {e}");
+                        }
                         break;
                     }
                 }
@@ -337,7 +338,9 @@ impl Drop for IpcServer {
     fn drop(&mut self) {
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = std::fs::remove_file(&self.socket_path);
+            if let Err(e) = std::fs::remove_file(&self.socket_path) {
+                log::debug!("socket cleanup on drop: {e}");
+            }
         }
     }
 }

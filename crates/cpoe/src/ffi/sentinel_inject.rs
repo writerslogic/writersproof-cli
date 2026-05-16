@@ -317,7 +317,7 @@ fn inject_keystroke_inner_v3(
                 .append(true)
                 .open(&debug_path)
             {
-                let _ = writeln!(
+                if let Err(e) = writeln!(
                     f,
                     "inject #{}: state={} kbd_type={} pid={} rejected_so_far={}",
                     n,
@@ -325,7 +325,9 @@ fn inject_keystroke_inner_v3(
                     keyboard_type,
                     source_pid,
                     REJECT_COUNT.load(AO::Relaxed)
-                );
+                ) {
+                    log::debug!("inject debug log write failed: {e}");
+                }
             }
         }
     }

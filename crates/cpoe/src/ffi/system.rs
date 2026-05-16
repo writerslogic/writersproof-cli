@@ -271,6 +271,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
             risk_level: adjusted_risk,
             keystroke_count: session_keystrokes as u64,
             meets_threshold,
+            is_active: false,
         });
     }
 
@@ -303,7 +304,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
                 continue; // Already in the store results
             }
             let elapsed_ns = session
-                .start_time
+                .last_focus_time
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
                 .unwrap_or(0);
@@ -323,6 +324,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
                 risk_level: "pending".to_string(),
                 keystroke_count: session.total_keystrokes(),
                 meets_threshold: false,
+                is_active: session.has_focus,
             });
         }
     }

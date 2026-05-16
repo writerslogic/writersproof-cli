@@ -188,10 +188,12 @@ pub fn ffi_sentinel_start() -> FfiResult {
             .append(true)
             .open(&debug_path)
         {
-            let _ = writeln!(
+            if let Err(e) = writeln!(
                 f,
                 "sentinel started: capture_active={capture_active} msg={msg}"
-            );
+            ) {
+                log::debug!("sentinel debug log write failed: {e}");
+            }
         }
     }
     FfiResult::ok(msg)

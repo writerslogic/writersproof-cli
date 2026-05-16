@@ -85,11 +85,12 @@ impl HwCosignScheduler {
         salt_input.extend_from_slice(SE_SALT_DST);
         salt_input.extend_from_slice(session_id.as_bytes());
 
-        let sig = tpm_provider
+        let mut sig = tpm_provider
             .sign(&salt_input)
             .map_err(|e| Error::crypto(format!("SE salt generation failed: {e}")))?;
 
         let salt_hash = Sha256::digest(&sig);
+        sig.zeroize();
         let mut se_salt = [0u8; 32];
         se_salt.copy_from_slice(&salt_hash);
 

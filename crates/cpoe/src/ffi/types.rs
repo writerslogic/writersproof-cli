@@ -178,6 +178,8 @@ pub struct FfiTrackedFile {
     /// Derived from the engine's forensic analysis; Swift should use this
     /// rather than re-deriving from forensic_score thresholds.
     pub meets_threshold: bool,
+    /// Whether this file has an active sentinel session (currently open).
+    pub is_active: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -340,6 +342,8 @@ pub struct FfiWitnessingStatus {
     pub total_deletions: u64,
     /// Number of undo operations in this session.
     pub undo_count: u64,
+    /// Real-time words-per-minute from the last 60 seconds of jitter samples.
+    pub words_per_minute: f64,
 }
 
 #[derive(Debug, Clone, Default)]

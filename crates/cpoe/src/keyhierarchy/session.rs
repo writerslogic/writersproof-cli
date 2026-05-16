@@ -49,11 +49,9 @@ pub(crate) fn start_session_inner(
         &session_input,
     )?;
     drop(key_bytes);
-    // NOTE: ed25519_dalek::SigningKey holds a copy of the seed internally. The SigningKey is
-    // dropped at end of scope, but the internal copy is not zeroized. This is a known
-    // limitation tracked as SYS-033.
     let session_key = SigningKey::from_bytes(&session_seed);
     let session_pub = session_key.verifying_key().to_bytes();
+    drop(session_key);
     let expires_at = Some(created_at + chrono::Duration::hours(24));
     let cert_data = build_cert_data_with_expiry(
         session_id,
@@ -132,6 +130,7 @@ impl Session {
         let signing_key = SigningKey::from_bytes(&signing_seed);
         let public_key = signing_key.verifying_key().to_bytes();
         let signature = signing_key.sign(&checkpoint_hash).to_bytes();
+        drop(signing_key);
 
         // Lamport one-shot signature: derive a separate key from the ratchet
         // using a distinct domain separator so the two schemes are independent.
@@ -201,6 +200,7 @@ impl Session {
         let signing_key = SigningKey::from_bytes(&signing_seed);
         let public_key = signing_key.verifying_key().to_bytes();
         let signature = signing_key.sign(&checkpoint_hash).to_bytes();
+        drop(signing_key);
 
         // Lamport one-shot signature
         let lamport_seed =
@@ -332,6 +332,7 @@ impl Session {
         )?;
         let signing_key = SigningKey::from_bytes(&signing_seed);
         let signature = signing_key.sign(&payload).to_bytes();
+        drop(signing_key);
 
         metadata.metadata_signature = Some(signature.to_vec());
 

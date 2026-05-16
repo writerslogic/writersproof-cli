@@ -1189,28 +1189,25 @@ pub fn create_document_hash_payload(hash: &str, size: i64) -> Result<Vec<u8>, St
 }
 
 /// Canonicalize and validate a user-provided path against traversal attacks.
+///
+/// For existing files, uses [`crate::utils::fs::canonicalize_validated`] which
+/// atomically resolves and rejects symlinks. For not-yet-existing files,
+/// canonicalizes the parent directory and appends the file name.
 pub fn validate_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
     let path = path.as_ref();
 
-    if let Ok(meta) = std::fs::symlink_metadata(path) {
-        if meta.file_type().is_symlink() {
-            return Err(format!("Symlinks not accepted: {}", path.display()));
-        }
-    }
-
     if path.exists() {
-        let canonical = path
-            .canonicalize()
+        let canonical = crate::utils::fs::canonicalize_validated(path)
             .map_err(|e| format!("Invalid path '{}': {}", path.display(), e))?;
         validate_canonical_path(&canonical)?;
         return Ok(canonical);
     }
 
+    // File does not exist yet — validate the parent directory
     let parent = path
         .parent()
         .ok_or_else(|| "Invalid path: no parent".to_string())?;
-    let canonical_parent = parent
-        .canonicalize()
+    let canonical_parent = crate::utils::fs::canonicalize_validated(parent)
         .map_err(|e| format!("Invalid parent directory for '{}': {}", path.display(), e))?;
 
     let file_name = path

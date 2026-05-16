@@ -231,7 +231,9 @@ fn run_command_with_timeout(cmd: &'static str, args: &'static [&'static str]) ->
             .ok()
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .map(|s| s.trim().to_string());
-        let _ = tx.send(result);
+        if tx.send(result).is_err() {
+            log::debug!("attestation channel send failed (receiver timed out)");
+        }
     });
     rx.recv_timeout(std::time::Duration::from_secs(2))
         .ok()

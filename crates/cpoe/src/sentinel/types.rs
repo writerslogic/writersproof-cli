@@ -1052,6 +1052,37 @@ impl DocumentSession {
         self.cumulative_keystrokes_base + self.keystroke_count
     }
 
+    /// Real-time WPM from the last 60 seconds of jitter samples.
+    /// Iterates from the back (newest first) and stops as soon as
+    /// samples fall outside the 60-second window — O(window) not O(total).
+    pub fn recent_wpm(&self) -> f64 {
+        let now_ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as i64)
+            .unwrap_or(0);
+        let window_ns = 60_000_000_000i64;
+        let mut count = 0usize;
+        let mut oldest_ns = now_ns;
+        for s in self.jitter_samples.iter().rev() {
+            if now_ns - s.timestamp_ns >= window_ns {
+                break;
+            }
+            if now_ns - s.timestamp_ns < 0 {
+                continue; // clock skew guard
+            }
+            count += 1;
+            oldest_ns = s.timestamp_ns;
+        }
+        if count < 5 {
+            return 0.0;
+        }
+        let window_secs = (now_ns - oldest_ns) as f64 / 1_000_000_000.0;
+        if window_secs < 1.0 {
+            return 0.0;
+        }
+        (count as f64 / 5.0) / (window_secs / 60.0)
+    }
+
     /// Total focus duration across all sessions including current.
     pub fn total_focus_ms_cumulative(&self) -> i64 {
         self.cumulative_focus_ms_base + self.total_focus_ms

@@ -288,8 +288,12 @@ pub(crate) fn open_store_at(db_path: &std::path::Path) -> Result<SecureStore, St
                                         "Failed to persist HMAC key after recreate: {e}; \
                                          restoring backup"
                                     );
-                                    let _ = std::fs::remove_file(db_path);
-                                    let _ = std::fs::rename(&backup_path, db_path);
+                                    if let Err(e2) = std::fs::remove_file(db_path) {
+                                        log::warn!("rollback: remove new DB failed: {e2}");
+                                    }
+                                    if let Err(e2) = std::fs::rename(&backup_path, db_path) {
+                                        log::warn!("rollback: restore backup failed: {e2}");
+                                    }
                                     return Err(format!(
                                         "DB recreated but HMAC key persist failed: {e}"
                                     ));
@@ -299,7 +303,9 @@ pub(crate) fn open_store_at(db_path: &std::path::Path) -> Result<SecureStore, St
                         }
                         Err(e) => {
                             log::error!("Recreate failed; restoring backup: {e}");
-                            let _ = std::fs::rename(&backup_path, db_path);
+                            if let Err(e2) = std::fs::rename(&backup_path, db_path) {
+                                log::warn!("rollback: restore backup after recreate failed: {e2}");
+                            }
                             return Err(format!("Failed to recreate database: {e}"));
                         }
                     }

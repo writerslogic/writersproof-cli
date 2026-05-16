@@ -22,6 +22,7 @@ use dashmap::DashMap;
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+use zeroize::Zeroize;
 
 use super::helpers::device_identity;
 
@@ -679,7 +680,7 @@ fn build_war_block(
     let key_bytes = zeroize::Zeroizing::new(
         <[u8; 32]>::try_from(&key_data[..32]).map_err(|_| "invalid key length")?,
     );
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(&key_bytes);
+    let mut signing_key = ed25519_dalek::SigningKey::from_bytes(&key_bytes);
 
     let snapshots: Vec<crate::evidence::EphemeralSnapshot> = session
         .content_snapshots
@@ -692,7 +693,7 @@ fn build_war_block(
         })
         .collect();
 
-    crate::war::build_signed_ephemeral_block(
+    let result = crate::war::build_signed_ephemeral_block(
         final_hash_hex,
         statement,
         &session.context_label,
@@ -700,7 +701,9 @@ fn build_war_block(
         &session.jitter_intervals,
         session.keystroke_count,
         &signing_key,
-    )
+    );
+    signing_key.zeroize();
+    result
 }
 
 /// Flush ephemeral session state to disk for crash recovery.
@@ -766,7 +769,9 @@ fn cleanup_session_state(session_id: &str) {
     let path = data_dir
         .join("ephemeral-sessions")
         .join(format!("{session_id}.json"));
-    let _ = std::fs::remove_file(path);
+    if let Err(e) = std::fs::remove_file(&path) {
+        log::debug!("ephemeral session cleanup {}: {e}", path.display());
+    }
 }
 
 #[cfg(test)]

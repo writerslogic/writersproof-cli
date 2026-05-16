@@ -6,6 +6,7 @@ pub mod crypto_helpers;
 pub mod crypto_types;
 pub mod error_context;
 pub mod formatting;
+pub mod fs;
 pub(crate) mod lock;
 pub mod mlock;
 pub mod probability;

@@ -355,7 +355,9 @@ fn build_wire_packet(
         author_did: {
             #[cfg(feature = "did-webvh")]
             {
-                crate::identity::did_webvh::load_active_did().ok()
+                crate::identity::did_webvh::load_active_did()
+                    .map_err(|e| log::debug!("DID not available for evidence export: {e}"))
+                    .ok()
             }
             #[cfg(not(feature = "did-webvh"))]
             {
