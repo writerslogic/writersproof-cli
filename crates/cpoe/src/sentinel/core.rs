@@ -592,7 +592,10 @@ impl Sentinel {
                 last_keyup_ts_ns: 0,
                 last_fingerprint_time: HashMap::new(),
                 last_capture_restart: None,
+                cached_focus: None,
             };
+
+            ctx.cached_focus = ctx.current_focus.read_recover().clone();
 
             let mut idle_check_interval = interval(Duration::from_secs(idle_check_interval_secs));
             let mut checkpoint_interval = interval(Duration::from_secs(checkpoint_interval_secs));

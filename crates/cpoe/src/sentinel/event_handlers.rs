@@ -74,6 +74,10 @@ pub(super) struct EventLoopCtx {
     pub(super) last_fingerprint_time: HashMap<String, std::time::Instant>,
     /// Cooldown: last time capture auto-recovery was attempted.
     pub(super) last_capture_restart: Option<std::time::Instant>,
+    /// Local cache of current_focus to avoid RwLock read per-keystroke.
+    /// Updated by focus/change event handlers; the single-threaded
+    /// tokio::select! loop ensures consistency without the lock.
+    pub(super) cached_focus: Option<String>,
 }
 
 /// Duration after last keystroke within which mouse micro-movements are recorded.
@@ -184,8 +188,7 @@ impl EventLoopCtx {
         if event.event_type == crate::platform::KeyEventType::Up {
             if let Some(down_ts) = self.pending_downs.remove(&event.keycode) {
                 let dwell = crate::utils::ns_elapsed(event.timestamp_ns, down_ts);
-                let focused_path = self.current_focus.read_recover().clone();
-                if let Some(ref path) = focused_path {
+                if let Some(ref path) = self.cached_focus {
                     let mut map = self.sessions.write_recover();
                     if let Some(session) = map.get_mut(path.as_str()) {
                         if let Some(&idx) =
@@ -283,8 +286,7 @@ impl EventLoopCtx {
         sample: &crate::jitter::SimpleJitterSample,
         duration_since_last_ns: u64,
     ) {
-        let focused_path = self.current_focus.read_recover().clone();
-        let Some(ref path) = focused_path else {
+        let Some(ref path) = self.cached_focus else {
             return;
         };
         log::debug!("record_keystroke_to_session: path={}", path);
@@ -532,6 +534,7 @@ impl EventLoopCtx {
                 } // should_fingerprint
             }
         }
+        self.cached_focus = self.current_focus.read_recover().clone();
     }
 
     /// Parse Scrivener project map and restore segment counts from shadow.
@@ -578,7 +581,7 @@ impl EventLoopCtx {
     }
 
     /// Forward a file-change event to the synchronous handler.
-    pub(super) fn handle_change_branch(&self, event: &ChangeEvent) {
+    pub(super) fn handle_change_branch(&mut self, event: &ChangeEvent) {
         handle_change_event_sync(
             event,
             &self.sessions,
@@ -588,6 +591,7 @@ impl EventLoopCtx {
             &self.session_events_tx,
             Some(&self.current_focus),
         );
+        self.cached_focus = self.current_focus.read_recover().clone();
     }
 
     /// Auto-checkpoint and end idle sessions; check capture health.
