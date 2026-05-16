@@ -385,8 +385,15 @@ impl WebVHIdentity {
         let data_dir = data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
 
         let meta_path = data_dir.join("did_webvh_meta.json");
-        let meta_json = std::fs::read_to_string(&meta_path)
-            .map_err(|e| Error::identity(format!("read webvh metadata: {e}")))?;
+        let (_canonical, meta_file) = crate::utils::fs::open_validated(&meta_path)
+            .map_err(|e| Error::identity(format!("open webvh metadata: {e}")))?;
+        let meta_json = {
+            use std::io::Read;
+            let mut s = String::new();
+            std::io::BufReader::new(meta_file).read_to_string(&mut s)
+                .map_err(|e| Error::identity(format!("read webvh metadata: {e}")))?;
+            s
+        };
         let meta: serde_json::Value = serde_json::from_str(&meta_json)
             .map_err(|e| Error::identity(format!("parse webvh metadata: {e}")))?;
 
@@ -635,28 +642,15 @@ fn load_signing_key() -> Result<SigningKey, Error> {
     let data_dir =
         data_dir().ok_or_else(|| Error::identity("Data directory not found"))?;
     let key_path = data_dir.join("signing_key");
-    {
-        let lmeta = std::fs::symlink_metadata(&key_path)
-            .map_err(|e| Error::identity(format!("stat signing key: {e}")))?;
-        if lmeta.file_type().is_symlink() {
-            return Err(Error::identity(
-                "signing key path is a symlink; refusing to load (possible attack)",
-            ));
-        }
-    }
-    let canonical = key_path.canonicalize().map_err(|e| {
-        Error::identity(format!("canonicalize signing key path: {e}"))
-    })?;
-    let canonical_data_dir = data_dir.canonicalize().map_err(|e| {
-        Error::identity(format!("canonicalize data directory: {e}"))
-    })?;
+    let (canonical, file) = crate::utils::fs::open_validated(&key_path)
+        .map_err(|e| Error::identity(format!("open signing key: {e}")))?;
+    let canonical_data_dir = crate::utils::fs::canonicalize_validated(&data_dir)
+        .map_err(|e| Error::identity(format!("canonicalize data directory: {e}")))?;
     if !canonical.starts_with(&canonical_data_dir) {
         return Err(Error::identity(
             "signing key path resolves outside data directory (possible symlink attack)",
         ));
     }
-    let file = std::fs::File::open(&canonical)
-        .map_err(|e| Error::identity(format!("open signing key: {e}")))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;

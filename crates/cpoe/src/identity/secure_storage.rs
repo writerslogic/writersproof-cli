@@ -672,7 +672,7 @@ fn migrate_macos_keychain() {
         if data_dir.exists() {
             match crate::utils::fs::canonicalize_validated(&data_dir) {
                 Ok(resolved) => {
-                    let canonical_home = match std::fs::canonicalize(&home_dir) {
+                    let canonical_home = match crate::utils::fs::canonicalize_validated(&home_dir) {
                         Ok(p) => p,
                         Err(e) => {
                             log::warn!(
