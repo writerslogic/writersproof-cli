@@ -238,6 +238,39 @@ pub(super) async fn handle_connection_inner<
                     continue;
                 }
 
+                let msg_required_role = required_role(&msg);
+                if !check_authorization(client_role, msg_required_role) {
+                    log::warn!(
+                        "IPC: unauthorized message for role {:?} on {} (requires {:?})",
+                        client_role,
+                        transport_label,
+                        msg_required_role
+                    );
+                    record_access(
+                        access_log,
+                        &msg,
+                        client_role,
+                        transport_label,
+                        AccessResult::Denied,
+                    );
+                    let error_response = IpcMessage::Error {
+                        code: IpcErrorCode::PermissionDenied,
+                        message: format!(
+                            "Insufficient permissions: requires {:?}, client has {:?}",
+                            msg_required_role, client_role
+                        ),
+                    };
+                    if let Ok(response_bytes) = encode_message_json(&error_response) {
+                        if let Some(ref session) = secure_session {
+                            let _ = send_encrypted(stream, session, &response_bytes).await;
+                        } else if let Ok(len_bytes) = len_to_u32(response_bytes.len()) {
+                            let _ = stream.write_all(&len_bytes).await;
+                            let _ = stream.write_all(&response_bytes).await;
+                        }
+                    }
+                    continue;
+                }
+
                 let key = rate_limit_key(&msg);
                 let allowed = {
                     let mut guard = shared_rate_limiter.lock().unwrap_or_else(|p| {
@@ -261,39 +294,6 @@ pub(super) async fn handle_connection_inner<
                         message: format!("Rate limit exceeded for operation: {:?}", key),
                     };
                     // Best-effort error response; client may have disconnected
-                    if let Ok(response_bytes) = encode_message_json(&error_response) {
-                        if let Some(ref session) = secure_session {
-                            let _ = send_encrypted(stream, session, &response_bytes).await;
-                        } else if let Ok(len_bytes) = len_to_u32(response_bytes.len()) {
-                            let _ = stream.write_all(&len_bytes).await;
-                            let _ = stream.write_all(&response_bytes).await;
-                        }
-                    }
-                    continue;
-                }
-
-                let msg_required_role = required_role(&msg);
-                if !check_authorization(client_role, msg_required_role) {
-                    log::warn!(
-                        "IPC: unauthorized message for role {:?} on {} (requires {:?})",
-                        client_role,
-                        transport_label,
-                        msg_required_role
-                    );
-                    record_access(
-                        access_log,
-                        &msg,
-                        client_role,
-                        transport_label,
-                        AccessResult::Denied,
-                    );
-                    let error_response = IpcMessage::Error {
-                        code: IpcErrorCode::PermissionDenied,
-                        message: format!(
-                            "Insufficient permissions: requires {:?}, client has {:?}",
-                            msg_required_role, client_role
-                        ),
-                    };
                     if let Ok(response_bytes) = encode_message_json(&error_response) {
                         if let Some(ref session) = secure_session {
                             let _ = send_encrypted(stream, session, &response_bytes).await;

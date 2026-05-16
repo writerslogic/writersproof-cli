@@ -300,12 +300,12 @@ impl SentinelIpcHandler {
     fn handle_export_file(&self, path: PathBuf, output: PathBuf) -> Result<IpcMessage, String> {
         let writersproof_dir = &self.sentinel.config.writersproof_dir;
 
-        let _ = super::helpers::validate_path(&path)
+        let validated_path = super::helpers::validate_path(&path)
             .map_err(|e| format!("Invalid source path: {e}"))?;
         let validated_output = super::helpers::validate_path(&output)
             .map_err(|e| format!("Invalid output path: {e}"))?;
 
-        let chain_path = crate::checkpoint::Chain::find_chain(&path, writersproof_dir)
+        let chain_path = crate::checkpoint::Chain::find_chain(&validated_path, writersproof_dir)
             .map_err(|e| format!("No chain found: {e}"))?;
         let chain = crate::checkpoint::Chain::load(&chain_path)
             .map_err(|e| format!("Failed to load chain: {e}"))?;
@@ -317,7 +317,7 @@ impl SentinelIpcHandler {
             .verify()
             .map_err(|e| format!("Chain integrity check failed before export: {e}"))?;
 
-        let title = path
+        let title = validated_path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Untitled".to_string());

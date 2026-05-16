@@ -311,12 +311,18 @@ impl Sentinel {
                 .as_mut()
                 .ok_or_else(|| anyhow::anyhow!("store not available"))?;
 
+            let prev_file_size = store
+                .get_events_for_file(path)
+                .ok()
+                .and_then(|evts| evts.last().map(|e| e.file_size))
+                .unwrap_or(0);
             let mut event = crate::store::SecureEvent::new(
                 path.to_string(),
                 content_hash,
                 file_size,
                 Some("Auto-checkpoint".to_string()),
             );
+            event.size_delta = (file_size - prev_file_size) as i32;
             store.add_secure_event_with_signer(&mut event, sk_cached.as_ref())?;
 
             if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title, eco_score))) =

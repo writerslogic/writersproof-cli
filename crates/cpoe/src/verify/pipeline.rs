@@ -80,6 +80,7 @@ pub(super) fn run_forensics(
             .unwrap_or(0),
         checkpoint_count: packet.checkpoints.len() as u64,
         attestation_tier: None,
+        vdf_merkle_root: None,
     };
 
     let has_data = !jitter_samples.is_empty() || !events.is_empty();

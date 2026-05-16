@@ -521,8 +521,18 @@ impl Chain {
                 Error::checkpoint("chain MAC file has wrong length (expected 32 bytes)")
             })?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                log::warn!("MAC sidecar missing for chain file {:?}; loading without verification (legacy chain)", path);
-                return Self::load(path);
+                log::warn!("MAC sidecar missing for chain file {:?}; loading without HMAC verification (legacy chain)", path);
+                let chain = Self::load(path)?;
+                if chain.checkpoints.is_empty() {
+                    return Ok(chain);
+                }
+                // Verify structural integrity even without MAC: hash chain must be consistent.
+                chain.verify().map_err(|e| {
+                    Error::checkpoint(format!(
+                        "legacy chain (no MAC sidecar) failed structural verification: {e}"
+                    ))
+                })?;
+                return Ok(chain);
             }
             Err(e) => return Err(Error::checkpoint(format!("failed to read chain MAC: {e}"))),
         };

@@ -53,7 +53,10 @@ pub fn ffi_init() -> FfiResult {
             let key_bytes = zeroize::Zeroizing::new(signing_key.to_bytes());
 
             // Write to temp file first, restrict permissions, then atomic rename
-            let parent = key_path.parent().unwrap_or(std::path::Path::new("."));
+            let parent = match key_path.parent() {
+                Some(p) => p,
+                None => return FfiResult::err("Key path has no parent directory".to_string()),
+            };
             let mut tmp = match tempfile::NamedTempFile::new_in(parent) {
                 Ok(t) => t,
                 Err(e) => return FfiResult::err(format!("Failed to create temp file: {}", e)),

@@ -187,6 +187,7 @@ impl EventTapRunner {
                     thread_joined = true;
                     break;
                 }
+                std::thread::sleep(std::time::Duration::from_millis(10));
                 if std::time::Instant::now() >= deadline {
                     log::warn!("EventTapRunner thread did not finish within 3s; detaching");
                     // Intentionally leak tap_resources: the detached thread may

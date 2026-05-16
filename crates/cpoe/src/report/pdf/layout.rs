@@ -331,30 +331,30 @@ pub fn draw_page1(
     );
     y -= 28.0;
 
-    // ── ENFSI Scale ──
-    text(
-        layer,
-        "ENFSI Verbal Equivalence Scale:",
-        6.0,
-        MARGIN_LEFT,
-        y + 2.0,
-        &fonts.regular,
-        GRAY,
+    // ── ENFSI Evaluative Scale ──
+    let enfsi_statement = format!(
+        "The evidence is approximately {} times more likely if the document was authored by \
+         a human typing in real time (Hp1) than if it was produced by transcription or \
+         automated input (Hp2).",
+        r.likelihood_ratio,
     );
-    y -= 4.0;
+    for line in wrap_text_lines(&enfsi_statement, 100) {
+        text(layer, &line, 6.5, MARGIN_LEFT, y, &fonts.regular, GRAY);
+        y -= 3.5;
+    }
+    y -= 2.0;
     let tiers = [
-        ("<1", (0.78_f32, 0.16, 0.16), EnfsiTier::Against),
-        ("1-10", (0.90, 0.32, 0.00), EnfsiTier::Weak),
-        ("10-100", (0.98, 0.66, 0.15), EnfsiTier::Moderate),
-        ("100-1K", (0.40, 0.73, 0.42), EnfsiTier::ModeratelyStrong),
-        ("1K-10K", (0.18, 0.49, 0.20), EnfsiTier::Strong),
-        ("≥10K", (0.11, 0.37, 0.13), EnfsiTier::VeryStrong),
+        ("Against", (0.78_f32, 0.16, 0.16), EnfsiTier::Against),
+        ("Weak", (0.90, 0.32, 0.00), EnfsiTier::Weak),
+        ("Moderate", (0.98, 0.66, 0.15), EnfsiTier::Moderate),
+        ("Mod. Strong", (0.40, 0.73, 0.42), EnfsiTier::ModeratelyStrong),
+        ("Strong", (0.18, 0.49, 0.20), EnfsiTier::Strong),
+        ("Very Strong", (0.11, 0.37, 0.13), EnfsiTier::VeryStrong),
     ];
     let seg_w = CONTENT_WIDTH / 6.0;
     for (i, (label, color, tier)) in tiers.iter().enumerate() {
         let sx = MARGIN_LEFT + i as f32 * seg_w;
         let is_active = *tier == r.enfsi_tier;
-        // Inactive segments: blend color with white at 60% opacity
         let seg_color = if is_active {
             *color
         } else {
@@ -376,7 +376,6 @@ pub fn draw_page1(
             text_color,
         );
         if is_active {
-            // Active indicator: thick colored underline (1mm)
             fill_rect(layer, sx, y - 2.0, seg_w - 0.5, 1.0, *color);
         }
     }
@@ -433,10 +432,10 @@ pub fn draw_page1(
     ];
     for (label, value) in &rows {
         text(layer, label, 7.5, MARGIN_LEFT + 2.0, y, &fonts.bold, BLACK);
-        let display = if value.len() > 64 {
+        let display = if value.len() > 50 {
             format!(
                 "{}...{}",
-                value.get(..8).unwrap_or(value),
+                value.get(..20).unwrap_or(value),
                 value.get(value.len().saturating_sub(8)..).unwrap_or(value),
             )
         } else {
@@ -446,7 +445,7 @@ pub fn draw_page1(
             layer,
             &display,
             7.0,
-            MARGIN_LEFT + 42.0,
+            MARGIN_LEFT + 48.0,
             y,
             &fonts.mono,
             GRAY,
@@ -505,7 +504,7 @@ pub fn draw_page1(
                 dc,
                 MARGIN_LEFT + 2.0,
                 y,
-                100.0,
+                88.0,
             );
             y -= 7.0;
         }

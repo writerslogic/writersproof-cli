@@ -171,6 +171,11 @@ pub struct AnalysisContext {
     /// Attestation tier for the session. When `Some(SoftwareFallback)`, a
     /// −0.25 penalty is applied to the assessment score.
     pub attestation_tier: Option<crate::tpm::AttestationTier>,
+    /// VDF Merkle root for deriving session-unique labyrinth embedding
+    /// parameters. When present, the phase-space (dim, delay) are derived
+    /// from this root, forcing an attacker to re-run the VDF for each
+    /// forgery attempt. When absent, default embedding params are used.
+    pub vdf_merkle_root: Option<[u8; 32]>,
 }
 
 pub fn analyze_forensics(
@@ -388,7 +393,20 @@ pub fn analyze_forensics_ext_with_focus(
                 || analyze_iki_compression(&iki_intervals),
                 || {
                     if run_labyrinth {
-                        let params = LabyrinthParams::default();
+                        let params = if let Some(root) = context.vdf_merkle_root {
+                            use sha2::{Sha256, Digest};
+                            let derived = Sha256::new()
+                                .chain_update(b"cpoe-takens-embedding-v1")
+                                .chain_update(root)
+                                .finalize();
+                            LabyrinthParams {
+                                max_embedding_dim: 3 + (derived[0] as usize % 8), // 3..10
+                                max_delay: 2 + (derived[1] as usize % 19),        // 2..20
+                                ..LabyrinthParams::default()
+                            }
+                        } else {
+                            LabyrinthParams::default()
+                        };
                         Some(analyze_labyrinth(&iki_intervals, &[], &params))
                     } else {
                         None

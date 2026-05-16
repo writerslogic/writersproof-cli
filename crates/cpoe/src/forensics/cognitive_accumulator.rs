@@ -257,15 +257,13 @@ fn compute_max_disagreement(scores: &[f64]) -> f64 {
     if scores.len() < 2 {
         return 0.0;
     }
-    let mut max_d = 0.0f64;
-    for i in 0..scores.len() {
-        for j in (i + 1)..scores.len() {
-            let d = (scores[i] - scores[j]).abs();
-            if d > max_d {
-                max_d = d;
-            }
-        }
+    let mut lo = f64::MAX;
+    let mut hi = f64::MIN;
+    for &s in scores {
+        if s < lo { lo = s; }
+        if s > hi { hi = s; }
     }
+    let max_d = hi - lo;
     if max_d < 0.4 {
         0.0
     } else {

@@ -285,7 +285,7 @@ pub fn assess_transcription_suspicion(
     let ecology_score = if total_corrections >= MIN_CORRECTIONS {
         analyze_error_ecology(samples)
             .map(|m| m.composite_score)
-            .unwrap_or(0.5)
+            .unwrap_or(0.2)
     } else {
         0.5
     };

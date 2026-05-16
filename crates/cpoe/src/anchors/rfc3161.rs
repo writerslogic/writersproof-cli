@@ -947,9 +947,10 @@ fn check_cert_ext_key_usage(data: &[u8], cert: &Tlv) -> Result<(), AnchorError> 
             }
         }
     }
-    // No extKeyUsage extension found — warn but allow (some legacy certs omit it)
-    log::warn!("TSA certificate has no extKeyUsage extension; cannot confirm timeStamping EKU");
-    Ok(())
+    // No extKeyUsage extension found — reject per RFC 3161 §2.3
+    Err(AnchorError::Verification(
+        "TSA certificate missing required extKeyUsage extension (RFC 3161 §2.3)".into(),
+    ))
 }
 
 /// Extract the messageDigest attribute value from re-encoded signedAttrs bytes.

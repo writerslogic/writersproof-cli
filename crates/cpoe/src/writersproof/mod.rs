@@ -6,6 +6,7 @@
 //! for remote attestation of evidence packets. When offline, attestation
 //! requests are queued to disk and submitted when connectivity is restored.
 
+pub mod api_trait;
 pub mod cert_resolver;
 pub mod client;
 pub mod client_cert;
@@ -13,6 +14,7 @@ pub mod queue;
 pub mod tls_signer;
 pub mod types;
 
+pub use api_trait::WritersProofApi;
 pub use client::WritersProofClient;
 pub use queue::OfflineQueue;
 pub use types::*;

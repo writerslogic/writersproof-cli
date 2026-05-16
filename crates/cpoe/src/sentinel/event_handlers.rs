@@ -52,7 +52,7 @@ pub(super) struct EventLoopCtx {
     pub(super) bridge_health_threads: Arc<Mutex<Vec<std::thread::JoinHandle<()>>>>,
     pub(super) bridge_healthy_flag: Arc<AtomicBool>,
     pub(super) snapshots_flag: Arc<AtomicBool>,
-    pub(super) writersproof_client: Arc<crate::writersproof::WritersProofClient>,
+    pub(super) writersproof_client: Arc<dyn crate::writersproof::WritersProofApi>,
     pub(super) cached_store: Arc<Mutex<Option<crate::store::SecureStore>>>,
     pub(super) permission_state: Arc<Mutex<super::permission_monitor::PermissionState>>,
     pub(super) keystroke_event_tx:
@@ -480,7 +480,10 @@ impl EventLoopCtx {
 
                 // Compute content fingerprint for cross-app session linking.
                 // File I/O runs on the blocking pool to avoid stalling the event loop.
-                let fp_doc = doc_path.to_path_buf();
+                let fp_doc = match super::helpers::validate_path(doc_path) {
+                    Ok(p) => p,
+                    Err(_) => return,
+                };
                 let fp_sessions = Arc::clone(&self.sessions);
                 let fp_store = Arc::clone(&self.content_fingerprints);
                 let fp_path = path.clone();

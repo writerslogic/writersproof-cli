@@ -330,6 +330,7 @@ pub(super) fn build_wire_packet_from_events(
                     cursor_trajectory_histogram: None,
                     revision_depth_histogram: None,
                     pause_duration_histogram: None,
+                    metric_binding_hash: None,
                 },
                 prev_hash: HashValue::try_sha256(ev.previous_hash.to_vec())
                     .map_err(|e| anyhow::anyhow!(e))?,

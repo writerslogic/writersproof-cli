@@ -372,6 +372,7 @@ fn checkpoint_to_wire(
             cursor_trajectory_histogram: None,
             revision_depth_histogram: None,
             pause_duration_histogram: None,
+            metric_binding_hash: None,
         },
         prev_hash: HashValue::try_sha256(cp.previous_hash.to_vec()).map_err(Error::crypto)?,
         checkpoint_hash: HashValue::zero_sha256(), // overwritten by compute_hash() below

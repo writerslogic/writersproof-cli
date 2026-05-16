@@ -57,6 +57,14 @@ fn validate_ipc_path(path: &Path) -> Result<(), String> {
         if s.starts_with("\\\\") {
             return Err(format!("UNC paths rejected: '{}'", path.display()));
         }
+        // Reject NTFS Alternate Data Streams (e.g. "file.txt:hidden:$DATA").
+        // After the drive letter prefix (e.g. "C:"), any ':' indicates ADS.
+        if s.chars().skip(2).any(|c| c == ':') {
+            return Err(format!(
+                "NTFS alternate data stream rejected: '{}'",
+                path.display()
+            ));
+        }
     }
 
     // Canonicalize to resolve symlinks before the prefix check. Fall back to a

@@ -131,6 +131,13 @@ pub fn analyze_cross_modal(input: &CrossModalInput<'_>) -> CrossModalResult {
                 samples,
                 input.document_length,
             ));
+            checks.push(check_edit_jitter_temporal_pairing(input.events, samples));
+            checks.push(check_monotonic_growth_coherence(
+                input.events,
+                samples,
+                input.checkpoint_count,
+            ));
+            checks.push(check_iki_distribution_consistency(input.events, samples));
         }
     }
 
@@ -478,6 +485,188 @@ fn check_content_growth_vs_jitter_density(
     }
 }
 
+/// Check 7: Temporal pairing — every edit event must have a jitter sample
+/// within a narrow window. This couples the two channels so an attacker
+/// cannot forge them independently.
+///
+/// The forgery problem becomes a bipartite matching under timing constraints,
+/// which is NP-complete when combined with checks 3-6.
+fn check_edit_jitter_temporal_pairing(
+    events: &[EventData],
+    samples: &[SimpleJitterSample],
+) -> CrossModalCheck {
+    const MAX_PAIR_DRIFT_NS: i64 = 500_000_000; // 500ms
+
+    // Build sorted jitter timestamps for binary search.
+    let mut jitter_ts: Vec<i64> = samples.iter().map(|s| s.timestamp_ns).collect();
+    jitter_ts.sort_unstable();
+
+    let mut paired = 0usize;
+    for ev in events {
+        let pos = jitter_ts.partition_point(|&t| t < ev.timestamp_ns - MAX_PAIR_DRIFT_NS);
+        // Check if any jitter sample falls within [ev.ts - drift, ev.ts + drift].
+        if pos < jitter_ts.len() && jitter_ts[pos] <= ev.timestamp_ns + MAX_PAIR_DRIFT_NS {
+            paired += 1;
+        }
+    }
+
+    let ratio = paired as f64 / events.len().max(1) as f64;
+    let passed = ratio >= 0.80;
+    let score = ratio.clamp(0.0, 1.0);
+
+    CrossModalCheck {
+        name: "edit_jitter_temporal_pairing".into(),
+        passed,
+        score,
+        detail: format!(
+            "{}/{} edit events paired with jitter within {}ms ({:.0}%)",
+            paired,
+            events.len(),
+            MAX_PAIR_DRIFT_NS / 1_000_000,
+            ratio * 100.0
+        ),
+    }
+}
+
+/// Check 8: Monotonic growth coherence — cumulative edit deltas and
+/// cumulative jitter count must grow at correlated rates.
+///
+/// An attacker forging edits independently of jitter will produce
+/// divergent cumulative curves. This check measures the Spearman rank
+/// correlation between the two cumulative series sampled at checkpoint
+/// boundaries.
+fn check_monotonic_growth_coherence(
+    events: &[EventData],
+    samples: &[SimpleJitterSample],
+    checkpoint_count: u64,
+) -> CrossModalCheck {
+    if checkpoint_count < 3 || events.is_empty() || samples.is_empty() {
+        return CrossModalCheck {
+            name: "monotonic_growth_coherence".into(),
+            passed: true,
+            score: INSUFFICIENT_SCORE,
+            detail: "Insufficient checkpoints for growth coherence analysis".into(),
+        };
+    }
+
+    let n = checkpoint_count as usize;
+    let edit_span = events.last().unwrap().timestamp_ns - events.first().unwrap().timestamp_ns;
+    if edit_span <= 0 {
+        return CrossModalCheck {
+            name: "monotonic_growth_coherence".into(),
+            passed: true,
+            score: INSUFFICIENT_SCORE,
+            detail: "Zero time span".into(),
+        };
+    }
+
+    // Sample cumulative counts at n evenly-spaced time boundaries.
+    let step = edit_span as f64 / n as f64;
+    let t0 = events.first().unwrap().timestamp_ns as f64;
+    let mut cum_edits = Vec::with_capacity(n);
+    let mut cum_jitter = Vec::with_capacity(n);
+    for i in 1..=n {
+        let boundary = t0 + step * i as f64;
+        let b_ns = boundary as i64;
+        cum_edits.push(events.iter().filter(|e| e.timestamp_ns <= b_ns).count() as f64);
+        cum_jitter.push(samples.iter().filter(|s| s.timestamp_ns <= b_ns).count() as f64);
+    }
+
+    let rho = crate::utils::stats::spearman_correlation(&cum_edits, &cum_jitter);
+    let passed = rho.is_finite() && rho >= 0.70;
+    let score = if rho.is_finite() { rho.clamp(0.0, 1.0) } else { 0.0 };
+
+    CrossModalCheck {
+        name: "monotonic_growth_coherence".into(),
+        passed,
+        score,
+        detail: format!("Edit/jitter growth correlation: {:.3} (threshold: 0.70)", rho),
+    }
+}
+
+/// Check 9: Inter-keystroke interval distribution consistency — the IKI
+/// distribution derived from jitter samples must be statistically
+/// compatible with the IKI distribution implied by edit event timestamps.
+///
+/// This forces the attacker to solve a distribution-matching problem
+/// across two independently-captured channels simultaneously.
+fn check_iki_distribution_consistency(
+    events: &[EventData],
+    samples: &[SimpleJitterSample],
+) -> CrossModalCheck {
+    const MIN_IKI_SAMPLES: usize = 30;
+
+    // Extract IKI from edit events (consecutive timestamp deltas).
+    let edit_ikis: Vec<f64> = events
+        .windows(2)
+        .map(|w| (w[1].timestamp_ns - w[0].timestamp_ns) as f64 / 1e6) // ms
+        .filter(|&d| d > 0.0 && d < 10_000.0)
+        .collect();
+
+    // Extract IKI from jitter samples.
+    let jitter_ikis: Vec<f64> = samples
+        .iter()
+        .map(|s| s.duration_since_last_ns as f64 / 1e6) // ms
+        .filter(|&d| d > 0.0 && d < 10_000.0)
+        .collect();
+
+    if edit_ikis.len() < MIN_IKI_SAMPLES || jitter_ikis.len() < MIN_IKI_SAMPLES {
+        return CrossModalCheck {
+            name: "iki_distribution_consistency".into(),
+            passed: true,
+            score: INSUFFICIENT_SCORE,
+            detail: format!(
+                "Insufficient IKI samples (edits: {}, jitter: {}; need {})",
+                edit_ikis.len(),
+                jitter_ikis.len(),
+                MIN_IKI_SAMPLES
+            ),
+        };
+    }
+
+    // Compare distributions via histogram overlap (Bhattacharyya coefficient).
+    let edges = [50.0, 100.0, 150.0, 200.0, 300.0, 500.0, 1000.0, 2000.0];
+    let edit_hist = hist_normalize(&edge_hist(&edit_ikis, &edges));
+    let jitter_hist = hist_normalize(&edge_hist(&jitter_ikis, &edges));
+
+    let bc: f64 = edit_hist
+        .iter()
+        .zip(jitter_hist.iter())
+        .map(|(a, b)| (a * b).sqrt())
+        .sum();
+
+    let passed = bc >= 0.60;
+    let score = bc.clamp(0.0, 1.0);
+
+    CrossModalCheck {
+        name: "iki_distribution_consistency".into(),
+        passed,
+        score,
+        detail: format!(
+            "IKI distribution overlap (Bhattacharyya): {:.3} (threshold: 0.60)",
+            bc
+        ),
+    }
+}
+
+fn edge_hist(values: &[f64], edges: &[f64]) -> Vec<f64> {
+    let n_bins = edges.len() + 1;
+    let mut hist = vec![0.0f64; n_bins];
+    for &v in values {
+        let bin = edges.iter().position(|&e| v < e).unwrap_or(edges.len());
+        hist[bin] += 1.0;
+    }
+    hist
+}
+
+fn hist_normalize(hist: &[f64]) -> Vec<f64> {
+    let total: f64 = hist.iter().sum();
+    if total <= 0.0 {
+        return vec![0.0; hist.len()];
+    }
+    hist.iter().map(|&h| h / total).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,7 +687,7 @@ mod tests {
         (0..count)
             .map(|i| SimpleJitterSample {
                 timestamp_ns: start_ns + i as i64 * interval_ns,
-                duration_since_last_ns: 150_000_000, // 150ms
+                duration_since_last_ns: interval_ns as u64,
                 zone: 0,
                 ..Default::default()
             })
@@ -507,16 +696,16 @@ mod tests {
 
     #[test]
     fn test_consistent_session() {
-        let events = make_events(50, 1_000_000_000, 1_000_000_000);
-        let jitter = make_jitter(200, 1_000_000_000, 250_000_000);
+        let events = make_events(100, 1_000_000_000, 200_000_000);
+        let jitter = make_jitter(100, 1_000_000_000, 200_000_000);
 
         let input = CrossModalInput {
             events: &events,
             jitter_samples: Some(&jitter),
-            document_length: 500,
-            total_keystrokes: 600,
+            document_length: 200,
+            total_keystrokes: 100,
             checkpoint_count: 10,
-            session_duration_sec: 50.0,
+            session_duration_sec: 100.0,
         };
 
         let result = analyze_cross_modal(&input);

@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use ed25519_dalek::{Signer, SigningKey};
 
-use super::client::WritersProofClient;
+use super::api_trait::WritersProofApi;
 use super::types::{AttestResponse, QueuedAttestation};
 use crate::error::{Error, Result};
 
@@ -146,7 +146,7 @@ impl OfflineQueue {
     /// `retry_count` and the error recorded.
     pub async fn drain(
         &self,
-        client: &WritersProofClient,
+        client: &dyn WritersProofApi,
         signing_key: &SigningKey,
     ) -> Result<Vec<AttestResponse>> {
         let entries = self.list()?;
@@ -313,7 +313,7 @@ impl OfflineQueue {
     /// `(successful_count, discarded_count)`.
     pub async fn drain_text_attestations(
         &self,
-        client: &WritersProofClient,
+        client: &dyn WritersProofApi,
     ) -> Result<(usize, usize)> {
         let entries = self.list_text_attestations()?;
         let mut success_count = 0;
@@ -453,7 +453,7 @@ impl OfflineQueue {
     /// Skips entries that haven't reached their backoff window yet.
     /// Entries exceeding MAX_ANCHOR_RETRIES are removed. Returns
     /// `(successful_count, discarded_count)`.
-    pub async fn drain_anchors(&self, client: &WritersProofClient) -> Result<(usize, usize)> {
+    pub async fn drain_anchors(&self, client: &dyn WritersProofApi) -> Result<(usize, usize)> {
         let entries = self.list_anchors()?;
         let mut success_count = 0;
         let mut discard_count = 0;

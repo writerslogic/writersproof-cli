@@ -143,7 +143,7 @@ pub struct Sentinel {
     /// Hardware TPM/Secure Enclave provider for co-sign scheduling.
     pub(crate) tpm_provider: Option<Arc<dyn crate::tpm::Provider>>,
     /// Client for WritersProof service (freshness nonces, attestation).
-    pub(crate) writersproof_client: Arc<crate::writersproof::WritersProofClient>,
+    pub(crate) writersproof_client: Arc<dyn crate::writersproof::WritersProofApi>,
     /// Platform-specific hardware and OS feature provider.
     pub(crate) platform: Arc<dyn crate::platform::PlatformProvider>,
     /// Unified app registry (built-in + user-added writing apps).
@@ -722,25 +722,33 @@ impl Sentinel {
             let sk = Arc::clone(&self.signing_key);
             let dir = self.config.writersproof_dir.clone();
             let stop_flag = Arc::clone(&self.stopping);
+            let semaphore = Arc::new(tokio::sync::Semaphore::new(4));
+            let mut checkpoint_tasks = tokio::task::JoinSet::new();
             for path in candidates {
                 let sk_c = Arc::clone(&sk);
                 let dir_c = dir.clone();
                 let stop_c = Arc::clone(&stop_flag);
                 let p = path.clone();
                 let sem = semantic_map.get(&path).cloned().flatten();
-                if let Err(e) = tokio::task::spawn_blocking(move || {
-                    super::helpers::commit_checkpoint_for_path_with_semantics(
-                        &p,
-                        "Final-checkpoint",
-                        &sk_c,
-                        &dir_c,
-                        &None,
-                        &stop_c,
-                        sem,
-                    )
-                })
-                .await
-                {
+                let permit = Arc::clone(&semaphore);
+                checkpoint_tasks.spawn(async move {
+                    let _permit = permit.acquire().await;
+                    tokio::task::spawn_blocking(move || {
+                        super::helpers::commit_checkpoint_for_path_with_semantics(
+                            &p,
+                            "Final-checkpoint",
+                            &sk_c,
+                            &dir_c,
+                            &None,
+                            &stop_c,
+                            sem,
+                        )
+                    })
+                    .await
+                });
+            }
+            while let Some(result) = checkpoint_tasks.join_next().await {
+                if let Err(e) = result {
                     log::error!("Final checkpoint task failed: {e}");
                 }
             }

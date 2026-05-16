@@ -88,8 +88,8 @@ pub fn render_pdf(
     };
 
     let footer = format!(
-        "Forensic Authorship Examination Report | {} | {} | {}",
-        report.report_id, report.algorithm_version, report.schema_version,
+        "WritersLogic Inc.  ·  {}  ·  {}",
+        report.report_id, report.algorithm_version,
     );
 
     // Page 1: Header, verdict, declaration, QR

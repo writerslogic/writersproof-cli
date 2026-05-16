@@ -192,6 +192,9 @@ pub fn ffi_create_authorship_credential(
 pub fn ffi_sign_credential(credential_cbor_hex: String) -> FfiSignedCredentialResult {
     catch_ffi_panic!(FfiSignedCredentialResult::ffi_err("engine internal error"), {
     log::debug!("ffi_sign_credential: credential_cbor_hex_len={}", credential_cbor_hex.len());
+    if credential_cbor_hex.len() > 20_000 {
+        return FfiSignedCredentialResult::err("Credential hex too large".to_string());
+    }
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,
         Err(e) => return FfiSignedCredentialResult::err(format!("Invalid hex: {e}")),

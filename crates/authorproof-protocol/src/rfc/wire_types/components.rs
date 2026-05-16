@@ -137,6 +137,19 @@ pub struct EditDelta {
     /// 8-bin histogram of pause durations between edits
     #[serde(rename = "11", default, skip_serializing_if = "Option::is_none")]
     pub pause_duration_histogram: Option<Vec<u64>>,
+
+    /// SHA-256 binding hash over quantized forensic metrics (RQA, Lyapunov,
+    /// correlation dimension, etc.) at this checkpoint. Turns verification
+    /// of independent metrics into a simultaneous constraint satisfaction
+    /// problem: forging requires finding a keystroke sequence that produces
+    /// ALL metric bins simultaneously, which is NP-hard (reducible to ILP).
+    #[serde(
+        rename = "12",
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "serde_bytes_opt"
+    )]
+    pub metric_binding_hash: Option<Vec<u8>>,
 }
 
 /// Max edit positions per delta.

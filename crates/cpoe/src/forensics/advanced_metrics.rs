@@ -284,6 +284,28 @@ pub fn analyze_fatigue_trajectory(
     })
 }
 
+/// Compute a VDF-bound fatigue phase digest that couples the fitted
+/// breakpoint fractions to the VDF Merkle root. Verifiers check that
+/// the digest matches, forcing an attacker to re-run the VDF for each
+/// candidate keystroke sequence with different fatigue phase boundaries.
+#[allow(dead_code)] // Verification API — called by verifiers with VDF root + fatigue metrics
+pub fn compute_fatigue_phase_binding(
+    metrics: &FatigueTrajectoryMetrics,
+    vdf_merkle_root: &[u8; 32],
+) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"cpoe-fatigue-phase-binding-v1");
+    h.update(vdf_merkle_root);
+    // Quantize fractions to 0.05 bins so small variations in fitting
+    // don't break the binding while still constraining the attacker.
+    let q_warmup = (metrics.warmup_fraction * 20.0).round() as u8;
+    let q_plateau = (metrics.plateau_fraction * 20.0).round() as u8;
+    let q_fatigue = (metrics.fatigue_fraction * 20.0).round() as u8;
+    h.update([q_warmup, q_plateau, q_fatigue, metrics.dominant_phase as u8]);
+    h.finalize().into()
+}
+
 /// Maximum samples for fatigue analysis. Fatigue is a localized phenomenon;
 /// analyzing more than ~10 minutes of heavy typing yields diminishing returns
 /// while making the O(N²) breakpoint search expensive. Capping N to 2500

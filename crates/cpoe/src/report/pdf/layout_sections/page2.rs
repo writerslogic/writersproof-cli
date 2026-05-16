@@ -298,23 +298,23 @@ pub fn draw_page2(layer: &PdfLayerReference, r: &WarReport, fonts: &PdfFonts, fo
             &fonts.bold,
             WHITE,
         );
-        let forge_label = if r.forgery.estimated_forge_time_sec >= 86400.0 {
-            format!(
-                "{:.0} days to forge",
-                r.forgery.estimated_forge_time_sec / 86400.0
-            )
-        } else if r.forgery.estimated_forge_time_sec >= 3600.0 {
-            format!(
-                "{:.0} hours to forge",
-                r.forgery.estimated_forge_time_sec / 3600.0
-            )
-        } else if r.forgery.estimated_forge_time_sec >= 60.0 {
-            format!(
-                "{:.0} min to forge",
-                r.forgery.estimated_forge_time_sec / 60.0
-            )
+        let forge_secs = r.forgery.estimated_forge_time_sec;
+        let forge_label = if !forge_secs.is_finite() || forge_secs >= 1e30 {
+            "Infeasible".to_string()
+        } else if forge_secs >= 3.156e16 {
+            let years = forge_secs / 3.156e7;
+            let exp = years.log10().floor() as i32;
+            format!("~10^{} years", exp)
+        } else if forge_secs >= 3.156e7 {
+            format!("{:.0} years", forge_secs / 3.156e7)
+        } else if forge_secs >= 86400.0 {
+            format!("{:.0} days", forge_secs / 86400.0)
+        } else if forge_secs >= 3600.0 {
+            format!("{:.0} hours", forge_secs / 3600.0)
+        } else if forge_secs >= 60.0 {
+            format!("{:.0} min", forge_secs / 60.0)
         } else {
-            format!("{:.0}s to forge", r.forgery.estimated_forge_time_sec)
+            format!("{:.0}s", forge_secs)
         };
         text(
             layer,
@@ -338,9 +338,11 @@ pub fn draw_page2(layer: &PdfLayerReference, r: &WarReport, fonts: &PdfFonts, fo
         }
         y -= 8.0;
 
-        // Component rows
+        // Component rows (present first, then absent)
         let comp_w = CONTENT_WIDTH / 2.0 - 1.0;
-        for (i, comp) in r.forgery.components.iter().enumerate() {
+        let mut sorted_comps: Vec<_> = r.forgery.components.iter().collect();
+        sorted_comps.sort_by(|a, b| b.present.cmp(&a.present));
+        for (i, comp) in sorted_comps.iter().enumerate() {
             if y < 20.0 {
                 break;
             }
@@ -373,8 +375,16 @@ pub fn draw_page2(layer: &PdfLayerReference, r: &WarReport, fonts: &PdfFonts, fo
                 &fonts.bold,
                 BLACK,
             );
-            let cost_label = if comp.cost_cpu_sec.is_infinite() {
-                "∞ (hardware)".to_string()
+            let cost_label = if !comp.cost_cpu_sec.is_finite() || comp.cost_cpu_sec >= 1e30 {
+                "Infeasible".to_string()
+            } else if comp.cost_cpu_sec >= 3.156e7 {
+                let years = comp.cost_cpu_sec / 3.156e7;
+                let exp = years.log10().floor() as i32;
+                if exp > 3 {
+                    format!("~10^{} yr CPU", exp)
+                } else {
+                    format!("{:.0} yr CPU", years)
+                }
             } else if comp.cost_cpu_sec >= 3600.0 {
                 format!("{:.0}h CPU", comp.cost_cpu_sec / 3600.0)
             } else {

@@ -79,7 +79,7 @@ pub fn draw_score_bar(
     layer.use_text(label, 9.0, Mm(x_mm), Mm(y_mm), font_bold);
 
     // Track background
-    let track_x = x_mm + 30.0;
+    let track_x = x_mm + 42.0;
     let track_h = 5.0_f32;
     let bg = Color::Rgb(Rgb::new(0.93, 0.93, 0.93, None));
     let track = Rect::new(

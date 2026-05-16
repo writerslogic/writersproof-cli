@@ -173,6 +173,7 @@ fn build_wire_packet(
                     cursor_trajectory_histogram: None,
                     revision_depth_histogram: None,
                     pause_duration_histogram: None,
+                    metric_binding_hash: None,
                 },
                 prev_hash: HashValue::try_sha256(ev.previous_hash.to_vec())?,
                 checkpoint_hash: HashValue::try_sha256(
@@ -414,6 +415,12 @@ fn export_evidence_inner(
         Err(e) => return FfiResult::err(e),
     };
 
+    if !is_signed {
+        return FfiResult::err(
+            "Evidence export requires COSE signing but signing key is unavailable".to_string(),
+        );
+    }
+
     let parent = output_path.parent().unwrap_or(std::path::Path::new("."));
     let write_result = (|| -> std::io::Result<()> {
         let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
@@ -646,6 +653,11 @@ fn enrich_checkpoints(
 
     let max_file_size = events.iter().map(|e| e.file_size).max().unwrap_or(1).max(1) as f64;
 
+    // Cumulative state maintained across checkpoints to avoid O(n^2) recomputation.
+    let mut cumulative_revision_hist = vec![0u64; 8];
+    let mut cumulative_graph_hasher = Sha256::new();
+    cumulative_graph_hasher.update(b"cpoe-edit-graph-v1");
+
     // Build per-checkpoint enrichment.
     for (i, (cp, ev)) in checkpoints.iter_mut().zip(events.iter()).enumerate() {
         // Fix op_count: count actual operations (not hardcoded 1).
@@ -670,13 +682,10 @@ fn enrich_checkpoints(
         cp.delta.cursor_trajectory_histogram = Some(cursor_hist);
 
         // Revision depth: how many times this position bin has been edited so far.
-        let mut revision_hist = vec![0u64; 8];
-        for prev_ev in &events[..=i] {
-            let pos = prev_ev.file_size.max(0) as f64 / max_file_size;
-            let bin = crate::analysis::histogram::bin_linear_normalized(pos, 8);
-            revision_hist[bin] += 1;
-        }
-        cp.delta.revision_depth_histogram = Some(revision_hist);
+        let pos = ev.file_size.max(0) as f64 / max_file_size;
+        let bin = crate::analysis::histogram::bin_linear_normalized(pos, 8);
+        cumulative_revision_hist[bin] += 1;
+        cp.delta.revision_depth_histogram = Some(cumulative_revision_hist.clone());
 
         // Pause duration histogram from jitter samples in this checkpoint window.
         let cp_ts_ns = ev.timestamp_ns;
@@ -712,14 +721,27 @@ fn enrich_checkpoints(
         }
 
         // Edit graph hash: SHA-256 of cumulative edit positions up to this checkpoint.
-        let mut graph_hasher = Sha256::new();
-        graph_hasher.update(b"cpoe-edit-graph-v1");
-        for prev_ev in &events[..=i] {
-            graph_hasher.update(prev_ev.timestamp_ns.to_le_bytes());
-            graph_hasher.update(prev_ev.size_delta.to_le_bytes());
-            graph_hasher.update((prev_ev.file_size as u64).to_le_bytes());
+        cumulative_graph_hasher.update(ev.timestamp_ns.to_le_bytes());
+        cumulative_graph_hasher.update(ev.size_delta.to_le_bytes());
+        cumulative_graph_hasher.update((ev.file_size as u64).to_le_bytes());
+        let graph_hash = cumulative_graph_hasher.clone().finalize();
+        cp.delta.edit_graph_hash = Some(graph_hash.to_vec());
+
+        // Metric binding hash: couples edit topology, revision distribution,
+        // and jitter seal into a single SHA-256. Forging any channel requires
+        // satisfying all simultaneously (NP-hard constraint satisfaction).
+        let mut binding = Sha256::new();
+        binding.update(b"cpoe-metric-binding-v1");
+        binding.update(&graph_hash);
+        for &bin in &cumulative_revision_hist {
+            binding.update(bin.to_le_bytes());
         }
-        cp.delta.edit_graph_hash = Some(graph_hasher.finalize().to_vec());
+        if let Some(ref jb) = cp.jitter_binding {
+            binding.update(&jb.jitter_seal);
+            binding.update(jb.entropy_estimate.to_le_bytes());
+        }
+        binding.update(ev.content_hash);
+        cp.delta.metric_binding_hash = Some(binding.finalize().to_vec());
     }
 }
 
@@ -1230,6 +1252,7 @@ mod tests {
                         cursor_trajectory_histogram: None,
                         revision_depth_histogram: None,
                         pause_duration_histogram: None,
+                        metric_binding_hash: None,
                     },
                     prev_hash: HashValue::try_sha256(ev.previous_hash.to_vec()).unwrap(),
                     checkpoint_hash: HashValue::try_sha256(vec![i as u8; 32]).unwrap(),

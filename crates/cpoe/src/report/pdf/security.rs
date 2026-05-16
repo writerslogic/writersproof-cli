@@ -25,10 +25,10 @@ pub fn draw_guilloche_border(layer: &PdfLayerReference, seed: &[u8; 64]) {
     let phase = (seed[3] as f64 / 255.0) * std::f64::consts::TAU;
     let num_loops = 200 + (seed[4] as usize % 100); // 200-300 points per side
 
-    // Color derived from seed bytes 8-10
-    let r = (seed[8] as f32 / 510.0) + 0.3; // muted: 0.3-0.8
-    let g = (seed[9] as f32 / 510.0) + 0.3;
-    let b = (seed[10] as f32 / 510.0) + 0.3;
+    // Color derived from seed bytes 8-10, very faint (~3-5% opacity equivalent)
+    let r = 0.95 + (seed[8] as f32 / 255.0) * 0.03;
+    let g = 0.95 + (seed[9] as f32 / 255.0) * 0.03;
+    let b = 0.95 + (seed[10] as f32 / 255.0) * 0.03;
 
     let color = Color::Rgb(Rgb::new(r, g, b, None));
     let line_width = 0.15; // very fine line — degrades when photocopied
