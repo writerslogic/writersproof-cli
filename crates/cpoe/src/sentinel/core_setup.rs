@@ -85,22 +85,145 @@ impl Sentinel {
         *self.keystroke_event_tx.lock_recover() = Some(keystroke_tx.clone());
         let keystroke_running = Arc::clone(running);
 
-        let capture_result = self.platform.create_keystroke_capture();
-
         let keystroke_active = Arc::clone(&self.keystroke_capture_active);
+
+        // On macOS, subscribe to the shared CGEventTap singleton instead of
+        // creating a second tap. The SharedKeystrokeTap owns the tap lifetime;
+        // sentinel just consumes its broadcast. This eliminates the dual-tap
+        // resource waste when both sentinel and FingerprintCapture are active.
+        #[cfg(target_os = "macos")]
+        {
+            match crate::platform::macos::shared_tap::get_or_start_shared_tap() {
+                Ok(tap) => {
+                    keystroke_active.store(true, Ordering::SeqCst);
+                    let mut broadcast_rx = tap.subscribe();
+                    let handle = std::thread::Builder::new()
+                        .name("sentinel-tap-bridge".into())
+                        .spawn(move || {
+                            let rt = tokio::runtime::Builder::new_current_thread()
+                                .enable_time()
+                                .build()
+                                .expect("sentinel-tap-bridge: failed to create tokio runtime");
+                            rt.block_on(async {
+                                #[cfg(debug_assertions)]
+                                let mut bridge_count: u64 = 0;
+                                let mut dropped_count: u64 = 0;
+                                while keystroke_running.load(Ordering::SeqCst) {
+                                    match broadcast_rx.recv().await {
+                                        Ok(event) => {
+                                            #[cfg(debug_assertions)]
+                                            {
+                                                bridge_count += 1;
+                                                if bridge_count % 100 == 0 {
+                                                    log::debug!(
+                                                        "sentinel tap bridge: forwarded \
+                                                         {bridge_count}"
+                                                    );
+                                                }
+                                            }
+                                            if let Err(e) = keystroke_tx.try_send(event) {
+                                                match e {
+                                                    tokio::sync::mpsc::error::TrySendError::Full(
+                                                        _,
+                                                    ) => {
+                                                        dropped_count += 1;
+                                                        if dropped_count == 1
+                                                            || dropped_count.is_power_of_two()
+                                                        {
+                                                            log::warn!(
+                                                                "keystroke channel full, \
+                                                                 {} events dropped",
+                                                                dropped_count
+                                                            );
+                                                        }
+                                                    }
+                                                    tokio::sync::mpsc::error::TrySendError::Closed(
+                                                        _,
+                                                    ) => {
+                                                        log::debug!("keystroke channel closed");
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Err(
+                                            tokio::sync::broadcast::error::RecvError::Lagged(n),
+                                        ) => {
+                                            log::warn!(
+                                                "sentinel tap bridge: lagged by {n} events"
+                                            );
+                                        }
+                                        Err(
+                                            tokio::sync::broadcast::error::RecvError::Closed,
+                                        ) => {
+                                            log::info!(
+                                                "sentinel tap bridge: shared tap closed"
+                                            );
+                                            break;
+                                        }
+                                    }
+                                }
+                            });
+                        })
+                        .ok();
+                    if let Some(h) = handle {
+                        self.bridge_threads.lock_recover().push(h);
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "SharedKeystrokeTap unavailable: {e}; \
+                         falling back to direct capture"
+                    );
+                    self.setup_keystroke_bridge_fallback(
+                        &keystroke_tx,
+                        &keystroke_running,
+                        &keystroke_active,
+                    );
+                }
+            }
+        }
+
+        // Non-macOS: use direct platform capture (no shared tap exists).
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.setup_keystroke_bridge_fallback(
+                &keystroke_tx,
+                &keystroke_running,
+                &keystroke_active,
+            );
+        }
+
+        // Start IOKit HID capture for dual-layer keystroke validation.
+        // This runs alongside CGEventTap; HID provides hardware ground truth.
+        super::start_hid_capture();
+
+        keystroke_rx
+    }
+
+    /// Fallback: create a platform-specific keystroke capture directly.
+    /// Used on non-macOS platforms and as macOS fallback if SharedKeystrokeTap fails.
+    fn setup_keystroke_bridge_fallback(
+        &self,
+        keystroke_tx: &mpsc::Sender<crate::platform::KeystrokeEvent>,
+        keystroke_running: &Arc<AtomicBool>,
+        keystroke_active: &Arc<AtomicBool>,
+    ) {
+        let capture_result = self.platform.create_keystroke_capture();
         let keystroke_capture_store = Arc::clone(&self.keystroke_capture);
+        let tx = keystroke_tx.clone();
+        let running = Arc::clone(keystroke_running);
+
         match capture_result {
             Ok(mut keystroke_capture) => match keystroke_capture.start() {
                 Ok(sync_rx) => {
                     keystroke_active.store(true, Ordering::SeqCst);
                     *keystroke_capture_store.lock_recover() = Some(keystroke_capture);
-                    let sync_rx: std::sync::mpsc::Receiver<crate::platform::KeystrokeEvent> =
-                        sync_rx;
                     let handle = std::thread::spawn(move || {
                         #[cfg(debug_assertions)]
                         let mut bridge_count: u64 = 0;
                         let mut dropped_count: u64 = 0;
-                        while keystroke_running.load(Ordering::SeqCst) {
+                        while running.load(Ordering::SeqCst) {
                             match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                                 Ok(event) => {
                                     #[cfg(debug_assertions)]
@@ -112,7 +235,7 @@ impl Sentinel {
                                             );
                                         }
                                     }
-                                    if let Err(e) = keystroke_tx.try_send(event) {
+                                    if let Err(e) = tx.try_send(event) {
                                         match e {
                                             tokio::sync::mpsc::error::TrySendError::Full(_) => {
                                                 dropped_count += 1;
@@ -151,12 +274,6 @@ impl Sentinel {
                 );
             }
         }
-
-        // Start IOKit HID capture for dual-layer keystroke validation.
-        // This runs alongside CGEventTap; HID provides hardware ground truth.
-        super::start_hid_capture();
-
-        keystroke_rx
     }
 
     /// Initialize mouse capture and spawn a bridge thread forwarding

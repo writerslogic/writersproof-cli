@@ -225,9 +225,7 @@ impl Sentinel {
             ))),
             session_events_tx,
             shutdown_tx: Arc::new(Mutex::new(None)),
-            activity_accumulator: Arc::new(RwLock::new(
-                crate::fingerprint::ActivityFingerprintAccumulator::new(),
-            )),
+            activity_accumulator: crate::fingerprint::global::get_global_accumulator(),
             style_collector: Arc::new(RwLock::new(None)),
             mouse_idle_stats: Arc::new(RwLock::new(crate::platform::MouseIdleStats::new())),
             mouse_stego_engine: Arc::new(RwLock::new(crate::platform::MouseStegoEngine::new(
@@ -959,6 +957,68 @@ impl Sentinel {
             *cap = None;
         }
         self.keystroke_capture_active.store(false, Ordering::SeqCst);
+
+        // On macOS, the SharedKeystrokeTap is a singleton — "restart" means
+        // re-subscribing to the same broadcast. The tap itself stays alive.
+        #[cfg(target_os = "macos")]
+        {
+            match crate::platform::macos::shared_tap::get_or_start_shared_tap() {
+                Ok(tap) => {
+                    self.keystroke_capture_active.store(true, Ordering::SeqCst);
+                    let mut broadcast_rx = tap.subscribe();
+                    let running = Arc::clone(&self.running);
+                    let active = Arc::clone(&self.keystroke_capture_active);
+                    let h = std::thread::Builder::new()
+                        .name("sentinel-tap-restart".into())
+                        .spawn(move || {
+                            let rt = tokio::runtime::Builder::new_current_thread()
+                                .enable_time()
+                                .build()
+                                .expect("sentinel-tap-restart runtime");
+                            rt.block_on(async {
+                                while running.load(Ordering::SeqCst)
+                                    && active.load(Ordering::SeqCst)
+                                {
+                                    match broadcast_rx.recv().await {
+                                        Ok(ev) => {
+                                            if tx.try_send(ev).is_err() {
+                                                break;
+                                            }
+                                        }
+                                        Err(tokio::sync::broadcast::error::RecvError::Lagged(
+                                            n,
+                                        )) => {
+                                            log::warn!(
+                                                "sentinel tap restart bridge: lagged {n}"
+                                            );
+                                        }
+                                        Err(
+                                            tokio::sync::broadcast::error::RecvError::Closed,
+                                        ) => break,
+                                    }
+                                }
+                            });
+                        });
+                    match h {
+                        Ok(handle) => {
+                            let mut threads = self.bridge_threads.lock_recover();
+                            threads.retain(|t| !t.is_finished());
+                            threads.push(handle);
+                            self.bridge_healthy.store(true, Ordering::SeqCst);
+                            return true;
+                        }
+                        Err(e) => {
+                            log::error!("Failed to spawn tap restart bridge: {e}");
+                            return false;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("SharedKeystrokeTap restart failed: {e}; trying direct capture");
+                    // Fall through to direct capture below
+                }
+            }
+        }
 
         match self.platform.create_keystroke_capture() {
             Ok(mut cap) => match cap.start() {
