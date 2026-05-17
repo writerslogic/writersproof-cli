@@ -12,6 +12,12 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 
+/// How many accumulator samples must pass between EMA consolidation rounds.
+const CONSOLIDATION_INTERVAL: usize = 200;
+
+/// File name for the persisted canonical profile relative to the storage path.
+const CANONICAL_PROFILE_FILE: &str = "canonical_profile.json";
+
 #[derive(Debug)]
 pub struct FingerprintManager {
     pub(crate) config: FingerprintConfig,
@@ -21,6 +27,12 @@ pub struct FingerprintManager {
     pub(crate) style_collector: Option<StyleCollector>,
     pub(crate) current_profile_id: Option<ProfileId>,
     last_snapshot_samples: usize,
+    /// Long-lived EMA-merged canonical author profile, persisted across sessions.
+    pub(crate) canonical_profile: Option<AuthorFingerprint>,
+    /// Number of EMA consolidation rounds completed so far.
+    consolidation_count: u32,
+    /// Sample count at which the last consolidation occurred.
+    last_consolidation_samples: usize,
 }
 
 impl FingerprintManager {
@@ -28,6 +40,7 @@ impl FingerprintManager {
         log::debug!("FingerprintManager::new: storage_path={}", storage_path.display());
         let storage = FingerprintStorage::new(storage_path)?;
         let consent_manager = ConsentManager::new(storage_path)?;
+        let canonical_profile = load_canonical_profile(storage_path);
 
         Ok(Self {
             config: FingerprintConfig::default(),
@@ -37,6 +50,11 @@ impl FingerprintManager {
             style_collector: None,
             current_profile_id: None,
             last_snapshot_samples: 0,
+            consolidation_count: canonical_profile.as_ref()
+                .map(|c| (c.sample_count / CONSOLIDATION_INTERVAL as u64) as u32)
+                .unwrap_or(0),
+            canonical_profile,
+            last_consolidation_samples: 0,
         })
     }
 
@@ -44,6 +62,7 @@ impl FingerprintManager {
         log::debug!("FingerprintManager::with_config: storage_path={}", config.storage_path.display());
         let storage = FingerprintStorage::new(&config.storage_path)?;
         let consent_manager = ConsentManager::new(&config.storage_path)?;
+        let canonical_profile = load_canonical_profile(&config.storage_path);
 
         let style_collector = if config.style_enabled && consent_manager.has_style_consent()? {
             Some(StyleCollector::new())
@@ -59,6 +78,11 @@ impl FingerprintManager {
             style_collector,
             current_profile_id: None,
             last_snapshot_samples: 0,
+            consolidation_count: canonical_profile.as_ref()
+                .map(|c| (c.sample_count / CONSOLIDATION_INTERVAL as u64) as u32)
+                .unwrap_or(0),
+            canonical_profile,
+            last_consolidation_samples: 0,
         })
     }
 
@@ -131,6 +155,10 @@ impl FingerprintManager {
         if count.saturating_sub(self.last_snapshot_samples) >= 50 {
             self.take_snapshot();
             self.last_snapshot_samples = count;
+        }
+        if count.saturating_sub(self.last_consolidation_samples) >= CONSOLIDATION_INTERVAL {
+            self.maybe_consolidate();
+            self.last_consolidation_samples = count;
         }
     }
 
@@ -222,6 +250,30 @@ impl FingerprintManager {
         self.storage.get_snapshots()
     }
 
+    fn maybe_consolidate(&mut self) {
+        let window = self.current_author_fingerprint();
+        let alpha = 1.0 / (1.0 + (self.consolidation_count + 1) as f64 * 0.5);
+        match &mut self.canonical_profile {
+            Some(canonical) => {
+                canonical.update_with_ema(&window, alpha);
+            }
+            None => {
+                self.canonical_profile = Some(window);
+            }
+        }
+        self.consolidation_count += 1;
+        if let Some(ref canonical) = self.canonical_profile {
+            save_canonical_profile(&self.config.storage_path, canonical);
+        }
+    }
+
+    pub fn canonical_or_current_fingerprint(&self) -> AuthorFingerprint {
+        match &self.canonical_profile {
+            Some(canonical) => canonical.clone(),
+            None => self.current_author_fingerprint(),
+        }
+    }
+
     pub fn save_current(&mut self) -> Result<ProfileId> {
         log::debug!("FingerprintManager::save_current");
         let fingerprint = self.current_author_fingerprint();
@@ -260,8 +312,24 @@ impl FingerprintManager {
     pub fn reset_session(&mut self) {
         log::debug!("FingerprintManager::reset_session");
         self.activity_accumulator.reset();
+        self.last_snapshot_samples = 0;
+        self.last_consolidation_samples = 0;
         if let Some(ref mut collector) = self.style_collector {
             collector.reset();
+        }
+        // canonical_profile intentionally preserved across session resets
+    }
+
+    pub fn reset(&mut self) {
+        log::debug!("FingerprintManager::reset");
+        self.reset_session();
+        self.canonical_profile = None;
+        self.consolidation_count = 0;
+        let path = self.config.storage_path.join(CANONICAL_PROFILE_FILE);
+        if path.exists() {
+            if let Err(e) = std::fs::remove_file(&path) {
+                log::warn!("Failed to delete canonical profile: {e}");
+            }
         }
     }
 
@@ -308,6 +376,57 @@ impl FingerprintManager {
         let mut status = self.status();
         status.phys_ratio = Some(phys_ratio);
         status
+    }
+}
+
+
+
+fn load_canonical_profile(storage_path: &Path) -> Option<AuthorFingerprint> {
+    let path = storage_path.join(CANONICAL_PROFILE_FILE);
+    if !path.exists() {
+        return None;
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(json) => match serde_json::from_str(&json) {
+            Ok(fp) => Some(fp),
+            Err(e) => {
+                log::warn!("Failed to deserialize canonical profile: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            log::warn!("Failed to read canonical profile: {e}");
+            None
+        }
+    }
+}
+
+fn save_canonical_profile(storage_path: &Path, fingerprint: &AuthorFingerprint) {
+    let path = storage_path.join(CANONICAL_PROFILE_FILE);
+    let json = match serde_json::to_string_pretty(fingerprint) {
+        Ok(j) => j,
+        Err(e) => {
+            log::warn!("Failed to serialize canonical profile: {e}");
+            return;
+        }
+    };
+    let tmp = match tempfile::NamedTempFile::new_in(storage_path) {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("Failed to create tempfile for canonical profile: {e}");
+            return;
+        }
+    };
+    if let Err(e) = std::io::Write::write_all(&mut tmp.as_file(), json.as_bytes()) {
+        log::warn!("Failed to write canonical profile tempfile: {e}");
+        return;
+    }
+    if let Err(e) = tmp.as_file().sync_all() {
+        log::warn!("Failed to fsync canonical profile: {e}");
+        return;
+    }
+    if let Err(e) = tmp.persist(&path) {
+        log::warn!("Failed to persist canonical profile: {e}");
     }
 }
 
