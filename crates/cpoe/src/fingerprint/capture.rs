@@ -208,6 +208,7 @@ impl FingerprintCapture {
                             self.last_keydown_ts_ns = 0;
                             self.last_keyup_ts_ns = 0;
                             self.pending_downs.clear();
+                            self.burst_buffer.clear();
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                             log::info!("FingerprintCapture: broadcast channel closed; exiting");

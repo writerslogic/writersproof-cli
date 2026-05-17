@@ -467,6 +467,11 @@ pub fn ffi_fingerprint_capture_start() -> FfiResult {
     if guard.as_ref().map_or(false, |h| h.running.load(std::sync::atomic::Ordering::SeqCst)) {
         return FfiResult::ok("fingerprint capture already running");
     }
+    // Ensure any previous (stopped but not yet exited) task is fully cancelled
+    // before starting a new one, preventing brief double-consumer window.
+    if let Some(old) = guard.take() {
+        crate::fingerprint::capture::stop_capture(&old);
+    }
     let rt = match super::sentinel::ffi_runtime() {
         Ok(r) => r,
         Err(e) => return FfiResult::err(e),
