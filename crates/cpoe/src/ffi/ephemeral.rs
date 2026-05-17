@@ -22,7 +22,6 @@ use dashmap::DashMap;
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use zeroize::Zeroize;
 
 use super::helpers::device_identity;
 
@@ -680,7 +679,7 @@ fn build_war_block(
     let key_bytes = zeroize::Zeroizing::new(
         <[u8; 32]>::try_from(&key_data[..32]).map_err(|_| "invalid key length")?,
     );
-    let mut signing_key = ed25519_dalek::SigningKey::from_bytes(&key_bytes);
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&key_bytes);
 
     let snapshots: Vec<crate::evidence::EphemeralSnapshot> = session
         .content_snapshots
@@ -702,7 +701,7 @@ fn build_war_block(
         session.keystroke_count,
         &signing_key,
     );
-    signing_key.zeroize();
+    drop(signing_key);
     result
 }
 

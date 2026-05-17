@@ -10,9 +10,10 @@ use super::jumbf::{
 };
 use super::types::{
     Action, ActionParameters, ActionsAssertion, AiDisclosureAssertion, AssertionMetadata,
-    AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo, DataSource,
+    AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo, DataSource, ExclusionRange,
     ExternalReferenceAssertion, ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri,
-    C2paIngredient, MetadataAssertion, ProcessAssertion, SoftwareAgent, VcReferenceAssertion,
+    C2paIngredient, LocalTimestampAssertion, MetadataAssertion, ProcessAssertion, SoftwareAgent,
+    VcReferenceAssertion,
 };
 use super::{
     ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_AI_DISCLOSURE, ASSERTION_LABEL_CAWG_IDENTITY,
@@ -25,6 +26,7 @@ use super::{
 const C2PA_SPEC_VERSION: &str = "2.4.0";
 
 /// Builder for constructing a C2PA manifest with CPoP evidence assertions (§15.6).
+#[derive(Clone)]
 pub struct C2paManifestBuilder {
     document_hash: [u8; 32],
     document_filename: Option<String>,
@@ -35,6 +37,9 @@ pub struct C2paManifestBuilder {
     evidence_url: Option<String>,
     manifest_label: String,
     cert_der: Option<Vec<u8>>,
+    cert_chain: Vec<Vec<u8>>,
+    exclusions: Vec<ExclusionRange>,
+    local_timestamp: Option<LocalTimestampAssertion>,
     forensic_signals: Option<ForensicSignalScores>,
     composition_mode: Option<String>,
     writing_mode: Option<String>,
@@ -62,6 +67,9 @@ impl C2paManifestBuilder {
             evidence_url: None,
             manifest_label,
             cert_der: None,
+            cert_chain: Vec::new(),
+            exclusions: Vec::new(),
+            local_timestamp: None,
             forensic_signals: None,
             composition_mode: None,
             writing_mode: None,
@@ -80,6 +88,36 @@ impl C2paManifestBuilder {
     /// to create one from an Ed25519 signing key.
     pub fn cert_der(mut self, der: Vec<u8>) -> Self {
         self.cert_der = Some(der);
+        self
+    }
+
+    /// Set a DER-encoded X.509 certificate chain for the x5chain COSE header.
+    ///
+    /// The first element must be the end-entity certificate; subsequent elements
+    /// are intermediate CAs up to (but not including) the trust anchor root.
+    pub fn cert_chain(mut self, chain: Vec<Vec<u8>>) -> Self {
+        self.cert_chain = chain;
+        self
+    }
+
+    /// Replace the document hash (used in pass 2 of two-pass PDF embedding).
+    pub fn document_hash(mut self, hash: [u8; 32]) -> Self {
+        self.document_hash = hash;
+        self
+    }
+
+    /// Set byte-range exclusions for the hash-data assertion (§9.1).
+    ///
+    /// Use this when embedding the manifest in the asset file so the manifest
+    /// bytes themselves are excluded from the content hash.
+    pub fn exclusions(mut self, exclusions: Vec<ExclusionRange>) -> Self {
+        self.exclusions = exclusions;
+        self
+    }
+
+    /// Set a local timestamp assertion as an offline TSA fallback.
+    pub fn local_timestamp(mut self, ts: LocalTimestampAssertion) -> Self {
+        self.local_timestamp = Some(ts);
         self
     }
 
@@ -191,7 +229,7 @@ impl C2paManifestBuilder {
                 .unwrap_or_else(|| "document".to_string()),
             hash: self.document_hash.to_vec(),
             algorithm: "sha256".to_string(),
-            exclusions: vec![],
+            exclusions: self.exclusions,
         };
 
         // Built once; same bytes are hashed for the claim and embedded in JUMBF.
@@ -356,6 +394,24 @@ impl C2paManifestBuilder {
             });
             assertion_boxes.push(vc_box);
         }
+
+        if let Some(ref local_ts) = self.local_timestamp {
+            let ts_box = build_assertion_jumbf_json(
+                super::ASSERTION_LABEL_LOCAL_TIMESTAMP,
+                local_ts,
+            )?;
+            let ts_hash = Sha256::digest(&ts_box[8..]);
+            created_assertions.push(HashedUri {
+                url: format!(
+                    "self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{}",
+                    super::ASSERTION_LABEL_LOCAL_TIMESTAMP
+                ),
+                hash: ts_hash.to_vec(),
+                alg: Some("sha256".to_string()),
+            });
+            assertion_boxes.push(ts_box);
+        }
+
         let sig_url = format!("self#jumbf=/c2pa/{manifest_label}/c2pa.signature");
 
         let claim = C2paClaim {
@@ -377,8 +433,10 @@ impl C2paManifestBuilder {
         };
 
         // §13.2: COSE_Sign1 with x5chain in protected header (C2PA 2.4)
+        // cert_der takes precedence; cert_chain[0] is used as fallback end-entity cert.
+        let cert_der = self.cert_der.as_deref().or_else(|| self.cert_chain.first().map(|v| v.as_slice()));
         let claim_cbor = ciborium_to_vec(&claim)?;
-        let signature = sign_c2pa_claim(&claim_cbor, signer, self.cert_der.as_deref())?;
+        let signature = sign_c2pa_claim(&claim_cbor, signer, cert_der)?;
 
         Ok(C2paManifest {
             claim,

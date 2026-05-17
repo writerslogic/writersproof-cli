@@ -39,10 +39,30 @@ pub struct VerifiableCredential {
     pub valid_until: Option<String>,
     #[serde(rename = "credentialSubject")]
     pub credential_subject: CredentialSubject,
+    #[serde(
+        rename = "credentialStatus",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub credential_status: Option<CredentialStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<VcEvidence>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof: Option<VcProof>,
+}
+
+/// Credential status entry per W3C VC 2.0 §5.5.
+/// Points to a Bitstring Status List for revocation checking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CredentialStatus {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub status_type: String,
+    #[serde(rename = "statusPurpose")]
+    pub status_purpose: String,
+    #[serde(rename = "statusListIndex")]
+    pub status_list_index: String,
+    #[serde(rename = "statusListCredential")]
+    pub status_list_credential: String,
 }
 
 /// The credential subject — the author and their attestation.
@@ -185,6 +205,7 @@ fn build_vc_core(ear: &EarToken, author_did: &str) -> Result<VerifiableCredentia
                 forensic_signals: None,
             },
         },
+        credential_status: None,
         evidence: Some(evidence),
         proof: None,
     })
@@ -260,8 +281,12 @@ pub fn to_signed_verifiable_credential(
     Ok(vc)
 }
 
-/// COSE content type for Verifiable Credentials per W3C spec.
-const COSE_VC_CONTENT_TYPE: &str = "application/vc";
+/// COSE content type for Verifiable Credentials per W3C VC+COSE spec (May 2025).
+const COSE_VC_CONTENT_TYPE: &str = "application/vc+cose";
+
+/// Legacy COSE content type accepted for backward compatibility.
+#[allow(dead_code)]
+const COSE_VC_CONTENT_TYPE_LEGACY: &str = "application/vc";
 
 /// Produce a COSE_Sign1-secured Verifiable Credential.
 ///
@@ -475,13 +500,13 @@ mod tests {
             coset::RegisteredLabelWithPrivate::Assigned(coset::iana::Algorithm::EdDSA)
         );
 
-        // Check content_type = "application/vc".
+        // Check content_type = "application/vc+cose".
         let ct = sign1
             .protected
             .header
             .content_type
             .expect("content_type header missing");
-        assert_eq!(ct, coset::ContentType::Text("application/vc".to_string()));
+        assert_eq!(ct, coset::ContentType::Text("application/vc+cose".to_string()));
 
         // Check kid = DID key ID.
         let kid_str =

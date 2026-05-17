@@ -302,7 +302,7 @@ pub fn compute_fatigue_phase_binding(
     let q_warmup = (metrics.warmup_fraction * 20.0).round() as u8;
     let q_plateau = (metrics.plateau_fraction * 20.0).round() as u8;
     let q_fatigue = (metrics.fatigue_fraction * 20.0).round() as u8;
-    h.update([q_warmup, q_plateau, q_fatigue, metrics.dominant_phase as u8]);
+    h.update([q_warmup, q_plateau, q_fatigue, metrics.dominant_phase]);
     h.finalize().into()
 }
 

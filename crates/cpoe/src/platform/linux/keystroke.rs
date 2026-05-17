@@ -213,6 +213,7 @@ impl LinuxKeystrokeCapture {
                             is_hardware: is_physical,
                             device_id: device_id.clone(),
                             transport_type,
+                            target_pid: 0,
                         };
 
                         if tx.send(keystroke).is_err() {

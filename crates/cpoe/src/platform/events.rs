@@ -27,6 +27,10 @@ pub struct KeystrokeEvent {
     pub device_id: Option<Arc<str>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport_type: Option<TransportType>,
+    /// Unix PID of the application that received this keystroke.
+    /// Populated from `kCGEventTargetUnixProcessID` in the tap callback.
+    #[serde(default)]
+    pub target_pid: i32,
 }
 
 impl KeystrokeEvent {
@@ -42,6 +46,7 @@ impl KeystrokeEvent {
             is_hardware: true,
             device_id: None,
             transport_type: None,
+            target_pid: 0,
         }
     }
 
@@ -57,6 +62,7 @@ impl KeystrokeEvent {
             is_hardware,
             device_id: None,
             transport_type: None,
+            target_pid: 0,
         }
     }
 
@@ -79,6 +85,7 @@ impl KeystrokeEvent {
             is_hardware,
             device_id,
             transport_type,
+            target_pid: 0,
         }
     }
 }

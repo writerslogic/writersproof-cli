@@ -227,6 +227,57 @@ impl SecureStore {
         }
     }
 
+    /// Register a C2PA manifest hash paired with the document's SimHash for stripping detection.
+    ///
+    /// Uses INSERT OR IGNORE so repeated exports of the same manifest are idempotent.
+    pub fn insert_manifest_registry(
+        &self,
+        document_simhash: i64,
+        manifest_hash: &str,
+        document_path: &str,
+    ) -> anyhow::Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO manifest_registry
+             (document_simhash, manifest_hash, document_path)
+             VALUES (?, ?, ?)",
+            rusqlite::params![document_simhash, manifest_hash, document_path],
+        )?;
+        Ok(())
+    }
+
+    /// Look up a manifest registry row by SimHash distance.
+    ///
+    /// Returns `(manifest_hash, document_path)` for the closest stored entry whose
+    /// SimHash Hamming distance from `query_simhash` is at most `max_distance` bits.
+    /// Returns `None` if no match is found.
+    pub fn lookup_manifest_by_simhash(
+        &self,
+        query_simhash: i64,
+        max_distance: u32,
+    ) -> anyhow::Result<Option<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT document_simhash, manifest_hash, document_path FROM manifest_registry",
+        )?;
+        let mut best: Option<(u32, String, String)> = None;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (stored_simhash, manifest_hash, doc_path) = row?;
+            let dist = ((query_simhash as u64) ^ (stored_simhash as u64)).count_ones();
+            if dist <= max_distance {
+                if best.as_ref().map_or(true, |(d, _, _)| dist < *d) {
+                    best = Some((dist, manifest_hash, doc_path));
+                }
+            }
+        }
+        Ok(best.map(|(_, mh, dp)| (mh, dp)))
+    }
+
     /// Record a manuscript export attestation with HMAC protection.
     ///
     /// The HMAC covers the four hash fields and both timestamps to make the

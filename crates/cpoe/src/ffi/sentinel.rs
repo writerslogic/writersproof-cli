@@ -31,7 +31,7 @@ pub(crate) fn get_running_sentinel() -> Option<Arc<Sentinel>> {
     get_sentinel().filter(|s| s.is_running())
 }
 
-fn ffi_runtime() -> Result<Arc<tokio::runtime::Runtime>, String> {
+pub(crate) fn ffi_runtime() -> Result<Arc<tokio::runtime::Runtime>, String> {
     let mut guard = FFI_RUNTIME.lock().unwrap_or_else(|p| {
         log::warn!("FFI_RUNTIME mutex was poisoned, recovering");
         p.into_inner()
@@ -196,6 +196,7 @@ pub fn ffi_sentinel_start() -> FfiResult {
             }
         }
     }
+    crate::fingerprint::global::set_sentinel_feeding(true);
     FfiResult::ok(msg)
     })
 }
@@ -237,6 +238,8 @@ pub fn ffi_sentinel_stop() -> FfiResult {
         }
         Ok(Ok(())) => {}
     }
+
+    crate::fingerprint::global::set_sentinel_feeding(false);
 
     // Keep the sentinel in the static so it can be restarted without
     // creating a new instance (which leaks CGEventTap threads).

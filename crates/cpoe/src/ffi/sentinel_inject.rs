@@ -391,8 +391,7 @@ fn inject_keystroke_inner_v3(
         dwell_time_ns,
         flight_time_ns,
     };
-    sentinel
-        .activity_accumulator
+    crate::fingerprint::global::get_global_accumulator()
         .write_recover()
         .add_sample(&sample);
 

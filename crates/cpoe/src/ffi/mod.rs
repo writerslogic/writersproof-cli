@@ -32,6 +32,7 @@ pub mod system;
 pub mod text_fragment;
 pub mod types;
 pub mod user_apps;
+pub mod vc_export;
 pub mod verify_detail;
 pub mod writersproof_ffi;
 
@@ -63,6 +64,7 @@ pub use system::*;
 pub use text_fragment::*;
 pub use types::*;
 pub use user_apps::*;
+pub use vc_export::*;
 pub use verify_detail::*;
 pub use writersproof_ffi::*;
 

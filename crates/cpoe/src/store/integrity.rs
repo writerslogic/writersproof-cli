@@ -20,6 +20,7 @@ const KNOWN_TABLES: &[&str] = &[
     "fingerprints",
     "shadow_sessions",
     "export_events",
+    "manifest_registry",
 ];
 
 fn has_column(conn: &rusqlite::Connection, table: &str, col: &str) -> anyhow::Result<bool> {
@@ -340,6 +341,19 @@ impl SecureStore {
             );
             CREATE INDEX IF NOT EXISTS idx_export_events_session
                 ON export_events(source_session_id, export_detected_ns);",
+        )?;
+
+        // Migration: manifest registry for C2PA stripping detection.
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS manifest_registry (
+                document_simhash    INTEGER NOT NULL,
+                manifest_hash       TEXT NOT NULL,
+                document_path       TEXT NOT NULL,
+                created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+                PRIMARY KEY (document_simhash, manifest_hash)
+            );
+            CREATE INDEX IF NOT EXISTS idx_manifest_registry_simhash
+                ON manifest_registry(document_simhash);",
         )?;
 
         Ok(())

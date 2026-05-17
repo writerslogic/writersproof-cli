@@ -30,7 +30,45 @@ impl Default for DigraphTiming {
 /// Top-N digraph (consecutive zone pair) IKI timing profile.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DigraphProfile {
+    #[serde(
+        serialize_with = "serialize_digraph_map",
+        deserialize_with = "deserialize_digraph_map"
+    )]
     pub digraph_timings: HashMap<(u8, u8), DigraphTiming>,
+}
+
+fn serialize_digraph_map<S>(
+    map: &HashMap<(u8, u8), DigraphTiming>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut m = serializer.serialize_map(Some(map.len()))?;
+    for ((a, b), v) in map {
+        m.serialize_entry(&format!("{a},{b}"), v)?;
+    }
+    m.end()
+}
+
+fn deserialize_digraph_map<'de, D>(
+    deserializer: D,
+) -> std::result::Result<HashMap<(u8, u8), DigraphTiming>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: HashMap<String, DigraphTiming> = HashMap::deserialize(deserializer)?;
+    let mut result = HashMap::with_capacity(raw.len());
+    for (key, val) in raw {
+        let parts: Vec<&str> = key.split(',').collect();
+        if parts.len() == 2 {
+            if let (Ok(a), Ok(b)) = (parts[0].parse::<u8>(), parts[1].parse::<u8>()) {
+                result.insert((a, b), val);
+            }
+        }
+    }
+    Ok(result)
 }
 
 impl DigraphProfile {

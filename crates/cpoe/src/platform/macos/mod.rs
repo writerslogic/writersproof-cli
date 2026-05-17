@@ -12,6 +12,7 @@ mod hid_capture;
 mod keystroke;
 mod mouse_capture;
 mod permissions;
+pub(crate) mod shared_tap;
 mod synthetic;
 
 #[cfg(test)]

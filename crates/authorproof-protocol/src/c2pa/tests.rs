@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use super::embed::{embed_in_pdf, hash_with_exclusions, sidecar_path, supports_embedding};
+use super::trust::{evaluate_trust, TrustLevel};
 use super::validation::{verify_manifest_signature, verify_manifest_with_key};
 use super::*;
 use crate::rfc::{Checkpoint, DocumentRef, EvidencePacket, HashAlgorithm, HashValue};
@@ -635,4 +637,113 @@ fn manifest_with_forensic_signals_and_ai_disclosure() {
     // Validate the full manifest structure.
     let result = validate_manifest(&manifest);
     assert!(result.is_valid(), "Manifest with signals should validate: {:?}", result.errors);
+}
+
+#[test]
+fn test_hash_exclusion_range_correctness() {
+    let data = [1u8, 2, 3, 4, 5, 6, 7, 8];
+    let exclusions = vec![HashExclusion { start: 2, length: 3 }];
+    let result = hash_with_exclusions(&data, &exclusions);
+
+    let mut expected_data = data;
+    expected_data[2] = 0;
+    expected_data[3] = 0;
+    expected_data[4] = 0;
+    let expected: [u8; 32] = sha2::Sha256::digest(expected_data).into();
+
+    assert_eq!(result, expected, "Exclusion must zero bytes 2..5");
+
+    let without: [u8; 32] = sha2::Sha256::digest(data).into();
+    assert_ne!(result, without, "Excluded hash must differ from plain hash");
+}
+
+#[test]
+fn test_pdf_embed_preserves_header() {
+    let pdf = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n\
+                xref\n0 2\n0000000000 65535 f \n0000000009 00000 n \n\
+                trailer\n<< /Size 2 /Root 1 0 R >>\nstartxref\n58\n%%EOF\n"
+        .to_vec();
+    let jumbf = b"test c2pa manifest for pdf";
+    let embedded = embed_in_pdf(&pdf, jumbf).expect("embed_in_pdf must succeed");
+
+    assert_eq!(&embedded[..5], b"%PDF-", "PDF header must be intact");
+    assert_eq!(&embedded[..pdf.len()], &pdf[..], "original content preserved");
+    let text = String::from_utf8_lossy(&embedded);
+    assert!(text.contains("/C2PA"), "must contain /C2PA reference");
+    assert!(text.contains("/Subtype /C2PA"), "stream must have /Subtype /C2PA");
+    assert!(text.ends_with("%%EOF\n"), "must end with %%EOF");
+}
+
+#[test]
+fn test_pdf_embed_rejects_non_pdf() {
+    assert!(embed_in_pdf(b"not a pdf", b"jumbf").is_err());
+}
+
+#[test]
+fn test_sidecar_path_for_text_documents() {
+    assert_eq!(sidecar_path("/docs/essay.md"), "/docs/essay.md.c2pa");
+    assert_eq!(sidecar_path("/docs/paper.txt"), "/docs/paper.txt.c2pa");
+    assert_eq!(sidecar_path("/docs/thesis.rtf"), "/docs/thesis.rtf.c2pa");
+}
+
+#[test]
+fn test_supports_embedding_text_formats() {
+    assert!(supports_embedding("pdf"), "PDF supports embedding");
+    assert!(!supports_embedding("txt"), "plain text uses sidecar");
+    assert!(!supports_embedding("md"), "markdown uses sidecar");
+    assert!(!supports_embedding("rtf"), "RTF uses sidecar");
+    assert!(!supports_embedding("docx"), "DOCX uses sidecar");
+}
+
+#[test]
+fn test_cert_chain_builder() {
+    let packet = test_evidence_packet();
+    let key = test_signing_key();
+    let chain = vec![vec![0x30u8, 0x00], vec![0x30u8, 0x01]];
+
+    let manifest = C2paManifestBuilder::new(packet, b"ev".to_vec(), [0xAB; 32])
+        .cert_chain(chain)
+        .build_manifest(&key)
+        .unwrap();
+
+    let result = validate_manifest(&manifest);
+    assert!(result.is_valid(), "cert_chain manifest must validate: {:?}", result.errors);
+}
+
+#[test]
+fn test_local_timestamp_assertion() {
+    let packet = test_evidence_packet();
+    let key = test_signing_key();
+    let ts = LocalTimestampAssertion {
+        wall_clock_ns: 1_710_000_000_000_000_000i64,
+        vdf_proof_hash: Some([0xABu8; 32]),
+        vdf_iterations: 100_000,
+    };
+
+    let manifest = C2paManifestBuilder::new(packet, b"ev".to_vec(), [0xAB; 32])
+        .local_timestamp(ts)
+        .build_manifest(&key)
+        .unwrap();
+
+    let has_ts = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .any(|a| a.url.contains(super::ASSERTION_LABEL_LOCAL_TIMESTAMP));
+    assert!(has_ts, "Local timestamp assertion must be in manifest");
+
+    let result = validate_manifest(&manifest);
+    assert!(result.is_valid(), "local_timestamp manifest must validate: {:?}", result.errors);
+}
+
+#[test]
+fn test_trust_level_evaluation() {
+    assert_eq!(evaluate_trust(&[]), TrustLevel::SelfSigned);
+    assert_eq!(evaluate_trust(&[vec![0x30]]), TrustLevel::SelfSigned);
+    assert_eq!(
+        evaluate_trust(&[vec![0x30], vec![0x31]]),
+        TrustLevel::CertChain
+    );
+    assert!(TrustLevel::TrustAnchored > TrustLevel::CertChain);
+    assert!(TrustLevel::CertChain > TrustLevel::SelfSigned);
 }

@@ -458,6 +458,7 @@ mod tests {
             is_hardware,
             device_id: None,
             transport_type: None,
+            target_pid: 0,
         }
     }
 

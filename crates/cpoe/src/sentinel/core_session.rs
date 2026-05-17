@@ -548,8 +548,7 @@ impl Sentinel {
 
     /// Compute and persist an updated authorship baseline digest from accumulated activity.
     pub fn update_baseline(&self) -> anyhow::Result<()> {
-        let summary = self
-            .activity_accumulator
+        let summary = crate::fingerprint::global::get_global_accumulator()
             .read_recover()
             .to_session_summary();
         if summary.keystroke_count < 10 {

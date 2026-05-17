@@ -7,6 +7,8 @@
 //! (ISO 19566-5) box format with COSE_Sign1 signatures.
 
 pub mod cert;
+pub mod embed;
+pub mod trust;
 mod builder;
 mod jumbf;
 mod types;
@@ -16,13 +18,15 @@ mod validation;
 mod tests;
 
 pub use builder::C2paManifestBuilder;
+pub use embed::{embed_in_pdf, embed_manifest_in_pdf, hash_with_exclusions, sidecar_path, supports_embedding};
 pub use jumbf::{encode_jumbf, verify_jumbf_structure};
+pub use trust::{evaluate_trust, TrustLevel};
 pub use types::{
     Action, ActionParameters, ActionsAssertion, AiContentProfile, AiDisclosureAssertion,
     AssertionMetadata, AssetInfo, AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo,
     DataSource, ExclusionRange, ExternalReferenceAssertion, ForensicSignalScores,
-    HashDataAssertion, HashedExtUri, HashedUri, JitterSeal, JumbfInfo, MetadataAssertion,
-    C2paIngredient, IngredientMetadata,
+    HashDataAssertion, HashedExtUri, HashedUri, HashExclusion, JitterSeal, JumbfInfo,
+    LocalTimestampAssertion, MetadataAssertion, C2paIngredient, IngredientMetadata,
     ProcessAssertion, SoftwareAgent, ValidationResult, VcReferenceAssertion,
 };
 pub use validation::{validate_manifest, verify_manifest_signature, verify_manifest_with_key};
@@ -37,3 +41,4 @@ pub const ASSERTION_LABEL_INGREDIENT: &str = "c2pa.ingredient";
 pub const ASSERTION_LABEL_CAWG_IDENTITY: &str = "cawg.identity";
 pub const ASSERTION_LABEL_CAWG_TDM: &str = "cawg.training-mining";
 pub const ASSERTION_LABEL_VC_REFERENCE: &str = "com.writerslogic.vc-reference.v1";
+pub const ASSERTION_LABEL_LOCAL_TIMESTAMP: &str = "com.writerslogic.local-timestamp.v1";

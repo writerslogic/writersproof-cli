@@ -613,6 +613,12 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                     (None, None)
                 };
 
+                let target_pid = unsafe {
+                    CGEventGetIntegerValueField(
+                        event,
+                        K_CG_EVENT_TARGET_UNIX_PROCESS_ID,
+                    )
+                } as i32;
                 let keystroke = KeystrokeEvent {
                     timestamp_ns: now,
                     keycode,
@@ -627,6 +633,7 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                     is_hardware: true,
                     device_id: None,
                     transport_type: None,
+                    target_pid,
                 };
 
                 if event_type == K_CG_EVENT_KEY_DOWN {

@@ -3,7 +3,9 @@
 //! FFI functions for witnessing start/stop/status.
 
 use super::sentinel::get_sentinel;
-use crate::ffi::types::{try_ffi, FfiResult, FfiSentinelStatus, FfiWitnessingStatus};
+use crate::ffi::types::{
+    try_ffi, FfiPermissionState, FfiResult, FfiSentinelStatus, FfiWitnessingStatus,
+};
 use crate::RwLockRecover;
 
 /// Start witnessing a specific file path.
@@ -89,14 +91,14 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
                 uptime_secs: 0,
                 keystroke_count: 0,
                 focus_duration: String::new(),
+                permission_state: FfiPermissionState::Unknown,
             };
         }
     };
 
     let tracked = sentinel.tracked_files();
 
-    let summary = sentinel
-        .activity_accumulator
+    let summary = crate::fingerprint::global::get_global_accumulator()
         .read_recover()
         .to_session_summary();
 
@@ -115,6 +117,7 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
         uptime_secs: summary.duration_secs,
         keystroke_count: summary.keystroke_count,
         focus_duration: format_duration(total_focus_ms / 1000),
+        permission_state: FfiPermissionState::Full,
     }
 }
 

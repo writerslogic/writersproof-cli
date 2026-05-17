@@ -63,7 +63,8 @@ impl SentinelIpcHandler {
         let event_data = crate::forensics::EventData::from_secure_events(&events);
         let regions = std::collections::HashMap::new();
 
-        let accumulator = self.sentinel.activity_accumulator.read_recover();
+        let accumulator = crate::fingerprint::global::get_global_accumulator();
+        let accumulator = accumulator.read_recover();
         let jitter_samples = if accumulator.sample_count() > 0 {
             Some(accumulator.samples())
         } else {
@@ -349,9 +350,7 @@ impl SentinelIpcHandler {
         };
         builder = builder.with_declaration(&decl);
 
-        let summary = self
-            .sentinel
-            .activity_accumulator
+        let summary = crate::fingerprint::global::get_global_accumulator()
             .read_recover()
             .to_session_summary();
         let mut bv = authorproof_protocol::baseline::BaselineVerification {
@@ -375,7 +374,9 @@ impl SentinelIpcHandler {
         }
         builder = builder.with_baseline_verification(bv);
 
-        let jitter_samples = self.sentinel.activity_accumulator.read_recover().samples();
+        let jitter_samples = crate::fingerprint::global::get_global_accumulator()
+            .read_recover()
+            .samples();
         let physics = crate::physics::PhysicalContext::capture(&jitter_samples);
         builder = builder.with_physical_context(&physics);
 

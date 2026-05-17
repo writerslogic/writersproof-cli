@@ -296,11 +296,29 @@ pub fn ffi_export_c2pa_manifest(
                 return FfiResult::err(format!("Failed to write C2PA manifest: {e}"));
             }
             match tmp.persist(&out_file) {
-                Ok(_) => FfiResult::ok(format!(
-                    "C2PA manifest exported to {} ({} bytes)",
-                    out_file.display(),
-                    jumbf.len()
-                )),
+                Ok(_) => {
+                    // Register this manifest for stripping detection.
+                    // Read document content to compute SimHash; non-fatal on failure.
+                    if let Ok(content) = std::fs::read_to_string(&doc_file) {
+                        let fp = crate::sentinel::content_fingerprint::ContentFingerprint::from_text(&content);
+                        let manifest_hash = hex::encode(doc_hash);
+                        let doc_path_str = doc_file.to_string_lossy().to_string();
+                        if let Ok(store) = crate::ffi::helpers::open_store() {
+                            if let Err(e) = store.insert_manifest_registry(
+                                fp.simhash as i64,
+                                &manifest_hash,
+                                &doc_path_str,
+                            ) {
+                                log::warn!("manifest_registry insert failed: {e}");
+                            }
+                        }
+                    }
+                    FfiResult::ok(format!(
+                        "C2PA manifest exported to {} ({} bytes)",
+                        out_file.display(),
+                        jumbf.len()
+                    ))
+                }
                 Err(e) => FfiResult::err(format!("Failed to persist C2PA manifest: {e}")),
             }
         }
@@ -495,4 +513,105 @@ pub fn enrich_c2pa_builder(
     }
 
     builder
+}
+
+/// Result of a C2PA manifest stripping check.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiStrippingResult {
+    /// One of: "no_manifest_expected", "manifest_present", "manifest_stripped".
+    pub status: String,
+    /// SHA-256 hex of the document hash at export time, when a manifest was registered.
+    pub original_manifest_hash: Option<String>,
+    /// Document path stored at export time, when a manifest was registered.
+    pub document_path: Option<String>,
+}
+
+/// Check whether a C2PA manifest that was previously exported for a document
+/// has been stripped from the sidecar location.
+///
+/// 1. Reads the document at `document_path` and computes its SimHash.
+/// 2. Queries `manifest_registry` for a previously registered manifest within
+///    the similarity threshold (Hamming distance ≤ 11 bits).
+/// 3. If no registration found → "no_manifest_expected".
+/// 4. If a registration found → checks for a `.c2pa` sidecar next to the document.
+///    - Sidecar present → "manifest_present".
+///    - Sidecar absent  → "manifest_stripped".
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_check_manifest_stripping(document_path: String) -> FfiStrippingResult {
+    let no_manifest = FfiStrippingResult {
+        status: "no_manifest_expected".to_string(),
+        original_manifest_hash: None,
+        document_path: None,
+    };
+
+    let doc_file = match crate::sentinel::helpers::validate_path(&document_path) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("ffi_check_manifest_stripping: invalid path: {e}");
+            return no_manifest;
+        }
+    };
+
+    if !doc_file.is_file() {
+        return no_manifest;
+    }
+
+    // Bound read to 50 MB to avoid OOM on accidentally large files.
+    const MAX_READ: u64 = 50_000_000;
+    let meta = match std::fs::metadata(&doc_file) {
+        Ok(m) => m,
+        Err(e) => {
+            log::warn!("ffi_check_manifest_stripping: stat failed: {e}");
+            return no_manifest;
+        }
+    };
+    if meta.len() > MAX_READ {
+        log::warn!("ffi_check_manifest_stripping: file too large to SimHash");
+        return no_manifest;
+    }
+
+    let content = match std::fs::read_to_string(&doc_file) {
+        Ok(c) => c,
+        Err(_) => return no_manifest,
+    };
+
+    let fp = crate::sentinel::content_fingerprint::ContentFingerprint::from_text(&content);
+
+    let store = match crate::ffi::helpers::open_store() {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!("ffi_check_manifest_stripping: store open failed: {e}");
+            return no_manifest;
+        }
+    };
+
+    // Hamming distance threshold: mirrors ContentFingerprint::SIMILARITY_THRESHOLD (11).
+    const SIMHASH_MAX_DISTANCE: u32 = 11;
+    let row = match store.lookup_manifest_by_simhash(fp.simhash as i64, SIMHASH_MAX_DISTANCE) {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("ffi_check_manifest_stripping: lookup failed: {e}");
+            return no_manifest;
+        }
+    };
+
+    let (manifest_hash, reg_doc_path) = match row {
+        Some(r) => r,
+        None => return no_manifest,
+    };
+
+    // Check for a .c2pa sidecar alongside the document.
+    let sidecar = doc_file.with_extension("c2pa");
+    let status = if sidecar.is_file() {
+        "manifest_present"
+    } else {
+        "manifest_stripped"
+    };
+
+    FfiStrippingResult {
+        status: status.to_string(),
+        original_manifest_hash: Some(manifest_hash),
+        document_path: Some(reg_doc_path),
+    }
 }

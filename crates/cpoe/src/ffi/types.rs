@@ -442,3 +442,19 @@ pub struct FfiCoEditedPair {
     pub switch_count: u32,
     pub avg_gap_ms: f64,
 }
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiVcVerifyResult {
+    pub success: bool,
+    pub signature_valid: bool,
+    pub issuer_did: Option<String>,
+    pub subject_did: Option<String>,
+    pub verdict: Option<String>,
+    pub valid_from: Option<String>,
+    pub valid_until: Option<String>,
+    pub is_expired: bool,
+    pub error_message: Option<String>,
+}
+
+crate::ffi::types::impl_ffi_err!(FfiVcVerifyResult);

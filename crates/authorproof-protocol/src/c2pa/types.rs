@@ -139,6 +139,31 @@ pub struct ExclusionRange {
     pub length: u64,
 }
 
+/// Byte range exclusion for `hash_with_exclusions` (uses `usize` for direct indexing).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HashExclusion {
+    pub start: usize,
+    pub length: usize,
+}
+
+/// Local timestamp assertion used as an offline TSA fallback.
+///
+/// When a network-based RFC 3161 timestamp is unavailable, a local wall-clock
+/// timestamp bound to an optional VDF proof provides best-effort temporal
+/// ordering. Validators treat this as weaker evidence than a TSA timestamp.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalTimestampAssertion {
+    /// Wall clock time in nanoseconds since Unix epoch (UTC).
+    #[serde(rename = "wallClockNs")]
+    pub wall_clock_ns: i64,
+    /// SHA-256 hash of the VDF proof output, if a VDF was run at timestamp time.
+    #[serde(rename = "vdfProofHash", skip_serializing_if = "Option::is_none")]
+    pub vdf_proof_hash: Option<[u8; 32]>,
+    /// Number of VDF iterations executed (0 if no VDF was run).
+    #[serde(rename = "vdfIterations")]
+    pub vdf_iterations: u64,
+}
+
 /// C2PA metadata assertion for dc:title and dc:format (replaces claim-level fields in v2.4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataAssertion {

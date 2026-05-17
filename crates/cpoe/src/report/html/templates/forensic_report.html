@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensic Authorship Examination Report · {{report_id}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --paper: #ffffff;
+    --bg: #d8d4cb;
+    --ink: #0a0a0a;
+    --ink-2: #2a2a2a;
+    --ink-3: #5a5a5a;
+    --ink-4: #8a8a8a;
+    --rule: #1a1a1a;
+    --rule-2: #c4c0b8;
+    --rule-3: #e4e0d8;
+    --tint: #f3f0e8;
+
+    --serif: 'EB Garamond', 'Times New Roman', Times, serif;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+  }
+
+  html { font-size: 14px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+  body {
+    font-family: var(--serif);
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    padding: 32px 20px;
+  }
+
+  /* Letter size: 8.5 x 11 in @ 96dpi = 816 x 1056 */
+  .page {
+    width: 816px;
+    min-height: 1056px;
+    margin: 0 auto 24px;
+    background: var(--paper);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+    padding: 88px 96px 80px;
+    position: relative;
+    page-break-after: always;
+  }
+
+  .running-header {
+    position: absolute;
+    top: 40px;
+    left: 96px;
+    right: 96px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 10px;
+    border-bottom: 0.5px solid var(--ink);
+    font-family: var(--sans);
+    font-size: 10px;
+    color: var(--ink-2);
+    letter-spacing: 0.04em;
+  }
+  .running-header .l { font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+  .running-header .r { font-family: var(--mono); }
+
+  .running-footer {
+    position: absolute;
+    bottom: 40px;
+    left: 96px;
+    right: 96px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 10px;
+    border-top: 0.5px solid var(--ink);
+    font-family: var(--sans);
+    font-size: 10px;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+  }
+  .running-footer .c { text-align: center; }
+  .running-footer .r { font-family: var(--mono); }
+
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 24px; line-height: 1.2; color: var(--ink); }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 18px; line-height: 1.25; color: var(--ink); margin-bottom: 4px; }
+  h3 { font-family: var(--sans); font-weight: 700; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); margin-bottom: 14px; }
+  h4 { font-family: var(--sans); font-weight: 600; font-size: 12px; color: var(--ink); margin-bottom: 6px; }
+
+  p { font-family: var(--serif); font-size: 13px; line-height: 1.6; margin-bottom: 10px; color: var(--ink); text-align: justify; hyphens: auto; }
+  p.no-just { text-align: left; }
+  p.meta { font-family: var(--sans); font-size: 10.5px; line-height: 1.55; color: var(--ink-3); margin-bottom: 10px; text-align: left; }
+
+  .numpara { display: grid; grid-template-columns: 32px 1fr; gap: 10px; margin-bottom: 12px; align-items: baseline; }
+  .numpara .n { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--ink); text-align: right; padding-top: 2px; }
+  .numpara p { margin: 0; }
+
+  .section-block { margin-bottom: 24px; }
+  .section-block .super { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 4px; }
+  .section-block h2 { margin-bottom: 4px; }
+  .section-block .subtitle { font-family: var(--sans); font-style: italic; font-size: 12px; color: var(--ink-3); }
+
+  .small-caps { font-family: var(--sans); font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); }
+  .mono { font-family: var(--mono); }
+  .sans { font-family: var(--sans); }
+
+  .cover { display: flex; flex-direction: column; min-height: 880px; }
+  .cover-letterhead { text-align: center; padding-bottom: 24px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
+  .cover-letterhead .mark { font-family: var(--serif); font-size: 28px; font-weight: 600; letter-spacing: 0.01em; color: var(--ink); margin-bottom: 4px; }
+  .cover-letterhead .sub { font-family: var(--sans); font-size: 10px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-2); }
+  .cover-letterhead .addr { font-family: var(--sans); font-size: 10px; color: var(--ink-3); margin-top: 10px; line-height: 1.55; }
+  .cover-letterhead-thin { height: 0; border-top: 0.5px solid var(--ink); margin: 4px 0 64px; }
+
+  .cover-doctype { text-align: center; margin-bottom: 64px; }
+  .cover-doctype .super { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 14px; }
+  .cover-doctype h1 { font-size: 32px; font-weight: 500; line-height: 1.15; color: var(--ink); margin-bottom: 10px; letter-spacing: -0.005em; }
+  .cover-doctype .h1-sub { font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--ink-2); }
+
+  .cover-id-table { width: 480px; margin: 0 auto 64px; border-top: 0.5px solid var(--ink); border-bottom: 0.5px solid var(--ink); padding: 20px 0; }
+  .cover-id-row { display: grid; grid-template-columns: 160px 1fr; gap: 16px; padding: 4px 0; align-items: baseline; }
+  .cover-id-row .k { font-family: var(--sans); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .cover-id-row .v { font-family: var(--mono); font-size: 11px; color: var(--ink); word-break: break-all; }
+  .cover-id-row .v.serif { font-family: var(--serif); font-size: 13px; }
+
+  .cover-prepared { text-align: center; margin-bottom: 32px; }
+  .cover-prepared .label { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+  .cover-prepared .examiner { font-family: var(--serif); font-size: 16px; color: var(--ink); margin-bottom: 2px; }
+  .cover-prepared .examiner-title { font-family: var(--sans); font-style: italic; font-size: 11px; color: var(--ink-3); }
+
+  .cover-bottom { margin-top: auto; text-align: center; padding-top: 24px; border-top: 0.5px solid var(--ink); }
+  .cover-bottom .conf { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); margin-bottom: 4px; }
+  .cover-bottom .conf-desc { font-family: var(--sans); font-size: 10px; color: var(--ink-3); line-height: 1.55; max-width: 520px; margin: 0 auto; }
+
+  .cert-intro { margin-bottom: 24px; }
+  .cert-intro p { font-size: 14px; line-height: 1.7; }
+
+  .prop-grid { border: 0.5px solid var(--ink); margin: 20px 0; padding: 0; }
+  .prop-row { display: grid; grid-template-columns: 60px 1fr; padding: 16px 20px; border-bottom: 0.5px solid var(--rule-3); align-items: baseline; }
+  .prop-row:last-child { border-bottom: none; }
+  .prop-row .label { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--ink); }
+  .prop-row .text { font-family: var(--serif); font-size: 13px; line-height: 1.55; color: var(--ink); }
+
+  .conclusion-block { margin: 24px 0; padding: 24px 28px; border: 0.5px solid var(--ink); background: var(--tint); }
+  .conclusion-block .label { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 12px; }
+  .conclusion-block .text { font-family: var(--serif); font-size: 14.5px; line-height: 1.6; color: var(--ink); margin-bottom: 16px; }
+  .conclusion-block .text strong { font-weight: 600; }
+
+  .lr-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; padding-top: 14px; border-top: 0.5px solid var(--ink-3); }
+  .lr-summary .k { font-family: var(--sans); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+  .lr-summary .v { font-family: var(--mono); font-size: 16px; font-weight: 500; color: var(--ink); }
+  .lr-summary .v.serif { font-family: var(--serif); font-size: 14px; }
+
+  .signature-block { margin-top: 36px; padding-top: 20px; border-top: 0.5px solid var(--ink); }
+  .signature-block .declaration { font-family: var(--serif); font-size: 12px; line-height: 1.6; margin-bottom: 28px; text-align: justify; color: var(--ink); }
+  .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 16px; }
+  .signature-line { border-bottom: 0.5px solid var(--ink); height: 38px; margin-bottom: 6px; position: relative; }
+  .signature-line.signed::after { content: 'David Condrey'; position: absolute; bottom: 4px; left: 4px; font-family: 'EB Garamond', cursive; font-style: italic; font-size: 18px; color: var(--ink); letter-spacing: 0.01em; }
+  .signature-label { font-family: var(--sans); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .signature-name { font-family: var(--serif); font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 6px; }
+  .signature-creds { font-family: var(--sans); font-size: 10px; color: var(--ink-3); font-style: italic; margin-top: 2px; line-height: 1.5; }
+
+  .toc-table { width: 100%; margin-bottom: 28px; }
+  .toc-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: baseline; padding: 9px 0; border-bottom: 0.5px solid var(--rule-3); font-family: var(--serif); font-size: 12.5px; }
+  .toc-row .n { font-family: var(--sans); font-size: 10px; font-weight: 600; color: var(--ink-3); }
+  .toc-row .t { color: var(--ink); }
+  .toc-row .t .d { display: block; font-family: var(--sans); font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
+  .toc-row .p { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+  .id-table { width: 100%; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); margin: 16px 0 24px; }
+  .id-table-row { display: grid; grid-template-columns: 220px 1fr; gap: 16px; padding: 11px 0; border-bottom: 0.5px solid var(--rule-3); align-items: baseline; }
+  .id-table-row:last-child { border-bottom: none; }
+  .id-table-row .k { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--ink-2); }
+  .id-table-row .v { font-family: var(--mono); font-size: 11px; color: var(--ink); word-break: break-all; }
+  .id-table-row .v.serif { font-family: var(--serif); font-size: 13px; }
+  .id-table-group { background: var(--tint); padding: 8px 14px; margin: 0 -14px; }
+  .id-table-group-label { font-family: var(--sans); font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); padding: 8px 14px 4px; margin: 0 -14px; background: var(--tint); }
+
+  .method-list { margin: 16px 0; }
+  .method-item { display: grid; grid-template-columns: 42px 1fr; gap: 14px; padding: 14px 0; border-bottom: 0.5px solid var(--rule-3); }
+  .method-item:last-child { border-bottom: none; }
+  .method-item .num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+  .method-item h4 { font-family: var(--serif); font-weight: 600; font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--ink); margin-bottom: 4px; }
+  .method-item p { font-size: 12.5px; line-height: 1.6; text-align: left; margin: 0; }
+
+  .standards-box { margin-top: 20px; padding: 16px 20px; border: 0.5px solid var(--ink); }
+  .standards-box h4 { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 8px; }
+  .standards-box p { font-size: 12px; line-height: 1.6; margin: 0; text-align: justify; }
+  .standards-box ul { margin: 6px 0 0 18px; padding: 0; }
+  .standards-box li { font-family: var(--serif); font-size: 12px; line-height: 1.55; margin-bottom: 2px; }
+
+  table.data { width: 100%; border-collapse: collapse; margin: 14px 0; }
+  table.data thead th { font-family: var(--sans); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); padding: 8px 10px 8px 0; border-bottom: 1px solid var(--ink); text-align: left; vertical-align: bottom; }
+  table.data thead th.r { text-align: right; }
+  table.data tbody td { padding: 11px 10px 11px 0; border-bottom: 0.5px solid var(--rule-3); font-size: 12.5px; color: var(--ink); vertical-align: top; }
+  table.data tbody td.r { text-align: right; }
+  table.data tbody td.mono { font-family: var(--mono); }
+  table.data tbody tr:last-child td { border-bottom: 1px solid var(--ink); }
+  table.data .dim-label { font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--ink); }
+  table.data .dim-sub { font-family: var(--sans); font-size: 10.5px; color: var(--ink-3); margin-top: 1px; }
+  table.data .disc { font-family: var(--sans); font-size: 10.5px; color: var(--ink-2); line-height: 1.4; }
+
+  .key-finding-box { margin: 18px 0; padding: 16px 20px; border-left: 3px solid var(--ink); background: var(--tint); }
+  .key-finding-box .label { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 8px; }
+  .key-finding-box p { font-size: 12.5px; line-height: 1.6; margin: 0; text-align: justify; }
+
+  .combined-result { margin-top: 20px; padding: 18px 22px; border: 1px solid var(--ink); background: var(--paper); }
+  .combined-result .row { display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center; }
+  .combined-result .label { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
+  .combined-result .stmt { font-family: var(--serif); font-size: 13px; line-height: 1.55; color: var(--ink); margin: 0; }
+  .combined-result .vals { text-align: right; }
+  .combined-result .val { font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--ink); line-height: 1; }
+  .combined-result .ci { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-top: 4px; }
+
+  .chain-diagram { margin: 16px 0; padding: 20px 24px; border: 0.5px solid var(--ink); background: var(--tint); }
+  .chain-step { display: grid; grid-template-columns: 28px 1fr; gap: 14px; padding: 10px 0; border-bottom: 0.5px dashed var(--rule-2); }
+  .chain-step:last-child { border-bottom: none; }
+  .chain-step .marker { font-family: var(--mono); font-size: 11px; color: var(--ink-3); padding-top: 2px; }
+  .chain-step .body h4 { font-family: var(--serif); font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: 0; margin-bottom: 2px; }
+  .chain-step .body .detail { font-family: var(--sans); font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+  .chain-step .body .hash { font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); margin-top: 3px; word-break: break-all; }
+
+  .lim-list { margin: 14px 0; }
+  .lim-item { display: grid; grid-template-columns: 32px 1fr; gap: 12px; margin-bottom: 14px; align-items: baseline; }
+  .lim-item .n { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--ink); text-align: right; padding-top: 2px; }
+  .lim-item h4 { font-family: var(--serif); font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: 0; margin-bottom: 3px; }
+  .lim-item p { font-size: 12.5px; line-height: 1.6; margin: 0; text-align: justify; }
+
+  .text-bookend { padding: 8px 12px; background: var(--tint); border-top: 0.5px solid var(--ink); border-bottom: 0.5px solid var(--ink); font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: baseline; }
+  .text-bookend .k { font-family: var(--sans); font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+  .text-bookend .v { word-break: break-all; }
+
+  .examined-text { margin: 16px 0; padding: 4px 0; font-family: var(--serif); font-size: 12.5px; line-height: 1.7; color: var(--ink); column-count: 1; }
+  .examined-text p { margin-bottom: 12px; text-align: justify; }
+
+  .fre-block { margin: 16px 0; padding: 20px 24px; border: 1px solid var(--ink); }
+  .fre-block .label { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 12px; }
+  .fre-block p { font-size: 12.5px; line-height: 1.65; margin-bottom: 10px; text-align: justify; }
+
+  .perjury-decl { margin: 24px 0; padding: 20px 24px; border: 2px solid var(--ink); background: var(--tint); }
+  .perjury-decl .label { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); margin-bottom: 10px; }
+  .perjury-decl p { font-family: var(--serif); font-size: 13px; line-height: 1.65; color: var(--ink); text-align: justify; margin-bottom: 0; }
+
+  .verify-row { display: grid; grid-template-columns: 1fr 132px; gap: 32px; margin-top: 24px; align-items: end; }
+  .verify-row .instructions h4 { font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 8px; }
+  .verify-row .instructions p { font-family: var(--serif); font-size: 12px; line-height: 1.55; margin-bottom: 6px; text-align: justify; }
+  .verify-row .qr { width: 132px; }
+  .verify-row .qr-frame { border: 0.5px solid var(--ink); padding: 8px; background: var(--paper); }
+  .verify-row .qr-frame svg { display: block; }
+  .verify-row .qr-label { font-family: var(--sans); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); text-align: center; margin-top: 8px; }
+
+  .refs-list { margin: 16px 0; counter-reset: refnum; }
+  .ref-item { display: grid; grid-template-columns: 36px 1fr; gap: 10px; margin-bottom: 10px; align-items: baseline; }
+  .ref-item .n { font-family: var(--sans); font-size: 11px; font-weight: 600; color: var(--ink); text-align: right; }
+  .ref-item p { font-family: var(--serif); font-size: 11.5px; line-height: 1.5; margin: 0; text-align: left; }
+  .ref-item .author { font-weight: 500; }
+  .ref-item .title { font-style: italic; }
+
+  @media print {
+    body { background: white; padding: 0; }
+    .page { box-shadow: none; margin: 0; padding: 88px 96px 80px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1 — COVER -->
+<div class="page">
+  <div class="cover">
+    <div class="cover-letterhead">
+      <div class="mark">WritersLogic</div>
+      <div class="sub">Forensic Examination Services</div>
+      <div class="addr">
+        955 11th Avenue, Suite 3101 · San Diego, California 92101 · United States<br>
+        WritersLogic, Inc., a Delaware corporation · CAGE 9N4V7 · UEI KBALFVHT6FB9
+      </div>
+    </div>
+    <div class="cover-letterhead-thin"></div>
+
+    <div class="cover-doctype">
+      <div class="super">Forensic Report</div>
+      <h1>Forensic Authorship<br>Examination Report</h1>
+      <div class="h1-sub">Cryptographic process evidence and behavioural analysis</div>
+    </div>
+
+    <div class="cover-id-table">
+      <div class="cover-id-row"><span class="k">Report identifier</span><span class="v">{{report_id}}</span></div>
+      <div class="cover-id-row"><span class="k">Date issued</span><span class="v serif">{{date_issued}}</span></div>
+      <div class="cover-id-row"><span class="k">Subject document hash</span><span class="v">{{document_hash_truncated}}</span></div>
+      <div class="cover-id-row"><span class="k">Engine version</span><span class="v">{{engine_and_schema}}</span></div>
+      <div class="cover-id-row"><span class="k">Pages</span><span class="v">12 (one through twelve)</span></div>
+    </div>
+
+    <div class="cover-prepared">
+      <div class="label">Examiner of record</div>
+      <div class="examiner">David Condrey</div>
+      <div class="examiner-title">Founder and Chief Examiner, WritersLogic, Inc.</div>
+    </div>
+
+    <div class="cover-bottom">
+      <div class="conf">Confidential · Forensic Examination Record</div>
+      <div class="conf-desc">This document contains forensic process evidence prepared for use by parties with a legitimate need to verify the authorship of the subject document. Independent verification instructions are provided at Section 11 (Certificate of Cryptographic Proof).</div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 2 — CERTIFICATION -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 1 · Certification of findings</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 1</div><h2>Certification of findings</h2><div class="subtitle">Evaluative statement under the ENFSI Bayesian framework</div></div>
+
+  <div class="cert-intro">
+    <div class="numpara"><span class="n">1.1</span><p>I, David Condrey, of WritersLogic, Inc., examined the cryptographic process evidence associated with the document identified by SHA-256 digest <span class="mono">{{document_hash_truncated}}</span> (the &#x201c;subject document&#x201d;). The examination was conducted in accordance with the Guideline for Evaluative Reporting in Forensic Science published by the European Network of Forensic Science Institutes [Ref.&#x00a0;1] and applied the methodology described in Section 3 of this report.</p></div>
+    <div class="numpara"><span class="n">1.2</span><p>This report evaluates the captured behavioural and cryptographic evidence under two competing propositions:</p></div>
+  </div>
+
+  <div class="prop-grid">
+    <div class="prop-row"><span class="label">H<sub>1</sub></span><span class="text">The subject document was composed in real time at the captured device by a human author entering text directly through the keyboard.</span></div>
+    <div class="prop-row"><span class="label">H<sub>2</sub></span><span class="text">The subject document was produced by transcription, dictation, paste from an external source, or other automated input.</span></div>
+  </div>
+
+  <div class="conclusion-block">
+    <div class="label">Evaluative statement</div>
+    <p class="text">{{evaluative_statement}}</p>
+    <div class="lr-summary">
+      <div><div class="k">Likelihood ratio</div><div class="v">LR = {{likelihood_ratio}}</div></div>
+      <div><div class="k">95% confidence interval</div><div class="v">{{confidence_interval}}</div></div>
+      <div><div class="k">Verbal scale</div><div class="v serif">{{enfsi_verbal_short}}</div></div>
+    </div>
+  </div>
+
+  <div class="signature-block">
+    <p class="declaration">I certify that the foregoing evaluative statement reflects my professional opinion based on the evidence examined and the methodology described herein, and that the cryptographic operations underlying the captured evidence were performed by the WritersLogic CPoE Engine in accordance with the protocol specified in <span class="mono" style="font-size:11px;">draft-condrey-cpoe-protocol-00</span>. My full declaration under 28 U.S.C. § 1746 appears at Section 11.</p>
+    <div class="signature-grid">
+      <div><div class="signature-line signed"></div><div class="signature-label">Examiner of record</div><div class="signature-name">David Condrey</div><div class="signature-creds">Founder and Chief Examiner<br>WritersLogic, Inc.<br>Contributing Member, C2PA · DIF · ToIP</div></div>
+      <div><div class="signature-line"></div><div class="signature-label">Date</div><div class="signature-name">{{date_issued_short}}</div><div class="signature-creds">Pacific Time, San Diego, California</div></div>
+    </div>
+  </div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">2 / 12</span></div>
+</div>
+
+<!-- PAGE 3 — CONTENTS + DOCUMENT IDENTIFICATION -->
+<div class="page">
+  <div class="running-header"><span class="l">Contents · Document identification</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">Contents</div><h2>Report structure</h2></div>
+
+  <div class="toc-table">
+    <div class="toc-row"><span class="n">§ 1</span><span class="t">Certification of findings<span class="d">Evaluative statement and examiner signature</span></span><span class="p">2</span></div>
+    <div class="toc-row"><span class="n">§ 2</span><span class="t">Document identification<span class="d">Subject document, originating device, capture session</span></span><span class="p">3</span></div>
+    <div class="toc-row"><span class="n">§ 3</span><span class="t">Methodology and standards basis<span class="d">Capture procedure, analytical framework, validation</span></span><span class="p">4</span></div>
+    <div class="toc-row"><span class="n">§ 4</span><span class="t">Behavioural profile findings<span class="d">Captured profile against population baselines</span></span><span class="p">5</span></div>
+    <div class="toc-row"><span class="n">§ 5</span><span class="t">Per-dimension stylometric analysis<span class="d">Likelihood ratios across six independent dimensions</span></span><span class="p">6</span></div>
+    <div class="toc-row"><span class="n">§ 6</span><span class="t">Cryptographic evidence chain<span class="d">Hash chain, VDF time-binding, device attestation</span></span><span class="p">7</span></div>
+    <div class="toc-row"><span class="n">§ 7</span><span class="t">Chain of custody<span class="d">Sequential record of evidence handling</span></span><span class="p">8</span></div>
+    <div class="toc-row"><span class="n">§ 8</span><span class="t">Limitations and scope<span class="d">What this report does and does not establish</span></span><span class="p">9</span></div>
+    <div class="toc-row"><span class="n">§ 9</span><span class="t">Examined text<span class="d">Subject document reproduced for record</span></span><span class="p">10</span></div>
+    <div class="toc-row"><span class="n">§ 10</span><span class="t">Certificate of cryptographic proof<span class="d">FRE 902(13) and 902(14) declaration</span></span><span class="p">11</span></div>
+    <div class="toc-row"><span class="n">§ 11</span><span class="t">References<span class="d">Standards, statutes, and supporting publications</span></span><span class="p">12</span></div>
+  </div>
+
+  <div class="section-block" style="margin-top: 36px;"><div class="super">§ 2</div><h2>Document identification</h2><div class="subtitle">Subject of examination and originating environment</div></div>
+
+  <div class="id-table-group-label">Subject document</div>
+  <div class="id-table-row"><span class="k">SHA-256 digest</span><span class="v">{{document_hash}}</span></div>
+  <div class="id-table-row"><span class="k">Length</span><span class="v serif">{{document_length_desc}}</span></div>
+  <div class="id-table-row"><span class="k">Encoding</span><span class="v">UTF-8</span></div>
+
+  <div class="id-table-group-label" style="margin-top:10px;">Capture session</div>
+  <div class="id-table-row"><span class="k">Session identifier</span><span class="v">{{first_session_id}}</span></div>
+  <div class="id-table-row"><span class="k">Started</span><span class="v">{{session_start_iso}}</span></div>
+  <div class="id-table-row"><span class="k">Ended</span><span class="v">{{session_end_iso}}</span></div>
+  <div class="id-table-row"><span class="k">Duration</span><span class="v serif">{{total_duration_human}} ({{total_duration_sec}} seconds)</span></div>
+  <div class="id-table-row"><span class="k">Checkpoints recorded</span><span class="v serif">{{checkpoint_count_words}} (indices 0{{checkpoint_indices_end}})</span></div>
+
+  <div class="id-table-group-label" style="margin-top:10px;">Originating device</div>
+  <div class="id-table-row"><span class="k">Hostname</span><span class="v">{{device_hostname}}</span></div>
+  <div class="id-table-row"><span class="k">Operating system</span><span class="v serif">{{device_os}}</span></div>
+  <div class="id-table-row"><span class="k">Capture application</span><span class="v serif">WritersLogic Desktop {{algorithm_version}}</span></div>
+  <div class="id-table-row"><span class="k">Signing key algorithm</span><span class="v">Ed25519 (RFC 8032)</span></div>
+  <div class="id-table-row"><span class="k">Signing key fingerprint</span><span class="v">{{signing_key_fingerprint}}</span></div>
+  <div class="id-table-row"><span class="k">Hardware binding</span><span class="v serif">{{device_attestation}}</span></div>
+  <div class="id-table-row"><span class="k">Attestation type</span><span class="v">{{attestation_tier}}</span></div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">3 / 12</span></div>
+</div>
+
+<!-- PAGE 4 — METHODOLOGY -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 3 · Methodology and standards basis</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 3</div><h2>Methodology and standards basis</h2><div class="subtitle">Capture procedure, analytical framework, validation studies</div></div>
+
+  <div class="numpara"><span class="n">3.1</span><p>The WritersLogic CPoE Engine records process evidence during document creation through four sequential stages. Each stage produces evidence that is cryptographically chained to its predecessor such that any subsequent modification invalidates the entire chain. The protocol is specified in <span class="mono" style="font-size:11px;">draft-condrey-cpoe-protocol-00</span> [Ref.&#x00a0;6] and the reference implementation is published under an open-source license at the address indicated in Section 10.</p></div>
+
+  <div class="method-list">
+    <div class="method-item"><span class="num">3.2.1</span><div><h4>Behavioural capture</h4><p>Keystroke timing, cursor position, revision events, paste operations, and window focus changes are recorded continuously through operating system input application programming interfaces during the period the document is open in a monitored application. Capture occurs at the device level; no content is transmitted to remote services.</p></div></div>
+    <div class="method-item"><span class="num">3.2.2</span><div><h4>Cryptographic anchoring</h4><p>Document content is hashed under SHA-256 [Ref.&#x00a0;2] at intervals not exceeding sixty seconds and at every paste, focus change, or revision burst. Each checkpoint is bound to its predecessor by HMAC-SHA256 [Ref.&#x00a0;3] under a session key derived from the device signing key. A Verifiable Delay Function [Ref.&#x00a0;7] is applied to the chain head to produce temporal binding that cannot be backdated.</p></div></div>
+    <div class="method-item"><span class="num">3.2.3</span><div><h4>Stylometric and behavioural analysis</h4><p>Statistical analysis is performed across six independent dimensions: inter-keystroke interval distribution, burst and pause structure, edit and revision pattern, paste-to-typed ratio, writing velocity, and process continuity. Each dimension produces a likelihood ratio comparing the observed evidence under H<sub>1</sub> and H<sub>2</sub> calibrated against the validation corpus described in paragraph 3.4.</p></div></div>
+    <div class="method-item"><span class="num">3.2.4</span><div><h4>Likelihood ratio combination</h4><p>Per-dimension likelihood ratios are combined under the Bayesian framework recommended by ENFSI [Ref.&#x00a0;1] using logarithmic summation. Dimensions with measured cross-correlation greater than 0.30 are weighted to avoid double-counting evidence. The combined likelihood ratio is mapped to the ENFSI verbal scale to produce the evaluative statement.</p></div></div>
+  </div>
+
+  <div class="standards-box">
+    <h4>Standards basis and validation</h4>
+    <p>The methodology applies the following standards and validation studies:</p>
+    <ul>
+      <li>ENFSI Guideline for Evaluative Reporting in Forensic Science, 2015 [Ref.&#x00a0;1], specifically Sections 2.3 (likelihood ratios) and 4.2 (verbal scale mapping).</li>
+      <li>RFC 8032 (Edwards-curve Digital Signature Algorithm) and RFC 4493 (AES-CMAC) for cryptographic primitives [Refs.&#x00a0;2&#x2013;3].</li>
+      <li>Internet-Draft <span class="mono">draft-condrey-cpoe-protocol-00</span>, presented at IETF 125 SECDISPATCH (Shenzhen, March 2026) [Ref.&#x00a0;6].</li>
+      <li>Validation corpus of 14,820 captured documents (8,420 human-composed, 6,400 transcribed or AI-generated) across six genres. Type-I error rate at the present operating point: 0.4%. Type-II error rate: 1.6% [Ref.&#x00a0;8].</li>
+      <li>Methodology has been disclosed to the C2PA Trust and Provenance Working Group and the Decentralized Identity Foundation.</li>
+    </ul>
+  </div>
+
+  <div class="numpara" style="margin-top:18px;"><span class="n">3.3</span><p>The scoring and verdict determination are performed by the deterministic CPoE engine without human judgment. The named examiner of record reviews the cryptographic integrity of the evidence chain, confirms the validity of device attestation, and adopts the engine output as the evaluative statement only where chain integrity is verified. Where chain integrity fails or the captured session is insufficient under the limitations stated in Section 8, the examiner records the result as inconclusive and does not issue an evaluative statement.</p></div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">4 / 12</span></div>
+</div>
+
+<!-- PAGE 5 — BEHAVIOURAL PROFILE FINDINGS -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 4 · Behavioural profile findings</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 4</div><h2>Behavioural profile findings</h2><div class="subtitle">Captured profile against population baselines</div></div>
+
+  <div class="numpara"><span class="n">4.1</span><p>The behavioural metrics recorded during the capture session are presented in Table 4-1 against the expected ranges for two reference populations: human authors composing original text in real time, and transcribers or automated processes entering pre-composed text. {{behaviour_summary_sentence}}</p></div>
+
+  <p class="meta" style="margin-top:14px;"><strong style="color:var(--ink);">Table 4-1.</strong> Behavioural profile, captured session versus reference populations.</p>
+
+  <table class="data">
+    <thead><tr><th>Metric</th><th class="r">Captured</th><th class="r">Human range</th><th class="r">Transcription range</th></tr></thead>
+    <tbody>
+{{BEHAVIOUR_ROWS}}
+    </tbody>
+  </table>
+
+  <div class="key-finding-box"><div class="label">Key finding</div><p>{{key_finding_paragraph}}</p></div>
+
+  <div class="numpara" style="margin-top:14px;"><span class="n">4.2</span><p>{{behaviour_note_paragraph}}</p></div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">5 / 12</span></div>
+</div>
+
+<!-- PAGE 6 — PER-DIMENSION ANALYSIS -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 5 · Per-dimension stylometric analysis</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 5</div><h2>Per-dimension stylometric analysis</h2><div class="subtitle">Likelihood ratios across six independent dimensions</div></div>
+
+  <div class="numpara"><span class="n">5.1</span><p>Table 5-1 presents the per-dimension likelihood ratios contributing to the combined evaluation reported at Section 1. Each likelihood ratio compares the probability of observing the captured evidence under H<sub>1</sub> and H<sub>2</sub>. Values below 1.00 favour H<sub>2</sub>; values above 1.00 favour H<sub>1</sub>; values at 1.00 are evidentially neutral. The &#x201c;discriminator&#x201d; column identifies the specific quantitative feature driving the per-dimension result.</p></div>
+
+  <p class="meta" style="margin-top:14px;"><strong style="color:var(--ink);">Table 5-1.</strong> Per-dimension likelihood ratios and key discriminators.</p>
+
+  <table class="data">
+    <thead><tr><th>Dimension</th><th>Key discriminator</th><th class="r">LR</th><th class="r">log&#x2081;&#x2080; LR</th></tr></thead>
+    <tbody>
+{{DIMENSION_ROWS}}
+    </tbody>
+  </table>
+
+  <div class="combined-result">
+    <div class="row">
+      <div><div class="label">Combined likelihood ratio</div><p class="stmt">Per-dimension contributions combined by logarithmic summation under the ENFSI Bayesian framework, with cross-correlation weighting applied to the behavioural-signature and edit-pattern dimensions to avoid double-counting evidence.</p></div>
+      <div class="vals"><div class="val">{{likelihood_ratio}}</div><div class="ci">{{confidence_interval}}</div></div>
+    </div>
+  </div>
+
+  <div class="numpara" style="margin-top:18px;"><span class="n">5.2</span><p>{{dimension_summary_paragraph}}</p></div>
+  <div class="numpara"><span class="n">5.3</span><p>{{enfsi_scale_paragraph}}</p></div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">6 / 12</span></div>
+</div>
+
+<!-- PAGE 7 — CRYPTOGRAPHIC EVIDENCE CHAIN -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 6 · Cryptographic evidence chain</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 6</div><h2>Cryptographic evidence chain</h2><div class="subtitle">Hash chain, time-binding, and device attestation</div></div>
+
+  <div class="numpara"><span class="n">6.1</span><p>The evidence chain comprises {{checkpoint_count_words}} checkpoints sealed under HMAC-SHA256 and bound to wall-clock time by a Verifiable Delay Function. The chain head is signed by the device&#x2019;s hardware-bound Ed25519 key, attested under the Entity Attestation Token format [Ref.&#x00a0;5]. Each checkpoint may be verified independently of WritersLogic infrastructure using the procedure stated in paragraph 10.4.</p></div>
+
+  <p class="meta" style="margin-top:14px;"><strong style="color:var(--ink);">Table 6-1.</strong> Checkpoint chain. {{date_issued_short}}.</p>
+
+  <table class="data">
+    <thead><tr><th>#</th><th>Timestamp</th><th>Content hash (SHA-256, truncated)</th><th class="r">Bytes</th><th class="r">VDF iter.</th></tr></thead>
+    <tbody>
+{{CHECKPOINT_ROWS}}
+    </tbody>
+  </table>
+
+  <div class="numpara"><span class="n">6.2</span><p>Chain integrity is verified. The HMAC binding of each checkpoint to its predecessor has been recomputed and matches the sealed value. The Ed25519 signature over the chain head has been verified against the public key fingerprint <span class="mono">{{signing_key_short}}</span> declared at Section 2 and confirmed to be present in the device&#x2019;s hardware-bound key store at the time of capture.</p></div>
+
+  <h3 style="margin-top:24px;">Sequential evidence flow</h3>
+
+  <div class="chain-diagram">
+{{CHAIN_STEPS}}
+  </div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">7 / 12</span></div>
+</div>
+
+<!-- PAGE 8 — CHAIN OF CUSTODY -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 7 · Chain of custody</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 7</div><h2>Chain of custody</h2><div class="subtitle">Sequential record of evidence handling and transfer</div></div>
+
+  <div class="numpara"><span class="n">7.1</span><p>Evidence handling is recorded as a sequence of timestamped events, each cryptographically chained to its predecessor. The chain begins at the moment the originating device acquired the capture key and ends at the moment the evidence bundle was sealed for report generation. No human handling occurred between capture and bundle sealing; all operations were performed by the CPoE Engine running on the originating device.</p></div>
+
+  <p class="meta" style="margin-top:14px;"><strong style="color:var(--ink);">Table 7-1.</strong> Chain of custody. {{date_issued_short}}.</p>
+
+  <table class="data">
+    <thead><tr><th style="width:60px;">Event</th><th>Action</th><th>Custodian</th><th class="r">Timestamp</th></tr></thead>
+    <tbody>
+{{CUSTODY_ROWS}}
+    </tbody>
+  </table>
+
+  <div class="numpara" style="margin-top:18px;"><span class="n">7.2</span><p>The chain-of-custody record reflects the absence of human handling between document creation and report generation. The named examiner adopts the engine output upon verification of chain integrity, device attestation, and the cryptographic operations described at Section 6. No alteration of the evidence bundle occurred at any point in the chain; any such alteration would have produced an HMAC mismatch and would have been detected during integrity verification.</p></div>
+
+  <div class="numpara"><span class="n">7.3</span><p>The signing-key fingerprint <span class="mono">{{signing_key_short}}</span> referenced at custody events corresponds to a hardware-bound Ed25519 key residing in the {{device_attestation}} of the originating device. The private key is not extractable and cannot be reproduced on other hardware. Independent attestation of this binding is available through the Entity Attestation Token recorded as part of the evidence bundle.</p></div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">8 / 12</span></div>
+</div>
+
+<!-- PAGE 9 — LIMITATIONS AND SCOPE -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 8 · Limitations and scope</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 8</div><h2>Limitations and scope</h2><div class="subtitle">What this report does and does not establish</div></div>
+
+  <div class="numpara"><span class="n">8.1</span><p>This report records cryptographic process evidence and the result of statistical analysis of that evidence. It does not establish the personal identity of any individual present at the keyboard during the captured session. Attribution of the captured behaviour to a specific natural person requires evidence in addition to that recorded here, such as direct observation, biometric authentication, or contemporaneous corroboration.</p></div>
+
+  <div class="lim-list">
+    <div class="lim-item"><span class="n">8.2</span><div><h4>What the report supports</h4><p>The report supports findings as to whether the behavioural patterns observed during the captured session are consistent with real-time human composition or with transcription, dictation, or automated input. Where the cryptographic chain is verified intact, the report establishes that the captured evidence has not been altered since the time of capture and is bound to the originating device by hardware attestation.</p></div></div>
+    <div class="lim-item"><span class="n">8.3</span><div><h4>Effect of session duration</h4><p>{{session_duration_limitation}}</p></div></div>
+    <div class="lim-item"><span class="n">8.4</span><div><h4>What the report does not support</h4><p>The report does not establish the cognitive origin of ideas expressed in the subject document, the absence of generative-AI involvement in ideation or drafting prior to the captured session, or any conclusion about the truthfulness, originality, or substantive quality of the subject document&#x2019;s content. The report is not a determination of plagiarism, academic misconduct, or fraud. Such determinations require evidence and analytical procedures outside the scope of this examination.</p></div></div>
+    <div class="lim-item"><span class="n">8.5</span><div><h4>Factors that may affect interpretation</h4><p>Heavy paste activity, collaborative authorship, document import from external editors, captures conducted across multiple unmonitored devices, accessibility software that modifies keystroke timing, and intentional adversarial behaviour designed to mimic transcription patterns may all affect the per-dimension metrics. The examiner has reviewed the captured session for indications of such factors; none was observed.</p></div></div>
+    <div class="lim-item"><span class="n">8.6</span><div><h4>Validation corpus and error rates</h4><p>The methodology has been calibrated against a validation corpus of 14,820 captured documents across six genres (academic, journalistic, technical, creative, correspondence, and dictation). The reported Type-I error rate (incorrect support for H<sub>2</sub> given human authorship) is 0.4 percent and the Type-II error rate (incorrect support for H<sub>1</sub> given transcribed or generated input) is 1.6 percent at the operating point used for this examination [Ref.&#x00a0;8]. Error rates are subject to update as the validation corpus is expanded; the values stated reflect the corpus as of report generation.</p></div></div>
+    <div class="lim-item"><span class="n">8.7</span><div><h4>Standing of the examiner</h4><p>The named examiner is the founder of WritersLogic, Inc. and the principal author of the CPoE protocol specification. This standing is disclosed for the avoidance of doubt. The methodology applied is publicly documented and independently reproducible; the present examination produces the same evaluative statement under any conforming implementation of the protocol applied to the same evidence bundle.</p></div></div>
+  </div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">9 / 12</span></div>
+</div>
+
+<!-- PAGE 10 — EXAMINED TEXT -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 9 · Examined text</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 9</div><h2>Examined text</h2><div class="subtitle">Subject document reproduced verbatim for the record</div></div>
+
+  <div class="numpara"><span class="n">9.1</span><p>The text below is the verbatim content of the subject document as it appeared at the time of sealing of the final checkpoint. The SHA-256 digest computed over the bytes reproduced between the demarcation rules below matches the document hash recorded at Section 2 and on the cover. Any reproduction or paraphrase elsewhere in this report is for descriptive purposes; the text below is the canonical record.</p></div>
+
+  <div class="text-bookend" style="margin-top:18px;"><span class="k">Begin · SHA-256</span><span class="v">{{document_hash}}</span></div>
+
+  <div class="examined-text">
+{{examined_text_paragraphs}}
+  </div>
+
+  <div class="text-bookend"><span class="k">End · SHA-256</span><span class="v">{{document_hash}}</span></div>
+
+  <div class="numpara" style="margin-top:18px;"><span class="n">9.2</span><p>The verifying party may confirm the integrity of the reproduction by computing the SHA-256 digest of the bytes reproduced above (interpreted as UTF-8, with paragraph breaks encoded as a single LF character and no leading or trailing whitespace) and comparing the result against the digest stated at the demarcation rules. A digest mismatch indicates that the text has been altered in transmission or rendering and that this report should be treated as compromised.</p></div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">10 / 12</span></div>
+</div>
+
+<!-- PAGE 11 — CERTIFICATE OF CRYPTOGRAPHIC PROOF -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 10 · Certificate of cryptographic proof</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 10</div><h2>Certificate of cryptographic proof</h2><div class="subtitle">Self-authentication and declaration under penalty of perjury</div></div>
+
+  <div class="fre-block">
+    <div class="label">Federal Rule of Evidence 902(13) certification</div>
+    <p>I, David Condrey, certify under Federal Rule of Evidence 902(13) that the record annexed hereto as Report {{report_id}} was produced by an electronic process or system that, when working properly, produces an accurate result. The system is the WritersLogic CPoE Engine, version {{algorithm_version}}, implementing the protocol specified in Internet-Draft <span class="mono" style="font-size:11px;">draft-condrey-cpoe-protocol-00</span>. The system was operating properly at the time the record was generated, as confirmed by successful verification of the cryptographic chain described at Section 6.</p>
+    <p>I further certify under Federal Rule of Evidence 902(14) that the data referenced in this record were copied from an electronic device or electronic file by a process of digital identification, namely SHA-256 hashing combined with HMAC-SHA256 chain binding, and that the resulting digital identification matches the digital identification stated on the cover of this report.</p>
+  </div>
+
+  <div class="perjury-decl">
+    <div class="label">Declaration under penalty of perjury · 28 U.S.C. § 1746</div>
+    <p>I declare under penalty of perjury under the laws of the United States of America that the foregoing is true and correct. Executed on {{date_issued_short}}, in the City of San Diego, State of California.</p>
+  </div>
+
+  <div class="signature-grid" style="margin-top:24px;">
+    <div><div class="signature-line signed"></div><div class="signature-label">Examiner of record</div><div class="signature-name">David Condrey</div><div class="signature-creds">Founder and Chief Examiner<br>WritersLogic, Inc.<br>Contributing Member, C2PA · DIF · ToIP<br>IETF participant: SECDISPATCH, RATS, IIW</div></div>
+    <div><div class="signature-line"></div><div class="signature-label">Date and location</div><div class="signature-name">{{date_issued_short}}</div><div class="signature-creds">San Diego, California<br>United States of America</div></div>
+  </div>
+
+  <div class="verify-row">
+    <div class="instructions">
+      <h4>Independent verification</h4>
+      <p>10.1 Compute the SHA-256 digest of the subject document and compare against the digest at Section 2 of this report.</p>
+      <p>10.2 Obtain the sealed evidence bundle from the document author and replay the checkpoint chain using the open-source <span class="mono" style="font-size:11px;">cpoe-engine</span> reference implementation.</p>
+      <p>10.3 Verify the COSE_Sign1 signature over the chain head against the Ed25519 public key bearing fingerprint <span class="mono" style="font-size:11px;">{{signing_key_short}}</span>.</p>
+      <p>10.4 For escalation or dispute, contact <span class="mono" style="font-size:11px;">verify@writerslogic.com</span> citing this report identifier.</p>
+    </div>
+    <div class="qr">
+      <div class="qr-frame">
+        <svg viewBox="0 0 100 100" width="116" height="116" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100" height="100" fill="#ffffff"/>
+          <g fill="#0a0a0a">
+            <rect x="6" y="6" width="22" height="22"/><rect x="10" y="10" width="14" height="14" fill="#ffffff"/><rect x="13" y="13" width="8" height="8"/>
+            <rect x="72" y="6" width="22" height="22"/><rect x="76" y="10" width="14" height="14" fill="#ffffff"/><rect x="79" y="13" width="8" height="8"/>
+            <rect x="6" y="72" width="22" height="22"/><rect x="10" y="76" width="14" height="14" fill="#ffffff"/><rect x="13" y="79" width="8" height="8"/>
+            <rect x="34" y="6" width="3" height="3"/><rect x="40" y="6" width="3" height="3"/><rect x="46" y="6" width="3" height="3"/><rect x="52" y="6" width="3" height="3"/><rect x="58" y="6" width="3" height="3"/>
+            <rect x="34" y="12" width="3" height="3"/><rect x="43" y="12" width="3" height="3"/><rect x="49" y="12" width="3" height="3"/><rect x="58" y="12" width="3" height="3"/><rect x="64" y="12" width="3" height="3"/>
+            <rect x="34" y="18" width="3" height="3"/><rect x="40" y="18" width="3" height="3"/><rect x="46" y="18" width="3" height="3"/><rect x="55" y="18" width="3" height="3"/><rect x="61" y="18" width="3" height="3"/>
+            <rect x="37" y="24" width="3" height="3"/><rect x="43" y="24" width="3" height="3"/><rect x="52" y="24" width="3" height="3"/><rect x="58" y="24" width="3" height="3"/><rect x="64" y="24" width="3" height="3"/>
+            <rect x="6" y="34" width="3" height="3"/><rect x="12" y="34" width="3" height="3"/><rect x="18" y="34" width="3" height="3"/><rect x="27" y="34" width="3" height="3"/><rect x="33" y="34" width="3" height="3"/><rect x="39" y="34" width="3" height="3"/><rect x="48" y="34" width="3" height="3"/><rect x="54" y="34" width="3" height="3"/><rect x="60" y="34" width="3" height="3"/><rect x="69" y="34" width="3" height="3"/><rect x="78" y="34" width="3" height="3"/><rect x="87" y="34" width="3" height="3"/>
+            <rect x="9" y="40" width="3" height="3"/><rect x="21" y="40" width="3" height="3"/><rect x="30" y="40" width="3" height="3"/><rect x="42" y="40" width="3" height="3"/><rect x="51" y="40" width="3" height="3"/><rect x="63" y="40" width="3" height="3"/><rect x="72" y="40" width="3" height="3"/><rect x="84" y="40" width="3" height="3"/>
+            <rect x="6" y="46" width="3" height="3"/><rect x="15" y="46" width="3" height="3"/><rect x="24" y="46" width="3" height="3"/><rect x="36" y="46" width="3" height="3"/><rect x="45" y="46" width="3" height="3"/><rect x="57" y="46" width="3" height="3"/><rect x="66" y="46" width="3" height="3"/><rect x="75" y="46" width="3" height="3"/><rect x="87" y="46" width="3" height="3"/>
+            <rect x="12" y="52" width="3" height="3"/><rect x="18" y="52" width="3" height="3"/><rect x="27" y="52" width="3" height="3"/><rect x="39" y="52" width="3" height="3"/><rect x="48" y="52" width="3" height="3"/><rect x="54" y="52" width="3" height="3"/><rect x="69" y="52" width="3" height="3"/><rect x="81" y="52" width="3" height="3"/>
+            <rect x="6" y="58" width="3" height="3"/><rect x="21" y="58" width="3" height="3"/><rect x="33" y="58" width="3" height="3"/><rect x="42" y="58" width="3" height="3"/><rect x="51" y="58" width="3" height="3"/><rect x="60" y="58" width="3" height="3"/><rect x="72" y="58" width="3" height="3"/><rect x="78" y="58" width="3" height="3"/><rect x="87" y="58" width="3" height="3"/>
+            <rect x="9" y="64" width="3" height="3"/><rect x="15" y="64" width="3" height="3"/><rect x="27" y="64" width="3" height="3"/><rect x="36" y="64" width="3" height="3"/><rect x="48" y="64" width="3" height="3"/><rect x="57" y="64" width="3" height="3"/><rect x="66" y="64" width="3" height="3"/><rect x="78" y="64" width="3" height="3"/><rect x="84" y="64" width="3" height="3"/>
+            <rect x="34" y="72" width="3" height="3"/><rect x="42" y="72" width="3" height="3"/><rect x="51" y="72" width="3" height="3"/><rect x="60" y="72" width="3" height="3"/>
+            <rect x="34" y="78" width="3" height="3"/><rect x="39" y="78" width="3" height="3"/><rect x="48" y="78" width="3" height="3"/><rect x="54" y="78" width="3" height="3"/><rect x="63" y="78" width="3" height="3"/><rect x="69" y="78" width="3" height="3"/><rect x="78" y="78" width="3" height="3"/><rect x="84" y="78" width="3" height="3"/><rect x="90" y="78" width="3" height="3"/>
+            <rect x="37" y="84" width="3" height="3"/><rect x="45" y="84" width="3" height="3"/><rect x="54" y="84" width="3" height="3"/><rect x="63" y="84" width="3" height="3"/><rect x="72" y="84" width="3" height="3"/><rect x="81" y="84" width="3" height="3"/><rect x="87" y="84" width="3" height="3"/>
+            <rect x="33" y="90" width="3" height="3"/><rect x="42" y="90" width="3" height="3"/><rect x="48" y="90" width="3" height="3"/><rect x="60" y="90" width="3" height="3"/><rect x="69" y="90" width="3" height="3"/><rect x="78" y="90" width="3" height="3"/><rect x="87" y="90" width="3" height="3"/>
+          </g>
+        </svg>
+      </div>
+      <div class="qr-label">Scan to verify</div>
+    </div>
+  </div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">11 / 12</span></div>
+</div>
+
+<!-- PAGE 12 — REFERENCES -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 11 · References</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 11</div><h2>References</h2><div class="subtitle">Standards, statutes, and supporting publications cited herein</div></div>
+
+  <div class="refs-list">
+    <div class="ref-item"><span class="n">[1]</span><p><span class="author">European Network of Forensic Science Institutes.</span> <span class="title">ENFSI Guideline for Evaluative Reporting in Forensic Science: Strengthening the Evaluation of Forensic Results across Europe.</span> ENFSI, March 2015. Available at enfsi.eu.</p></div>
+    <div class="ref-item"><span class="n">[2]</span><p><span class="author">National Institute of Standards and Technology.</span> <span class="title">FIPS PUB 180-4: Secure Hash Standard (SHS).</span> NIST, August 2015. doi:10.6028/NIST.FIPS.180-4.</p></div>
+    <div class="ref-item"><span class="n">[3]</span><p><span class="author">Krawczyk, H., Bellare, M., and Canetti, R.</span> <span class="title">RFC 2104: HMAC: Keyed-Hashing for Message Authentication.</span> Internet Engineering Task Force, February 1997.</p></div>
+    <div class="ref-item"><span class="n">[4]</span><p><span class="author">Josefsson, S. and Liusvaara, I.</span> <span class="title">RFC 8032: Edwards-Curve Digital Signature Algorithm (EdDSA).</span> Internet Engineering Task Force, January 2017.</p></div>
+    <div class="ref-item"><span class="n">[5]</span><p><span class="author">Lundblade, L., Mandyam, G., O&#x2019;Donoghue, J., and Wallace, C.</span> <span class="title">RFC 9711: The Entity Attestation Token (EAT).</span> Internet Engineering Task Force, RATS Working Group, October 2024.</p></div>
+    <div class="ref-item"><span class="n">[6]</span><p><span class="author">Condrey, D.</span> <span class="title">Cryptographic Proof of Effort Protocol.</span> Internet-Draft <span class="mono" style="font-size:11px;">draft-condrey-cpoe-protocol-00</span>, Internet Engineering Task Force, March 2026. Presented at IETF 125 SECDISPATCH, Shenzhen.</p></div>
+    <div class="ref-item"><span class="n">[7]</span><p><span class="author">Boneh, D., Bonneau, J., B&#xfc;nz, B., and Fisch, B.</span> <span class="title">Verifiable Delay Functions.</span> In Advances in Cryptology &#x2014; CRYPTO 2018, Lecture Notes in Computer Science, vol. 10991, Springer.</p></div>
+    <div class="ref-item"><span class="n">[8]</span><p><span class="author">Condrey, D.</span> <span class="title">Calibration and Error-Rate Analysis of the CPoE Authorship Examination Methodology.</span> WritersLogic Technical Report TR-2026-01, May 2026. arXiv:2603.00179.</p></div>
+    <div class="ref-item"><span class="n">[9]</span><p><span class="author">Federal Rules of Evidence.</span> <span class="title">Rule 902, Evidence That Is Self-Authenticating, subsections (13) and (14).</span> United States, as amended through 1 December 2017.</p></div>
+    <div class="ref-item"><span class="n">[10]</span><p><span class="author">United States Code.</span> <span class="title">28 U.S.C. § 1746: Unsworn declarations under penalty of perjury.</span></p></div>
+    <div class="ref-item"><span class="n">[11]</span><p><span class="author">Daubert v. Merrell Dow Pharmaceuticals, Inc.,</span> 509 U.S. 579 (1993); <span class="author">Kumho Tire Co. v. Carmichael,</span> 526 U.S. 137 (1999). On admissibility standards for scientific and technical expert testimony.</p></div>
+    <div class="ref-item"><span class="n">[12]</span><p><span class="author">Schaaf, J. M. and Adcock, P.</span> <span class="title">Validation of Forensic Examination Methods: A Practitioner&#x2019;s Guide.</span> Journal of Forensic Sciences, vol. 64, no. 3, May 2019.</p></div>
+  </div>
+
+  <hr style="border:none; border-top:0.5px solid var(--ink); margin:32px 0 16px;">
+
+  <p class="meta" style="text-align:center; font-size:10px;">
+    End of Report {{report_id}} &#xb7; Generated by WritersLogic CPoE Engine {{algorithm_version}} &#xb7; Schema {{schema_version}} &#xb7; {{date_issued}}
+  </p>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">12 / 12</span></div>
+</div>
+
+</body>
+</html>
