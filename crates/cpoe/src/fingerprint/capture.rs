@@ -16,14 +16,14 @@ use std::sync::Arc;
 use crate::platform::{KeyEventType, KeystrokeEvent};
 use crate::RwLockRecover;
 
-#[allow(dead_code)]
+
 const QUALITY_GATE_MIN_KEYSTROKES: usize = 3;
-#[allow(dead_code)]
+
 const QUALITY_GATE_WINDOW_NS: i64 = 2_000_000_000;
-#[allow(dead_code)]
+
 const PID_CACHE_TTL_SECS: u64 = 60;
 
-#[allow(dead_code)]
+
 const EXCLUDED_BUNDLES: &[&str] = &[
     "com.apple.Terminal",
     "com.googlecode.iterm2",
@@ -35,19 +35,19 @@ const EXCLUDED_BUNDLES: &[&str] = &[
     "com.apple.Passwords",
 ];
 
-#[allow(dead_code)]
+
 #[link(name = "Carbon", kind = "framework")]
 extern "C" {
     fn IsSecureEventInputEnabled() -> bool;
 }
 
-#[allow(dead_code)]
+
 fn secure_event_input_is_active() -> bool {
     // Safety: pure CoreGraphics query, no side-effects, safe from any thread.
     unsafe { IsSecureEventInputEnabled() }
 }
 
-#[allow(dead_code)]
+
 pub(crate) struct FingerprintCapture {
     running: Arc<AtomicBool>,
     last_keydown_ts_ns: i64,
@@ -202,7 +202,7 @@ impl FingerprintCapture {
     }
 }
 
-#[allow(dead_code)]
+
 pub(crate) fn start_capture(
     rt: &tokio::runtime::Runtime,
 ) -> crate::error::Result<Arc<AtomicBool>> {
@@ -218,7 +218,7 @@ pub(crate) fn start_capture(
     Ok(running)
 }
 
-#[allow(dead_code)]
+
 pub(crate) fn stop_capture(running: &AtomicBool) {
     running.store(false, Ordering::SeqCst);
     log::info!("FingerprintCapture: stop requested");

@@ -88,87 +88,46 @@ impl Sentinel {
         let keystroke_active = Arc::clone(&self.keystroke_capture_active);
 
         // On macOS, subscribe to the shared CGEventTap singleton instead of
-        // creating a second tap. The SharedKeystrokeTap owns the tap lifetime;
-        // sentinel just consumes its broadcast. This eliminates the dual-tap
-        // resource waste when both sentinel and FingerprintCapture are active.
+        // creating a second tap. A lightweight tokio task forwards broadcast
+        // events into the sentinel's mpsc channel — no extra thread or runtime.
         #[cfg(target_os = "macos")]
         {
             match crate::platform::macos::shared_tap::get_or_start_shared_tap() {
                 Ok(tap) => {
                     keystroke_active.store(true, Ordering::SeqCst);
                     let mut broadcast_rx = tap.subscribe();
-                    let handle = std::thread::Builder::new()
-                        .name("sentinel-tap-bridge".into())
-                        .spawn(move || {
-                            let rt = tokio::runtime::Builder::new_current_thread()
-                                .enable_time()
-                                .build()
-                                .expect("sentinel-tap-bridge: failed to create tokio runtime");
-                            rt.block_on(async {
-                                #[cfg(debug_assertions)]
-                                let mut bridge_count: u64 = 0;
-                                let mut dropped_count: u64 = 0;
-                                while keystroke_running.load(Ordering::SeqCst) {
-                                    match broadcast_rx.recv().await {
-                                        Ok(event) => {
-                                            #[cfg(debug_assertions)]
-                                            {
-                                                bridge_count += 1;
-                                                if bridge_count % 100 == 0 {
-                                                    log::debug!(
-                                                        "sentinel tap bridge: forwarded \
-                                                         {bridge_count}"
+                    tokio::spawn(async move {
+                        let mut dropped_count: u64 = 0;
+                        while keystroke_running.load(Ordering::SeqCst) {
+                            match broadcast_rx.recv().await {
+                                Ok(event) => {
+                                    if let Err(e) = keystroke_tx.try_send(event) {
+                                        match e {
+                                            tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                                                dropped_count += 1;
+                                                if dropped_count == 1
+                                                    || dropped_count.is_power_of_two()
+                                                {
+                                                    log::warn!(
+                                                        "keystroke channel full, \
+                                                         {} events dropped",
+                                                        dropped_count
                                                     );
                                                 }
                                             }
-                                            if let Err(e) = keystroke_tx.try_send(event) {
-                                                match e {
-                                                    tokio::sync::mpsc::error::TrySendError::Full(
-                                                        _,
-                                                    ) => {
-                                                        dropped_count += 1;
-                                                        if dropped_count == 1
-                                                            || dropped_count.is_power_of_two()
-                                                        {
-                                                            log::warn!(
-                                                                "keystroke channel full, \
-                                                                 {} events dropped",
-                                                                dropped_count
-                                                            );
-                                                        }
-                                                    }
-                                                    tokio::sync::mpsc::error::TrySendError::Closed(
-                                                        _,
-                                                    ) => {
-                                                        log::debug!("keystroke channel closed");
-                                                        break;
-                                                    }
-                                                }
+                                            tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                                                break;
                                             }
-                                        }
-                                        Err(
-                                            tokio::sync::broadcast::error::RecvError::Lagged(n),
-                                        ) => {
-                                            log::warn!(
-                                                "sentinel tap bridge: lagged by {n} events"
-                                            );
-                                        }
-                                        Err(
-                                            tokio::sync::broadcast::error::RecvError::Closed,
-                                        ) => {
-                                            log::info!(
-                                                "sentinel tap bridge: shared tap closed"
-                                            );
-                                            break;
                                         }
                                     }
                                 }
-                            });
-                        })
-                        .ok();
-                    if let Some(h) = handle {
-                        self.bridge_threads.lock_recover().push(h);
-                    }
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                    log::warn!("sentinel tap bridge: lagged by {n} events");
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                            }
+                        }
+                    });
                 }
                 Err(e) => {
                     log::warn!(

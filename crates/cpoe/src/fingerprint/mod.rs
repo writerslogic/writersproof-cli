@@ -6,8 +6,11 @@ pub mod activity;
 pub mod activity_analysis;
 pub mod activity_collection;
 pub mod author;
+#[cfg(all(target_os = "macos", feature = "ffi"))]
+pub(crate) mod capture;
 pub mod comparison;
 pub mod consent;
+pub mod global;
 pub mod manager;
 pub mod maturity;
 pub mod storage;
