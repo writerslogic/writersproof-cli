@@ -67,12 +67,8 @@ fn build_wire_packet(
     start_ns: Option<i64>,
     end_ns: Option<i64>,
 ) -> Result<(EvidencePacketWire, Vec<u8>, bool), String> {
-    let file_path = crate::sentinel::helpers::validate_path(&path)
+    let file_path = crate::utils::fs::canonicalize_validated(std::path::Path::new(&path))
         .map_err(|e| format!("Invalid source path: {e}"))?;
-
-    if !file_path.exists() {
-        return Err(format!("File not found: {}", file_path.display()));
-    }
 
     let store = open_store()?;
 

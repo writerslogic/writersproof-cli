@@ -190,17 +190,7 @@ impl Chain {
         vdf_params: Parameters,
         entanglement_mode: EntanglementMode,
     ) -> Result<Self> {
-        // Check the original path for symlinks BEFORE canonicalize resolves them.
-        // canonicalize() follows symlinks silently, so we must reject first.
-        if fs::symlink_metadata(document_path.as_ref())?
-            .file_type()
-            .is_symlink()
-        {
-            return Err(Error::checkpoint(
-                "Symlinks not supported for document paths",
-            ));
-        }
-        let abs_path = fs::canonicalize(document_path.as_ref())?;
+        let abs_path = crate::utils::fs::canonicalize_validated(document_path.as_ref())?;
         let path_str = abs_path.to_string_lossy().to_string();
         let path_hash = crate::utils::sha256_of_path(&abs_path);
         let document_id = hex::encode(&path_hash[0..8]);

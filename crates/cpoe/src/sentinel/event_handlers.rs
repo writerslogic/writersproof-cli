@@ -482,30 +482,30 @@ impl EventLoopCtx {
 
                 // Compute content fingerprint for cross-app session linking.
                 // File I/O runs on the blocking pool to avoid stalling the event loop.
-                let fp_doc = match super::helpers::validate_path(doc_path) {
-                    Ok(p) => p,
+                let fp_doc = match crate::utils::fs::open_validated(doc_path) {
+                    Ok(v) => v,
                     Err(_) => return,
                 };
                 let fp_sessions = Arc::clone(&self.sessions);
                 let fp_store = Arc::clone(&self.content_fingerprints);
                 let fp_path = path.clone();
                 tokio::task::spawn_blocking(move || {
+                    let (_canonical, file) = fp_doc;
                     // Reject files >10 MB to avoid memory exhaustion.
-                    match std::fs::metadata(&fp_doc) {
+                    match file.metadata() {
                         Ok(m) if m.len() > 10 * 1024 * 1024 => return,
                         Err(e) => {
-                            log::debug!("content_fingerprint: metadata failed for {fp_doc:?}: {e}");
+                            log::debug!("content_fingerprint: metadata failed: {e}");
                             return;
                         }
                         _ => {}
                     }
-                    let content = match std::fs::read_to_string(&fp_doc) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            log::debug!("content_fingerprint: read failed for {fp_doc:?}: {e}");
-                            return;
-                        }
-                    };
+                    use std::io::Read;
+                    let mut content = String::new();
+                    if let Err(e) = std::io::BufReader::new(file).read_to_string(&mut content) {
+                        log::debug!("content_fingerprint: read failed: {e}");
+                        return;
+                    }
                     let fp = super::content_fingerprint::ContentFingerprint::from_text(&content);
                     let sessions_guard = fp_sessions.read().unwrap_or_else(|p| p.into_inner());
                     if let Some(session) = sessions_guard.get(fp_path.as_str()) {
