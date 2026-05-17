@@ -57,12 +57,10 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
         activity_samples: 0,
     }, {
     log::debug!("ffi_get_fingerprint_status");
-    // Read live sample count from the sentinel's shared accumulator
-    // (the FingerprintManager's own accumulator is not fed from the
-    // keystroke injection path).
-    let live_activity_samples = super::sentinel::get_running_sentinel()
-        .map(|s| s.activity_accumulator.read_recover().sample_count() as u64)
-        .unwrap_or(0);
+    // Read live sample count from the global accumulator.
+    let live_activity_samples = crate::fingerprint::global::get_global_accumulator()
+        .read_recover()
+        .sample_count() as u64;
     match with_manager(|mgr| {
         let status = mgr.status();
         Ok(FfiFingerprintStatus {
@@ -278,7 +276,7 @@ pub fn ffi_reset_fingerprint() -> FfiResult {
     catch_ffi_panic!(FfiResult::err("engine internal error"), {
     log::debug!("ffi_reset_fingerprint");
     match with_manager(|mgr| {
-        mgr.reset_session();
+        mgr.reset();
         let profiles = mgr
             .list_profiles()
             .map_err(|e| format!("Failed to list profiles: {e}"))?;
@@ -451,6 +449,86 @@ pub fn ffi_get_fingerprint_history() -> Vec<FfiFingerprintSnapshot> {
     })
 }
 
+#[cfg(target_os = "macos")]
+static FINGERPRINT_CAPTURE_HANDLE: Mutex<Option<crate::fingerprint::capture::CaptureHandle>> =
+    Mutex::new(None);
+
+/// Start the standalone fingerprint capture consumer (macOS only).
+/// No-op if sentinel is already feeding the accumulator.
+#[cfg(target_os = "macos")]
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_fingerprint_capture_start() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_fingerprint_capture_start");
+    let mut guard = FINGERPRINT_CAPTURE_HANDLE.lock().unwrap_or_else(|p| {
+        log::warn!("FINGERPRINT_CAPTURE_HANDLE mutex poisoned, recovering");
+        p.into_inner()
+    });
+    if guard.as_ref().map_or(false, |h| h.running.load(std::sync::atomic::Ordering::SeqCst)) {
+        return FfiResult::ok("fingerprint capture already running");
+    }
+    let rt = match super::sentinel::ffi_runtime() {
+        Ok(r) => r,
+        Err(e) => return FfiResult::err(e),
+    };
+    match crate::fingerprint::capture::start_capture(&rt) {
+        Ok(handle) => {
+            *guard = Some(handle);
+            FfiResult::ok("fingerprint capture started")
+        }
+        Err(e) => FfiResult::err(format!("Failed to start fingerprint capture: {e}")),
+    }
+    })
+}
+
+/// Stop the standalone fingerprint capture consumer.
+#[cfg(target_os = "macos")]
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_fingerprint_capture_stop() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    log::debug!("ffi_fingerprint_capture_stop");
+    let mut guard = FINGERPRINT_CAPTURE_HANDLE.lock().unwrap_or_else(|p| {
+        log::warn!("FINGERPRINT_CAPTURE_HANDLE mutex poisoned, recovering");
+        p.into_inner()
+    });
+    if let Some(handle) = guard.take() {
+        crate::fingerprint::capture::stop_capture(&handle);
+        FfiResult::ok("fingerprint capture stopped")
+    } else {
+        FfiResult::ok("fingerprint capture was not running")
+    }
+    })
+}
+
+/// Return whether the standalone fingerprint capture consumer is active.
+#[cfg(target_os = "macos")]
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_fingerprint_capture_is_running() -> bool {
+    catch_ffi_panic!(false, {
+    FINGERPRINT_CAPTURE_HANDLE
+        .lock()
+        .unwrap_or_else(|p| {
+            log::warn!("FINGERPRINT_CAPTURE_HANDLE mutex poisoned, recovering");
+            p.into_inner()
+        })
+        .as_ref()
+        .map_or(false, |h| h.running.load(std::sync::atomic::Ordering::SeqCst))
+    })
+}
+
+/// Export the long-lived EMA-merged canonical fingerprint as pretty JSON, or None if
+/// not yet established.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_export_canonical_fingerprint_json() -> Option<String> {
+    catch_ffi_panic!(None, {
+    with_manager(|mgr| {
+        Ok(mgr.canonical_profile.as_ref().map(|fp| {
+            serde_json::to_string_pretty(fp).unwrap_or_default()
+        }))
+    }).unwrap_or(None)
+    })
+}
+
 /// Return raw HT, FT, and IKI arrays from the activity accumulator
 /// for behavioral ML inference (dual-channel CNN).
 #[cfg_attr(feature = "ffi", uniffi::export)]
@@ -471,11 +549,8 @@ pub fn ffi_get_keystroke_timing_arrays() -> FfiKeystrokeTimingArrays {
         iki_ns: Vec::new(),
         sample_count: 0,
     };
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return empty,
-    };
-    let samples = sentinel.activity_accumulator.read_recover().samples();
+    let accumulator = crate::fingerprint::global::get_global_accumulator();
+    let samples = accumulator.read_recover().samples();
     let count = samples.len() as u64;
 
     let hold_times_ns: Vec<i64> = samples

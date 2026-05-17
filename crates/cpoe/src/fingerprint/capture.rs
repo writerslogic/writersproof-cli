@@ -50,6 +50,7 @@ fn secure_event_input_is_active() -> bool {
 
 pub(crate) struct FingerprintCapture {
     running: Arc<AtomicBool>,
+    cancel: Arc<tokio::sync::Notify>,
     last_keydown_ts_ns: i64,
     last_keyup_ts_ns: i64,
     pending_downs: HashMap<u16, i64>,
@@ -59,7 +60,7 @@ pub(crate) struct FingerprintCapture {
 }
 
 impl FingerprintCapture {
-    fn new(running: Arc<AtomicBool>) -> Self {
+    fn new(running: Arc<AtomicBool>, cancel: Arc<tokio::sync::Notify>) -> Self {
         let excluded_bundles = EXCLUDED_BUNDLES
             .iter()
             .map(|s| s.to_string())
@@ -67,6 +68,7 @@ impl FingerprintCapture {
 
         Self {
             running,
+            cancel,
             last_keydown_ts_ns: 0,
             last_keyup_ts_ns: 0,
             pending_downs: HashMap::new(),
@@ -171,29 +173,37 @@ impl FingerprintCapture {
     async fn run(mut self, mut rx: tokio::sync::broadcast::Receiver<KeystrokeEvent>) {
         log::debug!("FingerprintCapture: consumer loop started");
 
-        while self.running.load(Ordering::SeqCst) {
-            match rx.recv().await {
-                Ok(event) => {
-                    if super::global::sentinel_is_feeding() {
-                        continue;
-                    }
-                    if secure_event_input_is_active() {
-                        continue;
-                    }
-                    if self.is_excluded(&event) {
-                        continue;
-                    }
-                    self.process_event(&event);
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    log::warn!("FingerprintCapture: broadcast lagged by {n} events; resuming");
-                    self.last_keydown_ts_ns = 0;
-                    self.last_keyup_ts_ns = 0;
-                    self.pending_downs.clear();
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    log::info!("FingerprintCapture: broadcast channel closed; exiting");
+        loop {
+            tokio::select! {
+                _ = self.cancel.notified() => {
+                    log::debug!("FingerprintCapture: cancel signal received");
                     break;
+                }
+                result = rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            if super::global::sentinel_is_feeding() {
+                                continue;
+                            }
+                            if secure_event_input_is_active() {
+                                continue;
+                            }
+                            if self.is_excluded(&event) {
+                                continue;
+                            }
+                            self.process_event(&event);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            log::warn!("FingerprintCapture: broadcast lagged by {n} events; resuming");
+                            self.last_keydown_ts_ns = 0;
+                            self.last_keyup_ts_ns = 0;
+                            self.pending_downs.clear();
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            log::info!("FingerprintCapture: broadcast channel closed; exiting");
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -203,23 +213,29 @@ impl FingerprintCapture {
 }
 
 
+pub(crate) struct CaptureHandle {
+    pub running: Arc<AtomicBool>,
+    pub cancel: Arc<tokio::sync::Notify>,
+}
+
 pub(crate) fn start_capture(
     rt: &tokio::runtime::Runtime,
-) -> crate::error::Result<Arc<AtomicBool>> {
+) -> crate::error::Result<CaptureHandle> {
     let tap = crate::platform::macos::shared_tap::get_or_start_shared_tap()?;
     let rx = tap.subscribe();
 
     let running = Arc::new(AtomicBool::new(true));
-    let capture = FingerprintCapture::new(Arc::clone(&running));
+    let cancel = Arc::new(tokio::sync::Notify::new());
+    let capture = FingerprintCapture::new(Arc::clone(&running), Arc::clone(&cancel));
 
     rt.spawn(capture.run(rx));
 
     log::info!("FingerprintCapture: started");
-    Ok(running)
+    Ok(CaptureHandle { running, cancel })
 }
 
-
-pub(crate) fn stop_capture(running: &AtomicBool) {
-    running.store(false, Ordering::SeqCst);
+pub(crate) fn stop_capture(handle: &CaptureHandle) {
+    handle.running.store(false, Ordering::SeqCst);
+    handle.cancel.notify_one();
     log::info!("FingerprintCapture: stop requested");
 }

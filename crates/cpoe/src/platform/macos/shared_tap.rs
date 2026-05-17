@@ -7,13 +7,13 @@
 
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
-    Arc, OnceLock,
+    Arc, Mutex, OnceLock,
 };
 
 use crate::platform::{KeystrokeCapture, KeystrokeEvent};
 
-
 const BROADCAST_CAPACITY: usize = 1024;
+static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 
 pub(crate) struct SharedKeystrokeTap {
@@ -28,6 +28,13 @@ static SHARED_TAP: OnceLock<Arc<SharedKeystrokeTap>> = OnceLock::new();
 
 
 pub(crate) fn get_or_start_shared_tap() -> crate::error::Result<Arc<SharedKeystrokeTap>> {
+    if let Some(tap) = SHARED_TAP.get() {
+        return Ok(Arc::clone(tap));
+    }
+
+    let _guard = INIT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    // Re-check after acquiring lock (another thread may have initialized)
     if let Some(tap) = SHARED_TAP.get() {
         return Ok(Arc::clone(tap));
     }
@@ -67,17 +74,8 @@ pub(crate) fn get_or_start_shared_tap() -> crate::error::Result<Arc<SharedKeystr
         bridge_handle: std::sync::Mutex::new(Some(handle)),
     });
 
-    // OnceLock race: another thread might have initialized first.
-    // get_or_init is not suitable since init is fallible, but since
-    // we already succeeded, just try to set and return whichever won.
-    match SHARED_TAP.set(Arc::clone(&tap)) {
-        Ok(()) => Ok(tap),
-        Err(_) => {
-            // Another thread won the race; stop our duplicate and return theirs.
-            tap.running.store(false, Ordering::SeqCst);
-            Ok(Arc::clone(SHARED_TAP.get().unwrap()))
-        }
-    }
+    SHARED_TAP.set(Arc::clone(&tap)).ok();
+    Ok(tap)
 }
 
 
@@ -96,7 +94,11 @@ impl SharedKeystrokeTap {
 
     #[allow(dead_code)]
     pub(crate) fn unsubscribe(&self) {
-        let _ = self.subscriber_count.fetch_sub(1, Ordering::SeqCst).min(1);
+        self.subscriber_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                Some(v.saturating_sub(1))
+            })
+            .ok();
     }
 
     #[allow(dead_code)]
