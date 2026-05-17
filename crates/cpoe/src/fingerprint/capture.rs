@@ -172,12 +172,22 @@ impl FingerprintCapture {
 
     async fn run(mut self, mut rx: tokio::sync::broadcast::Receiver<KeystrokeEvent>) {
         log::debug!("FingerprintCapture: consumer loop started");
+        let tap = crate::platform::macos::shared_tap::get_shared_tap();
 
         loop {
             tokio::select! {
                 _ = self.cancel.notified() => {
                     log::debug!("FingerprintCapture: cancel signal received");
                     break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(30)) => {
+                    if let Some(ref t) = tap {
+                        if !t.is_bridge_alive() {
+                            log::error!("FingerprintCapture: bridge thread is dead; exiting");
+                            break;
+                        }
+                    }
+                    continue;
                 }
                 result = rx.recv() => {
                     match result {
