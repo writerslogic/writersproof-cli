@@ -464,7 +464,7 @@ pub fn ffi_fingerprint_capture_start() -> FfiResult {
         log::warn!("FINGERPRINT_CAPTURE_HANDLE mutex poisoned, recovering");
         p.into_inner()
     });
-    if guard.as_ref().map_or(false, |h| h.running.load(std::sync::atomic::Ordering::SeqCst)) {
+    if guard.as_ref().is_some_and(|h| h.running.load(std::sync::atomic::Ordering::SeqCst)) {
         return FfiResult::ok("fingerprint capture already running");
     }
     // Ensure any previous (stopped but not yet exited) task is fully cancelled
@@ -517,7 +517,7 @@ pub fn ffi_fingerprint_capture_is_running() -> bool {
             p.into_inner()
         })
         .as_ref()
-        .map_or(false, |h| h.running.load(std::sync::atomic::Ordering::SeqCst))
+        .is_some_and(|h| h.running.load(std::sync::atomic::Ordering::SeqCst))
     })
 }
 
@@ -545,15 +545,8 @@ pub fn ffi_get_keystroke_timing_arrays() -> FfiKeystrokeTimingArrays {
         sample_count: 0,
     }, {
     log::debug!("ffi_get_keystroke_timing_arrays");
-    use super::sentinel::get_running_sentinel;
     use crate::RwLockRecover;
 
-    let empty = FfiKeystrokeTimingArrays {
-        hold_times_ns: Vec::new(),
-        flight_times_ns: Vec::new(),
-        iki_ns: Vec::new(),
-        sample_count: 0,
-    };
     let accumulator = crate::fingerprint::global::get_global_accumulator();
     let samples = accumulator.read_recover().samples();
     let count = samples.len() as u64;

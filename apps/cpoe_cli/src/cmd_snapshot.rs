@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use anyhow::{anyhow, Result};
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::cli::SnapshotAction;
 use crate::output::OutputMode;
@@ -16,7 +16,7 @@ pub(crate) fn cmd_snapshot(action: SnapshotAction, out: &OutputMode) -> Result<(
     }
 }
 
-fn cmd_snapshot_save(path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_snapshot_save(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let plaintext = std::fs::read_to_string(path)
         .map_err(|e| anyhow!("Failed to read file: {}", e))?;
@@ -48,7 +48,7 @@ fn cmd_snapshot_save(path: &PathBuf, out: &OutputMode) -> Result<()> {
     Ok(())
 }
 
-fn cmd_snapshot_list(path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_snapshot_list(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let entries = cpoe::ffi::snapshot::ffi_snapshot_list(path_str);
 
@@ -129,7 +129,7 @@ fn cmd_snapshot_get(id: i64, out: &OutputMode) -> Result<()> {
     Ok(())
 }
 
-fn cmd_snapshot_diff(id: i64, path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_snapshot_diff(id: i64, path: &Path, out: &OutputMode) -> Result<()> {
     let current_text = std::fs::read_to_string(path)
         .map_err(|e| anyhow!("Failed to read current file: {}", e))?;
 

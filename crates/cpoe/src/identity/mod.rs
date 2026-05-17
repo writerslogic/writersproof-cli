@@ -11,6 +11,10 @@ pub mod orcid;
 pub mod presentation_exchange;
 pub mod secure_storage;
 
+/// WritersProof profile DID for the currently signed-in user.
+/// Set via `ffi_set_profile_did` on login; cleared on logout.
+pub static PROFILE_DID: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
 #[cfg(feature = "did-webvh")]
 pub mod did_webvh;
 

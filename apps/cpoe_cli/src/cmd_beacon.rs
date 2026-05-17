@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::cli::BeaconAction;
 use crate::output::OutputMode;
@@ -44,7 +44,7 @@ fn print_beacon(b: &cpoe::ffi::beacon::FfiBeaconResult) {
     }
 }
 
-fn cmd_beacon_submit(path: &PathBuf, timeout: u64, out: &OutputMode) -> Result<()> {
+fn cmd_beacon_submit(path: &Path, timeout: u64, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let result = cpoe::ffi::beacon::ffi_submit_beacon(path_str, timeout);
 
@@ -65,7 +65,7 @@ fn cmd_beacon_submit(path: &PathBuf, timeout: u64, out: &OutputMode) -> Result<(
     Ok(())
 }
 
-fn cmd_beacon_status(path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_beacon_status(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let result = cpoe::ffi::beacon::ffi_check_beacon_status(path_str);
 
@@ -87,7 +87,7 @@ fn cmd_beacon_status(path: &PathBuf, out: &OutputMode) -> Result<()> {
     Ok(())
 }
 
-fn cmd_beacon_list(path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_beacon_list(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let result = cpoe::ffi::beacon::ffi_list_beacons(path_str);
 

@@ -114,8 +114,8 @@ impl SharedKeystrokeTap {
     #[allow(dead_code)]
     pub(crate) fn is_bridge_alive(&self) -> bool {
         match self.bridge_handle.lock() {
-            Ok(guard) => guard.as_ref().map_or(false, |h| !h.is_finished()),
-            Err(p) => p.into_inner().as_ref().map_or(false, |h| !h.is_finished()),
+            Ok(guard) => guard.as_ref().is_some_and(|h| !h.is_finished()),
+            Err(p) => p.into_inner().as_ref().is_some_and(|h| !h.is_finished()),
         }
     }
 }

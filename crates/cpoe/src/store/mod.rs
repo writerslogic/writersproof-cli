@@ -269,11 +269,10 @@ impl SecureStore {
         for row in rows {
             let (stored_simhash, manifest_hash, doc_path) = row?;
             let dist = ((query_simhash as u64) ^ (stored_simhash as u64)).count_ones();
-            if dist <= max_distance {
-                if best.as_ref().map_or(true, |(d, _, _)| dist < *d) {
+            if dist <= max_distance
+                && best.as_ref().map_or(true, |(d, _, _)| dist < *d) {
                     best = Some((dist, manifest_hash, doc_path));
                 }
-            }
         }
         Ok(best.map(|(_, mh, dp)| (mh, dp)))
     }

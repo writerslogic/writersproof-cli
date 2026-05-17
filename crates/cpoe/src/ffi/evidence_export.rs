@@ -730,7 +730,7 @@ fn enrich_checkpoints(
         // satisfying all simultaneously (NP-hard constraint satisfaction).
         let mut binding = Sha256::new();
         binding.update(b"cpoe-metric-binding-v1");
-        binding.update(&graph_hash);
+        binding.update(graph_hash);
         for &bin in &cumulative_revision_hist {
             binding.update(bin.to_le_bytes());
         }

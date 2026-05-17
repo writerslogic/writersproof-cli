@@ -1056,27 +1056,30 @@ impl DocumentSession {
     /// Iterates from the back (newest first) and stops as soon as
     /// samples fall outside the 60-second window — O(window) not O(total).
     pub fn recent_wpm(&self) -> f64 {
-        let now_ns = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as i64)
-            .unwrap_or(0);
+        // Use the samples' own timestamps rather than wall clock to avoid
+        // mismatch between kernel event timestamps and SystemTime::now().
+        if self.jitter_samples.len() < 2 {
+            return 0.0;
+        }
+        let newest_ns = self.jitter_samples.last().unwrap().timestamp_ns;
         let window_ns = 60_000_000_000i64;
         let mut count = 0usize;
-        let mut oldest_ns = now_ns;
+        let mut oldest_ns = newest_ns;
         for s in self.jitter_samples.iter().rev() {
-            if now_ns - s.timestamp_ns >= window_ns {
+            let delta = newest_ns - s.timestamp_ns;
+            if delta >= window_ns {
                 break;
             }
-            if now_ns - s.timestamp_ns < 0 {
-                continue; // clock skew guard
+            if delta < 0 {
+                continue;
             }
             count += 1;
             oldest_ns = s.timestamp_ns;
         }
-        if count < 5 {
+        if count < 2 {
             return 0.0;
         }
-        let window_secs = (now_ns - oldest_ns) as f64 / 1_000_000_000.0;
+        let window_secs = (newest_ns - oldest_ns) as f64 / 1_000_000_000.0;
         if window_secs < 1.0 {
             return 0.0;
         }
@@ -1542,5 +1545,113 @@ pub fn normalize_document_path(path: &str) -> Option<String> {
             log::warn!("Failed to canonicalize path '{path}': {e}");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session() -> DocumentSession {
+        DocumentSession::new(
+            "/tmp/test.txt".into(),
+            "com.test.app".into(),
+            "TestApp".into(),
+            ObfuscatedString::new("test"),
+        )
+    }
+
+    #[test]
+    fn test_recent_wpm_empty_samples() {
+        let session = make_session();
+        assert_eq!(session.recent_wpm(), 0.0);
+    }
+
+    #[test]
+    fn test_recent_wpm_insufficient_samples() {
+        let mut session = make_session();
+        session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+            timestamp_ns: 1_000_000_000,
+            duration_since_last_ns: 0,
+            zone: 0,
+            dwell_time_ns: None,
+            flight_time_ns: None,
+        });
+        assert_eq!(session.recent_wpm(), 0.0);
+    }
+
+    #[test]
+    fn test_recent_wpm_realistic_typing() {
+        let mut session = make_session();
+        // Simulate 60 WPM = 5 chars/sec = 200ms between keystrokes
+        // 30 keystrokes over 6 seconds starting at t=1000s
+        let base_ns = 1_000_000_000_000i64; // 1000 seconds in ns
+        let interval_ns = 200_000_000i64; // 200ms
+        for i in 0..30 {
+            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+                timestamp_ns: base_ns + (i as i64) * interval_ns,
+                duration_since_last_ns: if i == 0 { 0 } else { interval_ns as u64 },
+                zone: (i % 5) as u8,
+                dwell_time_ns: Some(50_000_000),
+                flight_time_ns: Some(150_000_000),
+            });
+        }
+        let wpm = session.recent_wpm();
+        // 30 keystrokes / 5 chars per word = 6 words over 5.8 seconds
+        // 6 words / (5.8/60) minutes = ~62 WPM
+        assert!(wpm > 50.0, "WPM should be ~62, got {wpm}");
+        assert!(wpm < 80.0, "WPM should be ~62, got {wpm}");
+    }
+
+    #[test]
+    fn test_recent_wpm_old_samples_excluded() {
+        let mut session = make_session();
+        let base_ns = 1_000_000_000_000i64;
+        // 10 old samples from 120 seconds ago
+        for i in 0..10 {
+            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+                timestamp_ns: base_ns + (i as i64) * 200_000_000,
+                duration_since_last_ns: 200_000_000,
+                zone: 0,
+                dwell_time_ns: None,
+                flight_time_ns: None,
+            });
+        }
+        // 20 recent samples in the last 4 seconds
+        let recent_base = base_ns + 120_000_000_000; // 120 seconds later
+        for i in 0..20 {
+            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+                timestamp_ns: recent_base + (i as i64) * 200_000_000,
+                duration_since_last_ns: 200_000_000,
+                zone: 0,
+                dwell_time_ns: None,
+                flight_time_ns: None,
+            });
+        }
+        let wpm = session.recent_wpm();
+        // Only the 20 recent samples count (within 60s of newest)
+        // 20 keys / 5 = 4 words over 3.8s = ~63 WPM
+        assert!(wpm > 50.0, "WPM should be ~63, got {wpm}");
+        assert!(wpm < 80.0, "WPM should be ~63, got {wpm}");
+    }
+
+    #[test]
+    fn test_recent_wpm_very_fast_typing() {
+        let mut session = make_session();
+        let base_ns = 1_000_000_000_000i64;
+        // 100 keystrokes at 50ms intervals = very fast typing
+        for i in 0..100 {
+            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+                timestamp_ns: base_ns + (i as i64) * 50_000_000,
+                duration_since_last_ns: 50_000_000,
+                zone: (i % 5) as u8,
+                dwell_time_ns: None,
+                flight_time_ns: None,
+            });
+        }
+        let wpm = session.recent_wpm();
+        // 100 keys / 5 = 20 words over 4.95s = ~242 WPM
+        assert!(wpm > 200.0, "WPM should be ~242, got {wpm}");
+        assert!(wpm < 300.0, "WPM should be ~242, got {wpm}");
     }
 }

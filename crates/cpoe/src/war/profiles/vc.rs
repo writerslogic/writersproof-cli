@@ -134,6 +134,21 @@ pub struct VcProof {
     pub proof_value: String,
 }
 
+/// Return the issuer DID for new VCs.
+///
+/// Uses the WritersProof profile DID when a user is signed in
+/// (`did:web:writersproof.com:profile:{user_id}`), falling back to the
+/// organisation-level DID when no account is linked.
+fn issuer_did() -> String {
+    let guard = crate::identity::PROFILE_DID.read().unwrap_or_else(|e| e.into_inner());
+    if let Some(did) = guard.as_deref() {
+        if !did.is_empty() {
+            return did.to_string();
+        }
+    }
+    "did:web:writerslogic.com".to_string()
+}
+
 /// Build the core VC fields from an EAR token (shared by all encoding paths).
 fn build_vc_core(ear: &EarToken, author_did: &str) -> Result<VerifiableCredential> {
     let appr = ear
@@ -188,7 +203,7 @@ fn build_vc_core(ear: &EarToken, author_did: &str) -> Result<VerifiableCredentia
             "VerifiableCredential".to_string(),
             "ProcessAttestationCredential".to_string(),
         ],
-        issuer: "did:web:writerslogic.com".to_string(),
+        issuer: issuer_did(),
         valid_from: valid_from.to_rfc3339(),
         valid_until,
         credential_subject: CredentialSubject {

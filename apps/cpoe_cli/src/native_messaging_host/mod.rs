@@ -9,6 +9,7 @@
 //!
 //! Install manifests are in `../../apps/cpoe_browser_extension/native-manifests/`.
 
+#[allow(clippy::result_large_err)]
 mod handlers;
 mod jitter;
 mod protocol;

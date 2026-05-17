@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::cli::ForensicsAction;
 use crate::output::OutputMode;
@@ -15,7 +15,7 @@ pub(crate) fn cmd_forensics(action: ForensicsAction, out: &OutputMode) -> Result
     }
 }
 
-fn cmd_forensics_breakdown(path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_forensics_breakdown(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let result = cpoe::ffi::forensics_detail::ffi_get_forensic_breakdown(path_str);
 
@@ -112,7 +112,7 @@ fn cmd_forensics_breakdown(path: &PathBuf, out: &OutputMode) -> Result<()> {
     Ok(())
 }
 
-fn cmd_forensics_score(path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_forensics_score(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let result = cpoe::ffi::forensics::ffi_compute_process_score(path_str);
 
@@ -155,7 +155,7 @@ fn cmd_forensics_score(path: &PathBuf, out: &OutputMode) -> Result<()> {
     Ok(())
 }
 
-fn cmd_forensics_provenance(path: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_forensics_provenance(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
     let result = cpoe::ffi::forensics::ffi_get_provenance_metrics_for_document(path_str);
 

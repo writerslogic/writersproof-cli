@@ -11,6 +11,46 @@ const FFI_MAX_TRACKED_FILES: usize = 50_000;
 /// Maximum number of log entries returned for a single file via FFI.
 const FFI_MAX_LOG_ENTRIES: usize = 10_000;
 
+/// Set the WritersProof profile DID for the currently signed-in user.
+///
+/// Call with `user_id` (UUID string) on login; the DID becomes
+/// `did:web:writersproof.com:profile:{user_id}`. Call with an empty string
+/// on logout to clear it.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_set_profile_did(user_id: String) -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        let new_did = if user_id.is_empty() {
+            None
+        } else {
+            if user_id.len() > 64 || !user_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                return FfiResult::err("Invalid user_id for profile DID".to_string());
+            }
+            Some(format!("did:web:writersproof.com:profile:{}", user_id))
+        };
+        let mut guard = crate::identity::PROFILE_DID.write().unwrap_or_else(|e| {
+            log::warn!("PROFILE_DID write lock poisoned; recovering");
+            e.into_inner()
+        });
+        *guard = new_did;
+        FfiResult::ok(String::new())
+    })
+}
+
+/// Return the current WritersProof profile DID, if set.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_profile_did() -> FfiResult {
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        let guard = crate::identity::PROFILE_DID.read().unwrap_or_else(|e| {
+            log::warn!("PROFILE_DID read lock poisoned; recovering");
+            e.into_inner()
+        });
+        match guard.as_deref() {
+            Some(did) => FfiResult::ok(did.to_string()),
+            None => FfiResult::ok(String::new()),
+        }
+    })
+}
+
 /// Initialize the engine: create data directory, signing key, and event database.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_init() -> FfiResult {
@@ -19,12 +59,9 @@ pub fn ffi_init() -> FfiResult {
         // macOS unified logging (Console.app / `log stream`).
         static LOGGER_INIT: std::sync::Once = std::sync::Once::new();
         LOGGER_INIT.call_once(|| {
-            if let Ok(logger) = oslog::OsLogger::new("com.writerslogic.witnessd.engine")
+            let _ = oslog::OsLogger::new("com.writerslogic.witnessd.engine")
                 .level_filter(log::LevelFilter::Debug)
-                .init()
-            {
-                let _ = logger;
-            }
+                .init();
         });
         log::trace!("ffi_init called");
         let data_dir = match get_data_dir() {

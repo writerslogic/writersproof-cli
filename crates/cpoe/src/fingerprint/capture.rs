@@ -36,19 +36,9 @@ const EXCLUDED_BUNDLES: &[&str] = &[
 ];
 
 
-#[link(name = "Carbon", kind = "framework")]
-extern "C" {
-    fn IsSecureEventInputEnabled() -> bool;
-}
-
-
-fn secure_event_input_is_active() -> bool {
-    // Safety: pure CoreGraphics query, no side-effects, safe from any thread.
-    unsafe { IsSecureEventInputEnabled() }
-}
-
 
 pub(crate) struct FingerprintCapture {
+    #[allow(dead_code)] // held alive for FFI stop_capture()
     running: Arc<AtomicBool>,
     cancel: Arc<tokio::sync::Notify>,
     last_keydown_ts_ns: i64,
@@ -193,9 +183,6 @@ impl FingerprintCapture {
                     match result {
                         Ok(event) => {
                             if super::global::sentinel_is_feeding() {
-                                continue;
-                            }
-                            if secure_event_input_is_active() {
                                 continue;
                             }
                             if self.is_excluded(&event) {

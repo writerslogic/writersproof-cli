@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use anyhow::{anyhow, Result};
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::cli::CredentialAction;
 use crate::output::OutputMode;
@@ -17,7 +17,7 @@ pub(crate) fn cmd_credential(action: CredentialAction, out: &OutputMode) -> Resu
     }
 }
 
-fn cmd_credential_create(path: &PathBuf, session_id: &str, out: &OutputMode) -> Result<()> {
+fn cmd_credential_create(path: &Path, session_id: &str, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
 
     let score = cpoe::ffi::forensics::ffi_compute_process_score(path_str);
@@ -107,7 +107,7 @@ fn cmd_credential_create(path: &PathBuf, session_id: &str, out: &OutputMode) -> 
     Ok(())
 }
 
-fn cmd_credential_verify(file: &PathBuf, out: &OutputMode) -> Result<()> {
+fn cmd_credential_verify(file: &Path, out: &OutputMode) -> Result<()> {
     // Read credential hex from file.
     let content = std::fs::read_to_string(file)
         .map_err(|e| anyhow!("Failed to read credential file: {}", e))?;

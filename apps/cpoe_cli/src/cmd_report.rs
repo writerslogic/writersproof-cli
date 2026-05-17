@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use anyhow::{anyhow, Result};
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::output::OutputMode;
 use crate::util::{check_ffi_result, path_str};
 
-pub(crate) fn cmd_report(path: &PathBuf, format: &str, out: &OutputMode) -> Result<()> {
+pub(crate) fn cmd_report(path: &Path, format: &str, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
 
     match format {
