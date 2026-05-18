@@ -23,7 +23,7 @@ thiserror = "2.0.11"
 ed25519-dalek = { version = "2.1.1", features = ["zeroize"] }
 zeroize = { version = "1.8.1", features = ["derive"] }
 rand = "0.8"
-uuid = { version = "1.12.1", features = ["v4", "serde"] }
+uuid = { version = "1.23.1", features = ["v4", "serde"] }
 ratchet = { version = "0.1", optional = true }
 signature = "2.2"
 spki = "0.7"
