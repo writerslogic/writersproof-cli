@@ -328,6 +328,7 @@ pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
 
     log::info!("Challenge nonce set for next checkpoint");
     *sentinel.pending_challenge.write_recover() = Some((nonce, None));
+    sentinel.nonce_notify.notify_one();
     true
     })
 }

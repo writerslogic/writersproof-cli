@@ -769,6 +769,9 @@ pub struct DocumentSession {
     /// keystroke capture to detect transcription-like correction patterns.
     /// When `is_suspicious`, checkpoints are forced on every tick (never skipped).
     pub(crate) transcription_suspicion: crate::forensics::error_ecology::TranscriptionSuspicion,
+    /// Cross-window transcription detector: compares typed text against visible
+    /// windows to detect retyping from a visible source.
+    pub(crate) transcription_detector: crate::transcription::TranscriptionDetector,
 }
 
 /// Confidence in the evidence path and storage metadata for a document session.
@@ -964,6 +967,7 @@ impl Clone for DocumentSession {
             last_export_detected_ns: self.last_export_detected_ns,
             evidence_confidence: self.evidence_confidence,
             transcription_suspicion: self.transcription_suspicion.clone(),
+            transcription_detector: self.transcription_detector.clone(),
         }
     }
 }
@@ -1033,6 +1037,7 @@ impl DocumentSession {
             last_export_detected_ns: None,
             evidence_confidence: EvidenceConfidence::Full,
             transcription_suspicion: Default::default(),
+            transcription_detector: crate::transcription::TranscriptionDetector::new(),
         }
     }
 
@@ -1412,6 +1417,67 @@ pub fn infer_document_path_from_title_with_bundle(
                         return Some(left.to_string());
                     }
                 }
+            }
+        }
+        super::app_registry::TitleParserVariant::TerminalEditor => {
+            // Terminal editors set titles in various formats:
+            // vim:   "filename (+) - VIM" or "filename - Vi IMproved"
+            // nano:  "filename - GNU nano 8.0"
+            // emacs: "filename - GNU Emacs at host"
+            // Terminal.app wraps: "vim — filename — 80×24"
+            //
+            // Strategy: strip known editor suffixes and dimension strings,
+            // then look for a file path or document name in what remains.
+            let editor_markers = [
+                " - VIM", " - Vi IMproved", " - GVIM",
+                " - GNU nano", " - GNU Emacs", " - Emacs",
+                " - NeoVim", " - NVIM",
+            ];
+            let mut cleaned = title.to_string();
+            for marker in &editor_markers {
+                if let Some(idx) = cleaned.find(marker) {
+                    cleaned = cleaned[..idx].to_string();
+                    break;
+                }
+            }
+            // Strip vim's modified marker: "filename (+)" → "filename"
+            cleaned = cleaned.trim_end_matches(" (+)").trim_end_matches(" [+]").to_string();
+
+            // Terminal.app format: "editor — filename — 80×24"
+            // Split on em-dash, look for file paths in middle segments.
+            const EM_DASH: &str = " \u{2014} ";
+            if cleaned.contains(EM_DASH) {
+                let parts: Vec<&str> = cleaned.split(EM_DASH).collect();
+                for part in &parts {
+                    let part = part.trim();
+                    if looks_like_file_path(part) {
+                        return Some(part.to_string());
+                    }
+                }
+                // Skip dimension-like segments (e.g. "80×24") and editor names
+                for part in &parts {
+                    let part = part.trim();
+                    if !part.is_empty()
+                        && !part.contains('\u{00D7}') // × dimension separator
+                        && looks_like_document_name(part)
+                    {
+                        // Skip if it matches the editor command itself
+                        let lower = part.to_lowercase();
+                        if !["vim", "nvim", "nano", "emacs", "vi", "bash", "zsh", "fish", "sh"]
+                            .contains(&lower.as_str())
+                        {
+                            return Some(part.to_string());
+                        }
+                    }
+                }
+            }
+
+            let cleaned = cleaned.trim();
+            if looks_like_file_path(cleaned) {
+                return Some(cleaned.to_string());
+            }
+            if looks_like_document_name(cleaned) {
+                return Some(cleaned.to_string());
             }
         }
         super::app_registry::TitleParserVariant::Generic => {}

@@ -72,6 +72,28 @@ impl MacOSFocusMonitor {
                 .or(cg_title);
             let title_str = window_title.unwrap_or_default();
 
+            // Check if the focused window is a dialog/sheet before running
+            // the full path resolution chain.  Uses the same AX query as
+            // query_focused_window_attribute to avoid a redundant AX traversal.
+            let is_dialog = self.query_focused_window_attribute(pid, "AXSubrole")
+                .map(|sr| matches!(sr.as_str(), "AXDialog" | "AXSystemDialog" | "AXSheet"))
+                .unwrap_or(false);
+            if is_dialog {
+                log::debug!("[AX_PROBE] dialog/sheet focused for pid {} — non-document", pid);
+                let _: () = msg_send![pool, drain];
+                return Some(WindowInfo {
+                    is_document: false,
+                    path: None,
+                    application: bundle_id_str,
+                    title: ObfuscatedString::new(&title_str),
+                    pid: Some(pid as u32),
+                    timestamp: SystemTime::now(),
+                    is_unsaved: false,
+                    project_root: None,
+                    window_number: cg_window_number,
+                });
+            }
+
             log::debug!(
                 "[AX_PROBE] app={} bundle={} ax_path={:?} title={:?}",
                 app_name,
@@ -79,6 +101,9 @@ impl MacOSFocusMonitor {
                 doc_path,
                 title_str
             );
+
+            // Package bundle extensions for ancestor-walk matching.
+            const BUNDLE_EXTS: &[&str] = &["scriv", "scrivx", "pages", "rtfd"];
 
             let doc_path = doc_path.or_else(|| {
                 let inferred = super::types::infer_document_path_from_title_with_bundle(
@@ -93,19 +118,48 @@ impl MacOSFocusMonitor {
                     super::process_files::open_documents_for_pid(pid as u32);
                 log::trace!("[AX_PROBE] FD scan: {} open docs for pid {}", open_docs.len(), pid);
                 if let Some(matched) = open_docs.iter().find(|f| {
-                    f.path
+                    let name_match = f.path
                         .file_name()
                         .map(|n| n.to_string_lossy().eq_ignore_ascii_case(&inferred))
-                        .unwrap_or(false)
+                        .unwrap_or(false);
+                    let stem_match = f.path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().eq_ignore_ascii_case(&inferred))
+                        .unwrap_or(false);
+                    name_match || stem_match
                 }) {
                     log::trace!("[AX_PROBE] FD match: {:?}", matched.path);
                     return Some(matched.path.to_string_lossy().into_owned());
+                }
+                // Bundle-based apps (Scrivener .scriv, Pages .pages, etc.)
+                // open nested files inside the package directory.  Walk FD
+                // paths looking for a package ancestor whose stem matches
+                // the title-inferred name.
+                for f in &open_docs {
+                    for ancestor in f.path.ancestors() {
+                        let ext_match = ancestor.extension()
+                            .and_then(|e| e.to_str())
+                            .map(|e| BUNDLE_EXTS.contains(&e))
+                            .unwrap_or(false);
+                        if ext_match {
+                            let stem_match = ancestor.file_stem()
+                                .map(|s| s.to_string_lossy().eq_ignore_ascii_case(&inferred))
+                                .unwrap_or(false);
+                            if stem_match {
+                                let bundle = ancestor.to_string_lossy().into_owned();
+                                log::trace!("[AX_PROBE] FD bundle match: {:?}", bundle);
+                                return Some(bundle);
+                            }
+                        }
+                    }
                 }
                 log::trace!("[AX_PROBE] no FD match, using title:// fallback");
                 Some(format!("title://{}/{}", bundle_id_str, inferred))
             });
 
             // Last resort: enumerate open file descriptors to find documents.
+            // If the writable file is inside a macOS package bundle, return the
+            // bundle root instead of the nested path.
             let doc_path = doc_path.or_else(|| {
                 log::trace!("[AX_PROBE] last resort FD scan for pid {}", pid);
                 let open_docs =
@@ -113,7 +167,18 @@ impl MacOSFocusMonitor {
                 let found = open_docs
                     .into_iter()
                     .find(|f| f.writable)
-                    .map(|f| f.path.to_string_lossy().into_owned());
+                    .map(|f| {
+                        for ancestor in f.path.ancestors() {
+                            let is_bundle = ancestor.extension()
+                                .and_then(|e| e.to_str())
+                                .map(|e| BUNDLE_EXTS.contains(&e))
+                                .unwrap_or(false);
+                            if is_bundle {
+                                return ancestor.to_string_lossy().into_owned();
+                            }
+                        }
+                        f.path.to_string_lossy().into_owned()
+                    });
                 log::trace!("[AX_PROBE] FD writable result: {:?}", found);
                 found
             });
@@ -488,8 +553,17 @@ extern "C" fn ax_observer_callback(
     // reclaimed when the observer thread is torn down.
     let ctx = unsafe { &*(refcon as *const AXObserverRefcon) };
     if let Some(info) = ctx.provider.get_active_window() {
+        // Emit FocusLost only for explicit dialog/sheet detection (path=None
+        // AND is_document=false).  When path resolution simply fails (empty
+        // path but is_document could be false due to timing), emit FocusGained
+        // so the handler's existing fallback logic preserves cached_focus.
+        let event_type = if !info.is_document && info.path.is_none() {
+            FocusEventType::FocusLost
+        } else {
+            FocusEventType::FocusGained
+        };
         let event = FocusEvent {
-            event_type: FocusEventType::FocusGained,
+            event_type,
             path: info.path.clone().unwrap_or_default(),
             shadow_id: String::new(),
             app_bundle_id: info.application.clone(),
@@ -599,6 +673,7 @@ fn ax_observer_run_loop(
 
     let kax_focused_window = CFString::from_static_string("AXFocusedWindowChanged");
     let kax_title_changed = CFString::from_static_string("AXTitleChanged");
+    let kax_document_changed = CFString::from_static_string("AXDocumentChanged");
 
     let mut current_pid: i32 = -1;
     let mut current_observer: *mut std::ffi::c_void = std::ptr::null_mut();
@@ -621,6 +696,11 @@ fn ax_observer_run_loop(
                     *observer,
                     *app_el,
                     kax_title_changed.as_concrete_TypeRef(),
+                );
+                let _ = AXObserverRemoveNotification(
+                    *observer,
+                    *app_el,
+                    kax_document_changed.as_concrete_TypeRef(),
                 );
             }
         }
@@ -700,6 +780,12 @@ fn ax_observer_run_loop(
                     observer,
                     app_element,
                     kax_title_changed.as_concrete_TypeRef(),
+                    current_refcon as *mut std::ffi::c_void,
+                );
+                AXObserverAddNotification(
+                    observer,
+                    app_element,
+                    kax_document_changed.as_concrete_TypeRef(),
                     current_refcon as *mut std::ffi::c_void,
                 );
 

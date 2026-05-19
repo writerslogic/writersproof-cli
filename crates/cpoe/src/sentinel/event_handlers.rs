@@ -46,13 +46,13 @@ pub(super) struct EventLoopCtx {
     pub(super) stopping_flag: Arc<AtomicBool>,
     #[allow(clippy::type_complexity)]
     pub(super) pending_challenge: Arc<RwLock<Option<(String, Option<String>)>>>,
+    pub(super) nonce_notify: Arc<tokio::sync::Notify>,
     pub(super) tpm_provider: Option<Arc<dyn crate::tpm::Provider>>,
     pub(super) tap_check_capture: Arc<Mutex<Option<Box<dyn KeystrokeCapture>>>>,
     pub(super) tap_check_active: Arc<AtomicBool>,
     pub(super) bridge_health_threads: Arc<Mutex<Vec<std::thread::JoinHandle<()>>>>,
     pub(super) bridge_healthy_flag: Arc<AtomicBool>,
     pub(super) snapshots_flag: Arc<AtomicBool>,
-    pub(super) writersproof_client: Arc<dyn crate::writersproof::WritersProofApi>,
     pub(super) cached_store: Arc<Mutex<Option<crate::store::SecureStore>>>,
     pub(super) permission_state: Arc<Mutex<super::permission_monitor::PermissionState>>,
     pub(super) keystroke_event_tx:
@@ -84,41 +84,12 @@ pub(super) struct EventLoopCtx {
 const TYPING_PROXIMITY_SECS: u64 = 2;
 
 impl EventLoopCtx {
-    /// Forward session lifecycle events to the WritersProof service.
+    /// Forward session lifecycle events (document watcher, content fingerprints).
+    /// API calls (session create/end, nonce challenge/confirm) are handled by the
+    /// Swift layer which owns authentication.
     pub(super) fn handle_session_event(&self, event: SessionEvent) {
-        let client = Arc::clone(&self.writersproof_client);
         match event.event_type {
             SessionEventType::Started => {
-                if let Some(hash) = event.hash {
-                    let sid = event.session_id;
-                    let sid_hex = match crate::writersproof::Hex64::new(sid.clone()) {
-                        Ok(h) => h,
-                        Err(e) => {
-                            log::debug!(
-                                "WritersProof start_session: invalid session_id: {}", e
-                            );
-                            return;
-                        }
-                    };
-                    let hash_hex = match crate::writersproof::Hex64::new(hash) {
-                        Ok(h) => h,
-                        Err(e) => {
-                            log::debug!(
-                                "WritersProof start_session: invalid initial_hash: {}", e
-                            );
-                            return;
-                        }
-                    };
-                    tokio::spawn(async move {
-                        if let Err(e) =
-                            client.start_session(&sid_hex, &hash_hex).await
-                        {
-                            log::debug!(
-                                "WritersProof start_session failed for {}: {}", sid, e
-                            );
-                        }
-                    });
-                }
             }
             SessionEventType::Ended => {
                 // Unwatch document directory and remove content fingerprint.
@@ -134,37 +105,6 @@ impl EventLoopCtx {
                 self.content_fingerprints.lock_recover().retain(
                     |(sid, _, _)| *sid != event.session_id,
                 );
-
-                if let Some(hash) = event.hash {
-                    let sid = event.session_id;
-                    let sid_hex = match crate::writersproof::Hex64::new(sid.clone()) {
-                        Ok(h) => h,
-                        Err(e) => {
-                            log::debug!(
-                                "WritersProof end_session: invalid session_id: {}", e
-                            );
-                            return;
-                        }
-                    };
-                    let hash_hex = match crate::writersproof::Hex64::new(hash) {
-                        Ok(h) => h,
-                        Err(e) => {
-                            log::debug!(
-                                "WritersProof end_session: invalid final_hash: {}", e
-                            );
-                            return;
-                        }
-                    };
-                    tokio::spawn(async move {
-                        if let Err(e) =
-                            client.end_session(&sid_hex, &hash_hex).await
-                        {
-                            log::debug!(
-                                "WritersProof end_session failed for {}: {}", sid, e
-                            );
-                        }
-                    });
-                }
             }
             _ => {}
         }
@@ -360,8 +300,23 @@ impl EventLoopCtx {
             session.jitter_hash_state = h.finalize().into();
         }
 
+        // Feed typed character to cross-window transcription detector.
+        if let Some(ch) = event.char_value {
+            session.transcription_detector.record_keystroke(ch);
+        }
+
         // Periodically assess transcription suspicion (every 100 keystrokes).
-        if session.keystroke_count % 100 == 0 && session.jitter_samples.len() >= 20 {
+        let should_cross_check = session.keystroke_count % 100 == 0
+            && session.jitter_samples.len() >= 20;
+        let cross_check_ready = should_cross_check
+            && session.transcription_detector.buffer_len() >= 100;
+        let exclude_pid = if cross_check_ready {
+            Some(event.target_pid as u32)
+        } else {
+            None
+        };
+
+        if should_cross_check {
             session.transcription_suspicion =
                 crate::forensics::error_ecology::assess_transcription_suspicion(
                     &session.jitter_samples,
@@ -386,6 +341,39 @@ impl EventLoopCtx {
                 let entropy = duration_since_last_ns.to_le_bytes();
                 sched.record_entropy(&entropy);
             }
+        }
+
+        drop(map);
+
+        // Cross-window comparison runs on a background thread to avoid
+        // blocking keystroke processing (AX IPC can take 50-200ms).
+        if let Some(excl_pid) = exclude_pid {
+            let sessions = Arc::clone(&self.sessions);
+            let path_owned = path.clone();
+            std::thread::Builder::new()
+                .name("cpoe-xwin-check".into())
+                .spawn(move || {
+                    let visible =
+                        crate::platform::window_text::WindowTextCapture::capture_visible_windows(
+                            Some(excl_pid),
+                        );
+                    if visible.is_empty() {
+                        return;
+                    }
+                    let mut map = sessions.write_recover();
+                    if let Some(session) = map.get_mut(path_owned.as_str()) {
+                        for wt in &visible {
+                            if wt.text_content.len() >= 50 {
+                                session.transcription_detector.check_against_text(
+                                    &wt.text_content,
+                                    &wt.app_name,
+                                    &wt.window_title,
+                                );
+                            }
+                        }
+                    }
+                })
+                .ok();
         }
     }
 
@@ -761,99 +749,82 @@ impl EventLoopCtx {
         }
     }
 
-    /// Send a pulse to WritersProof and stash the returned nonce.
+    /// Challenge nonce tick — no-op in the engine.
+    /// Nonce fetching is handled by the Swift layer via `ChallengeService`,
+    /// which pushes nonces to the engine via `ffi_sentinel_set_challenge_nonce`.
     pub(super) fn handle_challenge_tick(&self) {
-        let focused_data = {
-            let focused_path = self.current_focus.read_recover().clone();
-            if let Some(path) = focused_path {
-                self.sessions
-                    .read_recover()
-                    .get(&path)
-                    .map(|s| (s.session_id.clone(), s.current_hash.clone()))
-            } else {
-                None
-            }
+        let has_nonce = self.pending_challenge.read_recover().is_some();
+        if !has_nonce {
+            log::trace!("Witness pulse skipped: no nonce available (Swift ChallengeService provides nonces)");
+        }
+    }
+
+    /// Compute the next checkpoint interval from nonce + jitter entropy.
+    ///
+    /// The interval is drawn from `[base/2, 2*base)` milliseconds using
+    /// `BLAKE3(DST || nonce || jitter_hash_state || monotonic_counter)`.
+    /// Neither the server (nonce) nor the client (jitter chain) alone can
+    /// predict the result.  The monotonic counter prevents identical outputs
+    /// when the jitter chain hasn't advanced (idle periods).
+    ///
+    /// Falls back to the configured fixed interval when no nonce is available.
+    pub(super) fn compute_next_checkpoint_interval(&self, base_secs: u64) -> Duration {
+        static ENTROPY_COUNTER: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        let counter = ENTROPY_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let nonce_bytes = {
+            let guard = self.pending_challenge.read_recover();
+            guard.as_ref().map(|(n, _)| n.as_bytes().to_vec())
         };
 
-        if let Some((sid, hash_opt)) = focused_data {
-            let client = Arc::clone(&self.writersproof_client);
-            let pending = Arc::clone(&self.pending_challenge);
-            tokio::spawn(async move {
-                if let Some(h) = hash_opt {
-                    let sid_hex =
-                        match crate::writersproof::Hex64::new(sid.clone()) {
-                            Ok(h) => h,
-                            Err(e) => {
-                                log::debug!(
-                                    "Pulse: invalid session_id: {}", e
-                                );
-                                return;
-                            }
-                        };
-                    let hash_hex =
-                        match crate::writersproof::Hex64::new(h) {
-                            Ok(h) => h,
-                            Err(e) => {
-                                log::debug!(
-                                    "Pulse: invalid current_hash: {}", e
-                                );
-                                return;
-                            }
-                        };
-                    match client.pulse(&sid_hex, &hash_hex).await {
-                        Ok(resp) => {
-                            *pending.write_recover() = Some((
-                                resp.nonce,
-                                Some(resp.nonce_id.clone()),
-                            ));
-                            log::debug!(
-                                "Pulse sent for session {}: nonce_id={}",
-                                sid,
-                                resp.nonce_id
-                            );
-                        }
-                        Err(e) => {
-                            log::debug!(
-                                "Pulse failed for session {}: {}", sid, e
-                            );
-                        }
-                    }
-                }
-            });
-        }
+        let jitter_entropy: [u8; 32] = {
+            let map = self.sessions.read_recover();
+            map.values()
+                .filter(|s| s.has_focus)
+                .max_by_key(|s| s.keystroke_count)
+                .map(|s| s.jitter_hash_state)
+                .unwrap_or([0u8; 32])
+        };
+
+        let Some(nonce) = nonce_bytes else {
+            return Duration::from_secs(base_secs);
+        };
+
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"cpoe-checkpoint-entropy-v1");
+        hasher.update(&nonce);
+        hasher.update(&jitter_entropy);
+        hasher.update(&counter.to_le_bytes());
+        let hash = hasher.finalize();
+        let hash_bytes: [u8; 8] = hash.as_bytes()[..8].try_into().unwrap();
+        let raw = u64::from_le_bytes(hash_bytes);
+
+        // Map into [base/2, 2*base) milliseconds — 4x spread.
+        let base_ms = base_secs * 1000;
+        let min_ms = base_ms / 2;
+        let window_ms = base_ms.saturating_mul(3).saturating_div(2); // 1.5 * base
+        let offset_ms = if window_ms > 0 { raw % window_ms } else { 0 };
+        let interval_ms = min_ms + offset_ms;
+
+        log::debug!(
+            "Entropy checkpoint interval: {}ms (base={}s, range=[{}ms,{}ms))",
+            interval_ms, base_secs, min_ms, min_ms + window_ms
+        );
+        Duration::from_millis(interval_ms)
     }
 
     /// Commit checkpoints for all sessions with pending keystrokes.
     pub(super) async fn handle_checkpoint_tick(&self) {
-        static TICK_COUNTER: std::sync::atomic::AtomicU64 =
-            std::sync::atomic::AtomicU64::new(0);
-        let tick = TICK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
+        // All sessions with pending keystrokes are candidates.  Checkpoint
+        // frequency is governed by the entropy-derived interval, not per-session
+        // tick skipping, so every candidate is included on every fire.
         let candidates: Vec<String> = {
             let map = self.sessions.read_recover();
             map.iter()
                 .filter(|(p, s)| {
                     s.keystroke_count > s.last_checkpoint_keystrokes
                         && !p.starts_with("shadow://")
-                })
-                .filter(|(_, s)| {
-                    // Transcription suspicion: always checkpoint (never skip).
-                    // Aggressive evidence collection for suspicious sessions.
-                    if s.transcription_suspicion.is_suspicious {
-                        return true;
-                    }
-                    // Use ecology score to derive cognitive mode and apply
-                    // checkpoint_interval_multiplier:
-                    //   Creative (>0.6)      → 1.5x → skip every 3rd tick
-                    //   Editing (0.3-0.6)    → 1.0x → every tick
-                    //   Transcription (<0.3) → 0.5x → handled above (always true)
-                    if s.transcription_suspicion.sample_count >= 20
-                        && s.transcription_suspicion.ecology_score > 0.6
-                    {
-                        // 1.5x multiplier: skip every 3rd tick
-                        return tick % 3 != 0;
-                    }
-                    true
                 })
                 .map(|(p, _)| p.clone())
                 .collect()
@@ -964,54 +935,14 @@ impl EventLoopCtx {
         false
     }
 
-    /// Tell WritersProof which checkpoint consumed its nonce.
+    /// Nonce confirmation is handled by the Swift layer.  This stub
+    /// preserves the call site so checkpoint code doesn't need to change.
     fn confirm_nonce_for_checkpoint(
         &self,
-        path: &str,
-        event_hash: &[u8; 32],
-        nonce_id: &Option<String>,
+        _path: &str,
+        _event_hash: &[u8; 32],
+        _nonce_id: &Option<String>,
     ) {
-        let Some(ref nid) = nonce_id else { return };
-        let session_id = self
-            .sessions
-            .read_recover()
-            .get(path)
-            .map(|s| s.session_id.clone());
-        let Some(sid) = session_id else { return };
-        let nid = nid.clone();
-        let cp_hash = hex::encode(event_hash);
-        let sid_hex =
-            match crate::writersproof::Hex64::new(sid.clone()) {
-                Ok(h) => Some(h),
-                Err(e) => {
-                    log::debug!(
-                        "confirm_nonce: invalid session_id: {}", e
-                    );
-                    None
-                }
-            };
-        let cp_hex = match crate::writersproof::Hex64::new(cp_hash) {
-            Ok(h) => Some(h),
-            Err(e) => {
-                log::debug!(
-                    "confirm_nonce: invalid checkpoint_hash: {}", e
-                );
-                None
-            }
-        };
-        if let (Some(sid_hex), Some(cp_hex)) = (sid_hex, cp_hex) {
-            let confirm_client = Arc::clone(&self.writersproof_client);
-            tokio::spawn(async move {
-                if let Err(e) = confirm_client
-                    .confirm_nonce(&sid_hex, &nid, &cp_hex)
-                    .await
-                {
-                    log::debug!(
-                        "confirm_nonce failed for session {sid}: {e}"
-                    );
-                }
-            });
-        }
     }
 
     /// Persist stats, create text fragment, save snapshot, and HW co-sign

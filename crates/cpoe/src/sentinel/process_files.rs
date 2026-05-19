@@ -58,6 +58,7 @@ const EXCLUDED_PREFIXES: &[&str] = &[
     "/private/var/db/",
     "/private/var/run/",
     "/tmp/com.apple.",
+    "/rustc/",
 ];
 
 /// Enumerate open document files for a process.

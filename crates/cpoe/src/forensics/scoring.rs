@@ -10,9 +10,12 @@ use crate::jitter::SimpleJitterSample;
 use crate::sentinel::types::FocusSwitchRecord;
 use crate::utils::Probability;
 
-/// Minimum number of jitter samples required to compute a meaningful
-/// cadence score. Below this threshold the score is 0.0.
-const MIN_CADENCE_SAMPLES: usize = 20;
+/// Minimum number of jitter samples below which the cadence score is 0.0.
+const MIN_CADENCE_SAMPLES: usize = 5;
+/// Number of samples at which the cadence score reaches full confidence.
+/// Between [`MIN_CADENCE_SAMPLES`] and this value, the raw score is scaled
+/// linearly so the displayed score ramps smoothly instead of jumping 0→100.
+const FULL_CONFIDENCE_SAMPLES: usize = 20;
 
 /// Weighted mean bytes-per-second (prose segments only) above which a
 /// velocity penalty begins.  Calibrated to the upper end of sustained human
@@ -24,13 +27,21 @@ const PROSE_VELOCITY_MAX_PENALTY: f64 = 0.20;
 /// Compute a cadence score from raw jitter samples.
 ///
 /// Returns 0.0 when fewer than [`MIN_CADENCE_SAMPLES`] samples are
-/// available, otherwise delegates to [`analyze_cadence`] +
-/// [`compute_cadence_score`].
+/// available.  Between [`MIN_CADENCE_SAMPLES`] and
+/// [`FULL_CONFIDENCE_SAMPLES`] the raw score is scaled linearly so that
+/// the displayed value ramps smoothly instead of jumping 0→100.
 pub fn cadence_score_from_samples(samples: &[SimpleJitterSample]) -> f64 {
-    if samples.len() >= MIN_CADENCE_SAMPLES {
-        super::compute_cadence_score(&super::analyze_cadence(samples))
+    let n = samples.len();
+    if n < MIN_CADENCE_SAMPLES {
+        return 0.0;
+    }
+    let raw = super::compute_cadence_score(&super::analyze_cadence(samples));
+    if n >= FULL_CONFIDENCE_SAMPLES {
+        raw
     } else {
-        0.0
+        let confidence = (n - MIN_CADENCE_SAMPLES + 1) as f64
+            / (FULL_CONFIDENCE_SAMPLES - MIN_CADENCE_SAMPLES + 1) as f64;
+        raw * confidence
     }
 }
 
@@ -138,8 +149,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cadence_score_below_threshold_is_zero() {
-        let samples: Vec<SimpleJitterSample> = (0..19)
+    fn cadence_score_below_min_is_zero() {
+        let samples: Vec<SimpleJitterSample> = (0..4)
             .map(|i| SimpleJitterSample {
                 duration_since_last_ns: (i as u64 + 1) * 100_000_000,
                 timestamp_ns: (i as i64) * 200_000_000,
@@ -150,7 +161,28 @@ mod tests {
     }
 
     #[test]
-    fn cadence_score_above_threshold_nonzero() {
+    fn cadence_score_ramps_between_thresholds() {
+        let make = |n: usize| -> Vec<SimpleJitterSample> {
+            (0..n)
+                .map(|i| SimpleJitterSample {
+                    duration_since_last_ns: (i as u64 + 1) * 100_000_000,
+                    timestamp_ns: (i as i64) * 200_000_000,
+                    ..Default::default()
+                })
+                .collect()
+        };
+        let score_10 = cadence_score_from_samples(&make(10));
+        let score_15 = cadence_score_from_samples(&make(15));
+        let score_20 = cadence_score_from_samples(&make(20));
+        // Mid-ramp scores should be strictly less than full-confidence score.
+        assert!(score_10 < score_20 || score_20 == 0.0);
+        assert!(score_15 < score_20 || score_20 == 0.0);
+        // Monotonically increasing with more samples (same underlying data pattern).
+        assert!(score_10 <= score_15);
+    }
+
+    #[test]
+    fn cadence_score_above_full_confidence() {
         let samples: Vec<SimpleJitterSample> = (0..30)
             .map(|i| SimpleJitterSample {
                 duration_since_last_ns: (i as u64 + 1) * 100_000_000,
@@ -159,7 +191,6 @@ mod tests {
             })
             .collect();
         let score = cadence_score_from_samples(&samples);
-        // With enough samples we should get a non-negative score.
         assert!(score >= 0.0);
     }
 

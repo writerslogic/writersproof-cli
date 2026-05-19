@@ -81,6 +81,7 @@ pub(super) fn run_forensics(
         checkpoint_count: packet.checkpoints.len() as u64,
         attestation_tier: None,
         vdf_merkle_root: None,
+        cross_window_matches: Vec::new(),
     };
 
     let has_data = !jitter_samples.is_empty() || !events.is_empty();

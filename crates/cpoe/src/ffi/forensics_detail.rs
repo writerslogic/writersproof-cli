@@ -236,7 +236,7 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
     let profile = crate::forensics::ForensicEngine::evaluate_authorship(&path, &events);
     let (mut metrics, _regions) = crate::ffi::helpers::run_full_forensics(&events);
 
-    // Enrich writing mode with cognitive layer from live session if available.
+    // Enrich writing mode and cross-window matches from live session if available.
     if let Some(sentinel) = super::sentinel::get_sentinel() {
         for session in sentinel.sessions() {
             if session.path == path {
@@ -244,6 +244,14 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
                     if let Some(ref mut wm) = metrics.writing_mode {
                         wm.cognitive_layer = Some(layer);
                     }
+                }
+                let matches = session.transcription_detector.matches();
+                if !matches.is_empty() {
+                    metrics.cross_window_matches = matches.to_vec();
+                    crate::forensics::apply_cross_window_penalties(
+                        &mut metrics.assessment_score,
+                        &metrics.cross_window_matches,
+                    );
                 }
                 break;
             }

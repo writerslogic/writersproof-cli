@@ -176,6 +176,8 @@ pub struct AnalysisContext {
     /// from this root, forcing an attacker to re-run the VDF for each
     /// forgery attempt. When absent, default embedding params are used.
     pub vdf_merkle_root: Option<[u8; 32]>,
+    /// Cross-window transcription matches detected during the session.
+    pub cross_window_matches: Vec<crate::transcription::CrossWindowMatch>,
 }
 
 pub fn analyze_forensics(
@@ -579,6 +581,9 @@ pub fn analyze_forensics_ext_with_focus(
         apply_focus_penalties(&mut metrics.assessment_score, &metrics.focus);
     }
 
+    if !context.cross_window_matches.is_empty() {
+        metrics.cross_window_matches = context.cross_window_matches.clone();
+    }
     if !metrics.cross_window_matches.is_empty() {
         super::assessment::apply_cross_window_penalties(
             &mut metrics.assessment_score,

@@ -65,17 +65,17 @@ const IKI_AUTOCORR: ScoringSignal = ScoringSignal::inverted(0.15, 0.40, 0.10);
 #[cfg(not(feature = "v2_classifier"))]
 const POST_PAUSE_CV: ScoringSignal = ScoringSignal::new(0.10, 0.30, 0.10);
 #[cfg(not(feature = "v2_classifier"))]
-const DEEP_PAUSE: ScoringSignal = ScoringSignal::new(0.0, 0.10, 0.08);
+const DEEP_PAUSE: ScoringSignal = ScoringSignal::new(0.0, 0.10, 0.05);
 #[cfg(not(feature = "v2_classifier"))]
 const POS_NEG_RATIO: ScoringSignal = ScoringSignal::inverted(0.85, 0.98, 0.05);
 #[cfg(not(feature = "v2_classifier"))]
-const MONOTONIC_APPEND: ScoringSignal = ScoringSignal::inverted(0.70, 0.90, 0.05);
+const MONOTONIC_APPEND: ScoringSignal = ScoringSignal::inverted(0.70, 0.90, 0.10);
 #[cfg(not(feature = "v2_classifier"))]
-const REVISION_FRACTION: ScoringSignal = ScoringSignal::new(0.02, 0.15, 0.05);
+const REVISION_FRACTION: ScoringSignal = ScoringSignal::new(0.02, 0.15, 0.08);
 #[cfg(not(feature = "v2_classifier"))]
-const THINKING_PAUSE_RATIO: ScoringSignal = ScoringSignal::new(0.0, 0.08, 0.05);
+const THINKING_PAUSE_RATIO: ScoringSignal = ScoringSignal::new(0.0, 0.08, 0.02);
 #[cfg(not(feature = "v2_classifier"))]
-const BURST_LENGTH_CV: ScoringSignal = ScoringSignal::new(0.20, 0.60, 0.05);
+const BURST_LENGTH_CV: ScoringSignal = ScoringSignal::new(0.20, 0.60, 0.03);
 
 // --- v2 signal weights (structural-primary, used with v2_classifier feature) ---
 // Source annotations: "diary" = diary-vs-transcription session calibration data,

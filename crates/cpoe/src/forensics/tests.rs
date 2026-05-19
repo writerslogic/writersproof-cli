@@ -900,6 +900,7 @@ fn test_analyze_forensics_ext_with_context() {
         checkpoint_count: 5,
         attestation_tier: None,
         vdf_merkle_root: None,
+        cross_window_matches: Vec::new(),
     };
     let metrics = analysis::analyze_forensics_ext(&events, &regions, None, None, None, &context);
     assert!(metrics.assessment_score.get() >= 0.0);

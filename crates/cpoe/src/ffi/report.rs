@@ -428,7 +428,11 @@ fn build_forensic_breakdown(
             .as_ref()
             .map(|wm| wm.confidence)
             .unwrap_or_else(|| if profile.event_count > 20 { 0.8 } else { 0.3 }),
-        revision_cycle_count: profile.revision_cycle_count(),
+        revision_cycle_count: metrics
+            .writing_mode
+            .as_ref()
+            .map(|wm| wm.revision_pattern.revision_cycle_count as u32)
+            .unwrap_or(0),
         hurst_exponent: metrics.hurst_exponent.filter(|v| v.is_finite()),
         assessment_score: metrics.assessment_score.get(),
         risk_level: profile.risk_level().to_string(),
@@ -666,6 +670,7 @@ fn compute_provenance(
 
 fn verdict_description(verdict: Verdict) -> String {
     match verdict {
+        Verdict::InsufficientData => "Not enough evidence was collected to make a meaningful determination. More writing time and checkpoints are needed.".into(),
         Verdict::VerifiedHuman => "Strong evidence of human authorship with natural editing patterns, timing constraints, and behavioral consistency.".into(),
         Verdict::LikelyHuman => "Moderate evidence of human authorship with generally consistent patterns.".into(),
         Verdict::Inconclusive => "Insufficient evidence to make a determination about authorship.".into(),
@@ -748,7 +753,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
     let stats = compute_event_stats(&events, ips)
         .ok_or_else(|| "No events found for this file".to_string())?;
     let base_score = (stats.avg_forensic * 100.0).clamp(0.0, 100.0) as u32;
-    let base_verdict = Verdict::from_score(base_score);
+    let base_verdict = Verdict::from_score_with_events(base_score, events.len());
     let base_lr = compute_likelihood_ratio(base_score);
     let base_enfsi = EnfsiTier::from_lr(base_lr);
 
@@ -1400,5 +1405,21 @@ fn build_vc_forensic_signals(
             .as_ref()
             .map(|c| c.composite_score)
             .unwrap_or(0.0),
+        words_per_minute: {
+            let mean_iki_ms = metrics.cadence.mean_iki_ns / 1_000_000.0;
+            if mean_iki_ms > 0.0 {
+                Some((1000.0 / mean_iki_ms) * 12.0)
+            } else {
+                None
+            }
+        },
+        mean_iki_ms: Some(metrics.cadence.mean_iki_ns / 1_000_000.0)
+            .filter(|v| v.is_finite() && *v > 0.0),
+        correction_ratio: Some(metrics.cadence.correction_ratio.get())
+            .filter(|v| v.is_finite()),
+        keystroke_count: Some(metrics.cadence.burst_count as u64 + metrics.cadence.pause_count as u64),
+        hurst_exponent: metrics.hurst_exponent.filter(|h| h.is_finite()),
+        forensic_score: Some(metrics.assessment_score.get())
+            .filter(|v| v.is_finite()),
     })
 }

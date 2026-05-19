@@ -133,6 +133,8 @@ pub struct Sentinel {
     /// (which arrive without a server-side UUID for confirmation).
     #[allow(clippy::type_complexity)]
     pub(crate) pending_challenge: Arc<RwLock<Option<(String, Option<String>)>>>,
+    /// Signaled when a new nonce arrives so the checkpoint timer can recalculate.
+    pub(crate) nonce_notify: Arc<tokio::sync::Notify>,
     /// Timestamp when the sentinel was started via start().
     pub(crate) start_time: Arc<Mutex<Option<SystemTime>>>,
     /// False when any bridge thread has died; checked before processing events.
@@ -142,8 +144,6 @@ pub struct Sentinel {
     stopping: Arc<AtomicBool>,
     /// Hardware TPM/Secure Enclave provider for co-sign scheduling.
     pub(crate) tpm_provider: Option<Arc<dyn crate::tpm::Provider>>,
-    /// Client for WritersProof service (freshness nonces, attestation).
-    pub(crate) writersproof_client: Arc<dyn crate::writersproof::WritersProofApi>,
     /// Platform-specific hardware and OS feature provider.
     pub(crate) platform: Arc<dyn crate::platform::PlatformProvider>,
     /// Unified app registry (built-in + user-added writing apps).
@@ -203,13 +203,6 @@ impl Sentinel {
 
         let tpm_provider = platform.get_tpm_provider();
 
-        let writersproof_client = Arc::new(
-            crate::writersproof::WritersProofClient::new(
-                crate::writersproof::client::DEFAULT_API_URL,
-            )
-            .map_err(|e| SentinelError::Anyhow(anyhow::anyhow!(e)))?,
-        );
-
         let app_registry = super::app_registry::AppRegistry::load(&config.writersproof_dir);
 
         let sentinel = Self {
@@ -239,11 +232,11 @@ impl Sentinel {
             keystroke_capture_active: Arc::new(AtomicBool::new(false)),
             last_paste_chars: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             pending_challenge: Arc::new(RwLock::new(None)),
+            nonce_notify: Arc::new(tokio::sync::Notify::new()),
             start_time: Arc::new(Mutex::new(None)),
             bridge_healthy: Arc::new(AtomicBool::new(true)),
             stopping: Arc::new(AtomicBool::new(false)),
             tpm_provider,
-            writersproof_client,
             platform,
             app_registry: Arc::new(RwLock::new(app_registry)),
             cached_store: Arc::new(Mutex::new(None)),
@@ -513,6 +506,7 @@ impl Sentinel {
         let signing_key_for_cp = Arc::clone(&self.signing_key);
         let stopping_flag = Arc::clone(&self.stopping);
         let pending_challenge = Arc::clone(&self.pending_challenge);
+        let nonce_notify = Arc::clone(&self.nonce_notify);
 
         // Re-focus preserved sessions from a prior run so that keystrokes
         // are attributed immediately, without waiting for the focus probe.
@@ -536,7 +530,6 @@ impl Sentinel {
         let bridge_healthy_flag = Arc::clone(&self.bridge_healthy);
         let snapshots_flag = Arc::clone(&self.snapshots_enabled);
 
-        let writersproof_client_for_loop = Arc::clone(&self.writersproof_client);
         let cached_store_for_loop = Arc::clone(&self.cached_store);
         let permission_state_for_loop = Arc::clone(&self.permission_state);
         let keystroke_event_tx_for_loop = Arc::clone(&self.keystroke_event_tx);
@@ -568,13 +561,13 @@ impl Sentinel {
                 writersproof_dir,
                 stopping_flag,
                 pending_challenge,
+                nonce_notify,
                 tpm_provider: tpm_provider_for_loop,
                 tap_check_capture,
                 tap_check_active,
                 bridge_health_threads,
                 bridge_healthy_flag,
                 snapshots_flag,
-                writersproof_client: writersproof_client_for_loop,
                 cached_store: cached_store_for_loop,
                 permission_state: permission_state_for_loop,
                 keystroke_event_tx: keystroke_event_tx_for_loop,
@@ -596,7 +589,10 @@ impl Sentinel {
             ctx.cached_focus = ctx.current_focus.read_recover().clone();
 
             let mut idle_check_interval = interval(Duration::from_secs(idle_check_interval_secs));
-            let mut checkpoint_interval = interval(Duration::from_secs(checkpoint_interval_secs));
+            let checkpoint_sleep = tokio::time::sleep(
+                ctx.compute_next_checkpoint_interval(checkpoint_interval_secs),
+            );
+            tokio::pin!(checkpoint_sleep);
             let mut challenge_interval = interval(Duration::from_secs(30));
             let mut permission_check_interval = interval(Duration::from_secs(30));
 
@@ -638,8 +634,22 @@ impl Sentinel {
                     _ = challenge_interval.tick() => {
                         ctx.handle_challenge_tick();
                     }
-                    _ = checkpoint_interval.tick() => {
+                    _ = &mut checkpoint_sleep => {
                         ctx.handle_checkpoint_tick().await;
+                        // Recompute next interval from fresh entropy + nonce.
+                        checkpoint_sleep.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + ctx.compute_next_checkpoint_interval(checkpoint_interval_secs),
+                        );
+                    }
+                    _ = ctx.nonce_notify.notified() => {
+                        // Nonce arrived — recalculate checkpoint deadline so the
+                        // checkpoint fires within the nonce's TTL window.
+                        checkpoint_sleep.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + ctx.compute_next_checkpoint_interval(checkpoint_interval_secs),
+                        );
+                        log::debug!("Checkpoint timer reset: nonce arrived");
                     }
                     _ = permission_check_interval.tick() => {
                         ctx.handle_permission_check();

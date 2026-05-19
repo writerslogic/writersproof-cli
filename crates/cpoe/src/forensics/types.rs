@@ -809,9 +809,6 @@ impl AuthorshipProfile {
             Assessment::Suspicious => "transcriptive",
         }
     }
-    pub fn revision_cycle_count(&self) -> u32 {
-        u32::try_from(self.session_count).unwrap_or(u32::MAX)
-    }
     pub fn risk_level(&self) -> &str {
         match self.assessment {
             Assessment::Consistent => "low",

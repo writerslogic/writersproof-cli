@@ -1693,25 +1693,39 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
              WP unreachable or nonce not fetched before checkpoint window"
         );
     }
-    let file = match open_nofollow(path) {
-        Ok(f) => f,
-        Err(e) => {
-            log::debug!("Auto-checkpoint open failed for {path}: {e}");
-            return None;
+    // Virtual title:// paths have no file to hash; use path-based hash.
+    let (raw_size, content_hash_override) = if path.starts_with("title://") {
+        let h: [u8; 32] = blake3::hash(path.as_bytes()).into();
+        (0u64, Some(h))
+    } else {
+        (0u64, None)
+    };
+    let (raw_size, file) = if content_hash_override.is_some() {
+        (raw_size, None)
+    } else {
+        match open_nofollow(path) {
+            Ok(f) => match f.metadata() {
+                Ok(m) => (m.len(), Some(f)),
+                Err(e) => {
+                    log::debug!("Auto-checkpoint metadata failed for {path}: {e}");
+                    return None;
+                }
+            },
+            Err(e) => {
+                log::debug!("Auto-checkpoint open failed for {path}: {e}");
+                return None;
+            }
         }
     };
-    let raw_size = match file.metadata() {
-        Ok(m) => m.len(),
-        Err(e) => {
-            log::debug!("Auto-checkpoint metadata failed for {path}: {e}");
-            return None;
-        }
-    };
-    let (content_hash, _) = match crate::crypto::hash_file_handle(file) {
-        Ok(pair) => pair,
-        Err(e) => {
-            log::debug!("Auto-checkpoint hash failed for {path}: {e}");
-            return None;
+    let content_hash = if let Some(h) = content_hash_override {
+        h
+    } else {
+        match crate::crypto::hash_file_handle(file.expect("file must be Some when no override")) {
+            Ok((h, _)) => h,
+            Err(e) => {
+                log::debug!("Auto-checkpoint hash failed for {path}: {e}");
+                return None;
+            }
         }
     };
     let file_size = i64::try_from(raw_size).unwrap_or(i64::MAX);

@@ -6,8 +6,8 @@ use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 use crate::jitter::SimpleJitterSample;
 use crate::RwLockRecover;
 use authorproof_protocol::rfc::wire_types::{
-    CheckpointWire, DocumentRef, EditDelta, EvidencePacketWire, HashValue, ProcessProof,
-    ProofAlgorithm, ProofParams,
+    CheckpointWire, DocumentRef, EditDelta, EvidencePacketWire, ForensicSummaryWire, HashValue,
+    ProcessProof, ProofAlgorithm, ProofParams,
 };
 use sha2::{Digest, Sha256};
 
@@ -314,6 +314,8 @@ fn build_wire_packet(
         .as_ref()
         .map(|sk| serde_bytes::ByteBuf::from(sk.verifying_key().to_bytes().to_vec()));
 
+    let forensic_summary = build_forensic_summary(&path, &events);
+
     let wire_packet = EvidencePacketWire {
         version: 1,
         profile_uri: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
@@ -364,6 +366,7 @@ fn build_wire_packet(
         document_filename: embedded_filename,
         project_files: collect_project_files(&file_path, &store),
         session_counter: events.last().and_then(|e| e.hardware_counter),
+        forensic_summary,
     };
 
     let encoded = wire_packet
@@ -1076,6 +1079,52 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
 }
 
 /// Collect project file references for all tracked files under the same
+/// Compute session-level forensic metrics for embedding in the evidence packet.
+fn build_forensic_summary(
+    path: &str,
+    events: &[crate::store::SecureEvent],
+) -> Option<ForensicSummaryWire> {
+    if events.len() < 2 {
+        return None;
+    }
+    let (metrics, _regions) = crate::ffi::helpers::run_full_forensics(events);
+    let mean_iki_ms = metrics.cadence.mean_iki_ns / 1_000_000.0;
+    let wpm = if mean_iki_ms > 0.0 {
+        (1000.0 / mean_iki_ms) * 12.0 // chars/sec * 60 / 5 chars-per-word
+    } else {
+        0.0
+    };
+
+    let writing_mode = metrics
+        .writing_mode
+        .as_ref()
+        .map(|wm| wm.mode.to_string())
+        .unwrap_or_else(|| "insufficient".to_string());
+
+    let editing_ratio = if let Some(sentinel) = super::sentinel::get_sentinel() {
+        sentinel
+            .sessions()
+            .iter()
+            .find(|s| s.path == path)
+            .map(|s| s.semantic_counts.editing_ratio())
+            .unwrap_or(0.0)
+    } else {
+        0.0
+    };
+
+    use crate::utils::finite_or;
+    Some(ForensicSummaryWire {
+        words_per_minute: finite_or(wpm, 0.0),
+        mean_iki_ms: finite_or(mean_iki_ms, 0.0),
+        correction_ratio: finite_or(metrics.cadence.correction_ratio.get(), 0.0),
+        writing_mode,
+        hurst_exponent: metrics.hurst_exponent.filter(|h| h.is_finite()),
+        keystroke_count: events.len() as u64,
+        editing_ratio: finite_or(editing_ratio, 0.0),
+        checkpoint_count: events.iter().filter(|e| e.context_type.as_deref() == Some("checkpoint")).count() as u64,
+    })
+}
+
 /// root directory as the primary document. Walks up to find the project
 /// root (looks for .scriv, .git, or stops at the parent of the source).
 /// Scans recursively so subdirectories (Draft/, Research/) are included.

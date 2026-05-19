@@ -74,11 +74,13 @@ const IKI_AUTOCORR_TRANSCRIPTIVE: f64 = 0.05;
 /// Maximum penalty for high IKI autocorrelation.
 const IKI_AUTOCORR_PENALTY: f64 = 0.12;
 /// Correction ratio below which lack of edits is penalized.
-const CORRECTION_RATIO_LOW: f64 = 0.02;
+const CORRECTION_RATIO_LOW: f64 = 0.05;
 /// Penalty for suspiciously low correction ratio.
 const LOW_CORRECTION_PENALTY: f64 = 0.1;
 /// Minimum events before correction ratio penalty applies.
 const CORRECTION_MIN_EVENTS: usize = 50;
+/// Compound penalty when high monotonic append AND low correction co-occur.
+const CLEAN_COPY_COMPOUND_PENALTY: f64 = 0.15;
 /// Post-pause CV above which variable thinking is rewarded.
 const POST_PAUSE_CV_REWARD_THRESHOLD: f64 = 0.25;
 /// Reward for high post-pause CV.
@@ -351,8 +353,18 @@ pub fn compute_assessment_score(
     }
 
     // Penalty: low correction ratio (no edits/revisions)
-    if cadence.correction_ratio < CORRECTION_RATIO_LOW && event_count >= CORRECTION_MIN_EVENTS {
+    let low_correction = cadence.correction_ratio < CORRECTION_RATIO_LOW
+        && event_count >= CORRECTION_MIN_EVENTS;
+    if low_correction {
         score -= LOW_CORRECTION_PENALTY;
+    }
+
+    // Compound penalty: high monotonic append + low correction ratio together
+    // strongly indicate clean-copy transcription (retyping from a visible
+    // source, dictation transcript, or memorized text).  Each signal alone is
+    // weak; together they are much more discriminating.
+    if mar > MONOTONIC_PENALTY_START && low_correction {
+        score -= CLEAN_COPY_COMPOUND_PENALTY;
     }
 
     // Reward: high post-pause CV (variable thinking patterns)

@@ -234,17 +234,25 @@ impl Sentinel {
             return false;
         }
 
-        let file_path = std::path::Path::new(path);
-        if !file_path.exists() {
-            log::warn!("Cannot auto-checkpoint; file not found: {path}");
-            return false;
-        }
-
-        let (content_hash, raw_size) = match crate::crypto::hash_file_with_size(file_path) {
-            Ok(pair) => pair,
-            Err(e) => {
-                log::warn!("Auto-checkpoint hash failed for {path}: {e}");
+        // Virtual title:// paths (database-backed apps like Bear, Electron
+        // apps like Logseq) have no file to hash.  Use a hash of the session
+        // key as a stable content identifier so behavioral evidence is still
+        // checkpointed.
+        let (content_hash, raw_size) = if path.starts_with("title://") {
+            let h: [u8; 32] = blake3::hash(path.as_bytes()).into();
+            (h, 0u64)
+        } else {
+            let file_path = std::path::Path::new(path);
+            if !file_path.exists() {
+                log::warn!("Cannot auto-checkpoint; file not found: {path}");
                 return false;
+            }
+            match crate::crypto::hash_file_with_size(file_path) {
+                Ok(pair) => pair,
+                Err(e) => {
+                    log::warn!("Auto-checkpoint hash failed for {path}: {e}");
+                    return false;
+                }
             }
         };
         let file_size = i64::try_from(raw_size).unwrap_or_else(|_| {

@@ -126,6 +126,48 @@ pub struct EvidencePacketWire {
     /// the previous session's counter for the same signing identity.
     #[serde(rename = "24", default, skip_serializing_if = "Option::is_none")]
     pub session_counter: Option<u64>,
+
+    /// Session-level forensic metrics computed at export time.
+    #[serde(rename = "25", default, skip_serializing_if = "Option::is_none")]
+    pub forensic_summary: Option<ForensicSummaryWire>,
+}
+
+/// Session-level behavioral metrics embedded in the evidence packet.
+///
+/// These are raw observational metrics only.  Scores and verdicts belong
+/// in the attestation result (`.cwar`), not in the evidence packet, so
+/// that relying parties can apply their own policy to the raw signals.
+///
+/// ```cddl
+/// forensic-summary = {
+///     1 => float,    ; words-per-minute
+///     2 => float,    ; mean-iki-ms
+///     3 => float,    ; correction-ratio
+///     5 => tstr,     ; writing-mode
+///     ? 7 => float,  ; hurst-exponent
+///     8 => uint,     ; keystroke-count
+///     9 => float,    ; editing-ratio
+///     10 => uint,    ; checkpoint-count
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForensicSummaryWire {
+    #[serde(rename = "1")]
+    pub words_per_minute: f64,
+    #[serde(rename = "2")]
+    pub mean_iki_ms: f64,
+    #[serde(rename = "3")]
+    pub correction_ratio: f64,
+    #[serde(rename = "5")]
+    pub writing_mode: String,
+    #[serde(rename = "7", default, skip_serializing_if = "Option::is_none")]
+    pub hurst_exponent: Option<f64>,
+    #[serde(rename = "8")]
+    pub keystroke_count: u64,
+    #[serde(rename = "9")]
+    pub editing_ratio: f64,
+    #[serde(rename = "10")]
+    pub checkpoint_count: u64,
 }
 
 impl EvidencePacketWire {
