@@ -115,12 +115,7 @@ impl EventLoopCtx {
         &mut self,
         event: crate::platform::KeystrokeEvent,
     ) {
-        // Skip event processing when bridge is unhealthy to avoid
-        // silently operating in a degraded state.
-        if !self.bridge_healthy_flag.load(Ordering::SeqCst) {
-            log::warn!("Dropping keystroke event: bridge unhealthy");
-            return;
-        }
+        let bridge_healthy = self.bridge_healthy_flag.load(Ordering::SeqCst);
 
         // Handle keyUp: compute dwell time, backfill the matching
         // keyDown sample in the focused session's jitter buffer, and
@@ -130,14 +125,18 @@ impl EventLoopCtx {
                 let dwell = crate::utils::ns_elapsed(event.timestamp_ns, down_ts);
                 if let Some(ref path) = self.cached_focus {
                     let mut map = self.sessions.write_recover();
-                    if let Some(session) = map.get_mut(path.as_str()) {
-                        if let Some(&idx) =
-                            session.jitter_sample_index.get(&down_ts)
-                        {
-                            if let Some(sample) =
-                                session.jitter_samples.get_mut(idx)
+                    // Re-check bridge health under the lock to avoid TOCTOU
+                    // between the flag read and the dwell write.
+                    if self.bridge_healthy_flag.load(Ordering::SeqCst) {
+                        if let Some(session) = map.get_mut(path.as_str()) {
+                            if let Some(&idx) =
+                                session.jitter_sample_index.get(&down_ts)
                             {
-                                sample.dwell_time_ns = Some(dwell);
+                                if let Some(sample) =
+                                    session.jitter_samples.get_mut(idx)
+                                {
+                                    sample.dwell_time_ns = Some(dwell);
+                                }
                             }
                         }
                     }
@@ -189,26 +188,41 @@ impl EventLoopCtx {
             dwell_time_ns: None,
             flight_time_ns,
         };
-        self.activity_accumulator
-            .write_recover()
-            .add_sample(&sample);
 
-        // EH-041: Add behavioral entropy to signing key to keep it hot.
-        {
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(b"witnessd-keystroke-entropy-v1");
-            hasher.update(event.timestamp_ns.to_le_bytes());
-            let entropy_hash = hasher.finalize();
-            self.signing_key
+        // Feed global accumulator only for plausibly-human keystrokes.
+        // Impossibly fast events (< 10ms IKI) are likely synthetic or
+        // auto-repeat; skip them to avoid polluting biometric profile.
+        let plausible = duration_since_last_ns == 0
+            || duration_since_last_ns >= 10_000_000;
+        if plausible {
+            self.activity_accumulator
                 .write_recover()
-                .add_entropy(&entropy_hash[..8]);
+                .add_sample(&sample);
         }
 
-        if let Some(ref mut collector) =
-            *self.style_collector.write_recover()
-        {
-            collector.record_keystroke(event.keycode, event.char_value);
+        if plausible {
+            // EH-041: Add behavioral entropy to signing key to keep it hot.
+            {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(b"witnessd-keystroke-entropy-v1");
+                hasher.update(event.timestamp_ns.to_le_bytes());
+                let entropy_hash = hasher.finalize();
+                self.signing_key
+                    .write_recover()
+                    .add_entropy(&entropy_hash[..8]);
+            }
+
+            if let Some(ref mut collector) =
+                *self.style_collector.write_recover()
+            {
+                collector.record_keystroke(event.keycode, event.char_value);
+            }
+        }
+
+        if !bridge_healthy {
+            log::warn!("Skipping session recording: bridge unhealthy");
+            return;
         }
 
         self.record_keystroke_to_session(
@@ -288,9 +302,10 @@ impl EventLoopCtx {
             0, // file_size populated at checkpoint time
         );
 
-        // Advance incremental jitter hash chain only for accepted
-        // samples that were actually buffered.
-        if was_buffered {
+        // Advance incremental jitter hash chain for all accepted
+        // keystrokes, even those beyond the sample buffer capacity,
+        // so the hash covers the full session.
+        {
             let mut h = sha2::Sha256::new();
             use sha2::Digest as _;
             h.update(session.jitter_hash_state);
@@ -373,6 +388,7 @@ impl EventLoopCtx {
                         }
                     }
                 })
+                .map_err(|e| log::warn!("failed to spawn xwin-check thread: {e}"))
                 .ok();
         }
     }
@@ -1186,11 +1202,13 @@ impl EventLoopCtx {
             keystroke_context: Some(ctx),
             // ecology_score is 0.0 before first assessment (at 100 keystrokes);
             // default to 1.0 (assume genuine) until enough samples exist.
-            keystroke_confidence: Some(if ecology_score > f64::EPSILON {
-                ecology_score.clamp(0.0, 1.0)
-            } else {
-                1.0
-            }),
+            keystroke_confidence: Some(
+                if ecology_score.is_finite() && ecology_score > f64::EPSILON {
+                    ecology_score.clamp(0.0, 1.0)
+                } else {
+                    1.0
+                },
+            ),
             keystroke_sequence_hash: None,
             source_session_id: None,
             source_evidence_packet: None,

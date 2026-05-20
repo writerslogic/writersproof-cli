@@ -166,15 +166,20 @@ fn query_store_metrics(path: &str, cadence_score: f64, focus_penalty: f64) -> St
     let count = events.len() as u64;
     let store_score = if events.len() >= 2 {
         let profile = crate::forensics::ForensicEngine::evaluate_authorship(path, &events);
-        profile.metrics.edit_entropy / crate::ffi::helpers::ENTROPY_NORMALIZATION_FACTOR
+        let raw = profile.metrics.edit_entropy / crate::ffi::helpers::ENTROPY_NORMALIZATION_FACTOR;
+        if raw.is_finite() { raw } else { 0.0 }
     } else {
         0.0
     };
 
-    let score = if store_score >= MIN_MEANINGFUL_SCORE {
-        crate::utils::Probability::clamp(store_score - focus_penalty).get()
+    // Use the best available signal: live cadence or stored forensics.
+    // This prevents score drops when a session restarts (idle timeout,
+    // focus loss) since stored evidence persists across sessions.
+    let best_raw = store_score.max(cadence_score);
+    let score = if best_raw >= MIN_MEANINGFUL_SCORE {
+        crate::utils::Probability::clamp(best_raw - focus_penalty).get()
     } else {
-        fallback_score(cadence_score, focus_penalty)
+        0.0
     };
 
     StoreMetrics {
@@ -257,17 +262,23 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
             );
         }
 
-        // Find the best session: focused > cli > max keystrokes
+        // Find the best session: focused > targeted > cli.
+        // When no document has focus and no targeted witnessing is active,
+        // report not_tracking rather than showing a stale document.
         let focused_session = current_path
             .as_ref()
             .and_then(|p| sessions_map.get(p.as_str()));
         let doc_has_focus = focused_session.is_some();
-        let session = focused_session.or_else(|| {
-            sessions_map
-                .values()
-                .find(|s| s.app_bundle_id == "cli")
-                .or_else(|| sessions_map.values().max_by_key(|s| s.total_keystrokes()))
-        });
+        let targeted = sentinel.targeted_path();
+        let session = focused_session
+            .or_else(|| {
+                targeted.as_ref().and_then(|p| sessions_map.get(p.as_str()))
+            })
+            .or_else(|| {
+                sessions_map
+                    .values()
+                    .find(|s| s.app_bundle_id == "cli")
+            });
         let session = match session {
             Some(s) => {
                 crate::sentinel::trace!(
@@ -288,7 +299,10 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         SessionSnapshot {
             path: session.path.clone(),
             keystroke_count: session.total_keystrokes(),
-            elapsed_secs: session.start_time.elapsed().unwrap_or_default().as_secs_f64(),
+            elapsed_secs: session.start_time.elapsed().unwrap_or_else(|e| {
+                log::warn!("session start_time.elapsed() failed (clock went backward?): {e}");
+                std::time::Duration::ZERO
+            }).as_secs_f64(),
             change_count: u64::from(session.change_count),
             save_count: u64::from(session.save_count),
             event_confidence: session.average_event_confidence(),
@@ -317,6 +331,11 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
     let host_paste_chars = sentinel.take_last_paste_chars();
 
     let cadence_score = sentinel.document_cadence_score(&snapshot.path);
+    let maturity = crate::forensics::evidence_maturity(
+        snapshot.keystroke_count,
+        snapshot.total_focus_ms as f64 / 1000.0,
+    );
+    let mature_cadence = cadence_score * maturity;
 
     let focus = crate::forensics::analysis::analyze_focus_patterns(
         &snapshot.focus_switches,
@@ -324,7 +343,7 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
     );
     let focus_penalty = crate::forensics::compute_focus_penalty(&focus);
 
-    let metrics = query_store_metrics(&snapshot.path, cadence_score, focus_penalty);
+    let metrics = query_store_metrics(&snapshot.path, mature_cadence, focus_penalty);
 
     FfiWitnessingStatus {
         is_tracking: true,

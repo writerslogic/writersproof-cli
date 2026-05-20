@@ -240,21 +240,22 @@ impl C2paManifestBuilder {
 
         let manifest_label = &self.manifest_label;
 
-        let mut assertion_boxes = vec![hash_data_box, actions_box, cpoe_box];
+        let mut assertion_boxes = Vec::new();
         let mut created_assertions = Vec::new();
 
         // §8.4.2.3: hash superbox contents, skipping 8-byte jumb header
-        for (box_bytes, label) in assertion_boxes.iter().zip(&[
-            ASSERTION_LABEL_HASH_DATA,
-            ASSERTION_LABEL_ACTIONS,
-            ASSERTION_LABEL_CPOE,
-        ]) {
-            let hash = Sha256::digest(&box_bytes[8..]);
-            created_assertions.push(HashedUri {
-                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{label}"),
-                hash: hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
+        for (box_bytes, label) in [
+            (hash_data_box, ASSERTION_LABEL_HASH_DATA),
+            (actions_box, ASSERTION_LABEL_ACTIONS),
+            (cpoe_box, ASSERTION_LABEL_CPOE),
+        ] {
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                box_bytes,
+                manifest_label,
+                label,
+            );
         }
 
         // c2pa.metadata assertion (replaces deprecated dc:title/dc:format in claim)
@@ -264,44 +265,31 @@ impl C2paManifestBuilder {
                 format: self.format,
             };
             let meta_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_METADATA, &metadata)?;
-            let meta_hash = Sha256::digest(&meta_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!(
-                    "self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_METADATA}"
-                ),
-                hash: meta_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(meta_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                meta_box,
+                manifest_label,
+                ASSERTION_LABEL_METADATA,
+            );
         }
 
         // c2pa.external-reference assertion (hashed link to .cpoe evidence packet)
         if let Some(ref url) = self.evidence_url {
             let evidence_hash = Sha256::digest(&self.evidence_bytes);
-            let process_start = self.evidence_packet.checkpoints.first().and_then(|cp| {
-                match i64::try_from(cp.timestamp) {
-                    Ok(ts) => chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339()),
-                    Err(_) => {
-                        log::warn!(
-                            "process_start timestamp {} exceeds i64::MAX; omitting from manifest",
-                            cp.timestamp
-                        );
-                        None
-                    }
-                }
-            });
-            let process_end = self.evidence_packet.checkpoints.last().and_then(|cp| {
-                match i64::try_from(cp.timestamp) {
-                    Ok(ts) => chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339()),
-                    Err(_) => {
-                        log::warn!(
-                            "process_end timestamp {} exceeds i64::MAX; omitting from manifest",
-                            cp.timestamp
-                        );
-                        None
-                    }
-                }
-            });
+            if self.evidence_packet.checkpoints.is_empty() {
+                log::warn!("C2PA embed: evidence packet has no checkpoints; process timestamps will be absent");
+            }
+            let process_start = self
+                .evidence_packet
+                .checkpoints
+                .first()
+                .and_then(|cp| millis_to_rfc3339(cp.timestamp));
+            let process_end = self
+                .evidence_packet
+                .checkpoints
+                .last()
+                .and_then(|cp| millis_to_rfc3339(cp.timestamp));
             let ext_ref = ExternalReferenceAssertion {
                 location: HashedExtUri {
                     url: url.clone(),
@@ -323,76 +311,72 @@ impl C2paManifestBuilder {
                 }),
             };
             let ext_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_EXTERNAL_REF, &ext_ref)?;
-            let ext_hash = Sha256::digest(&ext_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!(
-                    "self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_EXTERNAL_REF}"
-                ),
-                hash: ext_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(ext_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                ext_box,
+                manifest_label,
+                ASSERTION_LABEL_EXTERNAL_REF,
+            );
         }
 
         // c2pa.ai-disclosure assertion (§12.8)
         if let Some(ref disclosure) = self.ai_disclosure {
             let ai_box =
                 build_assertion_jumbf_json(ASSERTION_LABEL_AI_DISCLOSURE, disclosure)?;
-            let ai_hash = Sha256::digest(&ai_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!(
-                    "self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_AI_DISCLOSURE}"
-                ),
-                hash: ai_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(ai_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                ai_box,
+                manifest_label,
+                ASSERTION_LABEL_AI_DISCLOSURE,
+            );
         }
 
 
         for (i, ingredient) in self.ingredients.iter().enumerate() {
             let label = format!("{ASSERTION_LABEL_INGREDIENT}.{i}");
             let ing_box = build_assertion_jumbf_cbor(&label, ingredient)?;
-            let ing_hash = Sha256::digest(&ing_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{label}"),
-                hash: ing_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(ing_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                ing_box,
+                manifest_label,
+                &label,
+            );
         }
 
         if let Some(ref identity) = self.cawg_identity {
             let cawg_box = build_assertion_jumbf_json(ASSERTION_LABEL_CAWG_IDENTITY, identity)?;
-            let cawg_hash = Sha256::digest(&cawg_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_CAWG_IDENTITY}"),
-                hash: cawg_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(cawg_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                cawg_box,
+                manifest_label,
+                ASSERTION_LABEL_CAWG_IDENTITY,
+            );
         }
 
         if let Some(ref tdm) = self.cawg_tdm {
             let tdm_box = build_assertion_jumbf_json(ASSERTION_LABEL_CAWG_TDM, tdm)?;
-            let tdm_hash = Sha256::digest(&tdm_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_CAWG_TDM}"),
-                hash: tdm_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(tdm_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                tdm_box,
+                manifest_label,
+                ASSERTION_LABEL_CAWG_TDM,
+            );
         }
 
         if let Some(ref vc_ref) = self.vc_reference {
             let vc_box = build_assertion_jumbf_json(ASSERTION_LABEL_VC_REFERENCE, vc_ref)?;
-            let vc_hash = Sha256::digest(&vc_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{ASSERTION_LABEL_VC_REFERENCE}"),
-                hash: vc_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(vc_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                vc_box,
+                manifest_label,
+                ASSERTION_LABEL_VC_REFERENCE,
+            );
         }
 
         if let Some(ref local_ts) = self.local_timestamp {
@@ -400,16 +384,13 @@ impl C2paManifestBuilder {
                 super::ASSERTION_LABEL_LOCAL_TIMESTAMP,
                 local_ts,
             )?;
-            let ts_hash = Sha256::digest(&ts_box[8..]);
-            created_assertions.push(HashedUri {
-                url: format!(
-                    "self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{}",
-                    super::ASSERTION_LABEL_LOCAL_TIMESTAMP
-                ),
-                hash: ts_hash.to_vec(),
-                alg: Some("sha256".to_string()),
-            });
-            assertion_boxes.push(ts_box);
+            push_hashed_assertion(
+                &mut assertion_boxes,
+                &mut created_assertions,
+                ts_box,
+                manifest_label,
+                super::ASSERTION_LABEL_LOCAL_TIMESTAMP,
+            );
         }
 
         let sig_url = format!("self#jumbf=/c2pa/{manifest_label}/c2pa.signature");
@@ -446,6 +427,38 @@ impl C2paManifestBuilder {
             signature,
         })
     }
+}
+
+/// Convert a millisecond timestamp to RFC 3339, returning `None` if out of range.
+fn millis_to_rfc3339(millis: u64) -> Option<String> {
+    match i64::try_from(millis) {
+        Ok(ts) => chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339()),
+        Err(_) => {
+            log::warn!(
+                "timestamp {} exceeds i64::MAX; omitting from manifest",
+                millis
+            );
+            None
+        }
+    }
+}
+
+/// Hash an assertion box (skipping 8-byte JUMBF header) and push the
+/// HashedUri + box bytes into the running lists.
+fn push_hashed_assertion(
+    assertion_boxes: &mut Vec<Vec<u8>>,
+    created_assertions: &mut Vec<HashedUri>,
+    box_bytes: Vec<u8>,
+    manifest_label: &str,
+    label: &str,
+) {
+    let hash = Sha256::digest(&box_bytes[8..]);
+    created_assertions.push(HashedUri {
+        url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{label}"),
+        hash: hash.to_vec(),
+        alg: Some("sha256".to_string()),
+    });
+    assertion_boxes.push(box_bytes);
 }
 
 /// §13.2: COSE_Sign1 with x5chain in protected header (C2PA 2.4).

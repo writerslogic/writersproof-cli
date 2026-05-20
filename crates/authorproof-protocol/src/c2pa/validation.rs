@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use coset::CborSerializable;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
@@ -106,7 +106,13 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
             continue;
         }
         let computed_hash = Sha256::digest(&box_bytes[8..]);
-        if assertion_ref.hash != computed_hash.as_slice() {
+        if subtle::ConstantTimeEq::ct_eq(
+            assertion_ref.hash.as_slice(),
+            computed_hash.as_slice(),
+        )
+        .unwrap_u8()
+            == 0
+        {
             errors.push(format!(
                 "created_assertions[{i}] hash mismatch: claim has {}, box hashes to {}",
                 hex::encode(&assertion_ref.hash),
@@ -148,7 +154,10 @@ pub fn verify_manifest_signature(manifest: &C2paManifest) -> Result<bool> {
     let vk = VerifyingKey::from_bytes(&pk_bytes)
         .map_err(|e| Error::Crypto(format!("invalid Ed25519 public key: {e}")))?;
 
-    verify_cose_sign1_ed25519(&sign1, &vk)
+    match crate::crypto::verify_cose_sign1_ed25519(&sign1, &vk) {
+        Ok(()) => Ok(true),
+        Err(e) => Err(Error::Crypto(format!("COSE_Sign1 verification failed: {e}"))),
+    }
 }
 
 /// Verify the COSE_Sign1 signature on a manifest against a known public key.
@@ -162,7 +171,10 @@ pub fn verify_manifest_with_key(
     let vk = VerifyingKey::from_bytes(public_key)
         .map_err(|e| Error::Crypto(format!("invalid Ed25519 public key: {e}")))?;
 
-    verify_cose_sign1_ed25519(&sign1, &vk)
+    match crate::crypto::verify_cose_sign1_ed25519(&sign1, &vk) {
+        Ok(()) => Ok(true),
+        Err(e) => Err(Error::Crypto(format!("COSE_Sign1 verification failed: {e}"))),
+    }
 }
 
 /// Extract the Ed25519 public key from x5chain (label 33) in the protected header.
@@ -208,20 +220,3 @@ fn url_has_label(url: &str, label: &str) -> bool {
     url.ends_with(&format!("/{label}"))
 }
 
-/// Verify a COSE_Sign1 Ed25519 signature.
-fn verify_cose_sign1_ed25519(
-    sign1: &coset::CoseSign1,
-    vk: &VerifyingKey,
-) -> Result<bool> {
-    let result = sign1.verify_signature(&[], |sig, sig_data| {
-        let signature = Signature::from_slice(sig)
-            .map_err(|e| Error::Crypto(format!("invalid signature format: {e}")))?;
-        vk.verify(sig_data, &signature)
-            .map_err(|e| Error::Crypto(format!("signature verification failed: {e}")))
-    });
-
-    match result {
-        Ok(()) => Ok(true),
-        Err(_) => Ok(false),
-    }
-}

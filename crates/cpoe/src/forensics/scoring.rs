@@ -11,11 +11,17 @@ use crate::sentinel::types::FocusSwitchRecord;
 use crate::utils::Probability;
 
 /// Minimum number of jitter samples below which the cadence score is 0.0.
-const MIN_CADENCE_SAMPLES: usize = 5;
-/// Number of samples at which the cadence score reaches full confidence.
-/// Between [`MIN_CADENCE_SAMPLES`] and this value, the raw score is scaled
-/// linearly so the displayed score ramps smoothly instead of jumping 0→100.
-const FULL_CONFIDENCE_SAMPLES: usize = 20;
+const MIN_CADENCE_SAMPLES: usize = 10;
+/// Number of samples at which the keystroke dimension of evidence maturity
+/// reaches its maximum contribution.  500 keystrokes ≈ ~100 words ≈ ~2 solid
+/// paragraphs of original prose.
+const FULL_CONFIDENCE_SAMPLES: usize = 500;
+/// Minimum focused writing time (seconds) before evidence begins accruing.
+const MIN_WRITING_SECS: f64 = 30.0;
+/// Focused writing duration (seconds) at which the time dimension of evidence
+/// maturity reaches its maximum.  Five minutes of sustained focused typing is
+/// a strong indicator of original authorship.
+const FULL_CONFIDENCE_SECS: f64 = 300.0;
 
 /// Weighted mean bytes-per-second (prose segments only) above which a
 /// velocity penalty begins.  Calibrated to the upper end of sustained human
@@ -24,12 +30,18 @@ const PROSE_VELOCITY_PENALTY_THRESHOLD_BPS: f64 = 80.0;
 /// Maximum penalty applied by [`apply_segment_velocity_penalty`].
 const PROSE_VELOCITY_MAX_PENALTY: f64 = 0.20;
 
+/// Logarithmic ramp: maps a linear progress value in `[0, 1]` to a
+/// curve that grows quickly at first and then slows.
+/// `ln(1 + x) / ln(2)` maps `[0, 1] → [0, 1]` with diminishing returns.
+fn log_ramp(linear: f64) -> f64 {
+    (1.0 + linear).ln() / 2.0_f64.ln()
+}
+
 /// Compute a cadence score from raw jitter samples.
 ///
 /// Returns 0.0 when fewer than [`MIN_CADENCE_SAMPLES`] samples are
-/// available.  Between [`MIN_CADENCE_SAMPLES`] and
-/// [`FULL_CONFIDENCE_SAMPLES`] the raw score is scaled linearly so that
-/// the displayed value ramps smoothly instead of jumping 0→100.
+/// available.  The raw cadence quality (human-like vs robotic) is multiplied
+/// by a keystroke-count evidence maturity factor that ramps logarithmically.
 pub fn cadence_score_from_samples(samples: &[SimpleJitterSample]) -> f64 {
     let n = samples.len();
     if n < MIN_CADENCE_SAMPLES {
@@ -39,10 +51,45 @@ pub fn cadence_score_from_samples(samples: &[SimpleJitterSample]) -> f64 {
     if n >= FULL_CONFIDENCE_SAMPLES {
         raw
     } else {
-        let confidence = (n - MIN_CADENCE_SAMPLES + 1) as f64
-            / (FULL_CONFIDENCE_SAMPLES - MIN_CADENCE_SAMPLES + 1) as f64;
-        raw * confidence
+        let linear = (n - MIN_CADENCE_SAMPLES) as f64
+            / (FULL_CONFIDENCE_SAMPLES - MIN_CADENCE_SAMPLES) as f64;
+        raw * log_ramp(linear)
     }
+}
+
+/// Compute evidence maturity: a composite of keystroke depth and focused
+/// writing duration.  Returns a value in `[0.0, 1.0]` representing how much
+/// evidence has been accumulated, independent of whether the typing *looks*
+/// human.
+///
+/// Both dimensions use logarithmic ramps so the score grows quickly during
+/// the first few minutes and then plateaus.  The two dimensions are averaged
+/// so that 500 keystrokes in 5 seconds (paste) scores much lower than 500
+/// keystrokes over 5 minutes (writing).
+pub fn evidence_maturity(keystroke_count: u64, focused_secs: f64) -> f64 {
+    let ks = keystroke_count as usize;
+
+    let ks_maturity = if ks < MIN_CADENCE_SAMPLES {
+        0.0
+    } else if ks >= FULL_CONFIDENCE_SAMPLES {
+        1.0
+    } else {
+        let linear = (ks - MIN_CADENCE_SAMPLES) as f64
+            / (FULL_CONFIDENCE_SAMPLES - MIN_CADENCE_SAMPLES) as f64;
+        log_ramp(linear)
+    };
+
+    let time_maturity = if focused_secs < MIN_WRITING_SECS {
+        0.0
+    } else if focused_secs >= FULL_CONFIDENCE_SECS {
+        1.0
+    } else {
+        let linear =
+            (focused_secs - MIN_WRITING_SECS) / (FULL_CONFIDENCE_SECS - MIN_WRITING_SECS);
+        log_ramp(linear)
+    };
+
+    (ks_maturity + time_maturity) / 2.0
 }
 
 /// Compute focus-switching penalty from focus pattern metrics.
@@ -132,16 +179,21 @@ pub fn apply_attestation_tier_penalty(
 /// switch records for a session that has no store-backed checkpoint
 /// data yet.
 ///
-/// The score is `cadence_score - focus_penalty`, clamped to `[0.0, 1.0]`.
+/// The score is `cadence_quality × evidence_maturity - focus_penalty`,
+/// clamped to `[0.0, 1.0]`.
 pub fn session_forensic_score(
     jitter_samples: &[SimpleJitterSample],
     focus_switches: &[FocusSwitchRecord],
     total_focus_ms: i64,
 ) -> f64 {
     let cadence = cadence_score_from_samples(jitter_samples);
+    let maturity = evidence_maturity(
+        jitter_samples.len() as u64,
+        total_focus_ms as f64 / 1000.0,
+    );
     let focus = super::analysis::analyze_focus_patterns(focus_switches, total_focus_ms);
     let penalty = compute_focus_penalty(&focus);
-    crate::utils::Probability::clamp(cadence - penalty).get()
+    crate::utils::Probability::clamp(cadence * maturity - penalty).get()
 }
 
 #[cfg(test)]
@@ -150,7 +202,7 @@ mod tests {
 
     #[test]
     fn cadence_score_below_min_is_zero() {
-        let samples: Vec<SimpleJitterSample> = (0..4)
+        let samples: Vec<SimpleJitterSample> = (0..9)
             .map(|i| SimpleJitterSample {
                 duration_since_last_ns: (i as u64 + 1) * 100_000_000,
                 timestamp_ns: (i as i64) * 200_000_000,
@@ -171,19 +223,19 @@ mod tests {
                 })
                 .collect()
         };
-        let score_10 = cadence_score_from_samples(&make(10));
-        let score_15 = cadence_score_from_samples(&make(15));
-        let score_20 = cadence_score_from_samples(&make(20));
+        let score_50 = cadence_score_from_samples(&make(50));
+        let score_200 = cadence_score_from_samples(&make(200));
+        let score_500 = cadence_score_from_samples(&make(500));
         // Mid-ramp scores should be strictly less than full-confidence score.
-        assert!(score_10 < score_20 || score_20 == 0.0);
-        assert!(score_15 < score_20 || score_20 == 0.0);
+        assert!(score_50 < score_500 || score_500 == 0.0);
+        assert!(score_200 < score_500 || score_500 == 0.0);
         // Monotonically increasing with more samples (same underlying data pattern).
-        assert!(score_10 <= score_15);
+        assert!(score_50 <= score_200);
     }
 
     #[test]
     fn cadence_score_above_full_confidence() {
-        let samples: Vec<SimpleJitterSample> = (0..30)
+        let samples: Vec<SimpleJitterSample> = (0..600)
             .map(|i| SimpleJitterSample {
                 duration_since_last_ns: (i as u64 + 1) * 100_000_000,
                 timestamp_ns: (i as i64) * 200_000_000,
@@ -192,6 +244,47 @@ mod tests {
             .collect();
         let score = cadence_score_from_samples(&samples);
         assert!(score >= 0.0);
+    }
+
+    #[test]
+    fn evidence_maturity_below_minimums_is_zero() {
+        // Too few keystrokes, not enough time.
+        assert_eq!(evidence_maturity(5, 10.0), 0.0);
+        // Enough keystrokes but no time.
+        assert_eq!(evidence_maturity(500, 0.0), 0.5);
+        // Enough time but no keystrokes.
+        assert_eq!(evidence_maturity(0, 300.0), 0.5);
+    }
+
+    #[test]
+    fn evidence_maturity_full_is_one() {
+        let m = evidence_maturity(500, 300.0);
+        assert!((m - 1.0).abs() < f64::EPSILON, "expected 1.0, got {m}");
+    }
+
+    #[test]
+    fn evidence_maturity_paste_burst_low() {
+        // 500 keystrokes in 5 seconds = paste, not writing.
+        // Keystroke dimension maxed, time dimension near zero → ~0.5.
+        let m = evidence_maturity(500, 5.0);
+        assert!(m <= 0.55, "paste burst should have low maturity, got {m}");
+    }
+
+    #[test]
+    fn evidence_maturity_paragraph_modest() {
+        // ~60 keystrokes over 45 seconds — one paragraph of original writing.
+        let m = evidence_maturity(60, 45.0);
+        assert!(m < 0.35, "single paragraph should be <35% maturity, got {m}");
+        assert!(m > 0.0, "should be nonzero for real typing");
+    }
+
+    #[test]
+    fn evidence_maturity_monotonic_in_both_dims() {
+        let m1 = evidence_maturity(100, 60.0);
+        let m2 = evidence_maturity(200, 60.0);
+        let m3 = evidence_maturity(200, 120.0);
+        assert!(m2 >= m1, "more keystrokes should not decrease maturity");
+        assert!(m3 >= m2, "more time should not decrease maturity");
     }
 
     #[test]
