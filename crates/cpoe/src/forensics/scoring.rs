@@ -191,9 +191,10 @@ pub fn session_forensic_score(
     total_focus_ms: i64,
 ) -> f64 {
     let cadence = cadence_score_from_samples(jitter_samples);
+    let focus_secs = (total_focus_ms.max(0) as f64 / 1000.0).min(FULL_CONFIDENCE_SECS * 100.0);
     let maturity = evidence_maturity(
         jitter_samples.len() as u64,
-        total_focus_ms as f64 / 1000.0,
+        focus_secs,
     );
     let focus = super::analysis::analyze_focus_patterns(focus_switches, total_focus_ms);
     let penalty = compute_focus_penalty(&focus);
