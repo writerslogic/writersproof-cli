@@ -34,7 +34,11 @@ const PROSE_VELOCITY_MAX_PENALTY: f64 = 0.20;
 /// curve that grows quickly at first and then slows.
 /// `ln(1 + x) / ln(2)` maps `[0, 1] → [0, 1]` with diminishing returns.
 fn log_ramp(linear: f64) -> f64 {
-    (1.0 + linear).ln() / 2.0_f64.ln()
+    if !linear.is_finite() || linear <= 0.0 {
+        return 0.0;
+    }
+    let clamped = linear.min(1.0);
+    (1.0 + clamped).ln() / 2.0_f64.ln()
 }
 
 /// Compute a cadence score from raw jitter samples.
