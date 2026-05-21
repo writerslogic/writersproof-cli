@@ -445,6 +445,37 @@ fn build_forensic_breakdown(
         pause_depth: c.pause_depth_distribution,
         mean_bps: finite_or(metrics.velocity.mean_bps, 0.0),
         max_bps: finite_or(metrics.velocity.max_bps, 0.0),
+        biological_cadence_score: finite_or(metrics.biological_cadence_score.get(), 0.0),
+        steg_confidence: finite_or(metrics.steg_confidence.get(), 0.0),
+        thinking_pause_ratio: metrics.writing_mode.as_ref()
+            .map(|wm| finite_or(wm.thinking_pause_ratio, 0.0)).unwrap_or(0.0),
+        timing_entropy: finite_or(profile.metrics.timing_entropy, 0.0),
+        pause_entropy: finite_or(profile.metrics.pause_entropy, 0.0),
+        snr_db: metrics.snr.as_ref().map(|s| s.snr_db),
+        snr_flagged: metrics.snr.as_ref().is_some_and(|s| s.flagged),
+        lyapunov_exponent: metrics.lyapunov.as_ref().map(|l| l.exponent),
+        lyapunov_flagged: metrics.lyapunov.as_ref().is_some_and(|l| l.flagged),
+        iki_compression_ratio: metrics.iki_compression.as_ref().map(|i| i.ratio),
+        iki_compression_flagged: metrics.iki_compression.as_ref().is_some_and(|i| i.flagged),
+        forgery_difficulty: metrics.forgery_cost.as_ref().map(|f| f.overall_difficulty),
+        forgery_tier: metrics.forgery_cost.as_ref().map(|f| format!("{:?}", f.tier)),
+        forgery_time_sec: metrics.forgery_cost.as_ref().map(|f| f.estimated_forge_time_sec),
+        fatigue_warmup_pct: metrics.fatigue_trajectory.as_ref().map(|f| f.warmup_fraction),
+        fatigue_plateau_pct: metrics.fatigue_trajectory.as_ref().map(|f| f.plateau_fraction),
+        fatigue_pct: metrics.fatigue_trajectory.as_ref().map(|f| f.fatigue_fraction),
+        fatigue_slope: metrics.fatigue_trajectory.as_ref().map(|f| f.fatigue_slope_iki_per_kstroke),
+        cross_modal_score: metrics.cross_modal.as_ref().map(|cm| cm.score),
+        cross_modal_verdict: metrics.cross_modal.as_ref().map(|cm| format!("{:?}", cm.verdict)),
+        transcription_suspicious: metrics.transcription_suspicion.as_ref().is_some_and(|t| t.is_suspicious),
+        repair_recent_pct: metrics.repair_locality.as_ref().map(|r| r.recent_repair_pct),
+        repair_distant_pct: metrics.repair_locality.as_ref().map(|r| r.distant_repair_pct),
+        cognitive_load_score: metrics.cognitive_load.as_ref().map(|cl| cl.composite_score),
+        revision_topology_score: metrics.revision_topology.as_ref().map(|rt| rt.composite_score),
+        error_ecology_score: metrics.error_ecology.as_ref().map(|ee| ee.composite_score),
+        likelihood_p_cognitive: metrics.likelihood_model.as_ref().map(|lm| lm.session_p_cognitive),
+        composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| format!("{:?}", m))),
+        labyrinth_determinism: metrics.labyrinth.as_ref().filter(|l| l.is_valid).map(|l| l.determinism),
+        labyrinth_recurrence: metrics.labyrinth.as_ref().filter(|l| l.is_valid).map(|l| l.recurrence_rate),
     }
 }
 
@@ -993,6 +1024,87 @@ fn convert_war_report(r: &WarReport, guilloche_seed_hex: &str) -> FfiWarReport {
                     })
                     .collect(),
             }),
+        document_words: r.document_words,
+        document_sentences: r.document_sentences,
+        document_paragraphs: r.document_paragraphs,
+        writing_flow: r
+            .writing_flow
+            .iter()
+            .map(|f| FfiFlowDataPoint {
+                offset_min: f.offset_min,
+                intensity: f.intensity,
+                phase: f.phase.clone(),
+            })
+            .collect(),
+        edit_topology: r
+            .edit_topology
+            .iter()
+            .map(|e| FfiEditRegion {
+                start_pct: e.start_pct,
+                end_pct: e.end_pct,
+                delta_sign: e.delta_sign,
+                byte_count: e.byte_count,
+            })
+            .collect(),
+        activity_contexts: r
+            .activity_contexts
+            .iter()
+            .map(|a| FfiActivityContext {
+                period_type: a.period_type.clone(),
+                start_epoch_ms: a.start.timestamp_millis(),
+                end_epoch_ms: a.end.timestamp_millis(),
+                duration_min: a.duration_min,
+                note: a.note.clone(),
+            })
+            .collect(),
+        anomalies: r
+            .anomalies
+            .iter()
+            .map(|a| FfiReportAnomaly {
+                anomaly_type: a.anomaly_type.clone(),
+                description: a.description.clone(),
+                severity: a.severity.clone(),
+            })
+            .collect(),
+        declaration_summary: r.declaration_summary.as_ref().map(|d| FfiDeclarationInfo {
+            statement: d.statement.clone(),
+            title: d.title.clone(),
+            ai_tools: d.ai_tools.clone(),
+            input_modalities: d.input_modalities.clone(),
+            collaborator_count: d.collaborator_count as u32,
+            signature_valid: d.signature_valid,
+            created_at_epoch_ms: d.created_at.timestamp_millis(),
+        }),
+        key_hierarchy_summary: r.key_hierarchy_summary.as_ref().map(|k| FfiKeyHierarchyInfo {
+            master_fingerprint: k.master_fingerprint.clone(),
+            device_id: k.device_id.clone(),
+            session_id: k.session_id.clone(),
+            ratchet_count: k.ratchet_count,
+            checkpoint_signatures: k.checkpoint_signatures as u32,
+            session_started_epoch_ms: k.session_started.timestamp_millis(),
+        }),
+        physical_context: r.physical_context.as_ref().map(|p| FfiPhysicalContextInfo {
+            clock_skew_ns: p.clock_skew_ns,
+            thermal_proxy: p.thermal_proxy,
+            silicon_puf_hash: p.silicon_puf_hash.clone(),
+            io_latency_ns: p.io_latency_ns,
+            combined_hash: p.combined_hash.clone(),
+        }),
+        beacon_info: r.beacon_info.as_ref().map(|b| FfiBeaconInfo {
+            drand_round: b.drand_round,
+            nist_pulse_index: b.nist_pulse_index,
+            fetched_at: b.fetched_at.clone(),
+            wp_key_id: b.wp_key_id.clone(),
+        }),
+        author_did: r.author_did.clone(),
+        verifiable_credential_json: r.verifiable_credential_json.clone(),
+        is_sample: r.is_sample,
+        evidence_hash: r.evidence_hash.clone(),
+        methodology: r.methodology.as_ref().map(|m| FfiStatisticalMethodology {
+            lr_computation: m.lr_computation.clone(),
+            confidence_interval: m.confidence_interval.clone(),
+            calibration: m.calibration.clone(),
+        }),
     }
 }
 
@@ -1027,14 +1139,18 @@ fn convert_process(p: &ProcessEvidence) -> FfiProcessEvidence {
         swf_chain_verified: p.swf_chain_verified,
         swf_backdating_hours: p.swf_backdating_hours,
         revision_intensity: p.revision_intensity,
+        revision_baseline: p.revision_baseline.clone(),
         pause_median_sec: p.pause_median_sec,
         pause_p95_sec: p.pause_p95_sec,
+        pause_max_sec: p.pause_max_sec,
         paste_ratio_pct: p.paste_ratio_pct,
+        paste_max_chars: p.paste_max_chars,
         iki_cv: p.iki_cv,
         bigram_consistency: p.bigram_consistency,
         total_keystrokes: p.total_keystrokes,
         deletion_sequences: p.deletion_sequences,
         avg_deletion_length: p.avg_deletion_length,
+        select_delete_ops: p.select_delete_ops,
     }
 }
 
@@ -1070,9 +1186,18 @@ fn convert_dimension(d: &DimensionScore) -> FfiDimensionScore {
         name: d.name.clone(),
         score: d.score,
         lr: d.lr,
+        log_lr: d.log_lr,
         confidence: d.confidence,
         key_discriminator: d.key_discriminator.clone(),
         color: d.color.clone(),
+        analysis: d
+            .analysis
+            .iter()
+            .map(|a| FfiDimensionDetail {
+                label: a.label.clone(),
+                text: a.text.clone(),
+            })
+            .collect(),
     }
 }
 

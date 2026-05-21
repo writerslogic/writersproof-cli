@@ -219,7 +219,97 @@ pub fn render_forensic_html(r: &WarReport) -> String {
             .map_or("not measurable".to_string(), |v| format!("{:.1} s", v)),
     );
 
+    // Extended forensic signals
+    let fm = r.forensic_metrics.as_ref();
+    html = html.replace("{{ADVANCED_FORENSICS}}", &build_advanced_forensics(fm));
+
     html
+}
+
+fn build_advanced_forensics(fm: Option<&ForensicBreakdown>) -> String {
+    let Some(fm) = fm else {
+        return String::new();
+    };
+    let mut out = String::new();
+
+    let _ = write!(out, "<h3>Integrity Analysis</h3><table class=\"metrics\">");
+    let _ = write!(out, "<tr><td>Biological Cadence Score</td><td class=\"r mono\">{:.2}</td></tr>", fm.biological_cadence_score);
+    let _ = write!(out, "<tr><td>Timing Entropy</td><td class=\"r mono\">{:.2} bits</td></tr>", fm.timing_entropy);
+    let _ = write!(out, "<tr><td>Pause Entropy</td><td class=\"r mono\">{:.2} bits</td></tr>", fm.pause_entropy);
+    if let Some(snr) = fm.snr_db {
+        let _ = write!(out, "<tr><td>Signal-to-Noise Ratio</td><td class=\"r mono\">{:.1} dB{}</td></tr>",
+            snr, if fm.snr_flagged { " <span class=\"flag\">FLAGGED</span>" } else { "" });
+    }
+    if let Some(lyap) = fm.lyapunov_exponent {
+        let _ = write!(out, "<tr><td>Lyapunov Exponent</td><td class=\"r mono\">{:.4}{}</td></tr>",
+            lyap, if fm.lyapunov_flagged { " <span class=\"flag\">FLAGGED</span>" } else { "" });
+    }
+    if let Some(ratio) = fm.iki_compression_ratio {
+        let _ = write!(out, "<tr><td>IKI Compression Ratio</td><td class=\"r mono\">{:.3}{}</td></tr>",
+            ratio, if fm.iki_compression_flagged { " <span class=\"flag\">FLAGGED</span>" } else { "" });
+    }
+    if let Some(det) = fm.labyrinth_determinism {
+        let _ = write!(out, "<tr><td>Labyrinth Determinism</td><td class=\"r mono\">{:.3}</td></tr>", det);
+    }
+    if let Some(rec) = fm.labyrinth_recurrence {
+        let _ = write!(out, "<tr><td>Labyrinth Recurrence Rate</td><td class=\"r mono\">{:.3}</td></tr>", rec);
+    }
+    if fm.steg_confidence > 0.0 {
+        let _ = write!(out, "<tr><td>Steganographic Watermark</td><td class=\"r mono\">{:.0}%</td></tr>", fm.steg_confidence * 100.0);
+    }
+    let _ = write!(out, "</table>");
+
+    if fm.forgery_difficulty.is_some() || fm.fatigue_warmup_pct.is_some() || fm.cross_modal_score.is_some() {
+        let _ = write!(out, "<h3>Deep Behavioral Analysis</h3><table class=\"metrics\">");
+        if let Some(diff) = fm.forgery_difficulty {
+            let _ = write!(out, "<tr><td>Forgery Difficulty</td><td class=\"r mono\">{:.1}/10 ({})</td></tr>",
+                diff, fm.forgery_tier.as_deref().unwrap_or("N/A"));
+        }
+        if let Some(time) = fm.forgery_time_sec {
+            let _ = write!(out, "<tr><td>Est. Forge Time</td><td class=\"r mono\">{:.0} sec</td></tr>", time);
+        }
+        if let Some(score) = fm.cross_modal_score {
+            let _ = write!(out, "<tr><td>Cross-Modal Consistency</td><td class=\"r mono\">{:.0}% ({})</td></tr>",
+                score * 100.0, fm.cross_modal_verdict.as_deref().unwrap_or("N/A"));
+        }
+        if fm.transcription_suspicious {
+            let _ = write!(out, "<tr><td>Transcription Suspicion</td><td class=\"r mono\"><span class=\"flag\">SUSPICIOUS</span></td></tr>");
+        }
+        let _ = write!(out, "<tr><td>Thinking Pause Ratio</td><td class=\"r mono\">{:.2}</td></tr>", fm.thinking_pause_ratio);
+        if let Some(w) = fm.fatigue_warmup_pct {
+            let _ = write!(out, "<tr><td>Fatigue Profile</td><td class=\"r mono\">Warmup {:.0}% / Plateau {:.0}% / Fatigue {:.0}%</td></tr>",
+                w * 100.0,
+                fm.fatigue_plateau_pct.unwrap_or(0.0) * 100.0,
+                fm.fatigue_pct.unwrap_or(0.0) * 100.0);
+        }
+        if let Some(r) = fm.repair_recent_pct {
+            let _ = write!(out, "<tr><td>Repair Locality</td><td class=\"r mono\">Recent {:.0}% / Distant {:.0}%</td></tr>",
+                r * 100.0, fm.repair_distant_pct.unwrap_or(0.0) * 100.0);
+        }
+        let _ = write!(out, "</table>");
+    }
+
+    if fm.cognitive_load_score.is_some() || fm.likelihood_p_cognitive.is_some() {
+        let _ = write!(out, "<h3>Enhanced Signal Scores</h3><table class=\"metrics\">");
+        if let Some(s) = fm.cognitive_load_score {
+            let _ = write!(out, "<tr><td>Cognitive Load</td><td class=\"r mono\">{:.0}%</td></tr>", s * 100.0);
+        }
+        if let Some(s) = fm.revision_topology_score {
+            let _ = write!(out, "<tr><td>Revision Topology</td><td class=\"r mono\">{:.0}%</td></tr>", s * 100.0);
+        }
+        if let Some(s) = fm.error_ecology_score {
+            let _ = write!(out, "<tr><td>Error Ecology</td><td class=\"r mono\">{:.0}%</td></tr>", s * 100.0);
+        }
+        if let Some(p) = fm.likelihood_p_cognitive {
+            let _ = write!(out, "<tr><td>P(Cognitive)</td><td class=\"r mono\">{:.0}%</td></tr>", p * 100.0);
+        }
+        if let Some(mode) = &fm.composition_mode {
+            let _ = write!(out, "<tr><td>Composition Mode</td><td class=\"r mono\">{}</td></tr>", html_escape(mode));
+        }
+        let _ = write!(out, "</table>");
+    }
+
+    out
 }
 
 // ---------------------------------------------------------------------------

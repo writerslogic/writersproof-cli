@@ -1113,6 +1113,12 @@ fn build_forensic_summary(
     };
 
     use crate::utils::finite_or;
+    let cv = if mean_iki_ms > 0.0 && metrics.cadence.std_dev_iki_ns.is_finite() {
+        finite_or(metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns, 0.0)
+    } else {
+        0.0
+    };
+
     Some(ForensicSummaryWire {
         words_per_minute: finite_or(wpm, 0.0),
         mean_iki_ms: finite_or(mean_iki_ms, 0.0),
@@ -1122,6 +1128,21 @@ fn build_forensic_summary(
         keystroke_count: events.len() as u64,
         editing_ratio: finite_or(editing_ratio, 0.0),
         checkpoint_count: events.iter().filter(|e| e.context_type.as_deref() == Some("checkpoint")).count() as u64,
+        assessment_score: finite_or(metrics.assessment_score.get(), 0.0),
+        coefficient_of_variation: finite_or(cv, 0.0),
+        biological_cadence_score: finite_or(metrics.biological_cadence_score.get(), 0.0),
+        timing_entropy: finite_or(metrics.primary.timing_entropy, 0.0),
+        pause_entropy: finite_or(metrics.primary.pause_entropy, 0.0),
+        cognitive_load_score: metrics.cognitive_load.as_ref().map(|cl| cl.composite_score),
+        revision_topology_score: metrics.revision_topology.as_ref().map(|rt| rt.composite_score),
+        error_ecology_score: metrics.error_ecology.as_ref().map(|ee| ee.composite_score),
+        likelihood_p_cognitive: metrics.likelihood_model.as_ref().map(|lm| lm.session_p_cognitive),
+        forgery_difficulty: metrics.forgery_cost.as_ref().map(|f| f.overall_difficulty),
+        cross_modal_score: metrics.cross_modal.as_ref().map(|cm| cm.score),
+        snr_db: metrics.snr.as_ref().map(|s| s.snr_db),
+        lyapunov_exponent: metrics.lyapunov.as_ref().map(|l| l.exponent),
+        transcription_suspicious: metrics.transcription_suspicion.as_ref().is_some_and(|t| t.is_suspicious),
+        composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| format!("{:?}", m))),
     })
 }
 

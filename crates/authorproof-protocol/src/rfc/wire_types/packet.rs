@@ -168,6 +168,36 @@ pub struct ForensicSummaryWire {
     pub editing_ratio: f64,
     #[serde(rename = "10")]
     pub checkpoint_count: u64,
+    #[serde(rename = "11")]
+    pub assessment_score: f64,
+    #[serde(rename = "12")]
+    pub coefficient_of_variation: f64,
+    #[serde(rename = "13")]
+    pub biological_cadence_score: f64,
+    #[serde(rename = "14")]
+    pub timing_entropy: f64,
+    #[serde(rename = "15")]
+    pub pause_entropy: f64,
+    #[serde(rename = "16", default, skip_serializing_if = "Option::is_none")]
+    pub cognitive_load_score: Option<f64>,
+    #[serde(rename = "17", default, skip_serializing_if = "Option::is_none")]
+    pub revision_topology_score: Option<f64>,
+    #[serde(rename = "18", default, skip_serializing_if = "Option::is_none")]
+    pub error_ecology_score: Option<f64>,
+    #[serde(rename = "19", default, skip_serializing_if = "Option::is_none")]
+    pub likelihood_p_cognitive: Option<f64>,
+    #[serde(rename = "20", default, skip_serializing_if = "Option::is_none")]
+    pub forgery_difficulty: Option<f64>,
+    #[serde(rename = "21", default, skip_serializing_if = "Option::is_none")]
+    pub cross_modal_score: Option<f64>,
+    #[serde(rename = "22", default, skip_serializing_if = "Option::is_none")]
+    pub snr_db: Option<f64>,
+    #[serde(rename = "23", default, skip_serializing_if = "Option::is_none")]
+    pub lyapunov_exponent: Option<f64>,
+    #[serde(rename = "24")]
+    pub transcription_suspicious: bool,
+    #[serde(rename = "25", default, skip_serializing_if = "Option::is_none")]
+    pub composition_mode: Option<String>,
 }
 
 impl EvidencePacketWire {

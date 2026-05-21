@@ -70,10 +70,13 @@ pub enum Verdict {
     Suspicious,
     /// Score 0-19: synthetic generation indicators.
     LikelySynthetic,
+    /// Too few events or checkpoints to make any determination.
+    InsufficientData,
 }
 
 impl Verdict {
     /// Map an assessment score (0-100) to a verdict classification.
+    /// Use `from_score_with_events` when event count is available.
     pub fn from_score(score: u32) -> Self {
         match score {
             80..=100 => Self::VerifiedHuman,
@@ -84,9 +87,19 @@ impl Verdict {
         }
     }
 
+    /// Map a score to a verdict, returning `InsufficientData` when there
+    /// are too few events to make a meaningful determination.
+    pub fn from_score_with_events(score: u32, event_count: usize) -> Self {
+        if event_count < 5 {
+            return Self::InsufficientData;
+        }
+        Self::from_score(score)
+    }
+
     /// Return the display label for this verdict.
     pub fn label(&self) -> &'static str {
         match self {
+            Self::InsufficientData => "INSUFFICIENT DATA",
             Self::VerifiedHuman => "VERIFIED HUMAN",
             Self::LikelyHuman => "LIKELY HUMAN",
             Self::Inconclusive => "INCONCLUSIVE",
@@ -98,6 +111,7 @@ impl Verdict {
     /// Return a descriptive subtitle for the verdict.
     pub fn subtitle(&self) -> &'static str {
         match self {
+            Self::InsufficientData => "Not Enough Evidence to Assess",
             Self::VerifiedHuman => "Strong Constraint Indicators",
             Self::LikelyHuman => "Moderate Constraint Indicators",
             Self::Inconclusive => "Insufficient Evidence",
@@ -109,6 +123,7 @@ impl Verdict {
     /// Return the CSS color hex string for this verdict.
     pub fn css_color(&self) -> &'static str {
         match self {
+            Self::InsufficientData => "#757575",
             Self::VerifiedHuman => "#2e7d32",
             Self::LikelyHuman => "#558b2f",
             Self::Inconclusive => "#f57f17",
@@ -271,6 +286,37 @@ pub struct ForensicBreakdown {
     pub pause_depth: [f64; 3],
     pub mean_bps: f64,
     pub max_bps: f64,
+    // Extended forensic signals (populated when available)
+    pub biological_cadence_score: f64,
+    pub steg_confidence: f64,
+    pub thinking_pause_ratio: f64,
+    pub timing_entropy: f64,
+    pub pause_entropy: f64,
+    pub snr_db: Option<f64>,
+    pub snr_flagged: bool,
+    pub lyapunov_exponent: Option<f64>,
+    pub lyapunov_flagged: bool,
+    pub iki_compression_ratio: Option<f64>,
+    pub iki_compression_flagged: bool,
+    pub forgery_difficulty: Option<f64>,
+    pub forgery_tier: Option<String>,
+    pub forgery_time_sec: Option<f64>,
+    pub fatigue_warmup_pct: Option<f64>,
+    pub fatigue_plateau_pct: Option<f64>,
+    pub fatigue_pct: Option<f64>,
+    pub fatigue_slope: Option<f64>,
+    pub cross_modal_score: Option<f64>,
+    pub cross_modal_verdict: Option<String>,
+    pub transcription_suspicious: bool,
+    pub repair_recent_pct: Option<f64>,
+    pub repair_distant_pct: Option<f64>,
+    pub cognitive_load_score: Option<f64>,
+    pub revision_topology_score: Option<f64>,
+    pub error_ecology_score: Option<f64>,
+    pub likelihood_p_cognitive: Option<f64>,
+    pub composition_mode: Option<String>,
+    pub labyrinth_determinism: Option<f64>,
+    pub labyrinth_recurrence: Option<f64>,
 }
 
 /// Spatial edit region showing where in the document edits occurred.
