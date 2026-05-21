@@ -367,6 +367,7 @@ impl EventLoopCtx {
             let path_owned = path.clone();
             std::thread::Builder::new()
                 .name("cpoe-xwin-check".into())
+                .stack_size(16 * 1024 * 1024)
                 .spawn(move || {
                     let visible =
                         crate::platform::window_text::WindowTextCapture::capture_visible_windows(

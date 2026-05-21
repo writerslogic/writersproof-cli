@@ -623,6 +623,7 @@ impl AXObserverFocusProvider {
 
         let handle = std::thread::Builder::new()
             .name("ax-observer".into())
+            .stack_size(16 * 1024 * 1024) // 16 MB: AX callbacks invoke deep Cocoa stacks
             .spawn(move || {
                 ax_observer_run_loop(running, provider, tx);
             });
