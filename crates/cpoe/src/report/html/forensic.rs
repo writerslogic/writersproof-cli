@@ -230,7 +230,7 @@ fn build_advanced_forensics(fm: Option<&ForensicBreakdown>) -> String {
     let Some(fm) = fm else {
         return String::new();
     };
-    let mut out = String::new();
+    let mut out = String::with_capacity(4096);
 
     let _ = write!(out, "<h3>Integrity Analysis</h3><table class=\"metrics\">");
     let _ = write!(out, "<tr><td>Biological Cadence Score</td><td class=\"r mono\">{:.2}</td></tr>", fm.biological_cadence_score);

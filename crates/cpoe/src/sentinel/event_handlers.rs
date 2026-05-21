@@ -115,7 +115,7 @@ impl EventLoopCtx {
         &mut self,
         event: crate::platform::KeystrokeEvent,
     ) {
-        let bridge_healthy = self.bridge_healthy_flag.load(Ordering::SeqCst);
+        let bridge_healthy = self.bridge_healthy_flag.load(Ordering::Acquire);
 
         // Handle keyUp: compute dwell time, backfill the matching
         // keyDown sample in the focused session's jitter buffer, and
@@ -125,9 +125,7 @@ impl EventLoopCtx {
                 let dwell = crate::utils::ns_elapsed(event.timestamp_ns, down_ts);
                 if let Some(ref path) = self.cached_focus {
                     let mut map = self.sessions.write_recover();
-                    // Re-check bridge health under the lock to avoid TOCTOU
-                    // between the flag read and the dwell write.
-                    if self.bridge_healthy_flag.load(Ordering::SeqCst) {
+                    if self.bridge_healthy_flag.load(Ordering::Acquire) {
                         if let Some(session) = map.get_mut(path.as_str()) {
                             if let Some(&idx) =
                                 session.jitter_sample_index.get(&down_ts)
