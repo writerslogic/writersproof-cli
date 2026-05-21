@@ -545,6 +545,23 @@ extern "C" fn ax_observer_callback(
     _notification: core_foundation::string::CFStringRef,
     refcon: *mut std::ffi::c_void,
 ) {
+    // Re-entrancy guard: get_active_window() does AX queries that can
+    // synchronously deliver more AX notifications on this run loop,
+    // re-entering this callback and overflowing the stack.
+    thread_local! {
+        static IN_CALLBACK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if IN_CALLBACK.with(|c| c.replace(true)) {
+        return; // Already inside a callback on this thread; skip.
+    }
+    struct ResetGuard;
+    impl Drop for ResetGuard {
+        fn drop(&mut self) {
+            IN_CALLBACK.with(|c| c.set(false));
+        }
+    }
+    let _guard = ResetGuard;
+
     if refcon.is_null() {
         return;
     }
