@@ -103,6 +103,17 @@ pub enum CrossModalVerdict {
     Insufficient,
 }
 
+impl std::fmt::Display for CrossModalVerdict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Consistent => write!(f, "Consistent"),
+            Self::Marginal => write!(f, "Marginal"),
+            Self::Inconsistent => write!(f, "Inconsistent"),
+            Self::Insufficient => write!(f, "Insufficient"),
+        }
+    }
+}
+
 /// Run all cross-modal consistency checks and produce an aggregate result.
 pub fn analyze_cross_modal(input: &CrossModalInput<'_>) -> CrossModalResult {
     let mut checks = Vec::new();

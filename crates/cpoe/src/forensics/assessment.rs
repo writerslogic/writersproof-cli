@@ -9,8 +9,8 @@ use super::types::{
     Anomaly, AnomalyType, Assessment, CadenceMetrics, FocusMetrics, PrimaryMetrics, RegionData,
     RiskLevel, Severity, SortedEvents, ALERT_THRESHOLD, MIN_EVENTS_FOR_ANALYSIS,
     MIN_EVENTS_FOR_ASSESSMENT, THRESHOLD_GAP_HOURS, THRESHOLD_HIGH_VELOCITY_BPS,
-    THRESHOLD_LOW_ENTROPY, THRESHOLD_MONOTONIC_APPEND, THRESHOLD_PAUSE_ENTROPY,
-    THRESHOLD_TIMING_ENTROPY,
+    THRESHOLD_MONOTONIC_APPEND, THRESHOLD_PAUSE_ENTROPY,
+    THRESHOLD_REVISION_ENTROPY, THRESHOLD_TIMING_ENTROPY,
 };
 use crate::utils::Probability;
 
@@ -120,7 +120,7 @@ pub fn detect_anomalies(
         });
     }
 
-    if metrics.edit_entropy < THRESHOLD_LOW_ENTROPY && metrics.edit_entropy > 0.0 {
+    if metrics.edit_entropy < THRESHOLD_REVISION_ENTROPY && metrics.edit_entropy > 0.0 {
         anomalies.push(Anomaly {
             timestamp: None,
             anomaly_type: AnomalyType::LowEntropy,
@@ -243,7 +243,7 @@ pub fn determine_assessment(
         suspicious_indicators += 1;
     }
 
-    if metrics.edit_entropy < THRESHOLD_LOW_ENTROPY && metrics.edit_entropy > 0.0 {
+    if metrics.edit_entropy < THRESHOLD_REVISION_ENTROPY && metrics.edit_entropy > 0.0 {
         suspicious_indicators += 1;
     }
 

@@ -264,6 +264,7 @@ pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
         session.origin_temp_path = Some(current.clone());
         session.path = validated.clone();
         session.evidence_confidence = crate::sentinel::types::EvidenceConfidence::Full;
+        session.confidence_reason = None;
         sessions.insert(validated.clone(), session);
         drop(sessions);
 

@@ -187,6 +187,192 @@ fn test_infer_with_bundle_none_delegates_to_basic() {
     assert_eq!(result, None);
 }
 
+// --- Electron title path hint extraction tests ---
+
+#[test]
+fn test_title_hint_vscode_three_segments() {
+    let hint = extract_title_path_hint(
+        "index.ts - MyProject - Visual Studio Code",
+        Some("com.microsoft.VSCode"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "index.ts");
+    assert_eq!(hint.project_folder.as_deref(), Some("MyProject"));
+}
+
+#[test]
+fn test_title_hint_vscode_insiders() {
+    let hint = extract_title_path_hint(
+        "main.rs - writerslogic - Visual Studio Code",
+        Some("com.microsoft.VSCodeInsiders"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "main.rs");
+    assert_eq!(hint.project_folder.as_deref(), Some("writerslogic"));
+}
+
+#[test]
+fn test_title_hint_cursor() {
+    let hint = extract_title_path_hint(
+        "lib.rs - cpoe - Cursor",
+        Some("com.todesktop.230313mzl4w4u92"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "lib.rs");
+    assert_eq!(hint.project_folder.as_deref(), Some("cpoe"));
+}
+
+#[test]
+fn test_title_hint_zed_em_dash() {
+    let hint = extract_title_path_hint(
+        "main.rs \u{2014} writerslogic \u{2014} Zed",
+        Some("dev.zed.Zed"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "main.rs");
+    assert_eq!(hint.project_folder.as_deref(), Some("writerslogic"));
+}
+
+#[test]
+fn test_title_hint_zed_single_file() {
+    let hint = extract_title_path_hint(
+        "scratch.rs \u{2014} Zed",
+        Some("dev.zed.Zed"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "scratch.rs");
+    assert_eq!(hint.project_folder, None);
+}
+
+#[test]
+fn test_title_hint_sublime_text() {
+    let hint = extract_title_path_hint(
+        "README.md - MyRepo - Sublime Text",
+        Some("com.sublimetext.4"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "README.md");
+    assert_eq!(hint.project_folder.as_deref(), Some("MyRepo"));
+}
+
+#[test]
+fn test_title_hint_nova_middot() {
+    let hint = extract_title_path_hint(
+        "styles.css \u{00B7} Nova",
+        Some("com.panic.Nova"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "styles.css");
+    assert_eq!(hint.project_folder, None);
+}
+
+#[test]
+fn test_title_hint_obsidian_vault() {
+    let hint = extract_title_path_hint(
+        "My Note - My Vault - Obsidian",
+        Some("md.obsidian"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "My Note");
+    assert_eq!(hint.project_folder.as_deref(), Some("My Vault"));
+}
+
+#[test]
+fn test_title_hint_obsidian_two_segments() {
+    // "Note - Obsidian": Obsidian parser sees left as note, right as vault
+    // but "Obsidian" is in APP_SUFFIXES so it should just be filename.
+    let hint = extract_title_path_hint(
+        "Draft Chapter - Obsidian",
+        Some("md.obsidian"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "Draft Chapter");
+}
+
+#[test]
+fn test_title_hint_rejects_settings() {
+    let result = extract_title_path_hint(
+        "Settings - Visual Studio Code",
+        Some("com.microsoft.VSCode"),
+    );
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_title_hint_rejects_untitled() {
+    let result = extract_title_path_hint(
+        "Untitled - Cursor",
+        Some("com.todesktop.230313mzl4w4u92"),
+    );
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_title_hint_bracket_project() {
+    let hint = extract_title_path_hint(
+        "main.rs [writerslogic] - Visual Studio Code",
+        Some("com.microsoft.VSCode"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "main.rs");
+    assert_eq!(hint.project_folder.as_deref(), Some("writerslogic"));
+}
+
+#[test]
+fn test_title_hint_empty_title() {
+    assert!(extract_title_path_hint("", Some("com.microsoft.VSCode")).is_none());
+}
+
+#[test]
+fn test_title_hint_no_separator() {
+    assert!(extract_title_path_hint("JustAWord", Some("com.microsoft.VSCode")).is_none());
+}
+
+#[test]
+fn test_title_hint_resolve_via_cwd() {
+    // Create a temp project with a known file. Use our own PID so
+    // cwd_for_pid returns our cwd, then temporarily chdir into the
+    // project to simulate an Electron editor's working directory.
+    let tmp = tempfile::tempdir().unwrap();
+    let file_path = tmp.path().join("test_file.rs");
+    std::fs::write(&file_path, "fn main() {}").unwrap();
+
+    let original_cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(tmp.path()).unwrap();
+
+    let hint = TitlePathHint {
+        filename: "test_file.rs".to_string(),
+        project_folder: None,
+    };
+    let result = resolve_title_hint_to_path(&hint, Some(std::process::id()));
+
+    // Restore cwd before asserting so failure doesn't leave cwd changed.
+    std::env::set_current_dir(&original_cwd).unwrap();
+
+    assert!(result.is_some(), "should resolve file via process CWD");
+    assert!(result.unwrap().ends_with("test_file.rs"));
+}
+
+#[test]
+fn test_title_hint_resolve_no_pid() {
+    let hint = TitlePathHint {
+        filename: "nonexistent_file_12345.rs".to_string(),
+        project_folder: Some("NonexistentProject".to_string()),
+    };
+    assert!(resolve_title_hint_to_path(&hint, None).is_none());
+}
+
+#[test]
+fn test_extract_bracket_project() {
+    let hint = extract_title_path_hint(
+        "lib.rs [cpoe] - Cursor",
+        Some("com.todesktop.230313mzl4w4u92"),
+    )
+    .unwrap();
+    assert_eq!(hint.filename, "lib.rs");
+    assert_eq!(hint.project_folder.as_deref(), Some("cpoe"));
+}
+
 #[test]
 fn test_normalize_path_existing() {
     let result = normalize_document_path("/");

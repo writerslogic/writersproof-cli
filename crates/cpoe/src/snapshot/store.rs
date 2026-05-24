@@ -16,6 +16,7 @@ const SESSION_GAP_NS: i64 = 30 * 60 * 1_000_000_000;
 pub struct SnapshotStore {
     pub(crate) conn: Connection,
     pub(crate) signing_key_bytes: Zeroizing<[u8; 32]>,
+    _lock_file: Option<std::fs::File>,
 }
 
 impl std::fmt::Debug for SnapshotStore {
@@ -47,15 +48,20 @@ impl SnapshotStore {
         }
         conn.execute_batch(&format!(
             "PRAGMA busy_timeout={BUSY_TIMEOUT_MS}; PRAGMA foreign_keys=ON; \
-             PRAGMA synchronous=FULL;"
+             PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; \
+             PRAGMA secure_delete=ON;"
         ))
         .map_err(|e| format!("pragma setup failed: {e}"))?;
+
+        let lock_file = crate::store::acquire_db_lock(path)
+            .map_err(|e| e.to_string())?;
 
         let key_bytes = Zeroizing::new(signing_key.to_bytes());
 
         let store = Self {
             conn,
             signing_key_bytes: key_bytes,
+            _lock_file: lock_file,
         };
         store.init_schema()?;
         Ok(store)

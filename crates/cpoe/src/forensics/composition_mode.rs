@@ -7,9 +7,9 @@
 //!
 //! - **PureComposition**: Sustained in-editor focus, burst-pause-revise, no paste.
 //! - **ReferenceAssisted**: Short focus-away (<10s), return, type without paste.
-//! - **PasteDomesticate**: Paste → significant editing (>30% chars modified in 60s).
-//! - **PasteVeneer**: Paste → minimal editing (<10% modification, mostly formatting).
-//! - **AiMediated**: Repeated (focus-to-AI 15-60s → return → paste → light edit) cycles.
+//! - **PasteDomesticate**: Paste → significant editing (>=20 keystrokes after paste).
+//! - **PasteVeneer**: Paste → minimal editing (<=5 keystrokes after paste).
+//! - **AiMediated**: Repeated (focus-to-AI 15-120s → return → paste → light edit) cycles.
 
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +36,20 @@ const AI_MAX_AWAY_SEC: f64 = 120.0;
 /// Minimum AI-mediated cycles to flag the pattern.
 const AI_CYCLE_MIN_COUNT: usize = 2;
 
+/// Window (nanoseconds) after regaining focus in which a paste counts as AI-mediated.
+const AI_PASTE_WINDOW_NS: i64 = 30_000_000_000; // 30 seconds
+
+/// Composite score weight for pure composition mode.
+const SCORE_WEIGHT_PURE: f64 = 1.0;
+/// Composite score weight for reference-assisted mode.
+const SCORE_WEIGHT_REFERENCE: f64 = 0.8;
+/// Composite score weight for paste-domesticate mode.
+const SCORE_WEIGHT_DOMESTICATE: f64 = 0.5;
+/// Composite score weight for paste-veneer mode.
+const SCORE_WEIGHT_VENEER: f64 = 0.1;
+/// Composite score weight for AI-mediated mode.
+const SCORE_WEIGHT_AI: f64 = 0.0;
+
 use super::constants::{AI_APP_PATTERNS, BROWSER_BUNDLE_IDS};
 
 // ---------------------------------------------------------------------------
@@ -49,9 +63,9 @@ pub enum CompositionMode {
     PureComposition,
     /// Reference-checking: short focus-away, return, type without paste.
     ReferenceAssisted,
-    /// Paste with significant editing (>30% modified).
+    /// Paste with significant editing (>=20 keystrokes after paste).
     PasteDomesticate,
-    /// Paste with minimal editing (<10% modified).
+    /// Paste with minimal editing (<=5 keystrokes after paste).
     PasteVeneer,
     /// AI-mediated: repeated focus-to-AI → return → paste cycles.
     AiMediated,
@@ -107,11 +121,15 @@ pub struct CompositionModeMetrics {
 
 /// Classify a focus switch event.
 fn classify_focus_switch(switch: &FocusSwitchRecord) -> FocusSwitchClass {
-    let away_sec = switch
+    // If the user never returned, treat as extended away (not a quick reference check).
+    let away_sec = match switch
         .regained_at
         .and_then(|r| r.duration_since(switch.lost_at).ok())
         .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
+    {
+        Some(s) => s,
+        None => return FocusSwitchClass::ExtendedAway,
+    };
 
     let bid_lower = switch.target_bundle_id.to_lowercase();
     let app_lower = switch.target_app.to_lowercase();
@@ -162,12 +180,17 @@ enum PasteClass {
 }
 
 /// Detect AI-mediated cycles: focus-to-AI → return → paste in sequence.
+///
+/// Returns `(cycle_count, consumed_paste)` where `consumed_paste[i]` is true
+/// if paste `i` was matched to a cycle and should not be double-counted.
 fn count_ai_cycles(
     focus_switches: &[FocusSwitchRecord],
     paste_contexts: &[PasteContext],
-) -> usize {
+) -> (usize, Vec<bool>) {
+    let mut used_paste = vec![false; paste_contexts.len()];
+
     if focus_switches.is_empty() || paste_contexts.is_empty() {
-        return 0;
+        return (0, used_paste);
     }
 
     let mut cycles = 0usize;
@@ -186,23 +209,30 @@ fn count_ai_cycles(
             None => continue,
         };
 
-        let regained_ns = regained
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as i64)
-            .unwrap_or(0);
+        let regained_ns = match regained.duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => match i64::try_from(d.as_nanos()) {
+                Ok(ns) => ns,
+                Err(_) => continue, // Overflow; timestamp too far in the future.
+            },
+            Err(_) => continue, // Pre-epoch timestamp; skip.
+        };
 
-        // Look for a paste within 30s of regaining focus.
-        let has_paste_after = paste_contexts.iter().any(|p| {
-            let delta_ns = p.paste_time - regained_ns;
-            (0..30_000_000_000).contains(&delta_ns) // 30 seconds
+        // Look for an unconsumed paste within 30s of regaining focus.
+        let matched = paste_contexts.iter().enumerate().find(|(i, p)| {
+            if used_paste[*i] {
+                return false;
+            }
+            let delta_ns = p.paste_time.saturating_sub(regained_ns);
+            (0..AI_PASTE_WINDOW_NS).contains(&delta_ns)
         });
 
-        if has_paste_after {
+        if let Some((i, _)) = matched {
+            used_paste[i] = true;
             cycles += 1;
         }
     }
 
-    cycles
+    (cycles, used_paste)
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +251,7 @@ pub fn analyze_composition_mode(
         return None;
     }
 
-    let ai_cycles = count_ai_cycles(focus_switches, paste_contexts);
+    let (ai_cycles, ai_consumed_paste) = count_ai_cycles(focus_switches, paste_contexts);
 
     // Classify each focus switch.
     let mut reference_count = 0usize;
@@ -232,11 +262,14 @@ pub fn analyze_composition_mode(
         }
     }
 
-    // Classify each paste event.
+    // Classify each paste event, skipping those already consumed by AI cycles.
     let mut domesticated_count = 0usize;
     let mut veneer_count = 0usize;
 
-    for paste in paste_contexts {
+    for (i, paste) in paste_contexts.iter().enumerate() {
+        if ai_consumed_paste.get(i).copied().unwrap_or(false) {
+            continue;
+        }
         match classify_paste(paste) {
             PasteClass::Domesticated => domesticated_count += 1,
             PasteClass::Veneer => veneer_count += 1,
@@ -268,13 +301,13 @@ pub fn analyze_composition_mode(
         + paste_veneer_weight
         + ai_mediated_weight;
 
-    let distribution = if total_weight > 0.0 {
+    let distribution = if total_weight.is_finite() && total_weight > 0.0 {
         CompositionModeDistribution {
-            pure_composition: pure_weight / total_weight,
-            reference_assisted: reference_weight / total_weight,
-            paste_domesticate: paste_domesticate_weight / total_weight,
-            paste_veneer: paste_veneer_weight / total_weight,
-            ai_mediated: ai_mediated_weight / total_weight,
+            pure_composition: (pure_weight / total_weight).clamp(0.0, 1.0),
+            reference_assisted: (reference_weight / total_weight).clamp(0.0, 1.0),
+            paste_domesticate: (paste_domesticate_weight / total_weight).clamp(0.0, 1.0),
+            paste_veneer: (paste_veneer_weight / total_weight).clamp(0.0, 1.0),
+            ai_mediated: (ai_mediated_weight / total_weight).clamp(0.0, 1.0),
         }
     } else {
         CompositionModeDistribution {
@@ -297,11 +330,12 @@ pub fn analyze_composition_mode(
         .map(|&(_, mode)| mode);
 
     // Composite score: 1.0 for pure composition, 0.0 for AI-mediated/veneer.
-    let composite_score = distribution.pure_composition * 1.0
-        + distribution.reference_assisted * 0.8
-        + distribution.paste_domesticate * 0.5
-        + distribution.paste_veneer * 0.1
-        + distribution.ai_mediated * 0.0;
+    let composite_score = (distribution.pure_composition * SCORE_WEIGHT_PURE
+        + distribution.reference_assisted * SCORE_WEIGHT_REFERENCE
+        + distribution.paste_domesticate * SCORE_WEIGHT_DOMESTICATE
+        + distribution.paste_veneer * SCORE_WEIGHT_VENEER
+        + distribution.ai_mediated * SCORE_WEIGHT_AI)
+        .clamp(0.0, 1.0);
 
     Some(CompositionModeMetrics {
         dominant_mode,
@@ -420,6 +454,95 @@ mod tests {
     #[test]
     fn test_insufficient_events() {
         assert!(analyze_composition_mode(&[], &[], 5).is_none());
+    }
+
+    #[test]
+    fn test_unresolved_focus_not_reference() {
+        // A focus switch with no regained_at should NOT count as reference-assisted.
+        let switch = FocusSwitchRecord {
+            lost_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
+            regained_at: None,
+            target_app: "Safari".to_string(),
+            target_bundle_id: "com.apple.safari".to_string(),
+        };
+        let result = analyze_composition_mode(&[switch], &[], 50).unwrap();
+        assert!(
+            result.distribution.reference_assisted == 0.0,
+            "unresolved switch must not count as reference"
+        );
+    }
+
+    #[test]
+    fn test_paste_dedup_across_cycles() {
+        // Two AI focus switches close together, one paste: should count 1 cycle, not 2.
+        let base = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
+        let switches = vec![
+            FocusSwitchRecord {
+                lost_at: base,
+                regained_at: Some(base + Duration::from_secs(30)),
+                target_app: "ChatGPT".to_string(),
+                target_bundle_id: "com.openai.chatgpt".to_string(),
+            },
+            FocusSwitchRecord {
+                lost_at: base + Duration::from_secs(35),
+                regained_at: Some(base + Duration::from_secs(65)),
+                target_app: "ChatGPT".to_string(),
+                target_bundle_id: "com.openai.chatgpt".to_string(),
+            },
+        ];
+        let paste_time = (base + Duration::from_secs(32))
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as i64;
+        let pastes = vec![PasteContext {
+            paste_time,
+            context_window_end: 0,
+            keystroke_count_after_paste: 3,
+            source: PasteSource::External,
+        }];
+        let (cycles, consumed) = count_ai_cycles(&switches, &pastes);
+        assert_eq!(cycles, 1, "one paste should match at most one cycle");
+        assert!(consumed[0], "the matched paste should be marked consumed");
+    }
+
+    #[test]
+    fn test_ai_paste_not_double_counted_as_veneer() {
+        // Pastes consumed by AI cycles should not also count as veneer.
+        let base = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
+        let switches: Vec<_> = (0..3)
+            .map(|i| {
+                let offset = i as u64 * 100;
+                FocusSwitchRecord {
+                    lost_at: base + Duration::from_secs(offset),
+                    regained_at: Some(base + Duration::from_secs(offset + 30)),
+                    target_app: "ChatGPT".to_string(),
+                    target_bundle_id: "com.openai.chatgpt".to_string(),
+                }
+            })
+            .collect();
+        // One veneer paste per cycle, timed to match each switch's return.
+        let pastes: Vec<_> = (0..3)
+            .map(|i| {
+                let regained = base + Duration::from_secs(i as u64 * 100 + 30);
+                let ns = regained
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as i64
+                    + 2_000_000_000;
+                PasteContext {
+                    paste_time: ns,
+                    context_window_end: 0,
+                    keystroke_count_after_paste: 1, // veneer-level
+                    source: PasteSource::External,
+                }
+            })
+            .collect();
+        let result = analyze_composition_mode(&switches, &pastes, 50).unwrap();
+        assert_eq!(
+            result.distribution.paste_veneer, 0.0,
+            "AI-consumed pastes must not also count as veneer"
+        );
+        assert!(result.ai_cycle_count >= 2);
     }
 
     #[test]

@@ -21,7 +21,8 @@ pub mod app_discovery;
 pub mod app_registry;
 pub use app_discovery::ProbeResult;
 pub use app_registry::{
-    adapter_for_bundle, AppAdapter, AppRegistry, ProbeConfidence, StoragePattern, UserWritingApp,
+    adapter_for_bundle, install_global, AppAdapter, AppRegistry, ProbeConfidence, StoragePattern,
+    UserWritingApp,
 };
 pub mod behavioral_key;
 pub mod bundle_monitor;
@@ -80,12 +81,12 @@ pub use self::ipc_handler::SentinelIpcHandler;
 pub use self::shadow::ShadowManager;
 pub use self::relationships::{CoEditedPair, detect_co_edited_files};
 pub use self::types::{
-    generate_session_id, hash_string, infer_document_path_from_title,
+    extract_title_path_hint, generate_session_id, hash_string, infer_document_path_from_title,
     infer_document_path_from_title_with_bundle, normalize_document_path, parse_url_parts,
-    AiToolCategory, ChangeEvent, ChangeEventType, DetectedAiTool, DocumentSession, FocusEvent,
-    FocusEventType, FocusSwitchRecord, KeystrokeContext, ObservationBasis, PasteContext,
-    PasteSource, ScrivenerProjectMap, SessionBinding, SessionEvent, SessionEventType,
-    SessionSegment, WindowInfo,
+    resolve_title_hint_to_path, AiToolCategory, ChangeEvent, ChangeEventType, DetectedAiTool,
+    DocumentSession, FocusEvent, FocusEventType, FocusSwitchRecord, KeystrokeContext,
+    ObservationBasis, PasteContext, PasteSource, ScrivenerProjectMap, SessionBinding,
+    SessionEvent, SessionEventType, SessionSegment, TitlePathHint, WindowInfo,
 };
 
 // ---------------------------------------------------------------------------

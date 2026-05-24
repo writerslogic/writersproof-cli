@@ -57,43 +57,52 @@ impl EnfsiTier {
     }
 }
 
-/// Verdict classification based on assessment score.
+/// Verdict classification for reports and attestation results.
+///
+/// Positive verdicts (`VerifiedHuman`, `LikelyHuman`) are reachable from
+/// score-based assessment. Negative verdicts (`Suspicious`, `LikelySynthetic`)
+/// require structural evidence (broken HMAC chains, invalid signatures,
+/// cross-modal inconsistency) and are only produced by `compute_verdict`
+/// in the verification pipeline, never from a score alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Verdict {
     /// Score 80-100: strong human authorship indicators.
     VerifiedHuman,
     /// Score 60-79: moderate human authorship indicators.
     LikelyHuman,
-    /// Score 40-59: insufficient evidence to determine.
+    /// Evidence does not meet the threshold for a positive or negative
+    /// determination. This is the floor for score-only assessment.
     Inconclusive,
-    /// Score 20-39: anomalous patterns detected.
+    /// Structural anomalies detected (only from verification pipeline).
     Suspicious,
-    /// Score 0-19: synthetic generation indicators.
+    /// Structural evidence of synthetic generation (only from verification pipeline).
     LikelySynthetic,
     /// Too few events or checkpoints to make any determination.
     InsufficientData,
 }
 
+/// Minimum number of checkpoint events required before a score-based
+/// verdict can be issued. Below this, the verdict is always
+/// `InsufficientData`.
+pub const MIN_VERDICT_EVENTS: usize = 10;
+
 impl Verdict {
-    /// Map an assessment score (0-100) to a verdict classification.
-    /// Use `from_score_with_events` when event count is available.
-    pub fn from_score(score: u32) -> Self {
+    /// Derive a verdict from an assessment score and event count.
+    ///
+    /// A score alone cannot produce a negative verdict; scores below 60
+    /// yield `Inconclusive` because without structural integrity checks
+    /// a low score is indistinguishable from weak evidence. Negative
+    /// verdicts require the full verification pipeline
+    /// (`verify::verdict::compute_verdict`).
+    pub fn from_score_with_events(score: u32, event_count: usize) -> Self {
+        if event_count < MIN_VERDICT_EVENTS {
+            return Self::InsufficientData;
+        }
         match score {
             80..=100 => Self::VerifiedHuman,
             60..=79 => Self::LikelyHuman,
-            40..=59 => Self::Inconclusive,
-            20..=39 => Self::Suspicious,
-            _ => Self::LikelySynthetic,
+            _ => Self::Inconclusive,
         }
-    }
-
-    /// Map a score to a verdict, returning `InsufficientData` when there
-    /// are too few events to make a meaningful determination.
-    pub fn from_score_with_events(score: u32, event_count: usize) -> Self {
-        if event_count < 5 {
-            return Self::InsufficientData;
-        }
-        Self::from_score(score)
     }
 
     /// Return the display label for this verdict.
@@ -103,8 +112,8 @@ impl Verdict {
             Self::VerifiedHuman => "VERIFIED HUMAN",
             Self::LikelyHuman => "LIKELY HUMAN",
             Self::Inconclusive => "INCONCLUSIVE",
-            Self::Suspicious => "SUSPICIOUS",
-            Self::LikelySynthetic => "LIKELY SYNTHETIC",
+            Self::Suspicious => "INCONSISTENT EVIDENCE",
+            Self::LikelySynthetic => "PROCESS NOT VERIFIED",
         }
     }
 
@@ -115,8 +124,8 @@ impl Verdict {
             Self::VerifiedHuman => "Strong Constraint Indicators",
             Self::LikelyHuman => "Moderate Constraint Indicators",
             Self::Inconclusive => "Insufficient Evidence",
-            Self::Suspicious => "Anomalous Patterns Detected",
-            Self::LikelySynthetic => "Synthetic Generation Indicators",
+            Self::Suspicious => "Process Evidence Inconsistent",
+            Self::LikelySynthetic => "Insufficient Process Evidence",
         }
     }
 
@@ -312,6 +321,9 @@ pub struct ForensicBreakdown {
     pub repair_distant_pct: Option<f64>,
     pub cognitive_load_score: Option<f64>,
     pub revision_topology_score: Option<f64>,
+    pub detour_ratio: Option<f64>,
+    pub leading_edge_divergence: Option<f64>,
+    pub insertion_point_entropy: Option<f64>,
     pub error_ecology_score: Option<f64>,
     pub likelihood_p_cognitive: Option<f64>,
     pub composition_mode: Option<String>,

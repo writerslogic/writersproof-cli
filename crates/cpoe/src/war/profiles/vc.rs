@@ -108,6 +108,24 @@ pub struct VcForensicSignals {
     pub likelihood_p_cognitive: f64,
     #[serde(rename = "compositionModeScore")]
     pub composition_mode_score: f64,
+    #[serde(rename = "detourRatio")]
+    pub detour_ratio: f64,
+    #[serde(rename = "leadingEdgeDivergence")]
+    pub leading_edge_divergence: f64,
+    #[serde(rename = "insertionPointEntropy")]
+    pub insertion_point_entropy: f64,
+    #[serde(rename = "wordsPerMinute", default, skip_serializing_if = "Option::is_none")]
+    pub words_per_minute: Option<f64>,
+    #[serde(rename = "meanIkiMs", default, skip_serializing_if = "Option::is_none")]
+    pub mean_iki_ms: Option<f64>,
+    #[serde(rename = "correctionRatio", default, skip_serializing_if = "Option::is_none")]
+    pub correction_ratio: Option<f64>,
+    #[serde(rename = "keystrokeCount", default, skip_serializing_if = "Option::is_none")]
+    pub keystroke_count: Option<u64>,
+    #[serde(rename = "hurstExponent", default, skip_serializing_if = "Option::is_none")]
+    pub hurst_exponent: Option<f64>,
+    #[serde(rename = "forensicScore", default, skip_serializing_if = "Option::is_none")]
+    pub forensic_score: Option<f64>,
 }
 
 /// Evidence entry in the VC.
@@ -136,17 +154,34 @@ pub struct VcProof {
 
 /// Return the issuer DID for new VCs.
 ///
-/// Uses the WritersProof profile DID when a user is signed in
-/// (`did:web:writersproof.com:profile:{user_id}`), falling back to the
-/// organisation-level DID when no account is linked.
-fn issuer_did() -> String {
+/// Resolution order:
+/// 1. `did:webvh` identity if the `did-webvh` feature is enabled and a local
+///    identity exists (strongest: version-history-backed, non-repudiable).
+/// 2. WritersProof profile DID when a user is signed in
+///    (`did:web:writersproof.com:profile:{user_id}`).
+/// 3. Organisation-level `did:web:api.writersproof.com` fallback (resolves
+///    to `api.writersproof.com/.well-known/did.json`).
+pub fn issuer_did() -> String {
+    // 1. did:webvh (strongest, feature-gated)
+    #[cfg(feature = "did-webvh")]
+    {
+        if let Ok(did) = crate::identity::did_webvh::load_active_did() {
+            if did.starts_with("did:webvh:") {
+                return did;
+            }
+        }
+    }
+
+    // 2. User profile DID (signed-in user)
     let guard = crate::identity::PROFILE_DID.read().unwrap_or_else(|e| e.into_inner());
     if let Some(did) = guard.as_deref() {
         if !did.is_empty() {
             return did.to_string();
         }
     }
-    "did:web:writerslogic.com".to_string()
+
+    // 3. Organisation-level fallback
+    "did:web:api.writersproof.com".to_string()
 }
 
 /// Build the core VC fields from an EAR token (shared by all encoding paths).
@@ -428,6 +463,24 @@ impl VerifiableCredential {
         self.credential_subject.process_attestation.composition_mode = composition_mode;
         self.credential_subject.process_attestation.forensic_signals = signals;
     }
+
+    /// Set the credential status field pointing to a StatusList2021 credential.
+    ///
+    /// `status_list_index` is the row position in the bitstring (typically the
+    /// notarization row ID or a monotonic counter from `wp_notarizations`).
+    pub fn set_credential_status(&mut self, status_list_index: u64) {
+        self.credential_status = Some(CredentialStatus {
+            id: format!(
+                "https://api.writersproof.com/v1/credentials/status/default#{}",
+                status_list_index
+            ),
+            status_type: "BitstringStatusListEntry".to_string(),
+            status_purpose: "revocation".to_string(),
+            status_list_index: status_list_index.to_string(),
+            status_list_credential:
+                "https://api.writersproof.com/v1/credentials/status/default".to_string(),
+        });
+    }
 }
 
 #[cfg(test)]
@@ -490,7 +543,7 @@ mod tests {
         assert!(!cose_bytes.is_empty());
 
         let decoded = from_cose_secured_vc(&cose_bytes).expect("COSE decode");
-        assert_eq!(decoded.issuer, "did:web:writerslogic.com");
+        assert_eq!(decoded.issuer, "did:web:api.writersproof.com");
         assert_eq!(decoded.credential_subject.id, did);
         assert_eq!(decoded.credential_subject.subject_type, "Author");
         assert!(decoded.evidence.is_some());
@@ -591,6 +644,15 @@ mod tests {
             error_ecology_score: 0.91,
             likelihood_p_cognitive: 0.74,
             composition_mode_score: 0.88,
+            detour_ratio: 0.42,
+            leading_edge_divergence: 0.28,
+            insertion_point_entropy: 3.1,
+            words_per_minute: Some(42.0),
+            mean_iki_ms: Some(285.0),
+            correction_ratio: Some(0.07),
+            keystroke_count: Some(1200),
+            hurst_exponent: Some(0.72),
+            forensic_score: Some(0.85),
         };
 
         vc.enrich_forensic_signals(

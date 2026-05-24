@@ -46,6 +46,20 @@ where
     f(mgr)
 }
 
+/// Feed a keystroke into the fingerprint manager for style analysis and snapshots.
+/// Called from sentinel_inject after each keystroke event.
+pub(crate) fn feed_fingerprint_keystroke(
+    sample: &crate::jitter::SimpleJitterSample,
+    keycode: u16,
+    char_value: Option<char>,
+) {
+    let _ = with_manager(|mgr| {
+        mgr.record_activity_sample(sample);
+        mgr.record_keystroke_for_style(keycode, char_value);
+        Ok(())
+    });
+}
+
 /// Return fingerprint status: enabled flags and sample counts.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
@@ -55,6 +69,7 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
         style_consent: false,
         activity_enabled: false,
         activity_samples: 0,
+        maturity: "bootstrap".into(),
     }, {
     log::debug!("ffi_get_fingerprint_status");
     // Read live sample count from the global accumulator.
@@ -63,12 +78,20 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
         .sample_count() as u64;
     match with_manager(|mgr| {
         let status = mgr.status();
+        let activity = mgr.current_activity_fingerprint();
+        let cfg = &mgr.config();
+        let maturity = crate::fingerprint::FingerprintMaturity::from_session_count(
+            activity.session_signature.session_count,
+            cfg.bootstrap_sessions,
+            cfg.advisory_sessions,
+        );
         Ok(FfiFingerprintStatus {
             style_enabled: status.style_enabled,
             style_samples: status.style_samples as u64,
             style_consent: status.style_consent,
             activity_enabled: status.activity_enabled,
             activity_samples: live_activity_samples,
+            maturity: maturity.to_string().to_lowercase(),
         })
     }) {
         Ok(s) => s,
@@ -78,6 +101,7 @@ pub fn ffi_get_fingerprint_status() -> FfiFingerprintStatus {
             style_consent: false,
             activity_enabled: false,
             activity_samples: 0,
+            maturity: "bootstrap".into(),
         },
     }
     })
@@ -91,6 +115,10 @@ pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
         dimensions: vec![],
         quality_score: 0.0,
         total_samples: 0,
+        dimension_confidence: None,
+        circadian_pattern: Vec::new(),
+        zone_frequencies: Vec::new(),
+        zone_dwell_means: Vec::new(),
         error_message: Some("engine internal error".to_string()),
     }, {
     log::debug!("ffi_get_fingerprint_summary");
@@ -201,11 +229,27 @@ pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
         let quality_score = author.confidence;
         let total_samples = status.activity_samples as u64 + status.style_samples as u64;
 
+        let dc = &activity.dimension_confidence;
+        let dim_conf = super::types::FfiDimensionConfidence {
+            iki: dc.iki,
+            zone: dc.zone,
+            pause: dc.pause,
+            dwell: dc.dwell,
+            flight: dc.flight,
+            digraph: dc.digraph,
+            hurst: dc.hurst,
+            circadian: dc.circadian,
+        };
+
         Ok(FfiFingerprintSummary {
             success: true,
             dimensions,
             quality_score,
             total_samples,
+            dimension_confidence: Some(dim_conf),
+            circadian_pattern: activity.circadian_pattern.hourly_activity.to_vec(),
+            zone_frequencies: activity.zone_profile.zone_frequencies.to_vec(),
+            zone_dwell_means: activity.zone_profile.zone_dwell_means.to_vec(),
             error_message: None,
         })
     }) {
@@ -215,6 +259,10 @@ pub fn ffi_get_fingerprint_summary() -> FfiFingerprintSummary {
             dimensions: Vec::new(),
             quality_score: 0.0,
             total_samples: 0,
+            dimension_confidence: None,
+            circadian_pattern: Vec::new(),
+            zone_frequencies: Vec::new(),
+            zone_dwell_means: Vec::new(),
             error_message: Some(e),
         },
     }
@@ -363,7 +411,7 @@ pub fn ffi_verify_fingerprint_match(
             success: true,
             similarity: result.similarity,
             match_probability: result.match_probability(),
-            verdict: format!("{:?}", result.verdict),
+            verdict: result.verdict.to_string(),
             verdict_description: result.verdict.description().to_string(),
             components,
             error_message: None,

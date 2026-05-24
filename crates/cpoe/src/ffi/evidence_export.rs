@@ -41,7 +41,9 @@ pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> F
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiResult {
     log::debug!("ffi_export_evidence: path={} tier={} output={}", path, tier, output);
-    export_evidence_inner(path, tier, output, None, None)
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        super::types::run_on_stack(move || export_evidence_inner(path, tier, output, None, None))
+    })
 }
 
 /// Export stored events for a file within a date range as a CBOR evidence packet.
@@ -55,7 +57,9 @@ pub fn ffi_export_evidence_range(
     end_ns: i64,
 ) -> FfiResult {
     log::debug!("ffi_export_evidence_range: path={} tier={} output={} start_ns={} end_ns={}", path, tier, output, start_ns, end_ns);
-    export_evidence_inner(path, tier, output, Some(start_ns), Some(end_ns))
+    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+        super::types::run_on_stack(move || export_evidence_inner(path, tier, output, Some(start_ns), Some(end_ns)))
+    })
 }
 
 /// Build an [`EvidencePacketWire`] from stored events, encode to CBOR, and sign.
@@ -1142,7 +1146,7 @@ fn build_forensic_summary(
         snr_db: metrics.snr.as_ref().map(|s| s.snr_db),
         lyapunov_exponent: metrics.lyapunov.as_ref().map(|l| l.exponent),
         transcription_suspicious: metrics.transcription_suspicion.as_ref().is_some_and(|t| t.is_suspicious),
-        composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| format!("{:?}", m))),
+        composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| m.to_string())),
     })
 }
 

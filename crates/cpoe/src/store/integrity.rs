@@ -7,6 +7,12 @@ use anyhow::anyhow;
 use rusqlite::params;
 use subtle::ConstantTimeEq;
 
+/// Current schema version. Bump this whenever a migration is added.
+/// On open, if the on-disk version is higher than this, the database was
+/// created by a newer app version and we refuse to open it to prevent
+/// silent data corruption from unrecognized schema changes.
+const SCHEMA_VERSION: i64 = 13;
+
 const KNOWN_TABLES: &[&str] = &[
     "integrity",
     "secure_events",
@@ -37,6 +43,17 @@ fn has_column(conn: &rusqlite::Connection, table: &str, col: &str) -> anyhow::Re
 
 impl SecureStore {
     pub(crate) fn init_schema(&self) -> anyhow::Result<()> {
+        let on_disk_version: i64 =
+            self.conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if on_disk_version > SCHEMA_VERSION {
+            anyhow::bail!(
+                "Database schema version {} is newer than this app supports ({}). \
+                 Upgrade the app or use the version that created this database.",
+                on_disk_version,
+                SCHEMA_VERSION
+            );
+        }
+
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS integrity (
                 id                      INTEGER PRIMARY KEY CHECK (id = 1),
@@ -355,6 +372,12 @@ impl SecureStore {
             CREATE INDEX IF NOT EXISTS idx_manifest_registry_simhash
                 ON manifest_registry(document_simhash);",
         )?;
+
+        if on_disk_version < SCHEMA_VERSION {
+            self.conn.execute_batch(&format!(
+                "PRAGMA user_version={SCHEMA_VERSION};"
+            ))?;
+        }
 
         Ok(())
     }

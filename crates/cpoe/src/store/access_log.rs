@@ -122,8 +122,12 @@ impl AccessLog {
         if journal_mode.to_lowercase() != "wal" {
             log::warn!("access_log db: requested WAL but got '{journal_mode}' journal mode");
         }
-        conn.execute_batch("PRAGMA synchronous=FULL;")?;
-        conn.execute_batch(&format!("PRAGMA busy_timeout={};", super::BUSY_TIMEOUT_MS))?;
+        conn.execute_batch(&format!(
+            "PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; \
+             PRAGMA secure_delete=ON; \
+             PRAGMA busy_timeout={};",
+            super::BUSY_TIMEOUT_MS
+        ))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS access_log (

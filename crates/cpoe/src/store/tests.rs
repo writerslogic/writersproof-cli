@@ -410,3 +410,87 @@ fn test_event_ordering() {
         assert!(events[i].id > events[i - 1].id);
     }
 }
+
+#[test]
+fn test_file_lock_prevents_concurrent_open() {
+    let dir = TempDir::new().expect("create temp dir");
+    let db_path = dir.path().join("locked.db");
+
+    let _store1 = SecureStore::open(&db_path, test_hmac_key()).expect("first open");
+
+    let result = SecureStore::open(&db_path, test_hmac_key());
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("locked by another process"),
+        "expected lock error, got: {msg}"
+    );
+}
+
+#[test]
+fn test_file_lock_released_on_drop() {
+    let dir = TempDir::new().expect("create temp dir");
+    let db_path = dir.path().join("relock.db");
+
+    let store = SecureStore::open(&db_path, test_hmac_key()).expect("first open");
+    drop(store);
+
+    let _store2 = SecureStore::open(&db_path, test_hmac_key()).expect("reopen after drop");
+}
+
+#[test]
+fn test_schema_version_rejects_future() {
+    let dir = TempDir::new().expect("create temp dir");
+    let db_path = dir.path().join("future_schema.db");
+
+    {
+        let store = SecureStore::open(&db_path, test_hmac_key()).expect("initial open");
+        store
+            .conn
+            .execute_batch("PRAGMA user_version=9999;")
+            .expect("set future version");
+        drop(store);
+    }
+
+    let result = SecureStore::open(&db_path, test_hmac_key());
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("newer than this app supports"),
+        "expected version error, got: {msg}"
+    );
+}
+
+#[test]
+fn test_schema_version_set_after_init() {
+    let dir = TempDir::new().expect("create temp dir");
+    let db_path = dir.path().join("version_check.db");
+
+    let store = SecureStore::open(&db_path, test_hmac_key()).expect("open");
+    let version: i64 = store
+        .conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .expect("read version");
+    assert!(version > 0, "user_version should be set after init");
+}
+
+#[test]
+fn test_secure_delete_enabled() {
+    let dir = TempDir::new().expect("create temp dir");
+    let db_path = dir.path().join("secure_del.db");
+
+    let store = SecureStore::open(&db_path, test_hmac_key()).expect("open");
+    let secure_delete: i64 = store
+        .conn
+        .query_row("PRAGMA secure_delete", [], |row| row.get(0))
+        .expect("read secure_delete");
+    assert_eq!(secure_delete, 1, "secure_delete should be ON");
+}
+
+#[test]
+fn test_check_disk_space_succeeds_on_tmpdir() {
+    let dir = TempDir::new().expect("create temp dir");
+    let result = check_disk_space(dir.path());
+    assert!(result.is_ok(), "disk space check should pass on tmpdir");
+    assert!(result.unwrap() > 0);
+}

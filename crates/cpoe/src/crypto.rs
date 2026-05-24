@@ -48,7 +48,7 @@ pub fn hash_file_with_size(path: &Path) -> std::io::Result<([u8; 32], u64)> {
             ),
         ));
     }
-    hash_file_handle(file)
+    hash_file_handle(&file)
 }
 
 fn hash_package_dir(dir: &Path) -> std::io::Result<([u8; 32], u64)> {
@@ -85,9 +85,14 @@ fn hash_package_dir(dir: &Path) -> std::io::Result<([u8; 32], u64)> {
 }
 
 /// Compute SHA-256 hash from an already-opened file handle, returning (hash, bytes_read).
-/// Use this when you need metadata from the same handle to avoid TOCTOU races.
-pub fn hash_file_handle(file: File) -> std::io::Result<([u8; 32], u64)> {
+///
+/// The handle is seeked to the start before reading and is NOT consumed,
+/// so the caller can hold it open through subsequent operations to prevent
+/// TOCTOU races (another process modifying the file between hash and store).
+pub fn hash_file_handle(file: &File) -> std::io::Result<([u8; 32], u64)> {
+    use std::io::Seek;
     let mut reader = BufReader::new(file);
+    reader.seek(std::io::SeekFrom::Start(0))?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 65536];
     let mut total_bytes: u64 = 0;
@@ -189,6 +194,24 @@ pub fn derive_hmac_key(priv_key_seed: &[u8]) -> Zeroizing<Vec<u8>> {
     hasher.update(b"cpoe-hmac-key-v1");
     hasher.update(priv_key_seed);
     Zeroizing::new(hasher.finalize().to_vec())
+}
+
+/// Derive a purpose-specific HMAC key from a signing key via HKDF-SHA256.
+///
+/// Each purpose gets a cryptographically independent key, so compromising one
+/// store's HMAC key does not affect the others. The `purpose` string is used
+/// as the HKDF info parameter for domain separation.
+pub fn derive_hmac_key_for_purpose(
+    signing_key: &ed25519_dalek::SigningKey,
+    purpose: &str,
+) -> Zeroizing<Vec<u8>> {
+    let mut key_bytes = Zeroizing::new(signing_key.to_bytes().to_vec());
+    let hk = Hkdf::<Sha256>::new(Some(b"cpoe-hmac-key-derive-v2"), &key_bytes);
+    let mut okm = Zeroizing::new(vec![0u8; 32]);
+    hk.expand(purpose.as_bytes(), &mut okm)
+        .expect("32 bytes is a valid HKDF-SHA256 output length");
+    key_bytes.zeroize();
+    okm
 }
 
 /// Derive PRK per draft-condrey-rats-pop §5.3:
@@ -615,6 +638,32 @@ mod tests {
         let k1 = derive_hmac_key(b"seed-alpha-padded!");
         let k2 = derive_hmac_key(b"seed-bravo-padded!");
         assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn derive_hmac_key_for_purpose_deterministic() {
+        let sk = ed25519_dalek::SigningKey::from_bytes(&[0x42; 32]);
+        let k1 = derive_hmac_key_for_purpose(&sk, "events");
+        let k2 = derive_hmac_key_for_purpose(&sk, "events");
+        assert_eq!(k1, k2);
+        assert_eq!(k1.len(), 32);
+    }
+
+    #[test]
+    fn derive_hmac_key_for_purpose_different_purposes_differ() {
+        let sk = ed25519_dalek::SigningKey::from_bytes(&[0x42; 32]);
+        let k_events = derive_hmac_key_for_purpose(&sk, "events");
+        let k_access = derive_hmac_key_for_purpose(&sk, "access-log");
+        assert_ne!(k_events, k_access);
+    }
+
+    #[test]
+    fn derive_hmac_key_for_purpose_differs_from_legacy() {
+        let seed = [0x42; 32];
+        let sk = ed25519_dalek::SigningKey::from_bytes(&seed);
+        let legacy = derive_hmac_key(&seed);
+        let purpose = derive_hmac_key_for_purpose(&sk, "events");
+        assert_ne!(legacy.as_slice(), purpose.as_slice());
     }
 
     #[test]

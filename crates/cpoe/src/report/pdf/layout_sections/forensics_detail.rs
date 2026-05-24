@@ -163,6 +163,52 @@ pub fn draw_forensics_page(
             text(layer, value, 9.0, cx + 3.0, cy - 9.0, &fonts.bold, BLACK);
         }
         y -= 2.0 * (card_h + 2.0) + 7.0;
+
+        // ── Enhanced Signal Scores ──
+        let has_enhanced = fm.cognitive_load_score.is_some()
+            || fm.revision_topology_score.is_some()
+            || fm.detour_ratio.is_some();
+        if has_enhanced && y > 60.0 {
+            text(layer, "Enhanced Signal Scores", 10.0, MARGIN_LEFT, y, &fonts.bold, BLACK);
+            y -= 7.0;
+
+            let mut signal_cards: Vec<(&str, String)> = Vec::new();
+            if let Some(s) = fm.cognitive_load_score {
+                signal_cards.push(("Cognitive Load", format!("{:.0}%", s * 100.0)));
+            }
+            if let Some(s) = fm.revision_topology_score {
+                signal_cards.push(("Revision Topology", format!("{:.0}%", s * 100.0)));
+            }
+            if let Some(d) = fm.detour_ratio {
+                signal_cards.push(("Detour Ratio", format!("{:.3}", d)));
+            }
+            if let Some(l) = fm.leading_edge_divergence {
+                signal_cards.push(("Leading-Edge Div.", format!("{:.1}%", l * 100.0)));
+            }
+            if let Some(e) = fm.insertion_point_entropy {
+                signal_cards.push(("Insertion Entropy", format!("{:.2} bits", e)));
+            }
+            if let Some(s) = fm.error_ecology_score {
+                signal_cards.push(("Error Ecology", format!("{:.0}%", s * 100.0)));
+            }
+            if let Some(p) = fm.likelihood_p_cognitive {
+                signal_cards.push(("P(Cognitive)", format!("{:.0}%", p * 100.0)));
+            }
+
+            let sig_card_w = (CONTENT_WIDTH - 4.0) / 3.0;
+            let sig_card_h = 14.0;
+            for (i, (label, value)) in signal_cards.iter().enumerate() {
+                let col = i % 3;
+                let row = i / 3;
+                let cx = MARGIN_LEFT + col as f32 * (sig_card_w + 2.0);
+                let cy = y - row as f32 * (sig_card_h + 2.0);
+                draw_card(layer, cx, cy - sig_card_h, sig_card_w, sig_card_h);
+                text(layer, label, 6.0, cx + 3.0, cy - 3.0, &fonts.bold, GRAY);
+                text(layer, value, 9.0, cx + 3.0, cy - 9.0, &fonts.bold, BLACK);
+            }
+            let rows = signal_cards.len().div_ceil(3);
+            y -= rows as f32 * (sig_card_h + 2.0) + 7.0;
+        }
     }
 
     // ── Edit Topology ──

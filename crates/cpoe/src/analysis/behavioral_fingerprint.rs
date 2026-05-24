@@ -55,6 +55,18 @@ pub enum ForgeryFlag {
     NoFatiguePattern,
 }
 
+impl std::fmt::Display for ForgeryFlag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooRegular { cv } => write!(f, "Too Regular (CV: {cv:.3})"),
+            Self::WrongSkewness { skewness } => write!(f, "Wrong Skewness ({skewness:.3})"),
+            Self::MissingMicroPauses => write!(f, "Missing Micro-Pauses"),
+            Self::SuperhumanSpeed { count } => write!(f, "Superhuman Speed ({count} bursts)"),
+            Self::NoFatiguePattern => write!(f, "No Fatigue Pattern"),
+        }
+    }
+}
+
 fn interval_ms(a: &SimpleJitterSample, b: &SimpleJitterSample) -> f64 {
     crate::utils::ns_to_ms(b.timestamp_ns.saturating_sub(a.timestamp_ns))
 }

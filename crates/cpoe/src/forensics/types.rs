@@ -43,10 +43,6 @@ pub const THRESHOLD_TIMING_ENTROPY: f64 = 3.0;
 pub const THRESHOLD_REVISION_ENTROPY: f64 = 3.0;
 pub const THRESHOLD_PAUSE_ENTROPY: f64 = 2.0;
 
-/// Below this edit entropy, non-human editing is suspected.
-/// General floor; see per-type thresholds above for spec-compliant checking.
-pub const THRESHOLD_LOW_ENTROPY: f64 = 2.0;
-
 /// Bytes/sec above which velocity is flagged as anomalous.
 pub const THRESHOLD_HIGH_VELOCITY_BPS: f64 = 100.0;
 

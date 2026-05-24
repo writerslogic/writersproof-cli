@@ -234,6 +234,7 @@ pub fn handle_focus_event_sync(
                             session.path = doc_path.clone();
                             session.evidence_confidence =
                                 super::types::EvidenceConfidence::Full;
+                            session.confidence_reason = None;
                             sessions_map.insert(doc_path.clone(), session);
                         }
                     }
@@ -418,7 +419,7 @@ pub fn focus_document_sync(
                 Ok(file) => match file.metadata() {
                     Ok(meta) if meta.len() <= MAX_HASH_FILE_SIZE => {
                         let mtime = meta.modified().ok();
-                        let h = crate::crypto::hash_file_handle(file)
+                        let h = crate::crypto::hash_file_handle(&file)
                             .ok()
                             .map(|(h, _)| hex::encode(h));
                         (h, mtime)
@@ -463,14 +464,19 @@ pub fn focus_document_sync(
                 session.origin_temp_path = Some(session.path.clone());
             }
 
-            session.evidence_confidence =
-                if path.starts_with("title://") || path.starts_with("shadow://") {
-                    super::types::EvidenceConfidence::Partial
-                } else if super::app_registry::lookup(&event.app_bundle_id).is_none() {
-                    super::types::EvidenceConfidence::Heuristic
-                } else {
-                    super::types::EvidenceConfidence::Full
-                };
+            if path.starts_with("title://") {
+                session.evidence_confidence = super::types::EvidenceConfidence::Partial;
+                session.confidence_reason =
+                    Some("document path inferred from window title".into());
+            } else if path.starts_with("shadow://") {
+                session.evidence_confidence = super::types::EvidenceConfidence::Partial;
+                session.confidence_reason =
+                    Some("document identified via CGWindowList, not AX".into());
+            } else if !super::app_registry::is_known(&event.app_bundle_id) {
+                session.evidence_confidence = super::types::EvidenceConfidence::Heuristic;
+                session.confidence_reason =
+                    Some("unknown app, no storage metadata available".into());
+            }
 
             if let Some(ref hash) = pre_hash {
                 session.initial_hash = Some(hash.clone());
@@ -1066,7 +1072,7 @@ pub fn compute_file_hash(path: &str) -> std::io::Result<String> {
             ),
         ));
     }
-    let (hash, _) = crate::crypto::hash_file_handle(file)?;
+    let (hash, _) = crate::crypto::hash_file_handle(&file)?;
     Ok(hex::encode(hash))
 }
 
@@ -1548,9 +1554,20 @@ pub(super) fn capture_git_context(
 
     // Run on a dedicated thread with a wall-clock deadline so slow git
     // operations cannot block the checkpoint path indefinitely.
-    let handle = std::thread::spawn(move || {
-        capture_git_context_inner(&file_path_owned, &git_root_owned)
-    });
+    let handle = std::thread::Builder::new()
+        .name("cpoe-git-ctx".into())
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || {
+            capture_git_context_inner(&file_path_owned, &git_root_owned)
+        });
+
+    let handle = match handle {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("cpoe-git-ctx thread spawn failed: {e}");
+            return None;
+        }
+    };
 
     // Bounded wait: abandon the thread after GIT_COMMAND_TIMEOUT if it hasn't
     // returned. The orphaned thread will eventually finish or be reclaimed on
@@ -1717,10 +1734,13 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
             }
         }
     };
+    // Hash the file while holding the handle open. The handle stays alive
+    // through the SQLite transaction to prevent another process from modifying
+    // the file between hash and store (TOCTOU closure).
     let content_hash = if let Some(h) = content_hash_override {
         h
     } else {
-        match crate::crypto::hash_file_handle(file.expect("file must be Some when no override")) {
+        match crate::crypto::hash_file_handle(file.as_ref().expect("file must be Some when no override")) {
             Ok((h, _)) => h,
             Err(e) => {
                 log::debug!("Auto-checkpoint hash failed for {path}: {e}");
@@ -1769,7 +1789,15 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     event.semantic_summary = semantic_summary;
     let sk_guard = signing_key.read_recover();
     let sk_opt = sk_guard.key();
-    match store.add_secure_event_with_signer(&mut event, sk_opt.as_ref()) {
+    let result = store.add_secure_event_with_signer(&mut event, sk_opt.as_ref());
+
+    // File handle drops here — after the SQLite transaction has committed.
+    // This closes the TOCTOU window: the file content that was hashed is
+    // guaranteed to be the same content that was on disk during the entire
+    // hash→sign→write sequence.
+    drop(file);
+
+    match result {
         Ok(_) => {
             log::info!("Auto-checkpoint committed for {path} ({reason})");
             Some(event.event_hash)

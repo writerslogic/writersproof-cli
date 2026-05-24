@@ -487,3 +487,27 @@ fn get_nonexistent_snapshot() {
     let store = open_test_store(&dir);
     assert!(store.get(9999).is_err());
 }
+
+#[test]
+fn lock_prevents_concurrent_open() {
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("locked_snap.db");
+    let _store1 = SnapshotStore::open(&db_path, &test_signing_key()).unwrap();
+
+    let result = SnapshotStore::open(&db_path, &test_signing_key());
+    assert!(result.is_err());
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("locked by another process"),
+        "expected lock error, got: {msg}"
+    );
+}
+
+#[test]
+fn lock_released_on_drop() {
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("relock_snap.db");
+    let store = SnapshotStore::open(&db_path, &test_signing_key()).unwrap();
+    drop(store);
+    let _store2 = SnapshotStore::open(&db_path, &test_signing_key()).unwrap();
+}

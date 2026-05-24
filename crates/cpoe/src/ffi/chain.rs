@@ -31,6 +31,8 @@ pub struct FfiChainSummary {
     pub final_content_hash: Option<String>,
     pub chain_valid: Option<bool>,
     pub checkpoints: Vec<FfiCheckpointDetail>,
+    /// "Legacy" (WAR/1.0) or "Entangled" (WAR/1.1).
+    pub entanglement_mode: String,
     pub error_message: Option<String>,
 }
 
@@ -46,6 +48,7 @@ pub fn ffi_get_checkpoint_chain(path: String) -> FfiChainSummary {
         final_content_hash: None,
         chain_valid: None,
         checkpoints: vec![],
+        entanglement_mode: "Legacy".into(),
         error_message: Some("engine internal error".to_string()),
     }, {
     log::debug!("ffi_get_checkpoint_chain: path={}", path);
@@ -59,6 +62,7 @@ pub fn ffi_get_checkpoint_chain(path: String) -> FfiChainSummary {
         final_content_hash: None,
         chain_valid: None,
         checkpoints: vec![],
+        entanglement_mode: "Legacy".into(),
         error_message: Some(msg),
     };
 
@@ -112,6 +116,11 @@ pub fn ffi_get_checkpoint_chain(path: String) -> FfiChainSummary {
         });
     }
 
+    // Entangled if any checkpoint has both VDF iterations and jitter input binding.
+    let is_entangled = events
+        .iter()
+        .any(|e| e.vdf_iterations > 0 && e.vdf_input.is_some());
+
     FfiChainSummary {
         success: true,
         document_path: canonical,
@@ -122,6 +131,7 @@ pub fn ffi_get_checkpoint_chain(path: String) -> FfiChainSummary {
         final_content_hash,
         chain_valid: Some(chain_valid),
         checkpoints,
+        entanglement_mode: if is_entangled { "Entangled" } else { "Legacy" }.into(),
         error_message: None,
     }
     })

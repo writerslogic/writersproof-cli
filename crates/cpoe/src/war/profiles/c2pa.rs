@@ -43,6 +43,47 @@ pub struct C2paAssertionData {
     #[serde(rename = "dc:format", skip_serializing_if = "Option::is_none")]
     pub dc_format: Option<String>,
     pub verifier_id: VerifierIdJson,
+    #[serde(rename = "writingMode", skip_serializing_if = "Option::is_none")]
+    pub writing_mode: Option<String>,
+    #[serde(rename = "compositionMode", skip_serializing_if = "Option::is_none")]
+    pub composition_mode: Option<String>,
+    #[serde(rename = "forensicSignals", skip_serializing_if = "Option::is_none")]
+    pub forensic_signals: Option<C2paForensicSignals>,
+}
+
+/// Per-dimension forensic signal scores in the C2PA assertion JSON sidecar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C2paForensicSignals {
+    #[serde(rename = "cognitiveLoad")]
+    pub cognitive_load: f64,
+    #[serde(rename = "revisionTopology")]
+    pub revision_topology: f64,
+    #[serde(rename = "errorEcology")]
+    pub error_ecology: f64,
+    #[serde(rename = "likelihoodModel")]
+    pub likelihood_model: f64,
+    #[serde(rename = "compositionMode")]
+    pub composition_mode: f64,
+    #[serde(rename = "detourRatio")]
+    pub detour_ratio: f64,
+    #[serde(rename = "leadingEdgeDivergence")]
+    pub leading_edge_divergence: f64,
+    #[serde(rename = "insertionPointEntropy")]
+    pub insertion_point_entropy: f64,
+}
+
+impl C2paAssertion {
+    /// Enrich the assertion with forensic signal scores computed from events.
+    pub fn enrich_forensic_signals(
+        &mut self,
+        writing_mode: Option<String>,
+        composition_mode: Option<String>,
+        signals: Option<C2paForensicSignals>,
+    ) {
+        self.data.writing_mode = writing_mode;
+        self.data.composition_mode = composition_mode;
+        self.data.forensic_signals = signals;
+    }
 }
 
 /// JSON representation of seal for C2PA.
@@ -111,6 +152,9 @@ pub fn to_c2pa_assertion(ear: &EarToken) -> Result<C2paAssertion> {
             process_start: appr.pop_process_start.clone(),
             process_end: appr.pop_process_end.clone(),
             dc_format: None, // Set by caller based on asset file extension
+            writing_mode: None,
+            composition_mode: None,
+            forensic_signals: None,
             verifier_id: VerifierIdJson {
                 build: ear.ear_verifier_id.build.clone(),
                 developer: ear.ear_verifier_id.developer.clone(),

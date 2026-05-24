@@ -74,6 +74,8 @@ impl SecureStore {
             anyhow::bail!("archive age_days must be > 0");
         }
 
+        super::check_disk_space(db_path)?;
+
         let cutoff = chrono::Utc::now() - chrono::Duration::days(i64::from(age_days));
         let cutoff_ns = cutoff.timestamp_nanos_safe();
 
@@ -365,7 +367,9 @@ impl SecureStore {
             log::warn!("archive db: requested WAL but got '{journal_mode}' journal mode");
         }
         archive_conn.execute_batch(
-            "PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
+            "PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; \
+             PRAGMA secure_delete=ON; PRAGMA foreign_keys=ON; \
+             PRAGMA busy_timeout=5000;",
         )?;
 
         archive_conn.execute_batch(

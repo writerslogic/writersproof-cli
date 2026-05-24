@@ -47,6 +47,7 @@ fn tier_color(tier: &str) -> (f32, f32, f32) {
 
 fn verdict_color(verdict: &Verdict) -> (f32, f32, f32) {
     match verdict {
+        Verdict::InsufficientData => (0.46, 0.46, 0.46),
         Verdict::VerifiedHuman => (0.18, 0.49, 0.20),
         Verdict::LikelyHuman => (0.34, 0.55, 0.18),
         Verdict::Inconclusive => (0.96, 0.50, 0.09),

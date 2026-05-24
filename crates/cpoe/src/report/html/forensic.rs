@@ -297,6 +297,15 @@ fn build_advanced_forensics(fm: Option<&ForensicBreakdown>) -> String {
         if let Some(s) = fm.revision_topology_score {
             let _ = write!(out, "<tr><td>Revision Topology</td><td class=\"r mono\">{:.0}%</td></tr>", s * 100.0);
         }
+        if let Some(d) = fm.detour_ratio {
+            let _ = write!(out, "<tr><td>Detour Ratio</td><td class=\"r mono\">{:.3}</td></tr>", d);
+        }
+        if let Some(l) = fm.leading_edge_divergence {
+            let _ = write!(out, "<tr><td>Leading-Edge Divergence</td><td class=\"r mono\">{:.1}%</td></tr>", l * 100.0);
+        }
+        if let Some(e) = fm.insertion_point_entropy {
+            let _ = write!(out, "<tr><td>Insertion Point Entropy</td><td class=\"r mono\">{:.2} bits</td></tr>", e);
+        }
         if let Some(s) = fm.error_ecology_score {
             let _ = write!(out, "<tr><td>Error Ecology</td><td class=\"r mono\">{:.0}%</td></tr>", s * 100.0);
         }

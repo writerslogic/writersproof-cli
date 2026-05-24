@@ -106,7 +106,10 @@ impl EventTapRunner {
         let tap_resources: Arc<Mutex<Option<EventTapResources>>> = Arc::new(Mutex::new(None));
         let tap_resources_clone = Arc::clone(&tap_resources);
 
-        let thread = std::thread::spawn(move || {
+        let thread = std::thread::Builder::new()
+            .name("cpoe-eventtap".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
             // SAFETY: `tap_cb` lives on this thread's stack frame. The raw pointer
             // passed to CGEventTapCreate is only dereferenced by the run loop on
             // this same thread. CFRunLoopRun() blocks until CFRunLoopStop() is
@@ -155,6 +158,14 @@ impl EventTapRunner {
                 CFRunLoopRun();
             }
         });
+
+        let thread = match thread {
+            Ok(h) => h,
+            Err(e) => {
+                log::error!("cpoe-eventtap thread spawn failed: {e}");
+                return Err(anyhow!("cpoe-eventtap thread spawn failed: {e}"));
+            }
+        };
 
         match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(Ok(())) => Ok(Self {

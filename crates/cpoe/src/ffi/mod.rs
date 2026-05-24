@@ -16,6 +16,7 @@ pub mod evidence_checkpoint;
 pub mod evidence_derivative;
 pub mod evidence_export;
 pub mod fingerprint;
+pub mod forensic_fields;
 pub mod forensics;
 pub mod forensics_detail;
 pub mod helpers;

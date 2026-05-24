@@ -134,6 +134,15 @@ fn is_document_path(path: &Path) -> bool {
     }
 }
 
+/// Return the current working directory of a process by PID.
+///
+/// On macOS uses `proc_pidinfo(PROC_PIDVNODEPATHINFO)`; on Linux reads
+/// `/proc/<pid>/cwd`. Returns `None` when the PID is invalid or the
+/// platform call fails (e.g. sandboxed, insufficient permissions).
+pub fn cwd_for_pid(pid: u32) -> Option<PathBuf> {
+    cwd_for_pid_platform(pid)
+}
+
 // ---------------------------------------------------------------------------
 // macOS implementation using libproc
 // ---------------------------------------------------------------------------
@@ -143,6 +152,7 @@ mod ffi_defs {
     use libc::{c_int, c_void};
 
     pub const PROC_PIDLISTFDS: c_int = 1;
+    pub const PROC_PIDVNODEPATHINFO: c_int = 9;
     pub const PROX_FDTYPE_VNODE: u32 = 1;
     pub const PROC_PIDFDVNODEPATHINFO: c_int = 2;
 
@@ -176,6 +186,19 @@ mod ffi_defs {
         pub pfi: proc_fileinfo,
         pub _vip_vi: [u8; 64], // vnode_info (opaque; we don't inspect it)
         pub vip_path: [u8; 1024],
+    }
+
+    // proc_vnodepathinfo: contains the cwd and root vnode paths.
+    // sizeof(vnode_info) = 152, MAXPATHLEN = 1024.
+    // sizeof(vnode_info_path) = 152 + 1024 = 1176.
+    // sizeof(proc_vnodepathinfo) = 1176 * 2 = 2352.
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct proc_vnodepathinfo {
+        pub pvi_cdir_vi: [u8; 152],      // vnode_info (opaque)
+        pub pvi_cdir_path: [u8; 1024],   // cwd path
+        pub pvi_rdir_vi: [u8; 152],      // vnode_info (opaque)
+        pub pvi_rdir_path: [u8; 1024],   // root path
     }
 
     extern "C" {
@@ -304,6 +327,33 @@ fn enumerate_fds_platform(pid: u32) -> Vec<OpenFile> {
     results
 }
 
+#[cfg(target_os = "macos")]
+fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
+    use self::ffi_defs::*;
+    use std::mem;
+
+    const _: () = assert!(mem::size_of::<proc_vnodepathinfo>() == 2352);
+    let mut info: proc_vnodepathinfo = unsafe { mem::zeroed() };
+    let ret = unsafe {
+        proc_pidinfo(
+            pid as i32,
+            PROC_PIDVNODEPATHINFO,
+            0,
+            &mut info as *mut _ as *mut libc::c_void,
+            mem::size_of::<proc_vnodepathinfo>() as i32,
+        )
+    };
+    if ret < mem::size_of::<proc_vnodepathinfo>() as i32 {
+        return None;
+    }
+    let end = info.pvi_cdir_path.iter().position(|&b| b == 0).unwrap_or(0);
+    if end == 0 {
+        return None;
+    }
+    let path_str = std::str::from_utf8(&info.pvi_cdir_path[..end]).ok()?;
+    Some(PathBuf::from(path_str))
+}
+
 // ---------------------------------------------------------------------------
 // Linux implementation via /proc
 // ---------------------------------------------------------------------------
@@ -375,6 +425,15 @@ fn enumerate_fds_platform(pid: u32) -> Vec<OpenFile> {
 }
 
 // ---------------------------------------------------------------------------
+// Linux cwd via /proc
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "linux")]
+fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
+    std::fs::read_link(format!("/proc/{}/cwd", pid)).ok()
+}
+
+// ---------------------------------------------------------------------------
 // Windows stub
 // ---------------------------------------------------------------------------
 
@@ -385,10 +444,20 @@ fn enumerate_fds_platform(_pid: u32) -> Vec<OpenFile> {
     Vec::new()
 }
 
+#[cfg(target_os = "windows")]
+fn cwd_for_pid_platform(_pid: u32) -> Option<PathBuf> {
+    None
+}
+
 // Fallback for other platforms (should not occur in practice).
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 fn enumerate_fds_platform(_pid: u32) -> Vec<OpenFile> {
     Vec::new()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn cwd_for_pid_platform(_pid: u32) -> Option<PathBuf> {
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -557,5 +626,13 @@ mod tests {
                 cache.remove(&pid);
             }
         }
+    }
+
+    #[test]
+    fn test_cwd_for_self() {
+        let pid = std::process::id();
+        let cwd = cwd_for_pid(pid);
+        let expected = std::env::current_dir().ok();
+        assert_eq!(cwd, expected, "cwd_for_pid should match current_dir()");
     }
 }

@@ -37,6 +37,22 @@ pub struct FfiWarReport {
     pub limitations: Vec<String>,
     pub guilloche_seed_hex: String,
     pub provenance: Option<FfiProvenanceBreakdown>,
+    pub document_words: Option<u64>,
+    pub document_sentences: Option<u64>,
+    pub document_paragraphs: Option<u64>,
+    pub writing_flow: Vec<FfiFlowDataPoint>,
+    pub edit_topology: Vec<FfiEditRegion>,
+    pub activity_contexts: Vec<FfiActivityContext>,
+    pub anomalies: Vec<FfiReportAnomaly>,
+    pub declaration_summary: Option<FfiDeclarationInfo>,
+    pub key_hierarchy_summary: Option<FfiKeyHierarchyInfo>,
+    pub physical_context: Option<FfiPhysicalContextInfo>,
+    pub beacon_info: Option<FfiBeaconInfo>,
+    pub author_did: Option<String>,
+    pub verifiable_credential_json: Option<String>,
+    pub is_sample: bool,
+    pub evidence_hash: Option<String>,
+    pub methodology: Option<FfiStatisticalMethodology>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,14 +109,18 @@ pub struct FfiProcessEvidence {
     pub swf_chain_verified: bool,
     pub swf_backdating_hours: Option<f64>,
     pub revision_intensity: Option<f64>,
+    pub revision_baseline: Option<String>,
     pub pause_median_sec: Option<f64>,
     pub pause_p95_sec: Option<f64>,
+    pub pause_max_sec: Option<f64>,
     pub paste_ratio_pct: Option<f64>,
+    pub paste_max_chars: Option<u64>,
     pub iki_cv: Option<f64>,
     pub bigram_consistency: Option<f64>,
     pub total_keystrokes: Option<u64>,
     pub deletion_sequences: Option<u64>,
     pub avg_deletion_length: Option<f64>,
+    pub select_delete_ops: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -136,9 +156,103 @@ pub struct FfiDimensionScore {
     pub name: String,
     pub score: u32,
     pub lr: f64,
+    pub log_lr: f64,
     pub confidence: f64,
     pub key_discriminator: String,
     pub color: String,
+    pub analysis: Vec<FfiDimensionDetail>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiDimensionDetail {
+    pub label: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiFlowDataPoint {
+    pub offset_min: f64,
+    pub intensity: f64,
+    pub phase: String,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiEditRegion {
+    pub start_pct: f64,
+    pub end_pct: f64,
+    pub delta_sign: i32,
+    pub byte_count: i64,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiActivityContext {
+    pub period_type: String,
+    pub start_epoch_ms: i64,
+    pub end_epoch_ms: i64,
+    pub duration_min: f64,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiReportAnomaly {
+    pub anomaly_type: String,
+    pub description: String,
+    pub severity: String,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiDeclarationInfo {
+    pub statement: String,
+    pub title: String,
+    pub ai_tools: Vec<String>,
+    pub input_modalities: Vec<String>,
+    pub collaborator_count: u32,
+    pub signature_valid: bool,
+    pub created_at_epoch_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiKeyHierarchyInfo {
+    pub master_fingerprint: String,
+    pub device_id: String,
+    pub session_id: String,
+    pub ratchet_count: i32,
+    pub checkpoint_signatures: u32,
+    pub session_started_epoch_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiPhysicalContextInfo {
+    pub clock_skew_ns: u64,
+    pub thermal_proxy: u32,
+    pub silicon_puf_hash: String,
+    pub io_latency_ns: u64,
+    pub combined_hash: String,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiBeaconInfo {
+    pub drand_round: u64,
+    pub nist_pulse_index: u64,
+    pub fetched_at: String,
+    pub wp_key_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiStatisticalMethodology {
+    pub lr_computation: String,
+    pub confidence_interval: String,
+    pub calibration: String,
 }
 
 #[derive(Debug, Clone)]

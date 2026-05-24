@@ -74,6 +74,11 @@ pub enum TitleParserVariant {
     VSCode,
     /// Nova: `"filename · Nova"` — split on `" · "`, take left.
     Nova,
+    /// Terminal emulators running editors. Parses titles like:
+    /// - `"filename (+) - VIM"`, `"filename - GNU nano 8.0"`
+    /// - `"vim — filename — 80×24"` (Terminal.app format)
+    /// - `"filename - GNU Emacs at host"`
+    TerminalEditor,
 }
 
 
@@ -414,7 +419,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+        title_parser: TitleParserVariant::VSCode,
     },
     // ── VS Code ────────────────────────────────────────────────────────────
     WritingApp {
@@ -833,13 +838,122 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
     },
+    // ── Zed ────────────────────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "dev.zed.Zed",
+        display_name: "Zed",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+    },
+    WritingApp {
+        bundle_id: "dev.zed.Zed-Preview",
+        display_name: "Zed Preview",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+    },
+    // ── Terminal Emulators ────────────────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.apple.Terminal",
+        display_name: "Terminal",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::TerminalEditor,
+    },
+    WritingApp {
+        bundle_id: "com.googlecode.iterm2",
+        display_name: "iTerm2",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::TerminalEditor,
+    },
+    WritingApp {
+        bundle_id: "com.github.wez.wezterm",
+        display_name: "WezTerm",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::TerminalEditor,
+    },
+    WritingApp {
+        bundle_id: "net.kovidgoyal.kitty",
+        display_name: "Kitty",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::TerminalEditor,
+    },
+    WritingApp {
+        bundle_id: "io.alacritty",
+        display_name: "Alacritty",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::TerminalEditor,
+    },
+    WritingApp {
+        bundle_id: "dev.warp.Warp-Stable",
+        display_name: "Warp",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::TerminalEditor,
+    },
 ];
 
+// ---------------------------------------------------------------------------
+// Global registry (installed once at sentinel startup)
+// ---------------------------------------------------------------------------
+
+use std::sync::OnceLock;
+
+/// Global registry instance, set by `install_global()` during sentinel init.
+/// Before installation, the static `lookup()` / `needs_title_inference()`
+/// functions only search `KNOWN_WRITING_APPS`. After installation, user-added
+/// apps are included in all lookups.
+static GLOBAL_REGISTRY: OnceLock<AppRegistry> = OnceLock::new();
+
+/// Install a loaded `AppRegistry` as the global instance.
+///
+/// Called once during sentinel startup. Subsequent calls are no-ops (the
+/// first registry wins). This bridges the gap between the instance-based
+/// `AppRegistry` and the static free functions used throughout the codebase.
+pub fn install_global(registry: AppRegistry) {
+    let _ = GLOBAL_REGISTRY.set(registry);
+}
+
 /// Look up a `WritingApp` by bundle ID (case-insensitive).
+///
+/// Checks user-added apps (via global registry) first, then builtins.
 pub fn lookup(bundle_id: &str) -> Option<&'static WritingApp> {
     KNOWN_WRITING_APPS
         .iter()
         .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
+}
+
+/// Return the `TitleParserVariant` for a bundle ID.
+///
+/// Checks the global registry (user overrides) first, then builtins.
+pub fn title_parser_for(bundle_id: &str) -> TitleParserVariant {
+    if let Some(reg) = GLOBAL_REGISTRY.get() {
+        return reg.title_parser_for(bundle_id);
+    }
+    lookup(bundle_id)
+        .map(|a| a.title_parser)
+        .unwrap_or(TitleParserVariant::Generic)
 }
 
 /// Return paths (relative to `$HOME`) of all writing-app containers that
@@ -871,8 +985,21 @@ pub fn auto_watch_paths() -> Vec<PathBuf> {
 
 /// Return whether `bundle_id` belongs to a known writing app that requires
 /// title-based document identity (i.e., does not expose `AXDocument`).
+///
+/// Checks user-added apps (via global registry) first, then builtins.
 pub fn needs_title_inference(bundle_id: &str) -> bool {
+    if let Some(reg) = GLOBAL_REGISTRY.get() {
+        return reg.needs_title_inference(bundle_id);
+    }
     lookup(bundle_id).is_some_and(|a| a.needs_title_inference)
+}
+
+/// Return whether `bundle_id` is recognized by either builtins or user apps.
+pub fn is_known(bundle_id: &str) -> bool {
+    if let Some(reg) = GLOBAL_REGISTRY.get() {
+        return reg.is_known(bundle_id);
+    }
+    lookup(bundle_id).is_some()
 }
 
 // ---------------------------------------------------------------------------
@@ -968,6 +1095,16 @@ impl AppRegistry {
             }
         };
 
+        for app in &user {
+            log::info!(
+                "custom app loaded: {} ({}) storage={:?} title_inference={}",
+                app.display_name,
+                app.bundle_id,
+                app.storage,
+                app.needs_title_inference,
+            );
+        }
+
         let mut reg = Self {
             builtin: KNOWN_WRITING_APPS,
             user,
@@ -999,6 +1136,17 @@ impl AppRegistry {
         self.user
             .iter()
             .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
+    }
+
+    /// Return the `TitleParserVariant` for a bundle ID, checking user apps
+    /// first (user overrides builtin) then builtins.
+    pub fn title_parser_for(&self, bundle_id: &str) -> TitleParserVariant {
+        if let Some(user_app) = self.lookup_user(bundle_id) {
+            return user_app.title_parser;
+        }
+        self.lookup_builtin(bundle_id)
+            .map(|a| a.title_parser)
+            .unwrap_or(TitleParserVariant::Generic)
     }
 
     /// Container watch paths from both built-in and user apps.
@@ -1241,6 +1389,8 @@ mod tests {
         assert!(lookup("com.goodnotesapp.x").is_some());
         assert!(lookup("com.coteditor.CotEditor").is_some());
         assert!(lookup("org.vim.MacVim").is_some());
+        assert!(lookup("dev.zed.Zed").is_some());
+        assert!(lookup("dev.zed.Zed-Preview").is_some());
     }
 
     #[test]
@@ -1265,6 +1415,9 @@ mod tests {
         assert!(needs_title_inference("com.bloombuilt.dayone-mac"));
         assert!(needs_title_inference("com.agiletortoise.Drafts-OSX"));
         assert!(needs_title_inference("com.goodnotesapp.x"));
+        // Zed
+        assert!(needs_title_inference("dev.zed.Zed"));
+        assert!(needs_title_inference("dev.zed.Zed-Preview"));
         // New file-based apps (should NOT need inference)
         assert!(!needs_title_inference("com.sublimetext.4"));
         assert!(!needs_title_inference("com.panic.Nova"));

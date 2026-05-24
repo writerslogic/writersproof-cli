@@ -7,6 +7,7 @@ use crate::fingerprint::comparison::{self, FingerprintComparison};
 use crate::fingerprint::consent::ConsentManager;
 use crate::fingerprint::storage::{FingerprintSnapshot, FingerprintStorage, StoredProfile};
 use crate::fingerprint::voice::{StyleCollector, StyleFingerprint};
+use crate::utils::lock::RwLockRecover;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -169,6 +170,15 @@ impl FingerprintManager {
     }
 
     pub fn current_activity_fingerprint(&self) -> Arc<ActivityFingerprint> {
+        // Read from the global accumulator which is fed by sentinel keystroke
+        // injection and background fingerprint capture. The manager's local
+        // accumulator is only used for snapshot/consolidation bookkeeping.
+        let global = crate::fingerprint::global::get_global_accumulator();
+        let guard = global.read_recover();
+        if guard.sample_count() > 0 {
+            return guard.current_fingerprint();
+        }
+        // Fall back to local accumulator (used in tests and when global is empty).
         self.activity_accumulator.current_fingerprint()
     }
 
@@ -349,9 +359,17 @@ impl FingerprintManager {
             fingerprint = fingerprint.with_style(style);
         }
 
-        fingerprint.sample_count = self.activity_accumulator.sample_count() as u64;
+        fingerprint.sample_count = self.global_activity_sample_count() as u64;
         fingerprint.update_confidence();
         fingerprint
+    }
+
+    /// Return the activity sample count from the global accumulator, falling
+    /// back to the local one (tests / no sentinel).
+    fn global_activity_sample_count(&self) -> usize {
+        let global = crate::fingerprint::global::get_global_accumulator();
+        let count = global.read_recover().sample_count();
+        if count > 0 { count } else { self.activity_accumulator.sample_count() }
     }
 
     pub fn status(&self) -> FingerprintStatus {
@@ -360,7 +378,7 @@ impl FingerprintManager {
             style_enabled: self.config.style_enabled,
             style_consent: self.consent_manager.has_style_consent().unwrap_or(false),
             current_profile_id: self.current_profile_id.clone(),
-            activity_samples: self.activity_accumulator.sample_count(),
+            activity_samples: self.global_activity_sample_count(),
             style_samples: self
                 .style_collector
                 .as_ref()

@@ -333,6 +333,7 @@ pub fn ffi_sentinel_record_paste(
     detection_confidence: f64,
 ) -> FfiPasteRecordResult {
     catch_ffi_panic!(FfiPasteRecordResult::err("engine internal error"), {
+    super::types::run_on_stack(move || {
     log::debug!("ffi_sentinel_record_paste: char_count={}, app_bundle_id={}", char_count, app_bundle_id);
     if char_count < 0 {
         return FfiPasteRecordResult::err("char_count must be non-negative");
@@ -422,6 +423,7 @@ pub fn ffi_sentinel_record_paste(
     }
 
     FfiPasteRecordResult::ok(text_hash_hex, matched_session_id)
+    })
     })
 }
 

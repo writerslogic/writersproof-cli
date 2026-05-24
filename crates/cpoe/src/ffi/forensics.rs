@@ -178,6 +178,129 @@ pub fn ffi_get_provenance_metrics_for_document(path: String) -> FfiProvenanceMet
     })
 }
 
+/// A verified claim from the evidence packet.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiClaim {
+    pub claim_type: String,
+    pub description: String,
+    pub confidence: String,
+}
+
+/// Returns which evidence claims are established for a tracked file.
+///
+/// Inspects the stored events and sentinel session to determine which of the
+/// 11 claim types would be present in an exported evidence packet.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_evidence_claims(path: String) -> Vec<FfiClaim> {
+    catch_ffi_panic!(Vec::new(), {
+    log::debug!("ffi_get_evidence_claims: path={}", path);
+    let (path, _store, events) =
+        match crate::ffi::helpers::load_events_for_path(&path) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("ffi_get_evidence_claims: load_events failed: {e}");
+                return Vec::new();
+            }
+        };
+    if events.is_empty() {
+        return Vec::new();
+    }
+
+    let mut claims = Vec::new();
+
+    // ChainIntegrity: always present if events exist (chain is checked at export).
+    claims.push(FfiClaim {
+        claim_type: "ChainIntegrity".into(),
+        description: "Content states form an unbroken cryptographic chain".into(),
+        confidence: "cryptographic".into(),
+    });
+
+    // TimeElapsed: present if any checkpoint has VDF iterations.
+    let has_vdf = events.iter().any(|e| e.vdf_iterations > 0);
+    if has_vdf {
+        claims.push(FfiClaim {
+            claim_type: "TimeElapsed".into(),
+            description: "Elapsed time bound by sequential work function proof".into(),
+            confidence: "cryptographic".into(),
+        });
+    }
+
+    // KeystrokesVerified: present if we have enough checkpoints with timing data.
+    let checkpoint_count = events.len();
+    if checkpoint_count >= 3 {
+        claims.push(FfiClaim {
+            claim_type: "KeystrokesVerified".into(),
+            description: format!(
+                "Keystroke timing data captured across {checkpoint_count} checkpoints"
+            ),
+            confidence: "behavioral".into(),
+        });
+
+        // BehaviorAnalyzed: requires enough data for forensic analysis.
+        claims.push(FfiClaim {
+            claim_type: "BehaviorAnalyzed".into(),
+            description: "Behavioral timing patterns analyzed across checkpoints".into(),
+            confidence: "statistical".into(),
+        });
+    }
+
+    // Session-based claims: presence, context, dictation, key hierarchy.
+    if let Some(sentinel) = get_sentinel() {
+        if let Ok(session) = sentinel.session(&path) {
+            if session.total_focus_ms > 0 {
+                claims.push(FfiClaim {
+                    claim_type: "PresenceVerified".into(),
+                    description: "Author presence verified via focus monitoring".into(),
+                    confidence: "observed".into(),
+                });
+            }
+            if !session.focus_switches.is_empty() {
+                claims.push(FfiClaim {
+                    claim_type: "ContextsRecorded".into(),
+                    description: "Application context periods recorded".into(),
+                    confidence: "observed".into(),
+                });
+            }
+            if !session.dictation_events.is_empty() {
+                claims.push(FfiClaim {
+                    claim_type: "DictationVerified".into(),
+                    description: "Dictation events verified with plausibility scoring".into(),
+                    confidence: "behavioral".into(),
+                });
+            }
+        }
+    }
+
+    // HardwareAttested: check attestation tier.
+    let (_, tier_num, _) = crate::ffi::helpers::detect_attestation_tier_info();
+    if tier_num >= 3 {
+        claims.push(FfiClaim {
+            claim_type: "HardwareAttested".into(),
+            description: "Signing key bound to hardware security module".into(),
+            confidence: "cryptographic".into(),
+        });
+    }
+
+    // ExternalAnchored: check for beacon attestations.
+    let has_beacon = events.iter().any(|e| {
+        e.context_note
+            .as_ref()
+            .map(|n| n.contains("beacon") || n.contains("drand"))
+            .unwrap_or(false)
+    });
+    if has_beacon {
+        claims.push(FfiClaim {
+            claim_type: "ExternalAnchored".into(),
+            description: "Evidence anchored to external time beacon".into(),
+            confidence: "cryptographic".into(),
+        });
+    }
+
+    claims
+    })
+}
+
 static CALIBRATED_PARAMS: Mutex<Option<Parameters>> = Mutex::new(None);
 
 pub(crate) fn calibrated_params() -> Option<Parameters> {

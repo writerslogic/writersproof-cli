@@ -88,7 +88,12 @@ pub enum ComparisonVerdict {
 
 impl ComparisonVerdict {
     /// Classify a similarity score into a verdict category.
+    ///
+    /// Non-finite inputs (NaN, infinity) map to `DifferentAuthors`.
     pub fn from_similarity(similarity: f64) -> Self {
+        if !similarity.is_finite() {
+            return Self::DifferentAuthors;
+        }
         if similarity > SAME_AUTHOR_THRESHOLD {
             Self::SameAuthor
         } else if similarity > LIKELY_SAME_THRESHOLD {
@@ -110,6 +115,9 @@ impl ComparisonVerdict {
     /// checking all thresholds would lock in a far-off previous verdict when
     /// crossing an unrelated boundary.
     pub fn from_similarity_with_hysteresis(similarity: f64, previous: Option<Self>) -> Self {
+        if !similarity.is_finite() {
+            return Self::DifferentAuthors;
+        }
         let new = Self::from_similarity(similarity);
         if let Some(prev) = previous {
             if new != prev {
@@ -156,6 +164,18 @@ impl ComparisonVerdict {
             Self::Inconclusive => "Results inconclusive",
             Self::LikelyDifferentAuthors => "Probably different authors",
             Self::DifferentAuthors => "Very likely different authors",
+        }
+    }
+}
+
+impl std::fmt::Display for ComparisonVerdict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SameAuthor => write!(f, "Same Author"),
+            Self::LikelySameAuthor => write!(f, "Likely Same Author"),
+            Self::Inconclusive => write!(f, "Inconclusive"),
+            Self::LikelyDifferentAuthors => write!(f, "Likely Different Authors"),
+            Self::DifferentAuthors => write!(f, "Different Authors"),
         }
     }
 }
@@ -524,7 +544,9 @@ impl BatchComparator {
                 if comparison.similarity >= self.cluster_threshold {
                     cluster.members.push(fingerprints[j].id.clone());
                     member_indices.push(j);
-                    leader_sims.push(comparison.similarity);
+                    if comparison.similarity.is_finite() {
+                        leader_sims.push(comparison.similarity);
+                    }
                     assigned[j] = true;
                 }
             }
@@ -546,7 +568,8 @@ impl BatchComparator {
                     }
                 }
                 if count > 0 && total_sim.is_finite() {
-                    cluster.avg_internal_similarity = total_sim / count as f64;
+                    cluster.avg_internal_similarity =
+                        (total_sim / count as f64).clamp(0.0, 1.0);
                 }
             }
 

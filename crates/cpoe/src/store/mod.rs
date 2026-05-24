@@ -4,6 +4,76 @@ use rusqlite::Connection;
 use std::path::Path;
 use zeroize::{Zeroize, Zeroizing};
 
+/// Acquire an exclusive advisory lock on a sidecar `.db.lock` file.
+///
+/// Returns `Some(File)` whose lifetime holds the lock (released on drop),
+/// or `None` for in-memory databases. Fails fast with an actionable error
+/// if another process already holds the lock.
+pub(crate) fn acquire_db_lock(db_path: &Path) -> anyhow::Result<Option<std::fs::File>> {
+    if db_path.to_string_lossy() == ":memory:" {
+        return Ok(None);
+    }
+    let lock_path = db_path.with_extension("db.lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|e| anyhow::anyhow!("Failed to open lock file {}: {e}", lock_path.display()))?;
+
+    #[cfg(unix)]
+    {
+        crate::crypto::restrict_permissions(&lock_path, 0o600)?;
+        use std::os::unix::io::AsRawFd;
+        let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if ret != 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+                anyhow::bail!(
+                    "Database is locked by another process: {}. \
+                     Close the other instance before opening.",
+                    db_path.display()
+                );
+            }
+            anyhow::bail!(
+                "Failed to acquire database lock on {}: {err}",
+                db_path.display()
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+        };
+        let handle = HANDLE(file.as_raw_handle());
+        let mut overlapped = unsafe { std::mem::zeroed() };
+        let ok = unsafe {
+            LockFileEx(
+                handle,
+                LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                0,
+                1,
+                0,
+                &mut overlapped,
+            )
+        };
+        if ok.is_err() {
+            anyhow::bail!(
+                "Database is locked by another process: {}. \
+                 Close the other instance before opening.",
+                db_path.display()
+            );
+        }
+    }
+
+    Ok(Some(file))
+}
+
 pub mod access_log;
 pub mod archive;
 pub mod baselines;
@@ -35,6 +105,10 @@ pub struct SecureStore {
     pub(crate) conn: Connection,
     pub(crate) hmac_key: Zeroizing<Vec<u8>>,
     pub(crate) last_hash: [u8; 32],
+    /// Advisory file lock held for the lifetime of this store to prevent
+    /// concurrent write access from other processes (e.g. CLI + GUI app).
+    /// Dropped automatically when the store is closed, releasing the lock.
+    _lock_file: Option<std::fs::File>,
 }
 
 impl std::fmt::Debug for SecureStore {
@@ -66,16 +140,25 @@ impl SecureStore {
         if journal_mode.to_lowercase() != "wal" {
             log::warn!("events db: requested WAL but got '{journal_mode}' journal mode");
         }
+        // fullfsync=ON makes SQLite use F_FULLFSYNC on macOS instead of
+        // fsync(), ensuring the disk write cache is flushed to stable storage.
+        // Without this, a power failure after fsync() returns can lose data on
+        // some macOS configurations where fsync() only flushes to the drive's
+        // volatile cache.
         conn.execute_batch(&format!(
             "PRAGMA busy_timeout={BUSY_TIMEOUT_MS}; PRAGMA foreign_keys=ON; \
-             PRAGMA synchronous=FULL; \
+             PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; \
+             PRAGMA secure_delete=ON; \
              PRAGMA max_page_count={MAX_PAGE_COUNT};"
         ))?;
+
+        let lock_file = acquire_db_lock(path)?;
 
         let mut store = Self {
             conn,
             hmac_key,
             last_hash: [0u8; 32],
+            _lock_file: lock_file,
         };
 
         store.init_schema()?;
@@ -340,4 +423,76 @@ pub fn open_store_with_signing_key(
     let hmac_key = crate::crypto::derive_hmac_key(&key_bytes);
     key_bytes.zeroize();
     SecureStore::open(db_path, hmac_key)
+}
+
+/// Open an [`AccessLog`] by deriving a purpose-specific HMAC key from an Ed25519
+/// signing key. The derived key is cryptographically independent from the event
+/// store key, so compromising one does not affect the other.
+///
+/// For backward compatibility: if the database already contains HMAC-tagged
+/// entries created with the legacy shared key, this function detects the
+/// mismatch and falls back to the legacy key. New (empty) databases get the
+/// purpose-specific key automatically.
+pub fn open_access_log_with_signing_key(
+    signing_key: &ed25519_dalek::SigningKey,
+    db_path: &Path,
+) -> anyhow::Result<access_log::AccessLog> {
+    let purpose_key = crate::crypto::derive_hmac_key_for_purpose(signing_key, "access-log");
+    let log = access_log::AccessLog::open(db_path, purpose_key)?;
+
+    // If the database has existing entries, verify HMACs match the new key.
+    // If they don't, re-open with the legacy key for backward compatibility.
+    if log.entry_count()? > 0 && !log.verify_access_log_integrity()? {
+        drop(log);
+        let mut legacy_bytes = signing_key.to_bytes();
+        let legacy_key = crate::crypto::derive_hmac_key(&legacy_bytes);
+        legacy_bytes.zeroize();
+        return access_log::AccessLog::open(db_path, legacy_key);
+    }
+
+    Ok(log)
+}
+
+/// Minimum free disk space (in bytes) required before starting a write-heavy
+/// operation such as export or archival. 50 MiB provides headroom for SQLite
+/// WAL checkpoint, temporary files, and the output artifact.
+const MIN_FREE_SPACE_BYTES: u64 = 50 * 1024 * 1024;
+
+/// Check that the volume containing `path` has at least [`MIN_FREE_SPACE_BYTES`]
+/// free. Returns `Ok(available)` on success or an actionable error when space is
+/// insufficient.
+pub fn check_disk_space(path: &Path) -> anyhow::Result<u64> {
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        let c_path = CString::new(
+            path.to_str()
+                .ok_or_else(|| anyhow::anyhow!("Path is not valid UTF-8"))?,
+        )?;
+        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+        let ret = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+        if ret != 0 {
+            return Err(anyhow::anyhow!(
+                "Failed to query disk space for {}: {}",
+                path.display(),
+                std::io::Error::last_os_error()
+            ));
+        }
+        let available = stat.f_bavail as u64 * stat.f_frsize as u64;
+        if available < MIN_FREE_SPACE_BYTES {
+            anyhow::bail!(
+                "Insufficient disk space: {} MiB available, {} MiB required. \
+                 Free space on the volume containing {} before retrying.",
+                available / (1024 * 1024),
+                MIN_FREE_SPACE_BYTES / (1024 * 1024),
+                path.display()
+            );
+        }
+        Ok(available)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(u64::MAX)
+    }
 }

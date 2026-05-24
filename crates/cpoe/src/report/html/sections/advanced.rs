@@ -261,6 +261,27 @@ pub(in crate::report::html) fn write_forensic_breakdown(
         r#"<div class="metric-card"><div class="metric-label">Burst Speed CV</div><div class="metric-value">{:.3}</div></div>"#,
         finite_or(fm.burst_speed_cv, 0.0),
     )?;
+    if let Some(d) = fm.detour_ratio {
+        write!(
+            html,
+            r#"<div class="metric-card"><div class="metric-label">Detour Ratio</div><div class="metric-value">{:.3}</div></div>"#,
+            finite_or(d, 0.0),
+        )?;
+    }
+    if let Some(l) = fm.leading_edge_divergence {
+        write!(
+            html,
+            r#"<div class="metric-card"><div class="metric-label">Leading-Edge Div.</div><div class="metric-value">{:.1}%</div></div>"#,
+            finite_or(l * 100.0, 0.0),
+        )?;
+    }
+    if let Some(e) = fm.insertion_point_entropy {
+        write!(
+            html,
+            r#"<div class="metric-card"><div class="metric-label">Insertion Entropy</div><div class="metric-value">{:.2} bits</div></div>"#,
+            finite_or(e, 0.0),
+        )?;
+    }
     write!(html, r#"</div>"#)?;
 
     if let Some(h) = fm.hurst_exponent.filter(|v| v.is_finite()) {

@@ -32,7 +32,12 @@ const HARDWARE_DIFFICULTY_BOOST: f64 = 100.0;
 
 /// Near-maximum finite f64 representing computationally infeasible cost.
 /// Used instead of f64::INFINITY so the value serializes to valid JSON.
+/// Must be treated as effectively infinite in aggregation logic.
 const INFEASIBLE_COST: f64 = 1e308;
+
+/// Threshold above which a cost is treated as "effectively infinite"
+/// (hardware-bound or externally anchored, not forgeable via computation).
+const INFEASIBLE_THRESHOLD: f64 = 1e300;
 
 /// Tier threshold: above this (seconds) = High resistance.
 const TIER_HIGH_THRESHOLD_SEC: f64 = 86400.0;
@@ -84,6 +89,18 @@ pub enum ForgeryResistanceTier {
     High,
     /// Very high resistance (hardware-bound, cross-modal entangled).
     VeryHigh,
+}
+
+impl std::fmt::Display for ForgeryResistanceTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Trivial => write!(f, "Trivial"),
+            Self::Low => write!(f, "Low"),
+            Self::Moderate => write!(f, "Moderate"),
+            Self::High => write!(f, "High"),
+            Self::VeryHigh => write!(f, "Very High"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -263,6 +280,7 @@ fn compute_behavioral_cost(input: &ForgeryCostInput) -> ComponentCost {
 /// Cross-modal consistency: pairwise constraints between evidence modalities.
 fn compute_cross_modal_cost(input: &ForgeryCostInput) -> ComponentCost {
     if input.cross_modal_total >= 2 {
+        let passed = input.cross_modal_passed.min(input.cross_modal_total);
         let n = input.cross_modal_total as f64;
         let constraint_factor = n * (n - 1.0) / 2.0;
         let cost = if input.cross_modal_consistent {
@@ -276,7 +294,7 @@ fn compute_cross_modal_cost(input: &ForgeryCostInput) -> ComponentCost {
             present: true,
             explanation: format!(
                 "{}/{} checks passed; {} pairwise constraints",
-                input.cross_modal_passed,
+                passed,
                 input.cross_modal_total,
                 constraint_factor as u64
             ),
@@ -313,7 +331,7 @@ fn compute_temporal_cost(input: &ForgeryCostInput) -> ComponentCost {
 
 /// Content-key entanglement: modifying content requires full recomputation.
 fn compute_entanglement_cost(input: &ForgeryCostInput) -> ComponentCost {
-    if input.has_content_key_entanglement {
+    if input.has_content_key_entanglement && input.chain_duration_sec > 0 {
         let cost =
             input.chain_duration_sec as f64 * ENTANGLEMENT_DURATION_MULTIPLIER;
         ComponentCost {
@@ -340,16 +358,16 @@ fn aggregate_costs(
 ) -> (f64, Option<String>, f64) {
     let finite_costs: Vec<f64> = components
         .iter()
-        .filter(|c| c.present && c.cost_cpu_sec.is_finite() && c.cost_cpu_sec > 0.0)
+        .filter(|c| c.present && c.cost_cpu_sec > 0.0 && c.cost_cpu_sec < INFEASIBLE_THRESHOLD)
         .map(|c| c.cost_cpu_sec)
         .collect();
 
-    let has_infinite = components
+    let has_infeasible = components
         .iter()
-        .any(|c| c.present && c.cost_cpu_sec.is_infinite());
+        .any(|c| c.present && c.cost_cpu_sec >= INFEASIBLE_THRESHOLD);
 
     let overall_difficulty = if finite_costs.is_empty() {
-        if has_infinite {
+        if has_infeasible {
             INFEASIBLE_COST
         } else {
             0.0
@@ -372,8 +390,8 @@ fn aggregate_costs(
             );
             f64::MAX
         };
-        if has_infinite {
-            geo_mean * HARDWARE_DIFFICULTY_BOOST
+        if has_infeasible {
+            (geo_mean * HARDWARE_DIFFICULTY_BOOST).min(INFEASIBLE_COST)
         } else {
             geo_mean
         }
@@ -381,11 +399,11 @@ fn aggregate_costs(
 
     let weakest_link = components
         .iter()
-        .filter(|c| c.present && c.cost_cpu_sec.is_finite())
+        .filter(|c| c.present && c.cost_cpu_sec > 0.0 && c.cost_cpu_sec < INFEASIBLE_THRESHOLD)
         .min_by(|a, b| a.cost_cpu_sec.total_cmp(&b.cost_cpu_sec))
         .map(|c| c.name.clone());
 
-    let estimated_forge_time_sec = if has_infinite {
+    let estimated_forge_time_sec = if has_infeasible {
         INFEASIBLE_COST
     } else {
         components
@@ -402,7 +420,7 @@ fn classify_tier(difficulty: f64, has_hardware_attestation: bool) -> ForgeryResi
     if has_hardware_attestation {
         return ForgeryResistanceTier::VeryHigh;
     }
-    if difficulty.is_infinite() {
+    if !difficulty.is_finite() || difficulty >= INFEASIBLE_THRESHOLD {
         return ForgeryResistanceTier::VeryHigh;
     }
     if difficulty > TIER_HIGH_THRESHOLD_SEC {

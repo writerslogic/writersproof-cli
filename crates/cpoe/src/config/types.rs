@@ -364,13 +364,6 @@ impl Default for SentinelConfig {
                 // WritersProof itself (should not self-monitor)
                 "com.writerslogic.witnessd".to_string(),
                 "com.writerslogic.cpoe".to_string(),
-                // Terminals (not document editors)
-                "com.apple.Terminal".to_string(),
-                "com.github.wez.wezterm".to_string(),
-                "net.kovidgoyal.kitty".to_string(),
-                "io.alacritty".to_string(),
-                "org.gnome.Terminal".to_string(),
-                "org.kde.konsole".to_string(),
                 // System overlays (not document contexts)
                 "com.apple.Spotlight".to_string(),
                 "com.apple.notificationcenterui".to_string(),

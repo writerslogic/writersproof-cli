@@ -255,17 +255,19 @@ pub fn ffi_export_c2pa_manifest(
         builder = builder.format(mime);
     }
 
-    // Load CA-signed or self-signed X.509 cert for the x5chain COSE header.
-    let provider = crate::tpm::detect_provider();
-    let signer = crate::tpm::TpmSigner::new(provider);
-    if let Ok(sk) = crate::ffi::helpers::load_signing_key() {
-        if let Ok(cert_der) = crate::ffi::helpers::load_or_generate_cert(&sk) {
-            builder = builder.cert_der(cert_der);
+    // Load the evidence signing key for COSE_Sign1. The same key that signed
+    // checkpoints must sign the C2PA claim so the cert matches the signature.
+    let signing_key = match crate::ffi::helpers::load_signing_key() {
+        Ok(sk) => sk,
+        Err(e) => {
+            return FfiResult::err(format!("Failed to load signing key: {e}"));
         }
+    };
+    if let Ok(cert_der) = crate::ffi::helpers::load_or_generate_cert(&signing_key) {
+        builder = builder.cert_der(cert_der);
     }
 
     // Enrich C2PA manifest with forensic signals.
-    // Run forensics on stored events to populate signal scores.
     let doc_path_string = doc_file.to_string_lossy().to_string();
     let stored_events = crate::ffi::helpers::open_store()
         .and_then(|s| {
@@ -278,7 +280,7 @@ pub fn ffi_export_c2pa_manifest(
         builder = enrich_c2pa_builder(builder, &metrics);
     }
 
-    let jumbf = match builder.build_jumbf(&signer) {
+    let jumbf = match builder.build_jumbf(&signing_key) {
         Ok(j) => j,
         Err(e) => {
             return FfiResult::err(format!("Failed to build C2PA manifest: {e}"));

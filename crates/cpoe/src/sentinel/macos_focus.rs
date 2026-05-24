@@ -153,6 +153,21 @@ impl MacOSFocusMonitor {
                         }
                     }
                 }
+                // Try to resolve the filename using folder hints from the title
+                // before falling back to title://. This upgrades Electron editors
+                // from Heuristic to Partial confidence.
+                if let Some(hint) = super::types::extract_title_path_hint(
+                    &title_str,
+                    Some(&bundle_id_str),
+                ) {
+                    if let Some(resolved) = super::types::resolve_title_hint_to_path(
+                        &hint,
+                        Some(pid as u32),
+                    ) {
+                        log::debug!("[AX_PROBE] title hint resolved: {:?}", resolved);
+                        return Some(resolved);
+                    }
+                }
                 log::trace!("[AX_PROBE] no FD match, using title:// fallback");
                 Some(format!("title://{}/{}", bundle_id_str, inferred))
             });
@@ -534,15 +549,30 @@ type AXObserverCallback = extern "C" fn(
 );
 
 /// Shared state passed through the AXObserver callback refcon pointer.
+///
+/// All `Cell` fields are only accessed from the CFRunLoop thread (the
+/// callback runs synchronously on the same thread), so `Cell` is safe.
 struct AXObserverRefcon {
     provider: Arc<MacOSFocusMonitor>,
     tx: std::sync::mpsc::Sender<FocusEvent>,
+    /// The AXObserver handle, needed to add/remove per-window notifications.
+    observer: std::cell::Cell<*mut std::ffi::c_void>,
+    /// The application AXUIElement (retained), used to query the focused window.
+    app_element: std::cell::Cell<*mut std::ffi::c_void>,
+    /// The currently observed window element (retained). We register
+    /// `AXTitleChanged` on this element so that intra-window tab switches
+    /// (which change the title without changing focus) trigger re-identification.
+    watched_window: std::cell::Cell<*mut std::ffi::c_void>,
+    /// Last-seen window title. `AXTitleChanged` fires for cosmetic edits
+    /// ("[Modified]", loading progress) — skip the expensive re-identification
+    /// probe when the title hasn't actually changed.
+    last_title: std::cell::RefCell<String>,
 }
 
 extern "C" fn ax_observer_callback(
     _observer: *mut std::ffi::c_void,
     _element: *mut std::ffi::c_void,
-    _notification: core_foundation::string::CFStringRef,
+    notification: core_foundation::string::CFStringRef,
     refcon: *mut std::ffi::c_void,
 ) {
     // Re-entrancy guard: get_active_window() does AX queries that can
@@ -569,7 +599,56 @@ extern "C" fn ax_observer_callback(
     // outlives the observer. We borrow it immutably here; the Box is only
     // reclaimed when the observer thread is torn down.
     let ctx = unsafe { &*(refcon as *const AXObserverRefcon) };
+
+    // Classify the notification so we can handle each type appropriately.
+    let is_focus_change = unsafe {
+        use core_foundation::base::TCFType;
+        use core_foundation::string::CFString;
+        let focus_str = CFString::from_static_string("AXFocusedWindowChanged");
+        core_foundation_sys::base::CFEqual(
+            notification as *const _,
+            focus_str.as_concrete_TypeRef() as *const _,
+        ) != 0
+    };
+    let is_title_change = !is_focus_change && unsafe {
+        use core_foundation::base::TCFType;
+        use core_foundation::string::CFString;
+        let title_str = CFString::from_static_string("AXTitleChanged");
+        core_foundation_sys::base::CFEqual(
+            notification as *const _,
+            title_str.as_concrete_TypeRef() as *const _,
+        ) != 0
+    };
+
+    // When the focused window changes, re-register AXTitleChanged on the
+    // new window so intra-window tab switches are detected.
+    if is_focus_change {
+        update_watched_window(ctx);
+    }
+
+    // For title changes, read the current title cheaply and skip the
+    // expensive get_active_window() probe if nothing meaningful changed.
+    if is_title_change {
+        let win = ctx.watched_window.get();
+        let current = if !win.is_null() {
+            unsafe { ax_read_string(win, "AXTitle") }.unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let mut last = ctx.last_title.borrow_mut();
+        if *last == current {
+            return;
+        }
+        *last = current;
+    }
+
     if let Some(info) = ctx.provider.get_active_window() {
+        // Keep last_title in sync on focus/document changes so subsequent
+        // AXTitleChanged events have a correct baseline for comparison.
+        if !is_title_change {
+            *ctx.last_title.borrow_mut() = info.title.reveal().to_string();
+        }
+
         // Emit FocusLost only for explicit dialog/sheet detection (path=None
         // AND is_document=false).  When path resolution simply fails (empty
         // path but is_document could be false due to timing), emit FocusGained
@@ -590,6 +669,49 @@ extern "C" fn ax_observer_callback(
             window_id: info.window_number,
         };
         let _ = ctx.tx.send(event);
+    }
+}
+
+/// Move the window-level `AXTitleChanged` registration from the old focused
+/// window to the new one. Called from the callback when `AXFocusedWindowChanged`
+/// fires, and from the run loop after initial observer setup.
+fn update_watched_window(ctx: &AXObserverRefcon) {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+
+    let observer = ctx.observer.get();
+    let app_el = ctx.app_element.get();
+    if observer.is_null() || app_el.is_null() {
+        return;
+    }
+    let title_str = CFString::from_static_string("AXTitleChanged");
+
+    // Unregister from the old window.
+    let old_window = ctx.watched_window.get();
+    if !old_window.is_null() {
+        unsafe {
+            let _ = AXObserverRemoveNotification(
+                observer,
+                old_window,
+                title_str.as_concrete_TypeRef(),
+            );
+            ax_release(old_window);
+        }
+        ctx.watched_window.set(std::ptr::null_mut());
+    }
+
+    // Query the focused window from the app element (Copy rule → retained).
+    let new_window = unsafe { ax_child(app_el, "AXFocusedWindow") };
+    if let Some(win) = new_window {
+        unsafe {
+            AXObserverAddNotification(
+                observer,
+                win,
+                title_str.as_concrete_TypeRef(),
+                ctx as *const AXObserverRefcon as *mut std::ffi::c_void,
+            );
+        }
+        ctx.watched_window.set(win);
     }
 }
 
@@ -702,6 +824,21 @@ fn ax_observer_run_loop(
     let teardown = |observer: &mut *mut std::ffi::c_void,
                         app_el: &mut *mut std::ffi::c_void,
                         refcon: &mut *mut AXObserverRefcon| {
+        // Release the watched window's AXTitleChanged registration first.
+        if !refcon.is_null() {
+            let watched = unsafe { (**refcon).watched_window.get() };
+            if !watched.is_null() && !observer.is_null() {
+                unsafe {
+                    let _ = AXObserverRemoveNotification(
+                        *observer,
+                        watched,
+                        kax_title_changed.as_concrete_TypeRef(),
+                    );
+                    ax_release(watched);
+                }
+                unsafe { (**refcon).watched_window.set(std::ptr::null_mut()); }
+            }
+        }
         if !observer.is_null() && !app_el.is_null() {
             unsafe {
                 // Best-effort removal; errors are non-fatal.
@@ -709,11 +846,6 @@ fn ax_observer_run_loop(
                     *observer,
                     *app_el,
                     kax_focused_window.as_concrete_TypeRef(),
-                );
-                let _ = AXObserverRemoveNotification(
-                    *observer,
-                    *app_el,
-                    kax_title_changed.as_concrete_TypeRef(),
                 );
                 let _ = AXObserverRemoveNotification(
                     *observer,
@@ -756,6 +888,10 @@ fn ax_observer_run_loop(
             let refcon_box = Box::new(AXObserverRefcon {
                 provider: Arc::clone(&provider),
                 tx: tx.clone(),
+                observer: std::cell::Cell::new(std::ptr::null_mut()),
+                app_element: std::cell::Cell::new(std::ptr::null_mut()),
+                watched_window: std::cell::Cell::new(std::ptr::null_mut()),
+                last_title: std::cell::RefCell::new(String::new()),
             });
             current_refcon = Box::into_raw(refcon_box);
 
@@ -797,12 +933,6 @@ fn ax_observer_run_loop(
                 AXObserverAddNotification(
                     observer,
                     app_element,
-                    kax_title_changed.as_concrete_TypeRef(),
-                    current_refcon as *mut std::ffi::c_void,
-                );
-                AXObserverAddNotification(
-                    observer,
-                    app_element,
                     kax_document_changed.as_concrete_TypeRef(),
                     current_refcon as *mut std::ffi::c_void,
                 );
@@ -819,6 +949,18 @@ fn ax_observer_run_loop(
 
             current_observer = observer;
             current_app_element = app_element;
+
+            // Populate refcon fields so the callback can manage per-window
+            // AXTitleChanged registration.
+            // SAFETY: current_refcon is valid; we just created it above.
+            unsafe {
+                (*current_refcon).observer.set(observer);
+                (*current_refcon).app_element.set(app_element);
+            }
+            // Register AXTitleChanged on the initial focused window.
+            // SAFETY: refcon is valid and we are on the run-loop thread.
+            update_watched_window(unsafe { &*current_refcon });
+
             log::debug!("AXObserver: now observing pid {pid}");
         }
 

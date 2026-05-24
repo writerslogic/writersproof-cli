@@ -178,7 +178,10 @@ impl Sentinel {
                 Ok(sync_rx) => {
                     keystroke_active.store(true, Ordering::SeqCst);
                     *keystroke_capture_store.lock_recover() = Some(keystroke_capture);
-                    let handle = std::thread::spawn(move || {
+                    match std::thread::Builder::new()
+                        .name("cpoe-ks-bridge".into())
+                        .stack_size(2 * 1024 * 1024)
+                        .spawn(move || {
                         #[cfg(debug_assertions)]
                         let mut bridge_count: u64 = 0;
                         let mut dropped_count: u64 = 0;
@@ -219,8 +222,10 @@ impl Sentinel {
                                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                             }
                         }
-                    });
-                    self.bridge_threads.lock_recover().push(handle);
+                    }) {
+                        Ok(handle) => self.bridge_threads.lock_recover().push(handle),
+                        Err(e) => log::error!("cpoe-ks-bridge thread spawn failed: {e}"),
+                    };
                 }
                 Err(e) => {
                     log::warn!("Keystroke capture failed to start: {e}; running in degraded mode");
@@ -254,7 +259,10 @@ impl Sentinel {
                 Ok(sync_rx) => {
                     *mouse_capture_store.lock_recover() = Some(mouse_capture);
                     let sync_rx: std::sync::mpsc::Receiver<crate::platform::MouseEvent> = sync_rx;
-                    let handle = std::thread::spawn(move || {
+                    match std::thread::Builder::new()
+                        .name("cpoe-mouse-bridge".into())
+                        .stack_size(2 * 1024 * 1024)
+                        .spawn(move || {
                         while mouse_running.load(Ordering::SeqCst) {
                             match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                                 Ok(event) => {
@@ -274,8 +282,10 @@ impl Sentinel {
                                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                             }
                         }
-                    });
-                    self.bridge_threads.lock_recover().push(handle);
+                    }) {
+                        Ok(handle) => self.bridge_threads.lock_recover().push(handle),
+                        Err(e) => log::error!("cpoe-mouse-bridge thread spawn failed: {e}"),
+                    };
                 }
                 Err(e) => {
                     log::warn!("Mouse capture failed to start: {e}; running in degraded mode");

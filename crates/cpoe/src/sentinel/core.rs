@@ -135,6 +135,9 @@ pub struct Sentinel {
     pub(crate) pending_challenge: Arc<RwLock<Option<(String, Option<String>)>>>,
     /// Signaled when a new nonce arrives so the checkpoint timer can recalculate.
     pub(crate) nonce_notify: Arc<tokio::sync::Notify>,
+    /// Signaled by the keystroke handler when the jitter hash chain crosses
+    /// the entropy trigger threshold. The select loop fires a checkpoint.
+    entropy_checkpoint_notify: Arc<tokio::sync::Notify>,
     /// Timestamp when the sentinel was started via start().
     pub(crate) start_time: Arc<Mutex<Option<SystemTime>>>,
     /// False when any bridge thread has died; checked before processing events.
@@ -195,15 +198,20 @@ impl Sentinel {
         let shadow = ShadowManager::new(&config.shadow_dir)?;
         let (session_events_tx, _) = broadcast::channel(256);
 
-        let mut mouse_stego_seed = [0u8; 32];
+        let mut mouse_stego_seed = Zeroizing::new([0u8; 32]);
         use rand::RngCore;
-        rand::rng().fill_bytes(&mut mouse_stego_seed);
+        rand::rng().fill_bytes(mouse_stego_seed.as_mut());
 
         let snapshots_default = config.snapshots_enabled;
 
         let tpm_provider = platform.get_tpm_provider();
 
         let app_registry = super::app_registry::AppRegistry::load(&config.writersproof_dir);
+        // Install a second copy as the global so static lookup()/needs_title_inference()
+        // functions consult user-added apps without threading the registry instance.
+        super::app_registry::install_global(
+            super::app_registry::AppRegistry::load(&config.writersproof_dir),
+        );
 
         let sentinel = Self {
             config: Arc::new(config),
@@ -222,7 +230,7 @@ impl Sentinel {
             style_collector: Arc::new(RwLock::new(None)),
             mouse_idle_stats: Arc::new(RwLock::new(crate::platform::MouseIdleStats::new())),
             mouse_stego_engine: Arc::new(RwLock::new(crate::platform::MouseStegoEngine::new(
-                mouse_stego_seed,
+                *mouse_stego_seed,
             ))),
             session_nonce: Arc::new(RwLock::new(None)),
             bridge_threads: Arc::new(Mutex::new(Vec::new())),
@@ -233,6 +241,7 @@ impl Sentinel {
             last_paste_chars: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             pending_challenge: Arc::new(RwLock::new(None)),
             nonce_notify: Arc::new(tokio::sync::Notify::new()),
+            entropy_checkpoint_notify: Arc::new(tokio::sync::Notify::new()),
             start_time: Arc::new(Mutex::new(None)),
             bridge_healthy: Arc::new(AtomicBool::new(true)),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -250,7 +259,6 @@ impl Sentinel {
             document_watcher: Arc::new(Mutex::new(None)),
             content_fingerprints: Arc::new(Mutex::new(Vec::new())),
         };
-        mouse_stego_seed.zeroize();
         Ok(sentinel)
     }
 
@@ -346,30 +354,28 @@ impl Sentinel {
 
     /// Update the mouse stego engine from the given key bytes (avoids re-acquiring signing_key lock).
     fn update_mouse_stego_seed_from(&self, key_bytes: &[u8; 32]) {
-        let mut seed = *key_bytes;
+        let seed = Zeroizing::new(*key_bytes);
         let mut engine = self.mouse_stego_engine.write_recover();
         engine.reset();
-        *engine = crate::platform::MouseStegoEngine::new(seed);
-        seed.zeroize();
+        *engine = crate::platform::MouseStegoEngine::new(*seed);
     }
 
     /// Set the Ed25519 signing key and update the mouse stego seed.
     ///
     /// Rejects all-zero keys as invalid (likely uninitialized).
     pub fn set_signing_key(&self, key: SigningKey) {
-        if key.to_bytes().iter().all(|&b| b == 0) {
+        let key_bytes = Zeroizing::new(key.to_bytes());
+        if key_bytes.iter().all(|&b| b == 0) {
             log::error!(
                 "Rejected all-zero signing key — likely uninitialized; evidence will not be signed"
             );
             return;
         }
-        let mut key_bytes = key.to_bytes();
         self.signing_key.write_recover().set_key(key);
         // Invalidate cached store — the HMAC key derives from the signing key.
         *self.cached_store.lock_recover() = None;
         // Update stego seed without re-acquiring the signing_key lock
         self.update_mouse_stego_seed_from(&key_bytes);
-        key_bytes.zeroize();
     }
 
     /// Set the signing key from raw HMAC key bytes (must be exactly 32 bytes).
@@ -385,20 +391,17 @@ impl Sentinel {
             log::warn!("Rejected all-zero HMAC key — likely uninitialized");
             return;
         }
-        let mut bytes: [u8; 32] = match key.as_slice().try_into() {
-            Ok(b) => b,
+        let bytes: Zeroizing<[u8; 32]> = match key.as_slice().try_into() {
+            Ok(b) => Zeroizing::new(b),
             Err(_) => {
                 log::error!("HMAC key must be exactly 32 bytes");
                 return;
             }
         };
-        let mut seed_copy = bytes;
         let signing_key = SigningKey::from_bytes(&bytes);
         self.signing_key.write_recover().set_key(signing_key);
         *self.cached_store.lock_recover() = None;
-        bytes.zeroize();
-        self.update_mouse_stego_seed_from(&seed_copy);
-        seed_copy.zeroize();
+        self.update_mouse_stego_seed_from(&bytes);
     }
 
     /// Get or lazily open the cached SecureStore connection.
@@ -507,6 +510,7 @@ impl Sentinel {
         let stopping_flag = Arc::clone(&self.stopping);
         let pending_challenge = Arc::clone(&self.pending_challenge);
         let nonce_notify = Arc::clone(&self.nonce_notify);
+        let entropy_checkpoint_notify = Arc::clone(&self.entropy_checkpoint_notify);
 
         // Re-focus preserved sessions from a prior run so that keystrokes
         // are attributed immediately, without waiting for the focus probe.
@@ -562,6 +566,7 @@ impl Sentinel {
                 stopping_flag,
                 pending_challenge,
                 nonce_notify,
+                entropy_checkpoint_notify,
                 tpm_provider: tpm_provider_for_loop,
                 tap_check_capture,
                 tap_check_active,
@@ -584,6 +589,7 @@ impl Sentinel {
                 last_fingerprint_time: HashMap::new(),
                 last_capture_restart: None,
                 cached_focus: None,
+                xwin_check_tx: None,
             };
 
             ctx.cached_focus = ctx.current_focus.read_recover().clone();
@@ -609,7 +615,7 @@ impl Sentinel {
                                 log::warn!("Session event receiver lagged, missed {n} events");
                                 if let Some(ref path) = *ctx.current_focus.read_recover() {
                                     if let Some(session) = ctx.sessions.write_recover().get_mut(path.as_str()) {
-                                        session.capture_gaps = session.capture_gaps.saturating_add(n as u32);
+                                        session.capture_gaps = session.capture_gaps.saturating_add(u32::try_from(n).unwrap_or(u32::MAX));
                                     }
                                 }
                             }
@@ -637,6 +643,17 @@ impl Sentinel {
                     _ = &mut checkpoint_sleep => {
                         ctx.handle_checkpoint_tick().await;
                         // Recompute next interval from fresh entropy + nonce.
+                        checkpoint_sleep.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + ctx.compute_next_checkpoint_interval(checkpoint_interval_secs),
+                        );
+                    }
+                    _ = ctx.entropy_checkpoint_notify.notified() => {
+                        // Entropy-triggered: jitter hash chain crossed threshold.
+                        // The keystroke handler already enforced the MIN_NS floor.
+                        log::debug!("Entropy-triggered checkpoint firing");
+                        ctx.handle_checkpoint_tick().await;
+                        // Reset the deadline timer since we just checkpointed.
                         checkpoint_sleep.as_mut().reset(
                             tokio::time::Instant::now()
                                 + ctx.compute_next_checkpoint_interval(checkpoint_interval_secs),
@@ -831,23 +848,23 @@ impl Sentinel {
                 .map(|(path, session)| {
                     let now_secs = SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs() as i64)
+                        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
                         .unwrap_or(0);
                     crate::store::DocumentStats {
                         file_path: path.clone(),
                         total_keystrokes: i64::try_from(session.total_keystrokes())
                             .unwrap_or(i64::MAX),
                         total_focus_ms: session.total_focus_ms_cumulative(),
-                        session_count: i64::from(session.session_number + 1),
+                        session_count: i64::from(session.session_number.saturating_add(1)),
                         total_duration_secs: session
                             .start_time
                             .elapsed()
-                            .map(|d| d.as_secs() as i64)
+                            .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
                             .unwrap_or(0),
                         first_tracked_at: session
                             .first_tracked_at
                             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as i64)
+                            .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
                             .unwrap_or(now_secs),
                         last_tracked_at: now_secs,
                     }
@@ -857,9 +874,9 @@ impl Sentinel {
             if let Some(sk) = sk_clone {
                 // Derive HMAC key now and drop the SigningKey immediately
                 // so it is not held alive inside the spawn_blocking closure.
-                let mut key_bytes = sk.to_bytes();
-                let hmac_key = crate::crypto::derive_hmac_key(&key_bytes);
-                key_bytes.zeroize();
+                let key_bytes = Zeroizing::new(sk.to_bytes());
+                let hmac_key = crate::crypto::derive_hmac_key(key_bytes.as_slice());
+                drop(key_bytes);
                 drop(sk);
                 let db = self.config.writersproof_dir.join("events.db");
                 let save_result = tokio::time::timeout(

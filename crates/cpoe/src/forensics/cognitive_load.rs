@@ -37,9 +37,6 @@ const STRUCTURAL_PAUSE_NS: u64 = 3_000_000_000;
 /// Sentence boundary characters.
 const SENTENCE_TERMINATORS: &[char] = &['.', '!', '?'];
 
-/// Paragraph break marker.
-const PARAGRAPH_BREAK: &str = "\n\n";
-
 // ---------------------------------------------------------------------------
 // Trigram surprisal model
 // ---------------------------------------------------------------------------
@@ -123,14 +120,14 @@ use crate::utils::stats::{lerp_score, spearman_correlation};
 /// For each word boundary in the text, we estimate the IKI preceding that word
 /// from the jitter samples and correlate it with the word's surprisal.
 ///
-/// Returns the Spearman rho. Cognitive writers: 0.3-0.6. Transcriptive: ~0.
+/// Returns `(Spearman rho, word_count)`. Cognitive writers: 0.3-0.6. Transcriptive: ~0.
 fn compute_iki_surprisal_correlation(
     document_text: &str,
     samples: &[SimpleJitterSample],
-) -> Option<f64> {
+) -> (Option<f64>, usize) {
     let word_surprisals = compute_word_surprisals(document_text);
     if word_surprisals.len() < MIN_WORDS_FOR_CORRELATION || samples.len() < MIN_SAMPLES {
-        return None;
+        return (None, word_surprisals.len());
     }
 
     // We don't have exact character-to-keystroke mapping, so we estimate:
@@ -143,8 +140,11 @@ fn compute_iki_surprisal_correlation(
     let mut sample_idx = 0usize;
 
     for (word, surprisal) in &word_surprisals {
-        let word_samples = ((word.len() + 1) as f64 * samples_per_char).round() as usize;
-        let end_idx = (sample_idx + word_samples).min(samples.len());
+        // Clamp to avoid f64-to-usize overflow on pathological inputs.
+        let word_samples = ((word.len() + 1) as f64 * samples_per_char)
+            .round()
+            .min(samples.len() as f64) as usize;
+        let end_idx = (sample_idx.saturating_add(word_samples)).min(samples.len());
 
         if sample_idx < end_idx {
             // Use the maximum IKI in this word's sample range as the "pre-word pause".
@@ -165,10 +165,10 @@ fn compute_iki_surprisal_correlation(
     }
 
     if iki_per_word.len() < MIN_WORDS_FOR_CORRELATION {
-        return None;
+        return (None, word_surprisals.len());
     }
 
-    Some(spearman_correlation(&iki_per_word, &surprisals))
+    (Some(spearman_correlation(&iki_per_word, &surprisals)), word_surprisals.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -186,26 +186,27 @@ struct SentenceArc {
 
 /// Fit a quadratic curve (planning-execution arc) to per-sentence IKI sequences.
 ///
-/// Returns mean R-squared across all sentences with enough samples.
+/// Returns `(mean R-squared, sentence_count)` across all sentences with enough samples.
 /// Cognitive writers: R² > 0.3 (good fit to arc). Transcriptive: R² < 0.1.
 fn compute_sentence_velocity_arcs(
     document_text: &str,
     samples: &[SimpleJitterSample],
-) -> Option<f64> {
+) -> (Option<f64>, usize) {
     if samples.len() < MIN_SAMPLES {
-        return None;
+        return (None, 0);
     }
 
     // Split text into sentences.
     let sentences = split_into_sentences(document_text);
-    if sentences.len() < 3 {
-        return None;
+    let sentence_count = sentences.len();
+    if sentence_count < 3 {
+        return (None, sentence_count);
     }
 
     // Distribute samples across sentences proportionally to character count.
     let total_chars: usize = sentences.iter().map(|s| s.len()).sum();
     if total_chars == 0 {
-        return None;
+        return (None, sentence_count);
     }
     let samples_per_char = samples.len() as f64 / total_chars as f64;
 
@@ -213,11 +214,14 @@ fn compute_sentence_velocity_arcs(
     let mut sample_idx = 0usize;
 
     for sentence in &sentences {
-        let sentence_samples =
-            (sentence.len() as f64 * samples_per_char).round().max(1.0) as usize;
-        let end_idx = (sample_idx + sentence_samples).min(samples.len());
+        // Clamp to avoid f64-to-usize overflow on pathological inputs.
+        let sentence_samples = (sentence.len() as f64 * samples_per_char)
+            .round()
+            .max(1.0)
+            .min(samples.len() as f64) as usize;
+        let end_idx = (sample_idx.saturating_add(sentence_samples)).min(samples.len());
 
-        if end_idx - sample_idx >= 5 {
+        if end_idx.saturating_sub(sample_idx) >= 5 {
             // Extract IKI values for this sentence.
             let ikis: Vec<f64> = samples[sample_idx..end_idx]
                 .iter()
@@ -235,18 +239,19 @@ fn compute_sentence_velocity_arcs(
     }
 
     if arcs.is_empty() {
-        return None;
+        return (None, sentence_count);
     }
 
     // Weighted mean R² by sample count.
+    // total_weight > 0 because arcs is non-empty and each arc has sample_count >= 5.
     let total_weight: usize = arcs.iter().map(|a| a.sample_count).sum();
     let weighted_r_sq: f64 = arcs
         .iter()
         .map(|a| a.r_squared * a.sample_count as f64)
         .sum::<f64>()
-        / total_weight as f64;
+        / total_weight.max(1) as f64;
 
-    Some(weighted_r_sq)
+    (Some(weighted_r_sq), sentence_count)
 }
 
 /// Fit a quadratic y = a*x² + b*x + c to the sequence and return R².
@@ -400,26 +405,23 @@ fn compute_structural_pause_concentration(
         return None;
     }
 
-    // Find structural boundary positions as fractions of document length.
+    // Find structural boundary positions as fractions of document length (char-based).
+    // Single pass: detect both sentence terminators and paragraph breaks.
     let mut boundary_positions: Vec<f64> = Vec::new();
-    let mut char_idx = 0usize;
     let mut prev_char = ' ';
 
-    for ch in document_text.chars() {
-        char_idx += 1;
-        let pos = char_idx as f64 / total_chars as f64;
+    for (char_idx, ch) in document_text.chars().enumerate() {
+        let pos = (char_idx + 1) as f64 / total_chars as f64;
 
-        // Sentence boundary.
+        // Sentence boundary: terminator followed by space/newline.
         if SENTENCE_TERMINATORS.contains(&prev_char) && (ch == ' ' || ch == '\n') {
             boundary_positions.push(pos);
         }
+        // Paragraph boundary: two consecutive newlines.
+        if prev_char == '\n' && ch == '\n' {
+            boundary_positions.push(pos);
+        }
         prev_char = ch;
-    }
-
-    // Find paragraph boundaries.
-    for (i, _) in document_text.match_indices(PARAGRAPH_BREAK) {
-        let pos = i as f64 / document_text.len().max(1) as f64;
-        boundary_positions.push(pos);
     }
 
     boundary_positions.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -508,6 +510,17 @@ pub enum CognitiveMode {
     Unknown,
 }
 
+impl std::fmt::Display for CognitiveMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Creative => write!(f, "Creative"),
+            Self::Editing => write!(f, "Editing"),
+            Self::Transcription => write!(f, "Transcription"),
+            Self::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
 impl CognitiveLoadMetrics {
     /// Classify the cognitive mode from the composite score.
     pub fn cognitive_mode(&self) -> CognitiveMode {
@@ -547,10 +560,12 @@ pub fn analyze_cognitive_load(
         return None;
     }
 
-    let iki_surprisal_rho = compute_iki_surprisal_correlation(text, samples)
+    let (iki_rho_opt, word_count) = compute_iki_surprisal_correlation(text, samples);
+    let iki_surprisal_rho = iki_rho_opt
         .filter(|v| v.is_finite())
         .unwrap_or(0.0);
-    let sentence_arc_r_squared = compute_sentence_velocity_arcs(text, samples)
+    let (arc_opt, sentence_count) = compute_sentence_velocity_arcs(text, samples);
+    let sentence_arc_r_squared = arc_opt
         .filter(|v| v.is_finite())
         .unwrap_or(0.0);
     let structural_pause_concentration = compute_structural_pause_concentration(text, samples)
@@ -568,13 +583,13 @@ pub fn analyze_cognitive_load(
             if SENTENCE_TERMINATORS.contains(&prev) && (ch == ' ' || ch == '\n') {
                 count += 1;
             }
+            if prev == '\n' && ch == '\n' {
+                count += 1;
+            }
             prev = ch;
         }
-        count += text.matches(PARAGRAPH_BREAK).count();
         count
     };
-    let word_count = compute_word_surprisals(text).len();
-    let sentence_count = split_into_sentences(text).len();
 
     // Composite score: weighted combination of three scales.
     // Word-scale (surprisal correlation) is the strongest signal.
@@ -585,8 +600,10 @@ pub fn analyze_cognitive_load(
     const WORD_WEIGHT: f64 = 0.50;
     const CLAUSE_WEIGHT: f64 = 0.30;
     const DOC_WEIGHT: f64 = 0.20;
-    let composite_score =
-        WORD_WEIGHT * word_score + CLAUSE_WEIGHT * clause_score + DOC_WEIGHT * doc_score;
+    let composite_score = (WORD_WEIGHT * word_score
+        + CLAUSE_WEIGHT * clause_score
+        + DOC_WEIGHT * doc_score)
+        .clamp(0.0, 1.0);
 
     Some(CognitiveLoadMetrics {
         iki_surprisal_rho,

@@ -395,6 +395,9 @@ fn inject_keystroke_inner_v3(
         .write_recover()
         .add_sample(&sample);
 
+    // Feed the fingerprint manager for style analysis and snapshot persistence.
+    super::fingerprint::feed_fingerprint_keystroke(&sample, keycode, char_value.chars().next());
+
     // Only count keystrokes when a tracked document is focused.
     let focus = sentinel.current_focus();
     log::debug!("[FFI_INJECT] focus={:?} keycode={}", focus, keycode);

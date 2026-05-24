@@ -224,7 +224,9 @@ pub fn ffi_get_device_public_key() -> FfiDeviceKey {
 /// timeout.
 fn run_command_with_timeout(cmd: &'static str, args: &'static [&'static str]) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
+    if let Err(e) = std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || {
         let result = std::process::Command::new(cmd)
             .args(args)
             .output()
@@ -234,7 +236,10 @@ fn run_command_with_timeout(cmd: &'static str, args: &'static [&'static str]) ->
         if tx.send(result).is_err() {
             log::debug!("attestation channel send failed (receiver timed out)");
         }
-    });
+    }) {
+        log::warn!("attestation thread spawn failed: {e}");
+        return None;
+    }
     rx.recv_timeout(std::time::Duration::from_secs(2))
         .ok()
         .flatten()
