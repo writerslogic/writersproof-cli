@@ -20,6 +20,7 @@ pub mod cognitive_accumulator;
 pub mod constants;
 pub mod cognitive_load;
 pub mod composition_mode;
+pub mod cursor_attention;
 mod comparison;
 mod correlation;
 pub mod cross_modal;

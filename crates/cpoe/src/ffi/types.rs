@@ -56,6 +56,57 @@ macro_rules! catch_ffi_panic {
 }
 pub(crate) use catch_ffi_panic;
 
+/// Minimum stack size for heavy FFI operations (4 MB).
+///
+/// Swift's cooperative thread pool uses 512 KB stacks by default.
+/// Heavy FFI paths (forensic analysis, WAR reports, evidence export)
+/// can overflow that limit due to deep call chains through SQLite,
+/// Ed25519 signing, SHA-256 hashing, and 10+ forensic analyzers.
+const HEAVY_FFI_STACK_SIZE: usize = 4 * 1024 * 1024;
+
+/// Run a closure on a thread with guaranteed stack space.
+///
+/// If the current thread already has at least `HEAVY_FFI_STACK_SIZE` bytes
+/// of stack, this is a no-op wrapper. Otherwise it spawns a short-lived
+/// thread with an explicit stack size and blocks until the closure completes.
+///
+/// Use this for FFI entry points that trigger deep analysis pipelines.
+pub(crate) fn run_on_stack<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    // On macOS, check if we're already on a thread with adequate stack.
+    // std::thread::spawn uses 8 MB by default; only Swift dispatch/cooperative
+    // threads have the smaller 512 KB default.
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: pthread_self() and pthread_get_stacksize_np() are always safe.
+        let stack_size = unsafe {
+            libc::pthread_get_stacksize_np(libc::pthread_self())
+        };
+        if stack_size >= HEAVY_FFI_STACK_SIZE {
+            return f();
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On non-macOS, threads typically have 8 MB stacks; run inline.
+        return f();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::thread::Builder::new()
+            .name("cpoe-ffi-stack".into())
+            .stack_size(HEAVY_FFI_STACK_SIZE)
+            .spawn(f)
+            .expect("cpoe-ffi-stack thread spawn failed")
+            .join()
+            .expect("cpoe-ffi-stack thread panicked")
+    }
+}
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiResult {
@@ -344,6 +395,40 @@ pub struct FfiWitnessingStatus {
     pub undo_count: u64,
     /// Real-time words-per-minute from the last 60 seconds of jitter samples.
     pub words_per_minute: f64,
+    /// AI tools detected during this session (signing IDs).
+    pub ai_tools_detected: Vec<String>,
+    /// Number of dropped ES events (data integrity indicator).
+    pub capture_gaps: u32,
+    /// Evidence confidence: "Full", "Partial", or "Heuristic".
+    pub evidence_confidence: String,
+    /// Why confidence was downgraded, if not full.
+    pub confidence_reason: Option<String>,
+    /// Evidence maturity (0.0-1.0): how complete the evidence is.
+    pub evidence_maturity: f64,
+    /// Copy operation count in this session.
+    pub copy_count: u64,
+    /// Cut operation count in this session.
+    pub cut_count: u64,
+    /// Paste operation count in this session.
+    pub paste_count: u64,
+    /// Redo operation count in this session.
+    pub redo_count: u64,
+    /// Total character keystrokes (composition count).
+    pub character_count: u64,
+    /// Navigation keystrokes (arrows, Home, End, PgUp, PgDn).
+    pub navigation_count: u64,
+    /// Find/search operation count.
+    pub find_count: u64,
+    /// Save operation count.
+    pub save_count_semantic: u64,
+    /// Tab keystrokes.
+    pub tab_count: u64,
+    /// Return/Enter keystrokes.
+    pub return_count: u64,
+    /// Total scroll events during this session.
+    pub scroll_event_count: u64,
+    /// Cursor attention composite score (0.0-1.0).
+    pub cursor_attention_score: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -367,6 +452,8 @@ pub struct FfiFingerprintStatus {
     pub style_consent: bool,
     pub activity_enabled: bool,
     pub activity_samples: u64,
+    /// "bootstrap", "advisory", or "enforced".
+    pub maturity: String,
 }
 
 #[derive(Debug, Clone)]
@@ -384,7 +471,28 @@ pub struct FfiFingerprintSummary {
     pub dimensions: Vec<FfiFingerprintDimension>,
     pub quality_score: f64,
     pub total_samples: u64,
+    pub dimension_confidence: Option<FfiDimensionConfidence>,
+    /// Hourly activity distribution (24 values, index 0 = midnight).
+    pub circadian_pattern: Vec<f64>,
+    /// Per-zone keystroke frequency (8 zones: 0-3 left hand, 4-7 right hand).
+    pub zone_frequencies: Vec<f64>,
+    /// Per-zone mean dwell time in nanoseconds (8 zones).
+    pub zone_dwell_means: Vec<f64>,
     pub error_message: Option<String>,
+}
+
+/// Per-dimension confidence saturation (0.0-1.0 each).
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiDimensionConfidence {
+    pub iki: f64,
+    pub zone: f64,
+    pub pause: f64,
+    pub dwell: f64,
+    pub flight: f64,
+    pub digraph: f64,
+    pub hurst: f64,
+    pub circadian: f64,
 }
 
 #[derive(Debug, Clone)]

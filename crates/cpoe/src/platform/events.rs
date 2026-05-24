@@ -101,6 +101,10 @@ pub struct MouseEvent {
     pub is_idle: bool,
     pub is_hardware: bool,
     pub device_id: Option<Arc<str>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_delta_v: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_delta_h: Option<i64>,
 }
 
 impl MouseEvent {
@@ -115,6 +119,8 @@ impl MouseEvent {
             is_idle: false,
             is_hardware: true,
             device_id: None,
+            scroll_delta_v: None,
+            scroll_delta_h: None,
         }
     }
 
@@ -129,7 +135,29 @@ impl MouseEvent {
             is_idle: true,
             is_hardware: true,
             device_id: None,
+            scroll_delta_v: None,
+            scroll_delta_h: None,
         }
+    }
+
+    /// Create a scroll wheel event with vertical and horizontal deltas.
+    pub fn scroll(timestamp_ns: i64, x: f64, y: f64, delta_v: i64, delta_h: i64) -> Self {
+        Self {
+            timestamp_ns,
+            x,
+            y,
+            dx: 0.0,
+            dy: 0.0,
+            is_idle: false,
+            is_hardware: true,
+            device_id: None,
+            scroll_delta_v: Some(delta_v),
+            scroll_delta_h: Some(delta_h),
+        }
+    }
+
+    pub fn is_scroll(&self) -> bool {
+        self.scroll_delta_v.is_some()
     }
 
     /// Compute the Euclidean magnitude of the movement delta.

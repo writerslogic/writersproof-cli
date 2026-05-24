@@ -47,6 +47,7 @@ pub(super) struct EventLoopCtx {
     #[allow(clippy::type_complexity)]
     pub(super) pending_challenge: Arc<RwLock<Option<(String, Option<String>)>>>,
     pub(super) nonce_notify: Arc<tokio::sync::Notify>,
+    pub(super) entropy_checkpoint_notify: Arc<tokio::sync::Notify>,
     pub(super) tpm_provider: Option<Arc<dyn crate::tpm::Provider>>,
     pub(super) tap_check_capture: Arc<Mutex<Option<Box<dyn KeystrokeCapture>>>>,
     pub(super) tap_check_active: Arc<AtomicBool>,
@@ -78,6 +79,9 @@ pub(super) struct EventLoopCtx {
     /// Updated by focus/change event handlers; the single-threaded
     /// tokio::select! loop ensures consistency without the lock.
     pub(super) cached_focus: Option<String>,
+    /// Bounded channel for cross-window transcription check requests.
+    /// Capacity 1: at most one check in flight, extras silently dropped.
+    pub(super) xwin_check_tx: Option<std::sync::mpsc::SyncSender<(u32, String)>>,
 }
 
 /// Duration after last keystroke within which mouse micro-movements are recorded.
@@ -233,7 +237,7 @@ impl EventLoopCtx {
 
     /// Attribute a validated keyDown to the focused document session.
     fn record_keystroke_to_session(
-        &self,
+        &mut self,
         event: &crate::platform::KeystrokeEvent,
         sample: &crate::jitter::SimpleJitterSample,
         duration_since_last_ns: u64,
@@ -241,7 +245,7 @@ impl EventLoopCtx {
         let Some(ref path) = self.cached_focus else {
             return;
         };
-        log::debug!("record_keystroke_to_session: path={}", path);
+        log::trace!("record_keystroke_to_session: path={}", path);
         let mut map = self.sessions.write_recover();
         super::trace!(
             "[KEYSTROKE] focus={:?} sessions={:?} kc={}",
@@ -266,7 +270,8 @@ impl EventLoopCtx {
             session.jitter_samples.push(sample.clone());
             session
                 .jitter_sample_index
-                .insert(sample.timestamp_ns, idx);
+                .entry(sample.timestamp_ns)
+                .or_insert(idx);
         }
         let validation = crate::forensics::validate_keystroke_event(
             event.timestamp_ns,
@@ -280,8 +285,13 @@ impl EventLoopCtx {
         if validation.confidence < 0.1 {
             session.keystroke_count -= 1;
             if was_buffered {
+                let rollback_idx = session.jitter_samples.len() - 1;
                 if let Some(last) = session.jitter_samples.last() {
-                    session.jitter_sample_index.remove(&last.timestamp_ns);
+                    // Only remove index entry if it points to the sample being rolled back.
+                    // With duplicate timestamps, or_insert preserves the earlier entry.
+                    if session.jitter_sample_index.get(&last.timestamp_ns) == Some(&rollback_idx) {
+                        session.jitter_sample_index.remove(&last.timestamp_ns);
+                    }
                 }
                 session.jitter_samples.pop();
             }
@@ -300,6 +310,23 @@ impl EventLoopCtx {
             0, // file_size populated at checkpoint time
         );
 
+        // Scroll-before-edit: count recent scroll events that preceded this keystroke.
+        // A scroll within 3s before a keystroke indicates re-reading before editing.
+        {
+            let threshold_ns = 3_000_000_000i64;
+            let sa = &mut session.scroll_attention;
+            while let Some(&ts) = sa.recent_scroll_timestamps.front() {
+                if event.timestamp_ns.saturating_sub(ts) > threshold_ns {
+                    sa.recent_scroll_timestamps.pop_front();
+                } else {
+                    break;
+                }
+            }
+            let count = sa.recent_scroll_timestamps.len() as u64;
+            sa.scroll_before_edit_count += count;
+            sa.recent_scroll_timestamps.clear();
+        }
+
         // Advance incremental jitter hash chain for all accepted
         // keystrokes, even those beyond the sample buffer capacity,
         // so the hash covers the full session.
@@ -313,6 +340,27 @@ impl EventLoopCtx {
             session.jitter_hash_state = h.finalize().into();
         }
 
+        // Entropy-triggered checkpoint: test if jitter hash chain crossed
+        // the trigger threshold. Only fires if MIN_NS has elapsed since
+        // the last checkpoint to protect the write lock budget.
+        {
+            let elapsed_ns = sample.timestamp_ns.saturating_sub(session.last_checkpoint_ns);
+            if elapsed_ns >= super::types::ENTROPY_CHECKPOINT_MIN_NS {
+                let trigger = u32::from_be_bytes(
+                    session.jitter_hash_state[..4].try_into().unwrap(),
+                );
+                if trigger < super::types::ENTROPY_TRIGGER_THRESHOLD {
+                    log::debug!(
+                        "Entropy trigger fired: trigger={trigger} threshold={} elapsed={}ms",
+                        super::types::ENTROPY_TRIGGER_THRESHOLD,
+                        elapsed_ns / 1_000_000,
+                    );
+                    session.last_checkpoint_ns = sample.timestamp_ns;
+                    self.entropy_checkpoint_notify.notify_one();
+                }
+            }
+        }
+
         // Feed typed character to cross-window transcription detector.
         if let Some(ch) = event.char_value {
             session.transcription_detector.record_keystroke(ch);
@@ -323,7 +371,7 @@ impl EventLoopCtx {
             && session.jitter_samples.len() >= 20;
         let cross_check_ready = should_cross_check
             && session.transcription_detector.buffer_len() >= 100;
-        let exclude_pid = if cross_check_ready {
+        let exclude_pid = if cross_check_ready && event.target_pid > 0 {
             Some(event.target_pid as u32)
         } else {
             None
@@ -358,37 +406,50 @@ impl EventLoopCtx {
 
         drop(map);
 
-        // Cross-window comparison runs on a background thread to avoid
-        // blocking keystroke processing (AX IPC can take 50-200ms).
+        // Cross-window comparison runs on a single background worker thread
+        // to avoid blocking keystroke processing (AX IPC can take 50-200ms).
+        // Bounded channel (capacity 1): at most one check in flight, extras dropped.
         if let Some(excl_pid) = exclude_pid {
-            let sessions = Arc::clone(&self.sessions);
-            let path_owned = path.clone();
-            std::thread::Builder::new()
-                .name("cpoe-xwin-check".into())
-                .stack_size(16 * 1024 * 1024)
-                .spawn(move || {
-                    let visible =
-                        crate::platform::window_text::WindowTextCapture::capture_visible_windows(
-                            Some(excl_pid),
-                        );
-                    if visible.is_empty() {
-                        return;
-                    }
-                    let mut map = sessions.write_recover();
-                    if let Some(session) = map.get_mut(path_owned.as_str()) {
-                        for wt in &visible {
-                            if wt.text_content.len() >= 50 {
-                                session.transcription_detector.check_against_text(
-                                    &wt.text_content,
-                                    &wt.app_name,
-                                    &wt.window_title,
+            if self.xwin_check_tx.is_none() {
+                let (tx, rx) = std::sync::mpsc::sync_channel::<(u32, String)>(1);
+                let sessions = Arc::clone(&self.sessions);
+                match std::thread::Builder::new()
+                    .name("cpoe-xwin-check".into())
+                    .spawn(move || {
+                        while let Ok((pid, check_path)) = rx.recv() {
+                            let visible =
+                                crate::platform::window_text::WindowTextCapture::capture_visible_windows(
+                                    Some(pid),
                                 );
+                            if visible.is_empty() {
+                                continue;
+                            }
+                            let mut map = sessions.write_recover();
+                            if let Some(session) = map.get_mut(check_path.as_str()) {
+                                for wt in &visible {
+                                    if wt.text_content.len() >= 50 {
+                                        session.transcription_detector.check_against_text(
+                                            &wt.text_content,
+                                            &wt.app_name,
+                                            &wt.window_title,
+                                        );
+                                    }
+                                }
                             }
                         }
-                    }
-                })
-                .map_err(|e| log::warn!("failed to spawn xwin-check thread: {e}"))
-                .ok();
+                    }) {
+                    Ok(_) => self.xwin_check_tx = Some(tx),
+                    Err(e) => log::warn!("failed to spawn xwin-check worker: {e}"),
+                }
+            }
+            if let Some(tx) = &self.xwin_check_tx {
+                if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) =
+                    tx.try_send((excl_pid, path.clone()))
+                {
+                    // Worker thread died; reset so it's re-spawned next time.
+                    self.xwin_check_tx = None;
+                }
+            }
         }
     }
 
@@ -408,6 +469,69 @@ impl EventLoopCtx {
             < Duration::from_secs(TYPING_PROXIMITY_SECS);
         if is_during_typing && event.is_micro_movement() {
             self.mouse_idle_stats.write_recover().record(&event);
+        }
+
+        // Accumulate scroll and position data for cursor attention analysis.
+        // Only take the sessions write lock when we actually have data to record.
+        let is_scroll = event.is_scroll();
+        let should_sample_position = mouse_duration_ns >= 100_000_000;
+        if is_scroll || should_sample_position {
+            if let Some(ref path) = self.cached_focus {
+                let mut map = self.sessions.write_recover();
+                if let Some(session) = map.get_mut(path.as_str()) {
+                    let sa = &mut session.scroll_attention;
+                    if is_scroll {
+                        let delta_v = event.scroll_delta_v.unwrap_or(0);
+                        sa.total_scroll_events += 1;
+                        sa.record_scroll_magnitude((delta_v as f64).abs());
+
+                        if delta_v > 0 {
+                            sa.scroll_up_count += 1;
+                            if sa.last_scroll_sign == -1 {
+                                sa.direction_reversals += 1;
+                            }
+                            sa.last_scroll_sign = 1;
+                        } else if delta_v < 0 {
+                            sa.scroll_down_count += 1;
+                            if sa.last_scroll_sign == 1 {
+                                sa.direction_reversals += 1;
+                            }
+                            sa.last_scroll_sign = -1;
+                        }
+
+                        sa.last_scroll_ts_ns = event.timestamp_ns;
+                        if is_during_typing {
+                            sa.scroll_near_edit_count += 1;
+                        }
+
+                        if sa.recent_scroll_timestamps.len() >= 64 {
+                            sa.recent_scroll_timestamps.pop_front();
+                        }
+                        sa.recent_scroll_timestamps.push_back(event.timestamp_ns);
+                    }
+
+                    if should_sample_position {
+                        let y = event.y;
+                        sa.record_position(y);
+                        sa.record_direction(y);
+
+                        // Dwell in screen thirds
+                        let y_range = sa.position_y_max - sa.position_y_min;
+                        if sa.last_sample_ts_ns > 0 && y_range > 1.0 {
+                            let elapsed_ns = crate::utils::ns_elapsed(
+                                event.timestamp_ns, sa.last_sample_ts_ns,
+                            );
+                            let frac = ((sa.last_sample_y - sa.position_y_min) / y_range)
+                                .clamp(0.0, 0.999);
+                            let third = (frac * 3.0) as usize;
+                            sa.dwell_thirds_ns[third] += elapsed_ns;
+                        }
+
+                        sa.last_sample_y = y;
+                        sa.last_sample_ts_ns = event.timestamp_ns;
+                    }
+                }
+            }
         }
 
         // Throttle stego jitter to ~20 Hz to reduce write lock contention
@@ -487,7 +611,12 @@ impl EventLoopCtx {
                 // File I/O runs on the blocking pool to avoid stalling the event loop.
                 let fp_doc = match crate::utils::fs::open_validated(doc_path) {
                     Ok(v) => v,
-                    Err(_) => return,
+                    Err(e) => {
+                        log::debug!("content_fingerprint: open_validated failed for {path:?}: {e}");
+                        // Don't return — cached_focus update below must still run.
+                        self.cached_focus = self.current_focus.read_recover().clone();
+                        return;
+                    }
                 };
                 let fp_sessions = Arc::clone(&self.sessions);
                 let fp_store = Arc::clone(&self.content_fingerprints);
@@ -510,14 +639,14 @@ impl EventLoopCtx {
                         return;
                     }
                     let fp = super::content_fingerprint::ContentFingerprint::from_text(&content);
-                    let sessions_guard = fp_sessions.read().unwrap_or_else(|p| p.into_inner());
+                    let sessions_guard = fp_sessions.read_recover();
                     if let Some(session) = sessions_guard.get(fp_path.as_str()) {
                         let sid = session.session_id.clone();
                         let app = session.app_bundle_id.clone();
                         drop(sessions_guard);
 
                         // Single lock acquisition for read + write to avoid TOCTOU.
-                        let mut store = fp_store.lock().unwrap_or_else(|p| p.into_inner());
+                        let mut store = fp_store.lock_recover();
                         if let Some(link) = super::content_fingerprint::find_cross_app_match(
                             &sid, &app, &fp, &store,
                         ) {
@@ -929,9 +1058,11 @@ impl EventLoopCtx {
         .await
         .unwrap_or_else(|e| {
             log::error!("Checkpoint task panicked for {}: {e}", path);
+            // Mark this window as checkpointed to prevent infinite retry
+            // if the panic is caused by persistent corrupt state.
             let mut map = sessions_ref.write_recover();
             if let Some(session) = map.get_mut(path) {
-                session.last_checkpoint_keystrokes = 0;
+                session.last_checkpoint_keystrokes = session.keystroke_count;
             }
             None
         });
@@ -1176,17 +1307,16 @@ impl EventLoopCtx {
         } else {
             crate::store::text_fragments::KeystrokeContext::OriginalComposition
         };
-        let sig = if let Some(sk) = sk {
-            crate::store::text_fragments::sign_fragment(
-                sk,
-                session_id,
-                &frag_hash,
-                ts,
-                &nonce,
-            )
-        } else {
-            [0u8; 64]
+        let Some(sk) = sk else {
+            return;
         };
+        let sig = crate::store::text_fragments::sign_fragment(
+            sk,
+            session_id,
+            &frag_hash,
+            ts,
+            &nonce,
+        );
         let fragment = crate::store::text_fragments::TextFragment {
             id: None,
             fragment_hash: frag_hash.to_vec(),
@@ -1226,11 +1356,13 @@ impl EventLoopCtx {
     pub(super) fn handle_permission_check(&self) {
         let current =
             super::permission_monitor::PermissionState::current();
-        let prev = *self.permission_state.lock_recover();
+        let mut guard = self.permission_state.lock_recover();
+        let prev = *guard;
         if current == prev {
             return;
         }
-        *self.permission_state.lock_recover() = current;
+        *guard = current;
+        drop(guard);
         if !current.keystroke_capture_allowed()
             && prev.keystroke_capture_allowed()
         {

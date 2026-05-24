@@ -413,6 +413,7 @@ pub(crate) fn build_dimensions(
     process: &ProcessEvidence,
     metrics: &crate::forensics::ForensicMetrics,
     sessions: &[ReportSession],
+    file_path: &str,
 ) -> Vec<DimensionScore> {
     let event_count = process.swf_checkpoints.unwrap_or(0) as usize;
     let mut dims = vec![
@@ -461,6 +462,27 @@ pub(crate) fn build_dimensions(
                 .map(|m| m.to_string())
                 .unwrap_or_else(|| "unknown".to_string()),
         ));
+    }
+
+    // Cursor attention from live scroll/position data.
+    if let Some(sentinel) = super::sentinel::get_sentinel() {
+        if !file_path.is_empty() {
+            if let Ok(session) = sentinel.session(file_path) {
+                if let Some(ca) =
+                    crate::forensics::cursor_attention::analyze(&session.scroll_attention)
+                {
+                    dims.push(build_enhanced_dimension(
+                        "Cursor Attention",
+                        ca.composite_score,
+                        &format!(
+                            "scroll bidir={:.0}%, readback={:.0}%",
+                            ca.scroll_bidirectional_ratio * 100.0,
+                            ca.read_back_frequency * 100.0
+                        ),
+                    ));
+                }
+            }
+        }
     }
 
     dims

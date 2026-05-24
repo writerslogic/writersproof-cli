@@ -135,13 +135,34 @@ impl Default for WindowInfo {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Entropy-triggered checkpoint constants
+// ---------------------------------------------------------------------------
+
+/// Minimum elapsed time between checkpoints (nanoseconds). Protects the write
+/// lock and gives SQLite a ~50ms write budget within the 10s interval.
+pub const ENTROPY_CHECKPOINT_MIN_NS: i64 = 10_000_000_000;
+
+/// Maximum elapsed time before a deadline checkpoint fires regardless of
+/// entropy (nanoseconds). Guarantees coverage during slow typing or pauses.
+pub const ENTROPY_CHECKPOINT_MAX_NS: i64 = 120_000_000_000;
+
+/// Trigger threshold: the first 4 bytes of jitter_hash_state, interpreted as
+/// a big-endian u32, must be below this value to fire. Calibrated for ~45s
+/// average interval at 3 KPS: after the 10s floor, ~105 eligible keystrokes
+/// each with probability 1/105 ≈ `u32::MAX / 105`.
+pub const ENTROPY_TRIGGER_THRESHOLD: u32 = 40_920_472; // u32::MAX / 105
+
+/// Domain separation tag for entropy checkpoint verification.
+pub const ENTROPY_CHECKPOINT_DST: &[u8] = b"cpoe-jitter-chain-v2";
+
 /// Max jitter samples retained per document to bound memory.
 ///
 /// Memory implication: 50,000 samples * ~24 bytes each = ~1.2 MB per active document.
 /// This is intentional; the full session is retained so that post-hoc forensic analysis
-/// has access to the complete typing timeline without lossy downsampling. Sessions that
-/// exceed this limit drop the oldest samples via the sliding-window eviction in the
-/// sentinel. For typical writing sessions (< 10,000 keystrokes) the limit is never hit.
+/// has access to the complete typing timeline without lossy downsampling. Once this
+/// limit is reached, new samples are silently dropped (append-and-cap). For typical
+/// writing sessions (< 10,000 keystrokes) the limit is never hit.
 pub const MAX_DOCUMENT_JITTER_SAMPLES: usize = 50_000;
 
 /// Maximum focus switch records per document session. Sessions that
@@ -504,8 +525,9 @@ impl fmt::Display for KeystrokeSemantic {
 }
 
 /// Source context of a keystroke during Phase 2 clipboard/paste tracking.
-// NOTE: A parallel KeystrokeContext exists in store/text_fragments.rs.
-// These should be consolidated in a future refactor.
+// A parallel KeystrokeContext exists in store/text_fragments.rs with
+// different serialization (PascalCase as_str/FromStr for SQLite vs
+// kebab-case Display/Serde here for wire format). Intentionally separate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeystrokeContext {
     /// User typing fresh text, not from clipboard.
@@ -682,6 +704,99 @@ pub struct ActiveDictationSession {
     pub total_corrections: u32,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScrollAttentionAccumulator {
+    // --- scroll counters ---
+    pub scroll_up_count: u64,
+    pub scroll_down_count: u64,
+    pub total_scroll_events: u64,
+    pub direction_reversals: u64,
+    pub last_scroll_sign: i8,
+    pub scroll_near_edit_count: u64,
+    pub scroll_before_edit_count: u64,
+    pub last_scroll_ts_ns: i64,
+
+    // --- scroll velocity (Welford online variance) ---
+    scroll_vel_count: u64,
+    scroll_vel_mean: f64,
+    scroll_vel_m2: f64,
+
+    // --- cursor position running statistics ---
+    pub position_sample_count: u64,
+    pub position_y_mean: f64,
+    pub position_y_min: f64,
+    pub position_y_max: f64,
+    /// Y-position histogram bins for entropy (10 bins, 100px each from screen top).
+    pub position_y_bins: [u64; 10],
+
+    // --- cursor movement direction ---
+    pub cursor_move_up_count: u64,
+    pub cursor_move_down_count: u64,
+    pub last_sample_y: f64,
+    pub last_sample_ts_ns: i64,
+
+    // --- dwell region tracking ---
+    pub dwell_thirds_ns: [u64; 3],
+    /// Timestamps of recent scroll events for scroll-before-edit detection (ring, max 64).
+    #[serde(skip)]
+    pub recent_scroll_timestamps: VecDeque<i64>,
+}
+
+impl ScrollAttentionAccumulator {
+    /// Map a screen Y coordinate to a histogram bin index (0-9).
+    pub fn y_to_bin(y: f64) -> usize {
+        ((y.max(0.0) / 100.0).floor() as usize).min(9)
+    }
+
+    /// Record a scroll event magnitude for running velocity statistics (Welford).
+    pub fn record_scroll_magnitude(&mut self, magnitude: f64) {
+        self.scroll_vel_count += 1;
+        let n = self.scroll_vel_count as f64;
+        let delta = magnitude - self.scroll_vel_mean;
+        self.scroll_vel_mean += delta / n;
+        let delta2 = magnitude - self.scroll_vel_mean;
+        self.scroll_vel_m2 += delta * delta2;
+    }
+
+    /// Scroll velocity coefficient of variation. Returns 0 if insufficient data.
+    pub fn scroll_velocity_cv(&self) -> f64 {
+        if self.scroll_vel_count < 2 || self.scroll_vel_mean <= 0.0 {
+            return 0.0;
+        }
+        let variance = (self.scroll_vel_m2 / (self.scroll_vel_count as f64 - 1.0)).max(0.0);
+        variance.sqrt() / self.scroll_vel_mean
+    }
+
+    /// Record a cursor Y position sample for running statistics and histogram.
+    pub fn record_position(&mut self, y: f64) {
+        self.position_sample_count += 1;
+        let n = self.position_sample_count as f64;
+        let delta = y - self.position_y_mean;
+        self.position_y_mean += delta / n;
+        if y < self.position_y_min || self.position_sample_count == 1 {
+            self.position_y_min = y;
+        }
+        if y > self.position_y_max || self.position_sample_count == 1 {
+            self.position_y_max = y;
+        }
+        self.position_y_bins[Self::y_to_bin(y)] += 1;
+    }
+
+    /// Record cursor movement direction relative to the last sampled position.
+    pub fn record_direction(&mut self, y: f64) {
+        if self.last_sample_ts_ns > 0 {
+            let dy = y - self.last_sample_y;
+            if dy.abs() > 1.0 {
+                if dy < 0.0 {
+                    self.cursor_move_up_count += 1;
+                } else {
+                    self.cursor_move_down_count += 1;
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DocumentSession {
     pub path: String,
@@ -735,6 +850,9 @@ pub struct DocumentSession {
     pub first_tracked_at: Option<SystemTime>,
     /// Keystroke count at the time of the last committed checkpoint.
     pub last_checkpoint_keystrokes: u64,
+    /// Nanosecond timestamp of the last committed checkpoint (jitter clock).
+    /// Used by the entropy trigger to enforce the MIN_NS floor.
+    pub(crate) last_checkpoint_ns: i64,
     /// When this session last had focus (for idle auto-stop).
     pub last_focused_at: SystemTime,
     /// HW co-sign scheduler; present when a TPM provider is available.
@@ -765,6 +883,9 @@ pub struct DocumentSession {
     pub(crate) last_export_detected_ns: Option<i64>,
     /// Confidence in the evidence path and storage metadata for this session.
     pub evidence_confidence: EvidenceConfidence,
+    /// Human-readable reason the confidence was downgraded from Full.
+    /// `None` when confidence is Full (no downgrade occurred).
+    pub confidence_reason: Option<String>,
     /// Real-time transcription suspicion flag. Updated periodically during
     /// keystroke capture to detect transcription-like correction patterns.
     /// When `is_suspicious`, checkpoints are forced on every tick (never skipped).
@@ -772,6 +893,81 @@ pub struct DocumentSession {
     /// Cross-window transcription detector: compares typed text against visible
     /// windows to detect retyping from a visible source.
     pub(crate) transcription_detector: crate::transcription::TranscriptionDetector,
+    /// Content-bound edit context proofs: BLAKE3 keyed hashes of the 64-byte
+    /// window around each detected cursor reposition. Populated at capture time
+    /// when the platform provides document read access.
+    #[cfg(feature = "content_binding")]
+    pub(crate) edit_context_proofs: Vec<EditContextProof>,
+    pub(crate) scroll_attention: ScrollAttentionAccumulator,
+}
+
+/// BLAKE3 keyed hash of the 64-byte window around an edit position.
+///
+/// Computed at capture time when a cursor reposition is detected, binding the
+/// edit location to the surrounding document content. An attacker who injects
+/// fake cursor jumps must also produce plausible local context at every jump
+/// site, which requires solving the composition problem itself.
+///
+/// Key = checkpoint content_hash (domain separator). Window = `doc[pos-32..pos+32]`.
+#[cfg(feature = "content_binding")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditContextProof {
+    /// Nanosecond timestamp of the cursor reposition event.
+    pub timestamp_ns: i64,
+    /// Document byte offset where the cursor landed.
+    pub cursor_offset: u64,
+    /// BLAKE3 keyed hash: `blake3::keyed_hash(content_hash, &doc[pos-32..pos+32])`.
+    /// The binding key (content_hash) is not stored here; the verifier
+    /// reconstructs it from the checkpoint chain.
+    pub context_hash: [u8; 32],
+}
+
+#[cfg(feature = "content_binding")]
+impl EditContextProof {
+    /// Compute an edit context proof for a cursor reposition.
+    ///
+    /// `content_hash`: the document's BLAKE3 hash at the most recent checkpoint
+    ///   (used as the BLAKE3 keyed-hash key; not stored in the proof).
+    /// `document_bytes`: the full document content.
+    /// `cursor_offset`: byte offset where the cursor landed.
+    /// `timestamp_ns`: nanosecond timestamp of the reposition event.
+    pub fn compute(
+        content_hash: &[u8; 32],
+        document_bytes: &[u8],
+        cursor_offset: u64,
+        timestamp_ns: i64,
+    ) -> Option<Self> {
+        let pos = cursor_offset as usize;
+        let start = pos.saturating_sub(32);
+        let end = (pos + 32).min(document_bytes.len());
+        if end <= start {
+            return None;
+        }
+        let window = &document_bytes[start..end];
+
+        let context_hash = blake3::keyed_hash(content_hash, window);
+
+        Some(Self {
+            timestamp_ns,
+            cursor_offset,
+            context_hash: *context_hash.as_bytes(),
+        })
+    }
+
+    /// Verify this proof against a document snapshot and the binding key
+    /// reconstructed from the checkpoint chain.
+    pub fn verify(&self, binding_key: &[u8; 32], document_bytes: &[u8]) -> bool {
+        use subtle::ConstantTimeEq;
+        let pos = self.cursor_offset as usize;
+        let start = pos.saturating_sub(32);
+        let end = (pos + 32).min(document_bytes.len());
+        if end <= start {
+            return false;
+        }
+        let window = &document_bytes[start..end];
+        let expected = blake3::keyed_hash(binding_key, window);
+        expected.as_bytes().ct_eq(&self.context_hash).into()
+    }
 }
 
 /// Confidence in the evidence path and storage metadata for a document session.
@@ -784,6 +980,16 @@ pub enum EvidenceConfidence {
     Partial,
     /// Unknown app matched via track_unknown_apps; no storage metadata.
     Heuristic,
+}
+
+impl fmt::Display for EvidenceConfidence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Full => f.write_str("Full"),
+            Self::Partial => f.write_str("Partial"),
+            Self::Heuristic => f.write_str("Heuristic"),
+        }
+    }
 }
 
 /// Accumulates keystroke semantic classification counts for a session.
@@ -861,6 +1067,17 @@ impl SemanticAccumulator {
         self.delete_backward + self.delete_forward + self.delete_word + self.delete_line
     }
 
+    /// Total editing keystrokes (deletions + undo/redo + cut/paste + select-all).
+    /// Mirrors `KeystrokeSemantic::is_editing()`.
+    pub fn total_editing(&self) -> u64 {
+        self.total_deletions()
+            + self.undo
+            + self.redo
+            + self.cut
+            + self.paste
+            + self.select_all
+    }
+
     /// Ratio of editing keystrokes to total keystrokes.
     /// Returns 0.0 if no keystrokes recorded.
     pub fn editing_ratio(&self) -> f64 {
@@ -868,13 +1085,7 @@ impl SemanticAccumulator {
         if total == 0 {
             return 0.0;
         }
-        let editing = self.total_deletions()
-            + self.undo
-            + self.redo
-            + self.cut
-            + self.paste
-            + self.select_all;
-        editing as f64 / total as f64
+        self.total_editing() as f64 / total as f64
     }
 
     /// Classify the session as primarily composing or editing.
@@ -882,10 +1093,11 @@ impl SemanticAccumulator {
     /// Thresholds: <15% editing = composing, >50% = editing, between = mixed.
     /// Returns `None` if fewer than 20 keystrokes recorded.
     pub fn session_activity_type(&self) -> Option<SessionActivityType> {
-        if self.total() < 20 {
+        let total = self.total();
+        if total < 20 {
             return None;
         }
-        let ratio = self.editing_ratio();
+        let ratio = self.total_editing() as f64 / total as f64;
         Some(if ratio < 0.15 {
             SessionActivityType::Composing
         } else if ratio > 0.50 {
@@ -918,56 +1130,120 @@ impl SemanticAccumulator {
 }
 
 impl Clone for DocumentSession {
+    #[allow(clippy::field_reassign_with_default)]
     fn clone(&self) -> Self {
+        // Destructure to get a compile error when a new field is added
+        // without updating this impl. Fields that are intentionally NOT
+        // cloned (active_dictation, hw_cosign_scheduler) are bound to `_`.
+        let Self {
+            ref path,
+            ref session_id,
+            ref shadow_id,
+            start_time,
+            last_focus_time,
+            total_focus_ms,
+            focus_count,
+            ref initial_hash,
+            ref current_hash,
+            save_count,
+            change_count,
+            keystroke_count,
+            ref app_bundle_id,
+            ref app_name,
+            ref window_title,
+            ref jitter_samples,
+            ref jitter_sample_index,
+            jitter_hash_state,
+            ref cognitive,
+            ref focus_switches,
+            ref ai_tools_detected,
+            capture_gaps,
+            active_dictation: _,
+            ref dictation_events,
+            has_focus,
+            focus_started,
+            ref event_validation,
+            cumulative_keystrokes_base,
+            cumulative_focus_ms_base,
+            session_number,
+            first_tracked_at,
+            last_checkpoint_keystrokes,
+            last_checkpoint_ns,
+            last_focused_at,
+            hw_cosign_scheduler: _,
+            ref last_hw_cosign_signature,
+            hw_cosign_chain_index,
+            ref paste_context,
+            ref semantic_counts,
+            ref device_keystroke_counts,
+            file_encoding,
+            ref origin_temp_path,
+            ref segment_counts,
+            ref scrivener_project_map,
+            last_export_detected_ns,
+            evidence_confidence,
+            ref confidence_reason,
+            ref transcription_suspicion,
+            ref transcription_detector,
+            #[cfg(feature = "content_binding")]
+            ref edit_context_proofs,
+            ref scroll_attention,
+        } = *self;
+
         Self {
-            path: self.path.clone(),
-            session_id: self.session_id.clone(),
-            shadow_id: self.shadow_id.clone(),
-            start_time: self.start_time,
-            last_focus_time: self.last_focus_time,
-            total_focus_ms: self.total_focus_ms,
-            focus_count: self.focus_count,
-            initial_hash: self.initial_hash.clone(),
-            current_hash: self.current_hash.clone(),
-            save_count: self.save_count,
-            change_count: self.change_count,
-            keystroke_count: self.keystroke_count,
-            app_bundle_id: self.app_bundle_id.clone(),
-            app_name: self.app_name.clone(),
-            window_title: self.window_title.clone(),
-            jitter_samples: self.jitter_samples.clone(),
-            jitter_sample_index: self.jitter_sample_index.clone(),
-            jitter_hash_state: self.jitter_hash_state,
-            cognitive: self.cognitive.clone(),
-            focus_switches: self.focus_switches.clone(),
-            ai_tools_detected: self.ai_tools_detected.clone(),
-            capture_gaps: self.capture_gaps,
+            path: path.clone(),
+            session_id: session_id.clone(),
+            shadow_id: shadow_id.clone(),
+            start_time,
+            last_focus_time,
+            total_focus_ms,
+            focus_count,
+            initial_hash: initial_hash.clone(),
+            current_hash: current_hash.clone(),
+            save_count,
+            change_count,
+            keystroke_count,
+            app_bundle_id: app_bundle_id.clone(),
+            app_name: app_name.clone(),
+            window_title: window_title.clone(),
+            jitter_samples: jitter_samples.clone(),
+            jitter_sample_index: jitter_sample_index.clone(),
+            jitter_hash_state,
+            cognitive: cognitive.clone(),
+            focus_switches: focus_switches.clone(),
+            ai_tools_detected: ai_tools_detected.clone(),
+            capture_gaps,
             active_dictation: None,
-            dictation_events: self.dictation_events.clone(),
-            has_focus: self.has_focus,
-            focus_started: self.focus_started,
-            event_validation: self.event_validation.clone(),
-            cumulative_keystrokes_base: self.cumulative_keystrokes_base,
-            cumulative_focus_ms_base: self.cumulative_focus_ms_base,
-            session_number: self.session_number,
-            first_tracked_at: self.first_tracked_at,
-            last_checkpoint_keystrokes: self.last_checkpoint_keystrokes,
-            last_focused_at: self.last_focused_at,
+            dictation_events: dictation_events.clone(),
+            has_focus,
+            focus_started,
+            event_validation: event_validation.clone(),
+            cumulative_keystrokes_base,
+            cumulative_focus_ms_base,
+            session_number,
+            first_tracked_at,
+            last_checkpoint_keystrokes,
+            last_checkpoint_ns,
+            last_focused_at,
             // Scheduler contains zeroize-protected SE salt; not cloned.
             hw_cosign_scheduler: None,
-            last_hw_cosign_signature: self.last_hw_cosign_signature.clone(),
-            hw_cosign_chain_index: self.hw_cosign_chain_index,
-            paste_context: self.paste_context.clone(),
-            semantic_counts: self.semantic_counts.clone(),
-            device_keystroke_counts: self.device_keystroke_counts.clone(),
-            file_encoding: self.file_encoding,
-            origin_temp_path: self.origin_temp_path.clone(),
-            segment_counts: self.segment_counts.clone(),
-            scrivener_project_map: self.scrivener_project_map.clone(),
-            last_export_detected_ns: self.last_export_detected_ns,
-            evidence_confidence: self.evidence_confidence,
-            transcription_suspicion: self.transcription_suspicion.clone(),
-            transcription_detector: self.transcription_detector.clone(),
+            last_hw_cosign_signature: last_hw_cosign_signature.clone(),
+            hw_cosign_chain_index,
+            paste_context: paste_context.clone(),
+            semantic_counts: semantic_counts.clone(),
+            device_keystroke_counts: device_keystroke_counts.clone(),
+            file_encoding,
+            origin_temp_path: origin_temp_path.clone(),
+            segment_counts: segment_counts.clone(),
+            scrivener_project_map: scrivener_project_map.clone(),
+            last_export_detected_ns,
+            evidence_confidence,
+            confidence_reason: confidence_reason.clone(),
+            transcription_suspicion: transcription_suspicion.clone(),
+            transcription_detector: transcription_detector.clone(),
+            #[cfg(feature = "content_binding")]
+            edit_context_proofs: edit_context_proofs.clone(),
+            scroll_attention: scroll_attention.clone(),
         }
     }
 }
@@ -1023,6 +1299,7 @@ impl DocumentSession {
             session_number: 0,
             first_tracked_at: None,
             last_checkpoint_keystrokes: 0,
+            last_checkpoint_ns: 0,
             last_focused_at: now,
             hw_cosign_scheduler: None,
             last_hw_cosign_signature: None,
@@ -1035,9 +1312,15 @@ impl DocumentSession {
             segment_counts: HashMap::new(),
             scrivener_project_map: None,
             last_export_detected_ns: None,
+            // Starts as Full; downgraded to Partial/Heuristic by the focus
+            // handler when AX path resolution or storage checks fail.
             evidence_confidence: EvidenceConfidence::Full,
+            confidence_reason: None,
             transcription_suspicion: Default::default(),
             transcription_detector: crate::transcription::TranscriptionDetector::new(),
+            #[cfg(feature = "content_binding")]
+            edit_context_proofs: Vec::new(),
+            scroll_attention: ScrollAttentionAccumulator::default(),
         }
     }
 
@@ -1052,9 +1335,42 @@ impl DocumentSession {
         *self.device_keystroke_counts.entry(device).or_insert(0) += 1;
     }
 
+    /// Record a content-bound edit context proof when a cursor reposition is detected.
+    ///
+    /// Called from the change handler when the platform can read the document at
+    /// the edit position. The proof binds the cursor jump to the surrounding 64
+    /// bytes of content via a BLAKE3 keyed hash, making it infeasible to inject
+    /// fake jumps without producing plausible local context.
+    ///
+    /// `content_hash`: BLAKE3 hash of the full document at the most recent checkpoint.
+    /// `document_bytes`: current document content.
+    /// `cursor_offset`: byte position where the cursor landed.
+    /// `timestamp_ns`: nanosecond-precision event timestamp.
+    #[cfg(feature = "content_binding")]
+    pub fn record_edit_context(
+        &mut self,
+        content_hash: &[u8; 32],
+        document_bytes: &[u8],
+        cursor_offset: u64,
+        timestamp_ns: i64,
+    ) {
+        const MAX_PROOFS: usize = 10_000;
+        if self.edit_context_proofs.len() >= MAX_PROOFS {
+            return;
+        }
+        if let Some(proof) = EditContextProof::compute(
+            content_hash,
+            document_bytes,
+            cursor_offset,
+            timestamp_ns,
+        ) {
+            self.edit_context_proofs.push(proof);
+        }
+    }
+
     /// Total keystrokes across all sessions including current.
     pub fn total_keystrokes(&self) -> u64 {
-        self.cumulative_keystrokes_base + self.keystroke_count
+        self.cumulative_keystrokes_base.saturating_add(self.keystroke_count)
     }
 
     /// Real-time WPM from the last 60 seconds of jitter samples.
@@ -1093,15 +1409,16 @@ impl DocumentSession {
 
     /// Total focus duration across all sessions including current.
     pub fn total_focus_ms_cumulative(&self) -> i64 {
-        self.cumulative_focus_ms_base + self.total_focus_ms
+        self.cumulative_focus_ms_base.saturating_add(self.total_focus_ms)
     }
 
     pub fn focus_gained(&mut self) {
         if !self.has_focus {
             self.has_focus = true;
             self.focus_started = Some(Instant::now());
-            self.last_focus_time = SystemTime::now();
-            self.last_focused_at = SystemTime::now();
+            let now = SystemTime::now();
+            self.last_focus_time = now;
+            self.last_focused_at = now;
             self.focus_count += 1;
         }
     }
@@ -1127,6 +1444,11 @@ impl DocumentSession {
 
     /// Includes currently active focus interval if focused.
     pub fn total_focus_duration(&self) -> Duration {
+        debug_assert!(
+            self.total_focus_ms >= 0,
+            "total_focus_ms went negative: {}",
+            self.total_focus_ms
+        );
         let mut total = Duration::from_millis(self.total_focus_ms.max(0) as u64);
         if let Some(started) = self.focus_started {
             total += started.elapsed();
@@ -1233,9 +1555,10 @@ pub fn parse_url_parts(url: &str) -> (String, String) {
     let url = url
         .trim_start_matches("https://")
         .trim_start_matches("http://");
-    let parts: Vec<&str> = url.splitn(2, '/').collect();
-    let domain = parts.first().unwrap_or(&"").to_string();
-    let path = parts.get(1).unwrap_or(&"").to_string();
+    let (domain, path) = match url.split_once('/') {
+        Some((d, p)) => (d.to_string(), p.to_string()),
+        None => (url.to_string(), String::new()),
+    };
 
     // Validate domain looks plausible (non-empty, contains at least one dot).
     // Malformed inputs get a distinguishing prefix so their hash never
@@ -1349,6 +1672,43 @@ const SKIP_TITLE_FRAGMENTS: &[&str] = &[
     "no subject",
 ];
 
+/// Bare editor/shell command names to reject when extracting document names
+/// from terminal window titles (e.g. "vim — filename — 80×24").
+const TERMINAL_EDITOR_NAMES: &[&str] = &[
+    // Vi family
+    "vim", "nvim", "vi", "gvim", "mvim", "macvim", "nvi", "elvis",
+    // Emacs family
+    "emacs", "xemacs", "mg", "zemacs",
+    // Nano/pico family
+    "nano", "pico", "tilde",
+    // Modern terminal editors
+    "helix", "hx",
+    "kakoune", "kak",
+    "micro",
+    "amp",
+    "zee", "zi",
+    "ox",
+    "mle",
+    "dte",
+    "vis",
+    // Classic editors
+    "joe", "jstar", "jpico", "jmacs",
+    "ed", "ex", "sed",
+    "ne",
+    "mcedit",
+    "fte",
+    "le",
+    "diakonos",
+    // Shells
+    "bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh",
+    "elvish", "nushell", "nu", "ion", "xonsh", "oil", "osh",
+    "powershell", "pwsh",
+    // Terminal multiplexers
+    "tmux", "screen", "zellij", "byobu", "dtach", "abduco",
+    // Terminal emulator process names (when they appear as bare segments)
+    "login",
+];
+
 /// Infer a document file path from a window title like `"file.rs - VSCode"`.
 ///
 /// Splits on common separators (`" - "`, `" \u{2014} "`, `" | "`) and checks
@@ -1376,8 +1736,7 @@ pub fn infer_document_path_from_title_with_bundle(
         .unwrap_or(false);
 
     let title_parser = bundle_id
-        .and_then(super::app_registry::lookup)
-        .map(|a| a.title_parser)
+        .map(super::app_registry::title_parser_for)
         .unwrap_or(super::app_registry::TitleParserVariant::Generic);
 
     // App-specific parsers for apps with known stable title formats.
@@ -1428,46 +1787,60 @@ pub fn infer_document_path_from_title_with_bundle(
             //
             // Strategy: strip known editor suffixes and dimension strings,
             // then look for a file path or document name in what remains.
+            // Work on &str slices to avoid intermediate String allocations.
             let editor_markers = [
-                " - VIM", " - Vi IMproved", " - GVIM",
-                " - GNU nano", " - GNU Emacs", " - Emacs",
-                " - NeoVim", " - NVIM",
+                // Vi family
+                " - VIM", " - Vi IMproved", " - GVIM", " - NVIM", " - NeoVim",
+                // Emacs family
+                " - GNU Emacs", " - Emacs", " - XEmacs",
+                // Nano/pico
+                " - GNU nano", " - Pico", " - tilde",
+                // Modern terminal editors
+                " - Helix", " - hx",
+                " - Kakoune", " - kak",
+                " - Micro",
+                " - Amp",
+                " - Vis",
+                // Classic editors
+                " - Joe", " - JOE",
+                " - ne",
+                " - mcedit",
+                " - ed",
+                // GUI editors (when launched from terminal)
+                " - Sublime Text",
+                " - TextMate",
             ];
-            let mut cleaned = title.to_string();
+            let mut cleaned: &str = title;
             for marker in &editor_markers {
                 if let Some(idx) = cleaned.find(marker) {
-                    cleaned = cleaned[..idx].to_string();
+                    cleaned = &cleaned[..idx];
                     break;
                 }
             }
             // Strip vim's modified marker: "filename (+)" → "filename"
-            cleaned = cleaned.trim_end_matches(" (+)").trim_end_matches(" [+]").to_string();
+            cleaned = cleaned
+                .trim_end_matches(" (+)")
+                .trim_end_matches(" [+]");
 
             // Terminal.app format: "editor — filename — 80×24"
             // Split on em-dash, look for file paths in middle segments.
             const EM_DASH: &str = " \u{2014} ";
             if cleaned.contains(EM_DASH) {
-                let parts: Vec<&str> = cleaned.split(EM_DASH).collect();
-                for part in &parts {
+                for part in cleaned.split(EM_DASH) {
                     let part = part.trim();
                     if looks_like_file_path(part) {
                         return Some(part.to_string());
                     }
                 }
                 // Skip dimension-like segments (e.g. "80×24") and editor names
-                for part in &parts {
+                for part in cleaned.split(EM_DASH) {
                     let part = part.trim();
                     if !part.is_empty()
                         && !part.contains('\u{00D7}') // × dimension separator
                         && looks_like_document_name(part)
+                        && !is_terminal_noise(part)
                     {
-                        // Skip if it matches the editor command itself
-                        let lower = part.to_lowercase();
-                        if !["vim", "nvim", "nano", "emacs", "vi", "bash", "zsh", "fish", "sh"]
-                            .contains(&lower.as_str())
-                        {
-                            return Some(part.to_string());
-                        }
+                        return Some(part.to_string());
                     }
                 }
             }
@@ -1498,8 +1871,7 @@ pub fn infer_document_path_from_title_with_bundle(
             }
             // Also check remaining segments (right side, further splits).
             let rest = &title[idx + sep.len()..];
-            let remaining: Vec<&str> = rest.split(sep).collect();
-            for segment in &remaining {
+            for segment in rest.split(sep) {
                 let segment = segment.trim();
                 if looks_like_file_path(segment) {
                     return Some(segment.to_string());
@@ -1515,6 +1887,246 @@ pub fn infer_document_path_from_title_with_bundle(
     }
     if is_title_inferred && looks_like_document_name(trimmed) {
         return Some(trimmed.to_string());
+    }
+
+    None
+}
+
+/// Segments extracted from an Electron-style window title.
+///
+/// For titles like `"index.ts - MyProject - Visual Studio Code"`, this yields
+/// `filename = "index.ts"` and `project_folder = Some("MyProject")`. The
+/// folder hint is used to search common project roots on disk so that a bare
+/// filename can be resolved to an absolute path without relying on AXDocument
+/// or the FD scan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TitlePathHint {
+    /// The document filename (may or may not have an extension).
+    pub filename: String,
+    /// Optional project/folder name extracted from the title.
+    pub project_folder: Option<String>,
+}
+
+/// Extract structured path hints from an Electron-style window title.
+///
+/// Handles these common patterns:
+/// - `"filename — AppName"` (Typora, Zed single-file)
+/// - `"filename - folder - AppName"` (VS Code, Cursor, Sublime Text)
+/// - `"filename [project] - AppName"` (some editors)
+/// - `"filename — folder — Zed"` (Zed with project)
+/// - `"filename · Nova"` (Nova)
+/// - `"Note Title - VaultName - Obsidian"` (Obsidian with vault)
+///
+/// Returns `None` if the title does not contain separators or the extracted
+/// filename looks like a non-document title (e.g. "Settings").
+pub fn extract_title_path_hint(
+    title: &str,
+    bundle_id: Option<&str>,
+) -> Option<TitlePathHint> {
+    if title.is_empty() {
+        return None;
+    }
+
+    let title_parser = bundle_id
+        .map(super::app_registry::title_parser_for)
+        .unwrap_or(super::app_registry::TitleParserVariant::Generic);
+
+    // Collect all segments by splitting on the known separators in order of
+    // specificity.  We try em-dash first, then middot (Nova), then hyphen.
+    let segments: Vec<&str> = if title.contains(" \u{2014} ") {
+        title.split(" \u{2014} ").map(str::trim).collect()
+    } else if title.contains(" \u{00B7} ") {
+        title.split(" \u{00B7} ").map(str::trim).collect()
+    } else if title.contains(" - ") {
+        title.split(" - ").map(str::trim).collect()
+    } else {
+        return None;
+    };
+
+    if segments.is_empty() {
+        return None;
+    }
+
+    // Known app-name suffixes to strip from the last segment. When the last
+    // segment matches one of these, it is the application name and should not
+    // be treated as a folder.
+    const APP_SUFFIXES: &[&str] = &[
+        "Visual Studio Code",
+        "VS Code",
+        "Code - Insiders",
+        "Cursor",
+        "Zed",
+        "Zed Preview",
+        "Sublime Text",
+        "Sublime Text 3",
+        "Nova",
+        "Obsidian",
+        "Typora",
+        "Zettlr",
+        "Mark Text",
+        "MarkText",
+        "Logseq",
+        "Notion",
+        "Hemingway Editor",
+    ];
+
+    let is_app_suffix = |s: &str| -> bool {
+        APP_SUFFIXES.iter().any(|a| s.eq_ignore_ascii_case(a))
+    };
+
+    let filename;
+    let mut project_folder = None;
+
+    match segments.len() {
+        1 => {
+            // No separator or app name — unlikely to be useful.
+            return None;
+        }
+        2 => {
+            // "filename — AppName" or "filename — folder" (when app has its own
+            // parser and we know the last segment is the app).
+            let left = segments[0];
+            let right = segments[1];
+
+            if is_app_suffix(right) {
+                filename = left;
+            } else {
+                // Could be "filename — folder" if the app name was already
+                // stripped or this parser variant uses a known structure.
+                match title_parser {
+                    super::app_registry::TitleParserVariant::Obsidian => {
+                        // "Note - Vault": left=note, right=vault (folder hint)
+                        filename = left;
+                        project_folder = Some(right.to_string());
+                    }
+                    _ => {
+                        filename = left;
+                    }
+                }
+            }
+        }
+        _ => {
+            // 3+ segments: "filename - folder - AppName" or more.
+            let last = segments[segments.len() - 1];
+            if is_app_suffix(last) {
+                filename = segments[0];
+                // The middle segment(s) are the project/folder path.
+                // For "file - folder - App", folder = segments[1].
+                // For "file - folder - subfolder - App", join them.
+                let middle: Vec<&str> = segments[1..segments.len() - 1].to_vec();
+                if !middle.is_empty() {
+                    // Handle "[project]" bracket syntax in middle segments.
+                    let folder = middle.join(std::path::MAIN_SEPARATOR_STR);
+                    project_folder = Some(folder);
+                }
+            } else {
+                // No recognized app suffix — take first as filename, second as
+                // folder hint.
+                filename = segments[0];
+                project_folder = Some(segments[1].to_string());
+            }
+        }
+    }
+
+    // Reject known non-document titles.
+    if !looks_like_document_name(filename) && !looks_like_file_path(filename) {
+        return None;
+    }
+
+    // Strip bracket-wrapped project names from the filename itself:
+    // "main.rs [writerslogic]" → filename="main.rs", project="writerslogic"
+    let (clean_filename, bracket_project) = extract_bracket_project(filename);
+
+    let project_folder = bracket_project
+        .map(|p| p.to_string())
+        .or(project_folder);
+
+    Some(TitlePathHint {
+        filename: clean_filename.to_string(),
+        project_folder,
+    })
+}
+
+/// Extract a `[project]` suffix from a filename segment.
+/// Returns `(filename_without_bracket, Some(project_name))` or
+/// `(original, None)`.
+fn extract_bracket_project(s: &str) -> (&str, Option<&str>) {
+    if let Some(open) = s.rfind('[') {
+        if let Some(close) = s[open..].find(']') {
+            let project = &s[open + 1..open + close];
+            let before = s[..open].trim_end();
+            if !project.is_empty() && !before.is_empty() {
+                return (before, Some(project));
+            }
+        }
+    }
+    (s, None)
+}
+
+/// Try to resolve a `TitlePathHint` to an absolute file path on disk.
+///
+/// Uses the process's current working directory (which Electron editors set to
+/// the project root) as the primary search path. Falls back to searching
+/// `$HOME/<common_root>/<project_folder>` when the CWD is unavailable or
+/// doesn't contain the file.
+///
+/// `pid` is the frontmost application's process ID; pass `None` to skip the
+/// CWD probe (e.g. in tests or on platforms without proc support).
+pub fn resolve_title_hint_to_path(hint: &TitlePathHint, pid: Option<u32>) -> Option<String> {
+    // Strategy 1: process CWD — the most reliable signal for Electron editors.
+    if let Some(pid) = pid {
+        if let Some(cwd) = super::process_files::cwd_for_pid(pid) {
+            // Direct child of cwd (VS Code opens project root as cwd).
+            let candidate = cwd.join(&hint.filename);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+            // One level of subdirectories (src/filename, lib/filename, etc.)
+            if let Ok(entries) = std::fs::read_dir(&cwd) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    if entry.path().is_dir() {
+                        let sub = entry.path().join(&hint.filename);
+                        if sub.is_file() {
+                            return Some(sub.to_string_lossy().into_owned());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Strategy 2: folder hint from the title + common project roots.
+    if let Some(ref folder) = hint.project_folder {
+        let home = dirs::home_dir()?;
+        const PROJECT_ROOTS: &[&str] = &[
+            "", "Documents", "Desktop", "Developer", "Projects",
+            "Code", "src", "repos", "workspace", "dev", "Sites",
+        ];
+        for root in PROJECT_ROOTS {
+            let base = if root.is_empty() {
+                home.join(folder)
+            } else {
+                home.join(root).join(folder)
+            };
+            if !base.is_dir() {
+                continue;
+            }
+            let candidate = base.join(&hint.filename);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+            // One level of subdirectories.
+            if let Ok(entries) = std::fs::read_dir(&base) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    if entry.path().is_dir() {
+                        let sub = entry.path().join(&hint.filename);
+                        if sub.is_file() {
+                            return Some(sub.to_string_lossy().into_owned());
+                        }
+                    }
+                }
+            }
+        }
     }
 
     None
@@ -1537,14 +2149,39 @@ fn looks_like_file_path(s: &str) -> bool {
         return true;
     }
 
-    let lower = s.to_lowercase();
-    if let Some(dot_pos) = lower.rfind('.') {
-        let ext = &lower[dot_pos..];
-        if DOC_EXTENSIONS.binary_search(&ext).is_ok() {
-            return true;
+    if let Some(dot_pos) = s.rfind('.') {
+        let ext = &s[dot_pos..];
+        // DOC_EXTENSIONS are all lowercase ASCII. Lowercase the short
+        // extension into a stack buffer to avoid heap allocation.
+        let ext_bytes = ext.as_bytes();
+        if ext_bytes.len() <= 16 {
+            let mut buf = [0u8; 16];
+            for (i, &b) in ext_bytes.iter().enumerate() {
+                buf[i] = b.to_ascii_lowercase();
+            }
+            if let Ok(lower_ext) = std::str::from_utf8(&buf[..ext_bytes.len()]) {
+                if DOC_EXTENSIONS.binary_search(&lower_ext).is_ok() {
+                    return true;
+                }
+            }
         }
     }
 
+    false
+}
+
+/// True if `s` is a known terminal editor, shell, multiplexer, or tty device name.
+fn is_terminal_noise(s: &str) -> bool {
+    if TERMINAL_EDITOR_NAMES.iter().any(|n| s.eq_ignore_ascii_case(n)) {
+        return true;
+    }
+    // macOS tty device names: ttys000..ttys999
+    if s.len() == 7
+        && s[..4].eq_ignore_ascii_case("ttys")
+        && s[4..].bytes().all(|b| b.is_ascii_digit())
+    {
+        return true;
+    }
     false
 }
 
@@ -1557,13 +2194,17 @@ fn looks_like_document_name(s: &str) -> bool {
         return false;
     }
 
-    let lower = s.to_lowercase();
-
     // Reject known non-document titles. Match as exact title or as the
     // first word/phrase, so "Untitled" and "Untitled - App" are both
     // rejected but "Untitled Draft" is accepted as a legitimate document.
+    // SKIP_TITLE_FRAGMENTS are all ASCII; use case-insensitive compare
+    // to avoid a heap allocation from to_lowercase().
     for frag in SKIP_TITLE_FRAGMENTS {
-        if lower == *frag || lower.starts_with(&format!("{frag} -")) {
+        if s.eq_ignore_ascii_case(frag)
+            || (s.len() > frag.len()
+                && s[..frag.len()].eq_ignore_ascii_case(frag)
+                && s[frag.len()..].starts_with(" -"))
+        {
             return false;
         }
     }
@@ -1594,9 +2235,20 @@ pub struct GitContext {
     pub is_staged: bool,
 }
 
-/// Returns `None` if the path contains traversal components or cannot be resolved.
+/// Returns `None` if the path contains traversal components, null bytes,
+/// is not absolute, or cannot be resolved.
 pub fn normalize_document_path(path: &str) -> Option<String> {
+    if path.contains('\0') {
+        log::warn!("Rejected path with null byte");
+        return None;
+    }
+
     let p = Path::new(path);
+
+    if !p.is_absolute() {
+        log::warn!("Rejected non-absolute path: '{path}'");
+        return None;
+    }
 
     for component in p.components() {
         if matches!(component, std::path::Component::ParentDir) {

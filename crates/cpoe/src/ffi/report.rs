@@ -409,76 +409,6 @@ fn get_forensics_cached(
     }
 }
 
-fn build_forensic_breakdown(
-    profile: &crate::forensics::AuthorshipProfile,
-    metrics: &crate::forensics::ForensicMetrics,
-) -> ForensicBreakdown {
-    let c = &metrics.cadence;
-    let mean_iki = finite_or(c.mean_iki_ns / 1_000_000.0, 0.0);
-    let cv = if mean_iki > 0.0 && c.std_dev_iki_ns.is_finite() && c.mean_iki_ns.is_finite() {
-        finite_or(c.std_dev_iki_ns / c.mean_iki_ns, 0.0)
-    } else {
-        0.0
-    };
-    ForensicBreakdown {
-        writing_mode: profile.writing_mode().to_string(),
-        cognitive_score: metrics.assessment_score.get(),
-        writing_mode_confidence: metrics
-            .writing_mode
-            .as_ref()
-            .map(|wm| wm.confidence)
-            .unwrap_or_else(|| if profile.event_count > 20 { 0.8 } else { 0.3 }),
-        revision_cycle_count: metrics
-            .writing_mode
-            .as_ref()
-            .map(|wm| wm.revision_pattern.revision_cycle_count as u32)
-            .unwrap_or(0),
-        hurst_exponent: metrics.hurst_exponent.filter(|v| v.is_finite()),
-        assessment_score: metrics.assessment_score.get(),
-        risk_level: profile.risk_level().to_string(),
-        mean_iki_ms: mean_iki,
-        coefficient_of_variation: finite_or(cv, 0.0),
-        burst_count: u32::try_from(c.burst_count).unwrap_or(u32::MAX),
-        pause_count: u32::try_from(c.pause_count).unwrap_or(u32::MAX),
-        correction_ratio: finite_or(c.correction_ratio.get(), 0.0),
-        burst_speed_cv: finite_or(c.burst_speed_cv, 0.0),
-        pause_depth: c.pause_depth_distribution,
-        mean_bps: finite_or(metrics.velocity.mean_bps, 0.0),
-        max_bps: finite_or(metrics.velocity.max_bps, 0.0),
-        biological_cadence_score: finite_or(metrics.biological_cadence_score.get(), 0.0),
-        steg_confidence: finite_or(metrics.steg_confidence.get(), 0.0),
-        thinking_pause_ratio: metrics.writing_mode.as_ref()
-            .map(|wm| finite_or(wm.thinking_pause_ratio, 0.0)).unwrap_or(0.0),
-        timing_entropy: finite_or(profile.metrics.timing_entropy, 0.0),
-        pause_entropy: finite_or(profile.metrics.pause_entropy, 0.0),
-        snr_db: metrics.snr.as_ref().map(|s| s.snr_db),
-        snr_flagged: metrics.snr.as_ref().is_some_and(|s| s.flagged),
-        lyapunov_exponent: metrics.lyapunov.as_ref().map(|l| l.exponent),
-        lyapunov_flagged: metrics.lyapunov.as_ref().is_some_and(|l| l.flagged),
-        iki_compression_ratio: metrics.iki_compression.as_ref().map(|i| i.ratio),
-        iki_compression_flagged: metrics.iki_compression.as_ref().is_some_and(|i| i.flagged),
-        forgery_difficulty: metrics.forgery_cost.as_ref().map(|f| f.overall_difficulty),
-        forgery_tier: metrics.forgery_cost.as_ref().map(|f| format!("{:?}", f.tier)),
-        forgery_time_sec: metrics.forgery_cost.as_ref().map(|f| f.estimated_forge_time_sec),
-        fatigue_warmup_pct: metrics.fatigue_trajectory.as_ref().map(|f| f.warmup_fraction),
-        fatigue_plateau_pct: metrics.fatigue_trajectory.as_ref().map(|f| f.plateau_fraction),
-        fatigue_pct: metrics.fatigue_trajectory.as_ref().map(|f| f.fatigue_fraction),
-        fatigue_slope: metrics.fatigue_trajectory.as_ref().map(|f| f.fatigue_slope_iki_per_kstroke),
-        cross_modal_score: metrics.cross_modal.as_ref().map(|cm| cm.score),
-        cross_modal_verdict: metrics.cross_modal.as_ref().map(|cm| format!("{:?}", cm.verdict)),
-        transcription_suspicious: metrics.transcription_suspicion.as_ref().is_some_and(|t| t.is_suspicious),
-        repair_recent_pct: metrics.repair_locality.as_ref().map(|r| r.recent_repair_pct),
-        repair_distant_pct: metrics.repair_locality.as_ref().map(|r| r.distant_repair_pct),
-        cognitive_load_score: metrics.cognitive_load.as_ref().map(|cl| cl.composite_score),
-        revision_topology_score: metrics.revision_topology.as_ref().map(|rt| rt.composite_score),
-        error_ecology_score: metrics.error_ecology.as_ref().map(|ee| ee.composite_score),
-        likelihood_p_cognitive: metrics.likelihood_model.as_ref().map(|lm| lm.session_p_cognitive),
-        composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| format!("{:?}", m))),
-        labyrinth_determinism: metrics.labyrinth.as_ref().filter(|l| l.is_valid).map(|l| l.determinism),
-        labyrinth_recurrence: metrics.labyrinth.as_ref().filter(|l| l.is_valid).map(|l| l.recurrence_rate),
-    }
-}
-
 fn populate_behavioral_fields(
     process: &mut ProcessEvidence,
     metrics: &crate::forensics::ForensicMetrics,
@@ -533,10 +463,10 @@ fn blend_topology_score(
     base_enfsi: EnfsiTier,
 ) -> (u32, Verdict, f64, EnfsiTier) {
     let topology_assessment = finite_or(metrics.assessment_score.get(), 0.0);
-    if topology_assessment > 0.0 && event_count >= 5 {
+    if topology_assessment > 0.0 && event_count >= crate::report::MIN_VERDICT_EVENTS {
         let blended = (avg_forensic * 0.6 + topology_assessment * 0.4).clamp(0.0, 1.0);
         let s = (blended * 100.0) as u32;
-        let v = Verdict::from_score(s);
+        let v = Verdict::from_score_with_events(s, event_count);
         let l = compute_likelihood_ratio(s);
         let e = EnfsiTier::from_lr(l);
         (s, v, l, e)
@@ -644,15 +574,8 @@ fn compute_forgery_info(
             .any(|e| e.vdf_input.is_some() && e.vdf_output.is_some()),
     };
     let est = estimate_forgery_cost(&input);
-    let tier_label = match est.tier {
-        crate::forensics::ForgeryResistanceTier::Trivial => "Trivial",
-        crate::forensics::ForgeryResistanceTier::Low => "Low",
-        crate::forensics::ForgeryResistanceTier::Moderate => "Moderate",
-        crate::forensics::ForgeryResistanceTier::High => "High",
-        crate::forensics::ForgeryResistanceTier::VeryHigh => "Very High",
-    };
     ForgeryInfo {
-        tier: tier_label.to_string(),
+        tier: est.tier.to_string(),
         estimated_forge_time_sec: est.estimated_forge_time_sec,
         weakest_link: est.weakest_link,
         components: est
@@ -705,8 +628,8 @@ fn verdict_description(verdict: Verdict) -> String {
         Verdict::VerifiedHuman => "Strong evidence of human authorship with natural editing patterns, timing constraints, and behavioral consistency.".into(),
         Verdict::LikelyHuman => "Moderate evidence of human authorship with generally consistent patterns.".into(),
         Verdict::Inconclusive => "Insufficient evidence to make a determination about authorship.".into(),
-        Verdict::Suspicious => "Anomalous patterns detected that are inconsistent with typical human authorship.".into(),
-        Verdict::LikelySynthetic => "Strong indicators of synthetic or automated content generation.".into(),
+        Verdict::Suspicious => "Process evidence shows patterns inconsistent with typical human composition. This may indicate transcription, heavy paste-and-edit, or insufficient evidence.".into(),
+        Verdict::LikelySynthetic => "The captured process does not contain sufficient evidence of human composition. The writing may have been produced outside the monitoring window.".into(),
     }
 }
 
@@ -808,7 +731,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
     };
 
     let (profile, metrics, regions) = get_forensics_cached(&file_path_str, &events);
-    let forensic_breakdown = build_forensic_breakdown(&profile, &metrics);
+    let forensic_breakdown = super::forensic_fields::build_forensic_breakdown(&profile, &metrics);
     populate_behavioral_fields(&mut process, &metrics, stats.keystroke_estimate);
 
     let (score, verdict, lr, enfsi_tier) = blend_topology_score(
@@ -844,7 +767,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     build_forensic_flags(&mut flags, &metrics, &profile);
     let forgery = compute_forgery_info(&events, &stats, ips, hardware_backed, &metrics);
-    let dimensions = build_dimensions(&stats, &process, &metrics, &sessions);
+    let dimensions = build_dimensions(&stats, &process, &metrics, &sessions, &file_path_str);
 
     let verdict_desc = verdict_description(verdict);
     let evidence_chain_hash = compute_evidence_chain_hash(&events);
@@ -932,6 +855,7 @@ pub fn ffi_build_war_report(path: String) -> FfiWarReportResult {
         report: None,
         error_message: Some("engine internal error".to_string()),
     }, {
+    super::types::run_on_stack(move || {
     log::debug!("ffi_build_war_report: path={}", path);
     match build_war_report_for_path(&path) {
         Ok((report, guilloche_seed_hex)) => FfiWarReportResult {
@@ -946,6 +870,7 @@ pub fn ffi_build_war_report(path: String) -> FfiWarReportResult {
         },
     }
     })
+    })
 }
 
 /// Build a WAR report and render it as an HTML string.
@@ -956,6 +881,7 @@ pub fn ffi_render_war_html(path: String) -> FfiHtmlResult {
         html: None,
         error_message: Some("engine internal error".to_string()),
     }, {
+    super::types::run_on_stack(move || {
     log::debug!("ffi_render_war_html: path={}", path);
     match build_war_report_for_path(&path) {
         Ok((report, _)) => {
@@ -972,6 +898,7 @@ pub fn ffi_render_war_html(path: String) -> FfiHtmlResult {
             error_message: Some(e),
         },
     }
+    })
     })
 }
 
@@ -1493,7 +1420,7 @@ fn build_vc_json(
     }
 }
 
-fn build_vc_forensic_signals(
+pub fn build_vc_forensic_signals(
     metrics: &crate::forensics::ForensicMetrics,
 ) -> Option<crate::war::profiles::vc::VcForensicSignals> {
     let has_any = metrics.cognitive_load.is_some()
@@ -1529,6 +1456,21 @@ fn build_vc_forensic_signals(
             .composition_mode
             .as_ref()
             .map(|c| c.composite_score)
+            .unwrap_or(0.0),
+        detour_ratio: metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| r.detour_ratio)
+            .unwrap_or(0.0),
+        leading_edge_divergence: metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| r.leading_edge_divergence)
+            .unwrap_or(0.0),
+        insertion_point_entropy: metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| r.insertion_point_entropy)
             .unwrap_or(0.0),
         words_per_minute: {
             let mean_iki_ms = metrics.cadence.mean_iki_ns / 1_000_000.0;

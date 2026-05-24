@@ -207,6 +207,9 @@ pub const K_CG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 0x00000001;
 pub const K_CG_EVENT_KEY_DOWN: u32 = 10;
 pub const K_CG_EVENT_KEY_UP: u32 = 11;
 pub const K_CG_EVENT_MOUSE_MOVED: u32 = 5;
+pub const K_CG_EVENT_SCROLL_WHEEL: u32 = 22;
+pub const K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_1: u32 = 11;
+pub const K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_2: u32 = 12;
 /// macOS sends this event_type when it disables the tap due to callback latency.
 pub const K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFFFFFE;
 

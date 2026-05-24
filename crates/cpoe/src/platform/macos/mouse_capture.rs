@@ -88,14 +88,46 @@ impl MouseCapture for MacOSMouseCapture {
         let (ready_tx, ready_rx) = mpsc::channel::<Result<()>>();
 
         let clock = MachToWallClock::calibrate();
-        let thread = std::thread::spawn(move || {
+        let thread = std::thread::Builder::new()
+            .name("cpoe-mousetap".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+            let mut last_scroll_ns: i64 = 0;
             let mut tap_cb: TapCallback =
                 Box::new(move |event: *mut std::ffi::c_void, event_type: u32| {
                     if !running.load(Ordering::SeqCst) {
                         return;
                     }
 
-                    if event_type == K_CG_EVENT_MOUSE_MOVED {
+                    if event_type == K_CG_EVENT_SCROLL_WHEEL {
+                        let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
+                        // Throttle to ~60 Hz to prevent trackpad inertial flood
+                        if now.saturating_sub(last_scroll_ns) < 16_000_000 {
+                            return;
+                        }
+                        last_scroll_ns = now;
+                        let location = unsafe { CGEventGetLocation(event) };
+                        let delta_v = unsafe {
+                            CGEventGetIntegerValueField(
+                                event,
+                                K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_1,
+                            )
+                        };
+                        let delta_h = unsafe {
+                            CGEventGetIntegerValueField(
+                                event,
+                                K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_2,
+                            )
+                        };
+                        let scroll_event = MouseEvent::scroll(
+                            now,
+                            location.x,
+                            location.y,
+                            delta_v,
+                            delta_h,
+                        );
+                        let _ = tx.send(scroll_event);
+                    } else if event_type == K_CG_EVENT_MOUSE_MOVED {
                         let should_capture = if idle_only_mode {
                             if let Ok(time) = last_keystroke_time.read() {
                                 time.elapsed() < std::time::Duration::from_secs(2)
@@ -147,7 +179,8 @@ impl MouseCapture for MacOSMouseCapture {
                     K_CG_HID_EVENT_TAP,
                     K_CG_HEAD_INSERT_EVENT_TAP,
                     K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
-                    cg_event_mask_bit(K_CG_EVENT_MOUSE_MOVED),
+                    cg_event_mask_bit(K_CG_EVENT_MOUSE_MOVED)
+                        | cg_event_mask_bit(K_CG_EVENT_SCROLL_WHEEL),
                     event_tap_trampoline,
                     &mut tap_cb as *mut TapCallback as *mut std::ffi::c_void,
                 )) {
@@ -187,6 +220,16 @@ impl MouseCapture for MacOSMouseCapture {
                 CFRunLoopRun();
             }
         });
+
+        let thread = match thread {
+            Ok(h) => h,
+            Err(e) => {
+                log::error!("cpoe-mousetap thread spawn failed: {e}");
+                self.running.store(false, Ordering::SeqCst);
+                self.sender = None;
+                return Err(anyhow!("cpoe-mousetap thread spawn failed: {e}"));
+            }
+        };
 
         match ready_rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(Ok(())) => {

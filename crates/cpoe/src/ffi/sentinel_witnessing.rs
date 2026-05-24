@@ -209,6 +209,23 @@ fn not_tracking(capture_active: bool) -> FfiWitnessingStatus {
         total_deletions: 0,
         undo_count: 0,
         words_per_minute: 0.0,
+        ai_tools_detected: Vec::new(),
+        capture_gaps: 0,
+        evidence_confidence: "Full".into(),
+        confidence_reason: None,
+        evidence_maturity: 0.0,
+        copy_count: 0,
+        cut_count: 0,
+        paste_count: 0,
+        redo_count: 0,
+        character_count: 0,
+        navigation_count: 0,
+        find_count: 0,
+        save_count_semantic: 0,
+        tab_count: 0,
+        return_count: 0,
+        scroll_event_count: 0,
+        cursor_attention_score: 0.0,
     }
 }
 
@@ -229,6 +246,22 @@ struct SessionSnapshot {
     total_deletions: u64,
     undo_count: u64,
     words_per_minute: f64,
+    ai_tools_detected: Vec<String>,
+    capture_gaps: u32,
+    evidence_confidence: String,
+    confidence_reason: Option<String>,
+    copy_count: u64,
+    cut_count: u64,
+    paste_count: u64,
+    redo_count: u64,
+    character_count: u64,
+    navigation_count: u64,
+    find_count: u64,
+    save_count_semantic: u64,
+    tab_count: u64,
+    return_count: u64,
+    scroll_event_count: u64,
+    scroll_attention: crate::sentinel::types::ScrollAttentionAccumulator,
 }
 
 /// Get live witnessing metrics for the first active session.
@@ -318,6 +351,26 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
             total_deletions: session.semantic_counts.total_deletions(),
             undo_count: session.semantic_counts.undo,
             words_per_minute: session.recent_wpm(),
+            ai_tools_detected: session
+                .ai_tools_detected
+                .iter()
+                .map(|t| t.signing_id.clone())
+                .collect(),
+            capture_gaps: session.capture_gaps,
+            evidence_confidence: session.evidence_confidence.to_string(),
+            confidence_reason: session.confidence_reason.clone(),
+            copy_count: session.semantic_counts.copy,
+            cut_count: session.semantic_counts.cut,
+            paste_count: session.semantic_counts.paste,
+            redo_count: session.semantic_counts.redo,
+            character_count: session.semantic_counts.characters,
+            navigation_count: session.semantic_counts.navigation,
+            find_count: session.semantic_counts.find,
+            save_count_semantic: session.semantic_counts.save,
+            tab_count: session.semantic_counts.tab,
+            return_count: session.semantic_counts.r#return,
+            scroll_event_count: session.scroll_attention.total_scroll_events,
+            scroll_attention: session.scroll_attention.clone(),
         }
     }; // read lock released
 
@@ -327,6 +380,13 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         snapshot.keystroke_count,
         current_path
     );
+
+    // Compute cursor attention score outside the lock
+    let cursor_attention_score = crate::forensics::cursor_attention::analyze(
+        &snapshot.scroll_attention,
+    )
+    .map(|ca| ca.composite_score)
+    .unwrap_or(0.0);
 
     let host_paste_chars = sentinel.take_last_paste_chars();
 
@@ -364,5 +424,22 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         total_deletions: snapshot.total_deletions,
         undo_count: snapshot.undo_count,
         words_per_minute: snapshot.words_per_minute,
+        ai_tools_detected: snapshot.ai_tools_detected,
+        capture_gaps: snapshot.capture_gaps,
+        evidence_confidence: snapshot.evidence_confidence,
+        confidence_reason: snapshot.confidence_reason,
+        evidence_maturity: maturity,
+        copy_count: snapshot.copy_count,
+        cut_count: snapshot.cut_count,
+        paste_count: snapshot.paste_count,
+        redo_count: snapshot.redo_count,
+        character_count: snapshot.character_count,
+        navigation_count: snapshot.navigation_count,
+        find_count: snapshot.find_count,
+        save_count_semantic: snapshot.save_count_semantic,
+        tab_count: snapshot.tab_count,
+        return_count: snapshot.return_count,
+        scroll_event_count: snapshot.scroll_event_count,
+        cursor_attention_score,
     }
 }
