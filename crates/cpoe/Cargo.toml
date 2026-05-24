@@ -189,6 +189,7 @@ test-utils = []  # Expose internal helpers for integration tests
 did-webvh = ["dep:didwebvh-rs", "dep:affinidi-data-integrity", "dep:affinidi-secrets-resolver"]
 posme = ["dep:posme", "authorproof-protocol/posme"]
 v2_classifier = []  # Structural-signal writing mode classifier (calibration phase)
+content_binding = []  # BLAKE3 edit-position content binding (requires document read at keystroke time)
 
 [build-dependencies]
 uniffi = { version = "0.29", features = ["build"], optional = true }
@@ -197,6 +198,7 @@ uniffi = { version = "0.29", features = ["build"], optional = true }
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1"
+bs58 = "0.5"
 
 [[bench]]
 name = "crypto_bench"
