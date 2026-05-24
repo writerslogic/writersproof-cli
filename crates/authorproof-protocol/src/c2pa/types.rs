@@ -226,7 +226,7 @@ pub struct DataSource {
 /// C2PA claim v2 per §10 and §15.6. All field names match the CDDL schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2paClaim {
-    /// §10.5, required in claim-map-v2.
+    /// §10.5, required in claim-map-v2 (`[+ claim-generator-info-map]`).
     pub claim_generator_info: Vec<ClaimGeneratorInfo>,
 
     /// §10.3, required.
@@ -235,6 +235,10 @@ pub struct C2paClaim {
 
     /// §10.7, required.
     pub signature: String,
+
+    /// §15.4, hash algorithm for assertion references.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alg: Option<String>,
 
     /// §10.6
     pub created_assertions: Vec<HashedUri>,

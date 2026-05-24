@@ -67,7 +67,7 @@ install -p -m 755 target/release/cpop %{buildroot}%{_bindir}/cpop
 install -p -m 755 target/release/cpop-native-messaging-host %{buildroot}%{_bindir}/cpop-native-messaging-host
 
 # Install man pages
-install -p -m 644 docs/man/cpop.1 %{buildroot}%{_mandir}/man1/cpop.1
+install -p -m 644 docs/man/cpoe.1 %{buildroot}%{_mandir}/man1/cpoe.1
 
 # Install systemd units
 install -p -m 644 apps/cpop_cli/packaging/linux/systemd/cpop.service %{buildroot}%{_unitdir}/cpop.service
@@ -141,7 +141,7 @@ fi
 %doc README.md
 %{_bindir}/cpop
 %{_bindir}/cpop-native-messaging-host
-%{_mandir}/man1/cpop.1*
+%{_mandir}/man1/cpoe.1*
 %{_unitdir}/cpop.service
 %{_unitdir}/cpop.socket
 %{_userunitdir}/cpop.service

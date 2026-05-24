@@ -111,7 +111,8 @@ impl CompactEvidenceRef {
             evidence_uri: &self.evidence_uri,
             packet_id: &pid,
         };
-        let mut buf = vec![0x01]; // version prefix
+        let mut buf = Vec::with_capacity(128);
+        buf.push(0x01); // version prefix
         ciborium::into_writer(&payload, &mut buf)
             .map_err(|_| CompactRefError::SerializationError)?;
         Ok(buf)

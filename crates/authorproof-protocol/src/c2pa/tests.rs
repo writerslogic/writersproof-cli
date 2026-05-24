@@ -9,6 +9,8 @@ use coset::CborSerializable;
 use ed25519_dalek::SigningKey;
 use sha2::Digest;
 
+extern crate c2pa as c2pa_sdk;
+
 fn test_evidence_packet() -> EvidencePacket {
     EvidencePacket {
         version: 1,
@@ -106,12 +108,8 @@ fn claim_v2_required_fields() {
         "signature should reference signature box"
     );
     assert!(
-        !manifest.claim.claim_generator_info.is_empty(),
-        "claim_generator_info required"
-    );
-    assert!(
         !manifest.claim.claim_generator_info[0].name.is_empty(),
-        "first entry must have name"
+        "claim_generator_info must have name"
     );
     // 3 core assertions + 1 metadata assertion (title was set in build_test_manifest)
     assert_eq!(manifest.claim.created_assertions.len(), 4);
@@ -746,4 +744,517 @@ fn test_trust_level_evaluation() {
     );
     assert!(TrustLevel::TrustAnchored > TrustLevel::CertChain);
     assert!(TrustLevel::CertChain > TrustLevel::SelfSigned);
+}
+
+// ============================================================
+// End-to-end C2PA verification: keystrokes → manifest → verify
+// ============================================================
+
+/// Extract the content payload from a JUMBF assertion superbox.
+///
+/// Walks the child boxes looking for one whose type matches `content_type`
+/// ("json" or "cbor") and returns the payload bytes after the box header.
+fn extract_assertion_content(box_bytes: &[u8], content_type: &str) -> Option<Vec<u8>> {
+    if box_bytes.len() < 16 {
+        return None;
+    }
+    let expected = content_type.as_bytes();
+    let mut offset = 8; // skip outer jumb header
+    while offset + 8 <= box_bytes.len() {
+        let child_len =
+            u32::from_be_bytes(box_bytes[offset..offset + 4].try_into().ok()?) as usize;
+        if child_len < 8 || offset + child_len > box_bytes.len() {
+            return None;
+        }
+        let child_type = &box_bytes[offset + 4..offset + 8];
+        if child_type == expected {
+            return Some(box_bytes[offset + 8..offset + child_len].to_vec());
+        }
+        offset += child_len;
+    }
+    None
+}
+
+/// Create a valid 1×1 white grayscale PNG for asset-level C2PA testing.
+///
+/// The zlib stream is a hand-computed stored block (no compression library needed).
+/// CRC-32 checksums are computed via `crc32fast` (already a dev-dependency).
+fn create_minimal_png() -> Vec<u8> {
+    fn append_chunk(buf: &mut Vec<u8>, chunk_type: &[u8; 4], data: &[u8]) {
+        buf.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        buf.extend_from_slice(chunk_type);
+        buf.extend_from_slice(data);
+        let mut crc_in = Vec::with_capacity(4 + data.len());
+        crc_in.extend_from_slice(chunk_type);
+        crc_in.extend_from_slice(data);
+        buf.extend_from_slice(&crc32fast::hash(&crc_in).to_be_bytes());
+    }
+
+    let mut buf = Vec::with_capacity(128);
+    // PNG signature
+    buf.extend_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+
+    // IHDR: 1×1, 8-bit grayscale
+    #[rustfmt::skip]
+    let ihdr: [u8; 13] = [
+        0x00, 0x00, 0x00, 0x01, // width
+        0x00, 0x00, 0x00, 0x01, // height
+        0x08,                   // bit depth
+        0x00,                   // color type (grayscale)
+        0x00, 0x00, 0x00,       // compression, filter, interlace
+    ];
+    append_chunk(&mut buf, b"IHDR", &ihdr);
+
+    // IDAT: zlib( deflate_stored([filter=0, pixel=0xFF]) )
+    // CMF=0x08 CINFO=0, FLG=0x1D (fcheck makes (CMF*256+FLG)%31==0)
+    // Stored block: bfinal=1 btype=00, len=2, nlen=0xFFFD, data=[0x00, 0xFF]
+    // Adler-32 of [0x00, 0xFF]: s1=256, s2=258 → 0x01020100
+    #[rustfmt::skip]
+    let idat: [u8; 13] = [
+        0x08, 0x1D,                     // zlib header
+        0x01, 0x02, 0x00, 0xFD, 0xFF,   // stored block header
+        0x00, 0xFF,                      // filter=None, pixel=white
+        0x01, 0x02, 0x01, 0x00,         // Adler-32
+    ];
+    append_chunk(&mut buf, b"IDAT", &idat);
+
+    // IEND
+    append_chunk(&mut buf, b"IEND", &[]);
+    buf
+}
+
+/// Full end-to-end test: simulated keystrokes → EvidencePacket → CBOR →
+/// C2PA manifest → JUMBF → verify every layer.
+///
+/// Simulates a real authoring session with 3 checkpoints, each with
+/// incrementally-growing content and realistic timing. Verifies:
+///
+///  1. Evidence packet CBOR roundtrip
+///  2. X.509 certificate generation + roundtrip
+///  3. C2PA manifest structural validation (§15.10.1.2)
+///  4. COSE_Sign1 Ed25519 signature verification
+///  5. x5chain contains DER X.509 certificate
+///  6. JUMBF box structure (ISO 19566-5)
+///  7. org.cpoe.evidence assertion present with correct jitter seals
+///  8. Forensic signal scores round-trip through the assertion
+///  9. c2pa.hash.data assertion matches document SHA-256
+/// 10. c2pa.actions.v2 records c2pa.created
+/// 11. c2pa.external-reference links to evidence packet
+/// 12. All assertion hashes in the claim match actual box contents
+#[test]
+fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
+    // === Phase 1: Simulate authoring session ===
+    let document = b"Hello world. This is a test document written by a human author.";
+    let doc_hash: [u8; 32] = sha2::Sha256::digest(document).into();
+
+    let stage1 = b"Hello ";
+    let stage2 = b"Hello world. ";
+    let stage3: &[u8] = document;
+
+    let base_time = 1_710_000_000_000u64; // 2024-03-09
+
+    let packet = EvidencePacket {
+        version: 1,
+        profile_uri: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
+        packet_id: vec![0x42; 16],
+        created: base_time,
+        document: DocumentRef {
+            content_hash: HashValue {
+                algorithm: HashAlgorithm::Sha256,
+                digest: doc_hash.to_vec(),
+            },
+            filename: Some("test_document.txt".to_string()),
+            byte_length: document.len() as u64,
+            char_count: document.len() as u64,
+        },
+        checkpoints: vec![
+            Checkpoint {
+                sequence: 0,
+                checkpoint_id: vec![0x01; 16],
+                timestamp: base_time + 5_000,
+                content_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(stage1).to_vec(),
+                },
+                char_count: stage1.len() as u64,
+                prev_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: vec![0u8; 32],
+                },
+                checkpoint_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"checkpoint-0-seal").to_vec(),
+                },
+                jitter_hash: Some(HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"jitter-entropy-0").to_vec(),
+                }),
+            },
+            Checkpoint {
+                sequence: 1,
+                checkpoint_id: vec![0x02; 16],
+                timestamp: base_time + 30_000,
+                content_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(stage2).to_vec(),
+                },
+                char_count: stage2.len() as u64,
+                prev_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"checkpoint-0-seal").to_vec(),
+                },
+                checkpoint_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"checkpoint-1-seal").to_vec(),
+                },
+                jitter_hash: Some(HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"jitter-entropy-1").to_vec(),
+                }),
+            },
+            Checkpoint {
+                sequence: 2,
+                checkpoint_id: vec![0x03; 16],
+                timestamp: base_time + 120_000,
+                content_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(stage3).to_vec(),
+                },
+                char_count: stage3.len() as u64,
+                prev_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"checkpoint-1-seal").to_vec(),
+                },
+                checkpoint_hash: HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"checkpoint-2-seal").to_vec(),
+                },
+                jitter_hash: Some(HashValue {
+                    algorithm: HashAlgorithm::Sha256,
+                    digest: sha2::Sha256::digest(b"jitter-entropy-2").to_vec(),
+                }),
+            },
+        ],
+        attestation_tier: Some(crate::rfc::AttestationTier::SoftwareOnly),
+        baseline_verification: None,
+    };
+
+    // === Phase 2: CBOR encode evidence ===
+    let mut evidence_bytes = Vec::new();
+    ciborium::into_writer(&packet, &mut evidence_bytes).expect("CBOR encode evidence");
+    assert!(evidence_bytes.len() > 100, "evidence CBOR should be non-trivial");
+
+    let decoded: EvidencePacket =
+        ciborium::from_reader(&evidence_bytes[..]).expect("CBOR decode evidence");
+    assert_eq!(decoded.version, packet.version);
+    assert_eq!(decoded.packet_id, packet.packet_id);
+    assert_eq!(decoded.checkpoints.len(), 3);
+    assert_eq!(decoded.document.content_hash.digest, doc_hash.to_vec());
+
+    // === Phase 3: Generate Ed25519 signing key + X.509 certificate ===
+    let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+    let cert_der =
+        super::cert::generate_self_signed_cert(&signing_key).expect("generate self-signed cert");
+    let extracted_pk =
+        super::cert::extract_public_key_from_cert(&cert_der).expect("extract pubkey from cert");
+    assert_eq!(extracted_pk, signing_key.verifying_key().to_bytes());
+
+    // === Phase 4: Build C2PA manifest with forensic signals ===
+    let signals = ForensicSignalScores {
+        cognitive_load: 0.82,
+        revision_topology: 0.65,
+        error_ecology: 0.91,
+        likelihood_model: 0.74,
+        composition_mode: 0.88,
+    };
+
+    let manifest = C2paManifestBuilder::new(packet.clone(), evidence_bytes.clone(), doc_hash)
+        .cert_der(cert_der.clone())
+        .document_filename("test_document.txt")
+        .title("Test Document — E2E Verification")
+        .format("text/plain")
+        .evidence_url("https://writersproof.com/evidence/test-packet")
+        .forensic_signals(
+            signals,
+            Some("pure_composition".to_string()),
+            Some("cognitive".to_string()),
+        )
+        .build_manifest(&signing_key)
+        .expect("build C2PA manifest");
+
+    // === Phase 5: Structural validation (§15.10.1.2) ===
+    let validation = validate_manifest(&manifest);
+    assert!(
+        validation.is_valid(),
+        "C2PA structural validation failed: {:?}",
+        validation.errors
+    );
+    assert!(
+        validation.warnings.is_empty(),
+        "unexpected validation warnings: {:?}",
+        validation.warnings
+    );
+
+    // === Phase 6: COSE_Sign1 signature verification ===
+    assert!(
+        verify_manifest_signature(&manifest).expect("sig verify must not error"),
+        "COSE_Sign1 Ed25519 signature must verify via x5chain"
+    );
+    assert!(
+        verify_manifest_with_key(&manifest, &signing_key.verifying_key().to_bytes())
+            .expect("sig verify with key must not error"),
+        "signature must verify against known signing key"
+    );
+
+    // === Phase 7: Verify x5chain contains X.509 certificate ===
+    let sign1 = coset::CoseSign1::from_slice(&manifest.signature).expect("parse COSE_Sign1");
+    let x5chain_value = sign1
+        .protected
+        .header
+        .rest
+        .iter()
+        .find(|(label, _)| *label == coset::Label::Int(33))
+        .map(|(_, v)| v)
+        .expect("x5chain (label 33) must be in protected header");
+    match x5chain_value {
+        ciborium::Value::Bytes(bytes) => {
+            assert!(
+                bytes.len() > 32,
+                "x5chain must hold a DER cert ({} bytes), not a raw key",
+                bytes.len()
+            );
+            let pk = super::cert::extract_public_key_from_cert(bytes)
+                .expect("x5chain cert must be a valid X.509 certificate");
+            assert_eq!(pk, signing_key.verifying_key().to_bytes());
+        }
+        other => panic!("x5chain value must be Bytes, got {other:?}"),
+    }
+
+    // === Phase 8: JUMBF encode + structural verification ===
+    let jumbf = encode_jumbf(&manifest).expect("JUMBF encode");
+    assert!(
+        jumbf.len() > 500,
+        "JUMBF should be substantial ({} bytes)",
+        jumbf.len()
+    );
+
+    let jumbf_info = verify_jumbf_structure(&jumbf).expect("JUMBF structure");
+    assert_eq!(jumbf_info.total_size, jumbf.len());
+    assert!(jumbf_info.child_boxes >= 2);
+
+    let jumbf_text = String::from_utf8_lossy(&jumbf);
+    assert!(jumbf_text.contains(&manifest.manifest_label));
+    assert!(jumbf_text.contains("c2pa.claim.v2"));
+    assert!(jumbf_text.contains("c2pa.assertions"));
+    assert!(jumbf_text.contains("c2pa.signature"));
+
+    // === Phase 9: Verify org.cpoe.evidence assertion ===
+    let cpoe_idx = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .position(|a| a.url.contains(ASSERTION_LABEL_CPOE))
+        .expect("org.cpoe.evidence assertion must exist in claim");
+    let json_payload = extract_assertion_content(&manifest.assertion_boxes[cpoe_idx], "json")
+        .expect("PoP assertion must contain JSON content box");
+    let pop: ProcessAssertion =
+        serde_json::from_slice(&json_payload).expect("PoP assertion JSON must deserialize");
+
+    assert_eq!(pop.label, ASSERTION_LABEL_CPOE);
+    assert_eq!(pop.version, 1);
+    assert_eq!(pop.evidence_id, hex::encode(vec![0x42u8; 16]));
+    assert_eq!(
+        pop.evidence_hash,
+        hex::encode(sha2::Sha256::digest(&evidence_bytes))
+    );
+
+    // Jitter seals must correspond to our 3 checkpoints.
+    assert_eq!(pop.jitter_seals.len(), 3);
+    for (i, seal) in pop.jitter_seals.iter().enumerate() {
+        assert_eq!(seal.sequence, i as u64, "seal {i} sequence");
+        assert_eq!(
+            seal.seal_hash,
+            hex::encode(&packet.checkpoints[i].checkpoint_hash.digest),
+            "seal {i} hash must come from checkpoint_hash"
+        );
+        assert_eq!(seal.timestamp, packet.checkpoints[i].timestamp);
+    }
+
+    // Forensic signals roundtrip.
+    let fs = pop
+        .forensic_signals
+        .expect("forensic signals must be present");
+    assert!((fs.cognitive_load - 0.82).abs() < f64::EPSILON);
+    assert!((fs.revision_topology - 0.65).abs() < f64::EPSILON);
+    assert!((fs.error_ecology - 0.91).abs() < f64::EPSILON);
+    assert!((fs.likelihood_model - 0.74).abs() < f64::EPSILON);
+    assert!((fs.composition_mode - 0.88).abs() < f64::EPSILON);
+    assert_eq!(pop.composition_mode.as_deref(), Some("pure_composition"));
+    assert_eq!(pop.writing_mode.as_deref(), Some("cognitive"));
+
+    // === Phase 10: Verify c2pa.hash.data assertion ===
+    let hash_idx = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .position(|a| a.url.contains(ASSERTION_LABEL_HASH_DATA))
+        .expect("c2pa.hash.data must exist");
+    let hash_payload = extract_assertion_content(&manifest.assertion_boxes[hash_idx], "cbor")
+        .expect("hash-data must contain CBOR box");
+    let hash_data: HashDataAssertion =
+        ciborium::from_reader(&hash_payload[..]).expect("hash-data CBOR");
+    assert_eq!(hash_data.hash, doc_hash.to_vec(), "document hash mismatch");
+    assert_eq!(hash_data.algorithm, "sha256");
+    assert_eq!(hash_data.name, "test_document.txt");
+
+    // === Phase 11: Verify c2pa.actions.v2 assertion ===
+    let actions_idx = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .position(|a| a.url.contains(ASSERTION_LABEL_ACTIONS))
+        .expect("c2pa.actions.v2 must exist");
+    let actions_payload =
+        extract_assertion_content(&manifest.assertion_boxes[actions_idx], "cbor")
+            .expect("actions must contain CBOR box");
+    let actions: ActionsAssertion =
+        ciborium::from_reader(&actions_payload[..]).expect("actions CBOR");
+    assert_eq!(actions.actions.len(), 1);
+    assert_eq!(actions.actions[0].action, "c2pa.created");
+    assert!(actions.actions[0].when.is_some(), "created action must have timestamp");
+
+    // === Phase 12: Verify c2pa.external-reference assertion ===
+    let ext_idx = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .position(|a| a.url.contains(ASSERTION_LABEL_EXTERNAL_REF))
+        .expect("c2pa.external-reference must exist (evidence_url was set)");
+    let ext_payload = extract_assertion_content(&manifest.assertion_boxes[ext_idx], "cbor")
+        .expect("external-reference must contain CBOR box");
+    let ext_ref: ExternalReferenceAssertion =
+        ciborium::from_reader(&ext_payload[..]).expect("external-reference CBOR");
+    assert_eq!(
+        ext_ref.location.url,
+        "https://writersproof.com/evidence/test-packet"
+    );
+    assert_eq!(ext_ref.location.alg, "sha256");
+    assert_eq!(
+        ext_ref.location.hash,
+        sha2::Sha256::digest(&evidence_bytes).to_vec(),
+        "external-reference hash must match evidence bytes"
+    );
+
+    // === Phase 13: Verify claim integrity ===
+    assert!(manifest.claim.instance_id.starts_with("xmp:iid:"));
+    assert!(manifest.claim.signature.contains("c2pa.signature"));
+    assert!(manifest.claim.claim_generator_info[0].name.contains("CPoE"));
+
+    // Every assertion hash in the claim must match the actual box contents.
+    assert_eq!(
+        manifest.claim.created_assertions.len(),
+        manifest.assertion_boxes.len()
+    );
+    for (i, (ref_uri, box_bytes)) in manifest
+        .claim
+        .created_assertions
+        .iter()
+        .zip(manifest.assertion_boxes.iter())
+        .enumerate()
+    {
+        let computed = sha2::Sha256::digest(&box_bytes[8..]);
+        assert_eq!(
+            ref_uri.hash,
+            computed.to_vec(),
+            "assertion {i} ({}) hash mismatch",
+            ref_uri.url
+        );
+    }
+}
+
+/// Verify our JUMBF output with the c2pa-rs reference implementation.
+///
+/// Builds a C2PA manifest for a minimal PNG, writes it as a sidecar, and
+/// feeds the result to `c2pa::Reader`. This catches any spec-compliance
+/// issues that our own validator might miss.
+#[test]
+fn c2pa_rs_reader_parses_our_jumbf() {
+    let png_bytes = create_minimal_png();
+    let doc_hash: [u8; 32] = sha2::Sha256::digest(&png_bytes).into();
+    let base_time = 1_710_000_000_000u64;
+
+    let packet = EvidencePacket {
+        version: 1,
+        profile_uri: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
+        packet_id: vec![0x42; 16],
+        created: base_time,
+        document: DocumentRef {
+            content_hash: HashValue {
+                algorithm: HashAlgorithm::Sha256,
+                digest: doc_hash.to_vec(),
+            },
+            filename: Some("test.png".to_string()),
+            byte_length: png_bytes.len() as u64,
+            char_count: 0,
+        },
+        checkpoints: vec![make_checkpoint(0, base_time + 5_000)],
+        attestation_tier: Some(crate::rfc::AttestationTier::SoftwareOnly),
+        baseline_verification: None,
+    };
+
+    let mut evidence_bytes = Vec::new();
+    ciborium::into_writer(&packet, &mut evidence_bytes).unwrap();
+
+    let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+    let cert_der = super::cert::generate_self_signed_cert(&signing_key).unwrap();
+
+    let jumbf = C2paManifestBuilder::new(packet, evidence_bytes, doc_hash)
+        .cert_der(cert_der)
+        .document_filename("test.png")
+        .format("image/png")
+        .build_jumbf(&signing_key)
+        .unwrap();
+
+    // ---- c2pa-rs verification via Reader + Context API (v0.84+) ----
+    // Disable trust/timestamp verification (self-signed cert, no TSA) but keep
+    // structural validation so c2pa-rs fully parses JUMBF, claim, and assertions.
+    let context = c2pa_sdk::Context::new()
+        .with_settings(c2pa_sdk::settings::Settings::new()
+            .with_json(r#"{"verify":{"verify_after_reading":false}}"#)
+            .unwrap())
+        .unwrap();
+    let reader = c2pa_sdk::Reader::from_context(context)
+        .with_manifest_data_and_stream(&jumbf, "image/png", &mut std::io::Cursor::new(png_bytes.clone()))
+        .unwrap_or_else(|e| {
+            panic!(
+                "c2pa-rs could not parse our JUMBF output: {e}\n\
+                 JUMBF: {} bytes",
+                jumbf.len()
+            )
+        });
+
+    // Check JSON output from c2pa-rs Reader.
+    let json_str = reader.json();
+    let root: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+    let manifests = root["manifests"].as_object().expect("manifests object");
+
+    assert!(
+        !manifests.is_empty(),
+        "c2pa-rs must fully parse our JUMBF into at least one manifest.\nJSON:\n{}",
+        json_str
+    );
+    assert!(
+        json_str.contains("org.cpoe.evidence"),
+        "c2pa-rs manifest JSON must contain our PoP assertion.\nJSON:\n{}",
+        json_str
+    );
+    assert!(json_str.contains("c2pa.hash.data"));
+    assert!(json_str.contains("c2pa.actions"));
+
+    // Regardless of parse depth, c2pa-rs must detect our manifest label.
+    assert_eq!(
+        root["active_manifest"].as_str(),
+        Some("urn:cpoe:42424242424242424242424242424242"),
+        "c2pa-rs must detect our manifest label in the JUMBF"
+    );
 }

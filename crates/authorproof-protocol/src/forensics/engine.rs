@@ -31,11 +31,28 @@ impl ForensicVerdict {
         }
     }
 
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::V1VerifiedHuman => "Verified Human",
+            Self::V2LikelyHuman => "Likely Human",
+            Self::V3Suspicious => "Inconsistent Evidence",
+            Self::V4LikelySynthetic => "Process Not Verified",
+            Self::V5ConfirmedForgery => "Evidence Tampered",
+            Self::V6InsufficientData => "Insufficient Data",
+        }
+    }
+
     pub fn is_verified(&self) -> bool {
         matches!(
             self,
             ForensicVerdict::V1VerifiedHuman | ForensicVerdict::V2LikelyHuman
         )
+    }
+}
+
+impl std::fmt::Display for ForensicVerdict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
     }
 }
 

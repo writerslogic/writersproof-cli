@@ -171,6 +171,7 @@ fn create_test_evidence_packet() -> EvidencePacketWire {
         document_filename: None,
         project_files: None,
         session_counter: None,
+        forensic_summary: None,
     }
 }
 

@@ -77,22 +77,12 @@ impl JumbfWriter {
         Ok(())
     }
 
-    fn write_content_cbor(&mut self, data: &[u8]) -> std::result::Result<(), Error> {
+    fn write_content(&mut self, data: &[u8], box_type: &[u8; 4]) -> std::result::Result<(), Error> {
         let box_len = 8usize
             .checked_add(data.len())
             .and_then(|sum| u32::try_from(sum).ok())
             .ok_or_else(|| Error::Validation("JUMBF box too large".into()))?;
-        self.write_box_header(box_len, b"cbor");
-        self.buf.extend_from_slice(data);
-        Ok(())
-    }
-
-    fn write_content_json(&mut self, data: &[u8]) -> std::result::Result<(), Error> {
-        let box_len = 8usize
-            .checked_add(data.len())
-            .and_then(|sum| u32::try_from(sum).ok())
-            .ok_or_else(|| Error::Validation("JUMBF box too large".into()))?;
-        self.write_box_header(box_len, b"json");
+        self.write_box_header(box_len, box_type);
         self.buf.extend_from_slice(data);
         Ok(())
     }
@@ -145,9 +135,9 @@ fn build_assertion_jumbf(
     let off = w.begin_superbox();
     w.write_description(uuid, Some(label), 0x03)?;
     if is_cbor {
-        w.write_content_cbor(content)?;
+        w.write_content(content, b"cbor")?;
     } else {
-        w.write_content_json(content)?;
+        w.write_content(content, b"json")?;
     }
     w.end_superbox(off)?;
     Ok(w.finish())
@@ -172,7 +162,7 @@ pub fn encode_jumbf(manifest: &C2paManifest) -> Result<Vec<u8>> {
     // §15.6: Use pre-serialized claim bytes to match signed payload exactly.
     let claim_off = w.begin_superbox();
     w.write_description(&C2PA_CLAIM_UUID, Some("c2pa.claim.v2"), 0x03)?;
-    w.write_content_cbor(&manifest.claim_cbor)?;
+    w.write_content(&manifest.claim_cbor, b"cbor")?;
     w.end_superbox(claim_off)?;
 
     let astore_off = w.begin_superbox();
@@ -184,7 +174,7 @@ pub fn encode_jumbf(manifest: &C2paManifest) -> Result<Vec<u8>> {
 
     let sig_off = w.begin_superbox();
     w.write_description(&C2PA_SIGNATURE_UUID, Some("c2pa.signature"), 0x03)?;
-    w.write_content_cbor(&manifest.signature)?;
+    w.write_content(&manifest.signature, b"cbor")?;
     w.end_superbox(sig_off)?;
 
     w.end_superbox(manifest_off)?;

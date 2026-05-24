@@ -33,7 +33,7 @@ override_dh_auto_install:
 	install -D -m 755 bin/cpop debian/cpop/usr/bin/cpop
 
 	# Install man pages
-	install -D -m 644 ../../docs/man/cpop.1 debian/cpop/usr/share/man/man1/cpop.1
+	install -D -m 644 ../../docs/man/cpoe.1 debian/cpoe/usr/share/man/man1/cpoe.1
 
 	# Install systemd units (if present)
 	if [ -d packaging/linux/systemd ]; then \

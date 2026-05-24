@@ -40,6 +40,8 @@ pub(super) struct EvidenceOutputContext<'a> {
 
 pub(super) fn write_atomic(out_path: &Path, data: &[u8]) -> Result<()> {
     let dir = out_path.parent().unwrap_or(Path::new("."));
+    cpoe::store::check_disk_space(dir)
+        .context("pre-write disk space check")?;
     let mut tmp =
         tempfile::NamedTempFile::new_in(dir).context("create temp file for atomic write")?;
     tmp.write_all(data).context("write evidence data")?;
@@ -149,7 +151,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
             } else {
                 hex::encode(&pub_key)
             };
-            let war_report = build_war_report(
+            let mut war_report = build_war_report(
                 events,
                 vdf_params,
                 tier,
@@ -158,6 +160,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 tpm_device_id,
                 &key_fp,
             );
+            enrich_report_vc(&mut war_report, events, ctx.signer, ctx.packet);
             let html = report::render_html(&war_report);
 
             write_atomic(out_path, html.as_bytes())?;
@@ -186,7 +189,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
             } else {
                 hex::encode(&pub_key)
             };
-            let war_report = build_war_report(
+            let mut war_report = build_war_report(
                 events,
                 vdf_params,
                 tier,
@@ -195,6 +198,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 tpm_device_id,
                 &key_fp,
             );
+            enrich_report_vc(&mut war_report, events, ctx.signer, ctx.packet);
 
             // Compute security feature seed: sign("cpoe-security-v1" || H3)
             // This binds the guilloché/microtext patterns to this specific evidence.
@@ -362,15 +366,13 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
             }
 
             // Enrich C2PA manifest with forensic signals from the event data.
-            {
-                let event_data = cpoe::forensics::EventData::from_secure_events(events);
-                let regions = cpoe::forensics::build_edit_regions(events);
-                let analysis_ctx = cpoe::forensics::AnalysisContext::default();
-                let metrics = cpoe::forensics::analyze_forensics_ext(
-                    &event_data, &regions, None, None, None, &analysis_ctx,
-                );
-                builder = cpoe::ffi::evidence_derivative::enrich_c2pa_builder(builder, &metrics);
-            }
+            let event_data = cpoe::forensics::EventData::from_secure_events(events);
+            let regions = cpoe::forensics::build_edit_regions(events);
+            let analysis_ctx = cpoe::forensics::AnalysisContext::default();
+            let metrics = cpoe::forensics::analyze_forensics_ext(
+                &event_data, &regions, None, None, None, &analysis_ctx,
+            );
+            builder = cpoe::ffi::evidence_derivative::enrich_c2pa_builder(builder, &metrics);
 
             let jumbf_bytes = builder
                 .build_jumbf(ctx.signer)
@@ -389,9 +391,22 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 &policy,
             ) {
                 if let Some(ear) = block.ear.as_ref() {
-                    if let Ok(assertion) =
+                    if let Ok(mut assertion) =
                         war::profiles::c2pa::to_c2pa_assertion(ear)
                     {
+                        let writing_mode = metrics
+                            .writing_mode
+                            .as_ref()
+                            .map(|wm| wm.mode.to_string());
+                        let comp_mode = metrics
+                            .composition_mode
+                            .as_ref()
+                            .and_then(|c| c.dominant_mode)
+                            .map(|m| m.to_string());
+                        let signals = build_c2pa_forensic_signals(&metrics);
+                        assertion.enrich_forensic_signals(
+                            writing_mode, comp_mode, signals,
+                        );
                         let json_data =
                             serde_json::to_string_pretty(&assertion)?;
                         write_atomic(&json_path, json_data.as_bytes())?;
@@ -529,7 +544,7 @@ pub(super) fn build_war_report(
         if s.is_finite() { s } else { 0.0 }
     };
     let score = (avg_forensic * 100.0).clamp(0.0, 100.0) as u32;
-    let verdict = Verdict::from_score(score);
+    let verdict = Verdict::from_score_with_events(score, events.len());
     let lr = compute_likelihood_ratio(score);
     let enfsi_tier = EnfsiTier::from_lr(lr);
 
@@ -700,6 +715,7 @@ fn verdict_description(verdict: &report::Verdict) -> String {
         Verdict::Inconclusive => "Insufficient evidence for a confident determination. Additional checkpoints recommended.".into(),
         Verdict::Suspicious => "Detected anomalies inconsistent with typical human composition behavior.".into(),
         Verdict::LikelySynthetic => "Evidence patterns strongly suggest synthetic or automated content generation.".into(),
+        Verdict::InsufficientData => "Insufficient data to make a determination. More writing activity is needed.".into(),
     }
 }
 
@@ -759,4 +775,78 @@ fn make_session(
             event_count, size_change
         ),
     }
+}
+
+fn enrich_report_vc(
+    report: &mut WarReport,
+    events: &[cpoe::SecureEvent],
+    signer: &dyn EvidenceSigner,
+    packet: &serde_json::Value,
+) {
+    let evidence_packet: evidence::Packet = match serde_json::from_value(packet.clone()) {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let policy = cpoe::trust_policy::profiles::basic();
+    let block = match war::Block::from_packet_appraised(&evidence_packet, signer, &policy) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    let ear = match block.ear.as_ref() {
+        Some(e) => e,
+        None => return,
+    };
+    let author_did = war::profiles::vc::issuer_did();
+    let mut vc = match war::profiles::vc::to_verifiable_credential(ear, &author_did) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let event_data = cpoe::forensics::EventData::from_secure_events(events);
+    let regions = cpoe::forensics::build_edit_regions(events);
+    let analysis_ctx = cpoe::forensics::AnalysisContext::default();
+    let metrics = cpoe::forensics::analyze_forensics_ext(
+        &event_data, &regions, None, None, None, &analysis_ctx,
+    );
+    let writing_mode = metrics.writing_mode.as_ref().map(|wm| wm.mode.to_string());
+    let comp_mode = metrics
+        .composition_mode.as_ref()
+        .and_then(|c| c.dominant_mode)
+        .map(|m| m.to_string());
+    let signals = cpoe::ffi::report::build_vc_forensic_signals(&metrics);
+    vc.enrich_forensic_signals(writing_mode, comp_mode, signals);
+
+    report.author_did = Some(author_did);
+    report.verifiable_credential_json = serde_json::to_string_pretty(&vc).ok();
+}
+
+fn build_c2pa_forensic_signals(
+    metrics: &cpoe::forensics::ForensicMetrics,
+) -> Option<war::profiles::c2pa::C2paForensicSignals> {
+    let has_any = metrics.cognitive_load.is_some()
+        || metrics.revision_topology.is_some()
+        || metrics.error_ecology.is_some()
+        || metrics.likelihood_model.is_some()
+        || metrics.composition_mode.is_some();
+    if !has_any {
+        return None;
+    }
+    Some(war::profiles::c2pa::C2paForensicSignals {
+        cognitive_load: metrics
+            .cognitive_load.as_ref().map(|c| c.composite_score).unwrap_or(0.0),
+        revision_topology: metrics
+            .revision_topology.as_ref().map(|r| r.composite_score).unwrap_or(0.0),
+        error_ecology: metrics
+            .error_ecology.as_ref().map(|e| e.composite_score).unwrap_or(0.0),
+        likelihood_model: metrics
+            .likelihood_model.as_ref().map(|l| l.session_p_cognitive).unwrap_or(0.0),
+        composition_mode: metrics
+            .composition_mode.as_ref().map(|c| c.composite_score).unwrap_or(0.0),
+        detour_ratio: metrics
+            .revision_topology.as_ref().map(|r| r.detour_ratio).unwrap_or(0.0),
+        leading_edge_divergence: metrics
+            .revision_topology.as_ref().map(|r| r.leading_edge_divergence).unwrap_or(0.0),
+        insertion_point_entropy: metrics
+            .revision_topology.as_ref().map(|r| r.insertion_point_entropy).unwrap_or(0.0),
+    })
 }

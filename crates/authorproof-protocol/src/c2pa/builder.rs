@@ -396,20 +396,14 @@ impl C2paManifestBuilder {
         let sig_url = format!("self#jumbf=/c2pa/{manifest_label}/c2pa.signature");
 
         let claim = C2paClaim {
-            claim_generator_info: vec![
-                ClaimGeneratorInfo {
-                    name: "CPoE".to_string(),
-                    version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                    spec_version: Some(C2PA_SPEC_VERSION.to_string()),
-                },
-                ClaimGeneratorInfo {
-                    name: "authorproof_protocol".to_string(),
-                    version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                    spec_version: None,
-                },
-            ],
+            claim_generator_info: vec![ClaimGeneratorInfo {
+                name: "CPoE/authorproof_protocol".to_string(),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                spec_version: Some(C2PA_SPEC_VERSION.to_string()),
+            }],
             instance_id: format!("xmp:iid:{}", hex::encode(&self.evidence_packet.packet_id)),
             signature: sig_url,
+            alg: Some("sha256".to_string()),
             created_assertions,
         };
 

@@ -2,7 +2,7 @@
 
 use coset::CborSerializable;
 use ed25519_dalek::VerifyingKey;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 
 use crate::error::{Error, Result};
 
@@ -59,11 +59,10 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
         ));
     }
 
-    if manifest.claim.claim_generator_info.is_empty() {
-        errors.push("claim_generator_info must have at least one entry".to_string());
-    } else if manifest.claim.claim_generator_info[0].name.is_empty() {
-        // Safe: is_empty() guard above ensures [0] exists.
-        errors.push("claim_generator_info[0].name must not be empty".to_string());
+    if manifest.claim.claim_generator_info.is_empty()
+        || manifest.claim.claim_generator_info[0].name.is_empty()
+    {
+        errors.push("claim_generator_info must contain at least one entry with a non-empty name".to_string());
     }
 
     if manifest.claim.instance_id.is_empty() {
@@ -74,12 +73,18 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
         errors.push("signature URI must not be empty".to_string());
     }
 
+    let expected_hash_len = match manifest.claim.alg.as_deref() {
+        Some("sha384") => 48,
+        Some("sha512") => 64,
+        _ => 32,
+    };
     for (i, assertion) in manifest.claim.created_assertions.iter().enumerate() {
-        if assertion.hash.len() != 32 {
+        if assertion.hash.len() != expected_hash_len {
             errors.push(format!(
-                "created_assertions[{i}] hash length {} != 32",
+                "created_assertions[{i}] hash length {} != {expected_hash_len}",
                 assertion.hash.len()
             ));
+            continue;
         }
         if assertion.url.is_empty() {
             errors.push(format!("created_assertions[{i}] has empty URL"));
@@ -105,7 +110,7 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
             errors.push(format!("assertion_boxes[{i}] too short"));
             continue;
         }
-        let computed_hash = Sha256::digest(&box_bytes[8..]);
+        let computed_hash = hash_assertion_box(&box_bytes[8..], manifest.claim.alg.as_deref());
         if subtle::ConstantTimeEq::ct_eq(
             assertion_ref.hash.as_slice(),
             computed_hash.as_slice(),
@@ -146,9 +151,17 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
 ///
 /// Extracts the public key from the x5chain header (either a raw 32-byte key
 /// or a DER-encoded X.509 certificate) and verifies the signature.
+///
+/// The C2PA signature uses detached payload mode (§13.2), so the claim CBOR
+/// is reattached from `manifest.claim_cbor` before verification.
 pub fn verify_manifest_signature(manifest: &C2paManifest) -> Result<bool> {
-    let sign1 = coset::CoseSign1::from_slice(&manifest.signature)
+    let mut sign1 = coset::CoseSign1::from_slice(&manifest.signature)
         .map_err(|e| Error::Crypto(format!("failed to parse COSE_Sign1: {e}")))?;
+
+    // Reattach detached payload for verification.
+    if sign1.payload.is_none() {
+        sign1.payload = Some(manifest.claim_cbor.clone());
+    }
 
     let pk_bytes = extract_public_key(&sign1)?;
     let vk = VerifyingKey::from_bytes(&pk_bytes)
@@ -156,7 +169,10 @@ pub fn verify_manifest_signature(manifest: &C2paManifest) -> Result<bool> {
 
     match crate::crypto::verify_cose_sign1_ed25519(&sign1, &vk) {
         Ok(()) => Ok(true),
-        Err(e) => Err(Error::Crypto(format!("COSE_Sign1 verification failed: {e}"))),
+        Err(e) => {
+            log::debug!("COSE_Sign1 verification failed (x5chain key): {e}");
+            Ok(false)
+        }
     }
 }
 
@@ -165,15 +181,22 @@ pub fn verify_manifest_with_key(
     manifest: &C2paManifest,
     public_key: &[u8; 32],
 ) -> Result<bool> {
-    let sign1 = coset::CoseSign1::from_slice(&manifest.signature)
+    let mut sign1 = coset::CoseSign1::from_slice(&manifest.signature)
         .map_err(|e| Error::Crypto(format!("failed to parse COSE_Sign1: {e}")))?;
+
+    if sign1.payload.is_none() {
+        sign1.payload = Some(manifest.claim_cbor.clone());
+    }
 
     let vk = VerifyingKey::from_bytes(public_key)
         .map_err(|e| Error::Crypto(format!("invalid Ed25519 public key: {e}")))?;
 
     match crate::crypto::verify_cose_sign1_ed25519(&sign1, &vk) {
         Ok(()) => Ok(true),
-        Err(e) => Err(Error::Crypto(format!("COSE_Sign1 verification failed: {e}"))),
+        Err(e) => {
+            log::debug!("COSE_Sign1 verification failed (explicit key): {e}");
+            Ok(false)
+        }
     }
 }
 
@@ -212,11 +235,19 @@ fn extract_public_key(sign1: &coset::CoseSign1) -> Result<[u8; 32]> {
     }
 }
 
+/// Hash assertion box content using the algorithm specified in the claim.
+fn hash_assertion_box(data: &[u8], alg: Option<&str>) -> Vec<u8> {
+    match alg {
+        Some("sha384") => sha2::Sha384::digest(data).to_vec(),
+        Some("sha512") => sha2::Sha512::digest(data).to_vec(),
+        _ => sha2::Sha256::digest(data).to_vec(),
+    }
+}
+
 /// Returns true iff `url` ends with `/{label}` — an exact path-segment match.
-///
-/// Prevents bypass via prefix labels (e.g. "c2pa.hash.data-extra" matching
-/// "c2pa.hash.data") that `str::contains` would incorrectly accept.
 fn url_has_label(url: &str, label: &str) -> bool {
-    url.ends_with(&format!("/{label}"))
+    url.len() > label.len()
+        && url.as_bytes()[url.len() - label.len() - 1] == b'/'
+        && url.ends_with(label)
 }
 
