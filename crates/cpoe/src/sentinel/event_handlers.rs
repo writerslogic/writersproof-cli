@@ -257,9 +257,11 @@ impl EventLoopCtx {
             super::trace!("[KEYSTROKE] NO SESSION for path={:?}", path);
             return;
         };
-        session.keystroke_count += 1;
+        // Note: keystroke_count is incremented ONLY by ffi_sentinel_inject_keystroke
+        // (the Swift FFI path), not here. The CGEventTap feeds jitter samples only.
+        // This prevents double-counting when both capture paths are active.
         super::trace!(
-            "[KEYSTROKE] COUNTED {:?} total={}",
+            "[KEYSTROKE] JITTER {:?} total={}",
             path,
             session.keystroke_count
         );
@@ -283,7 +285,6 @@ impl EventLoopCtx {
             &mut session.event_validation,
         );
         if validation.confidence < 0.1 {
-            session.keystroke_count -= 1;
             if was_buffered {
                 let rollback_idx = session.jitter_samples.len() - 1;
                 if let Some(last) = session.jitter_samples.last() {
