@@ -29,8 +29,8 @@ cpoe_jitter = ["cpoe/cpoe_jitter"]
 
 [dependencies]
 cpoe = { path = "../../crates/cpoe", features = ["ffi"], package = "cpoe" }
-clap = { version = "4.4", features = ["derive"] }
-clap_complete = "4.4"
+clap = { version = "4.6", features = ["derive"] }
+clap_complete = "4.6"
 anyhow = "1.0"
 bs58 = "0.5"
 tokio = { version = "1.36", features = ["full"] }
