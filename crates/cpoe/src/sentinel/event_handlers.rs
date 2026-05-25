@@ -827,6 +827,7 @@ impl EventLoopCtx {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(now_secs),
             last_tracked_at: now_secs,
+            total_checkpoints: i64::try_from(session.checkpoint_count).unwrap_or(i64::MAX),
         };
         drop(map);
         let sk_opt = self.signing_key_for_cp.read_recover().key();
@@ -1063,6 +1064,7 @@ impl EventLoopCtx {
             let mut map = sessions_ref.write_recover();
             if let Some(session) = map.get_mut(path) {
                 session.last_checkpoint_keystrokes = session.keystroke_count;
+                session.checkpoint_count += 1;
             }
             None
         });
@@ -1109,6 +1111,7 @@ impl EventLoopCtx {
             map.get_mut(path).map(|session| {
                 session.last_checkpoint_keystrokes =
                     session.keystroke_count;
+                session.checkpoint_count += 1;
                 (
                     session.total_keystrokes(),
                     session.total_focus_ms_cumulative(),
@@ -1130,6 +1133,7 @@ impl EventLoopCtx {
                     session.app_bundle_id.clone(),
                     session.window_title.reveal().to_string(),
                     session.transcription_suspicion.ecology_score,
+                    session.checkpoint_count,
                 )
             })
         };
@@ -1146,6 +1150,7 @@ impl EventLoopCtx {
             app_bundle_id,
             window_title,
             ecology_score,
+            checkpoint_count,
         )) = session_snapshot
         else {
             return false;
@@ -1179,6 +1184,7 @@ impl EventLoopCtx {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs() as i64)
                     .unwrap_or(0),
+                total_checkpoints: i64::try_from(checkpoint_count).unwrap_or(i64::MAX),
             };
             if let Err(e) = store.save_document_stats(&stats) {
                 log::warn!(

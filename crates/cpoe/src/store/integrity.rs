@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 /// On open, if the on-disk version is higher than this, the database was
 /// created by a newer app version and we refuse to open it to prevent
 /// silent data corruption from unrecognized schema changes.
-const SCHEMA_VERSION: i64 = 13;
+const SCHEMA_VERSION: i64 = 14;
 
 const KNOWN_TABLES: &[&str] = &[
     "integrity",
@@ -372,6 +372,12 @@ impl SecureStore {
             CREATE INDEX IF NOT EXISTS idx_manifest_registry_simhash
                 ON manifest_registry(document_simhash);",
         )?;
+
+        if !has_column(&self.conn, "document_stats", "total_checkpoints")? {
+            self.conn.execute_batch(
+                "ALTER TABLE document_stats ADD COLUMN total_checkpoints INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
 
         if on_disk_version < SCHEMA_VERSION {
             self.conn.execute_batch(&format!(

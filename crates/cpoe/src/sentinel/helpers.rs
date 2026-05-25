@@ -442,7 +442,15 @@ pub fn focus_document_sync(
             k.as_ref().and_then(|sk| {
                 crate::store::open_store_with_signing_key(sk, &db_path)
                     .ok()
-                    .and_then(|store| store.load_document_stats(path).ok().flatten())
+                    .and_then(|store| {
+                        store.load_document_stats(path).ok().flatten().or_else(|| {
+                            if path.starts_with("title://") {
+                                store.load_title_session_stats(path).ok().flatten()
+                            } else {
+                                None
+                            }
+                        })
+                    })
             })
         };
         (hash, stats, k)

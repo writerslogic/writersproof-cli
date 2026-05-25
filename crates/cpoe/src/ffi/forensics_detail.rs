@@ -1305,9 +1305,9 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
 
     let (writing_mode, cognitive_score) = if keystroke_count < 20 {
         ("insufficient".to_string(), 0.0)
-    } else if cadence_score > 0.7 {
+    } else if cadence_score > 0.6 {
         ("cognitive".to_string(), cadence_score)
-    } else if cadence_score < 0.3 {
+    } else if cadence_score < 0.4 {
         ("transcriptive".to_string(), cadence_score)
     } else {
         ("mixed".to_string(), cadence_score)

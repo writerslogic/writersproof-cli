@@ -92,6 +92,7 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
                 keystroke_count: 0,
                 focus_duration: String::new(),
                 permission_state: FfiPermissionState::Unknown,
+                temporal_binding_active: false,
             };
         }
     };
@@ -110,6 +111,8 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
             .sum()
     };
 
+    let has_nonce = sentinel.pending_challenge.read_recover().is_some();
+
     FfiSentinelStatus {
         running: sentinel.is_running(),
         tracked_file_count: tracked.len() as u32,
@@ -118,6 +121,7 @@ pub fn ffi_sentinel_status() -> FfiSentinelStatus {
         keystroke_count: summary.keystroke_count,
         focus_duration: format_duration(total_focus_ms / 1000),
         permission_state: FfiPermissionState::Full,
+        temporal_binding_active: has_nonce,
     }
 }
 
@@ -226,6 +230,7 @@ fn not_tracking(capture_active: bool) -> FfiWitnessingStatus {
         return_count: 0,
         scroll_event_count: 0,
         cursor_attention_score: 0.0,
+        temporal_binding_active: false,
     }
 }
 
@@ -404,6 +409,7 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
     let focus_penalty = crate::forensics::compute_focus_penalty(&focus);
 
     let metrics = query_store_metrics(&snapshot.path, mature_cadence, focus_penalty);
+    let has_nonce = sentinel.pending_challenge.read_recover().is_some();
 
     FfiWitnessingStatus {
         is_tracking: true,
@@ -441,5 +447,6 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         return_count: snapshot.return_count,
         scroll_event_count: snapshot.scroll_event_count,
         cursor_attention_score,
+        temporal_binding_active: has_nonce,
     }
 }

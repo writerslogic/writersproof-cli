@@ -850,6 +850,8 @@ pub struct DocumentSession {
     pub first_tracked_at: Option<SystemTime>,
     /// Keystroke count at the time of the last committed checkpoint.
     pub last_checkpoint_keystrokes: u64,
+    /// Total checkpoints committed in this session (cumulative across restarts).
+    pub checkpoint_count: u64,
     /// Nanosecond timestamp of the last committed checkpoint (jitter clock).
     /// Used by the entropy trigger to enforce the MIN_NS floor.
     pub(crate) last_checkpoint_ns: i64,
@@ -1168,6 +1170,7 @@ impl Clone for DocumentSession {
             session_number,
             first_tracked_at,
             last_checkpoint_keystrokes,
+            checkpoint_count,
             last_checkpoint_ns,
             last_focused_at,
             hw_cosign_scheduler: _,
@@ -1223,6 +1226,7 @@ impl Clone for DocumentSession {
             session_number,
             first_tracked_at,
             last_checkpoint_keystrokes,
+            checkpoint_count,
             last_checkpoint_ns,
             last_focused_at,
             // Scheduler contains zeroize-protected SE salt; not cloned.
@@ -1299,6 +1303,7 @@ impl DocumentSession {
             session_number: 0,
             first_tracked_at: None,
             last_checkpoint_keystrokes: 0,
+            checkpoint_count: 0,
             last_checkpoint_ns: 0,
             last_focused_at: now,
             hw_cosign_scheduler: None,

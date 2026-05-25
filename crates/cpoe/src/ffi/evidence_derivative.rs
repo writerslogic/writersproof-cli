@@ -381,7 +381,8 @@ fn detect_mime_type(ext: &str) -> String {
 fn decode_evidence_for_c2pa(
     data: &[u8],
 ) -> std::result::Result<authorproof_protocol::rfc::EvidencePacket, String> {
-    let packet = crate::evidence::Packet::decode(data)
+    let cbor_payload = crate::ffi::helpers::unwrap_cose_or_raw(data);
+    let packet = crate::evidence::Packet::decode(&cbor_payload)
         .map_err(|e| format!("Evidence decode failed: {e}"))?;
 
     let mut checkpoints = Vec::with_capacity(packet.checkpoints.len());

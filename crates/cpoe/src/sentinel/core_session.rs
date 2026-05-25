@@ -226,6 +226,7 @@ impl Sentinel {
             }
             let prior = s.last_checkpoint_keystrokes;
             s.last_checkpoint_keystrokes = s.keystroke_count;
+            s.checkpoint_count += 1;
             (s.keystroke_count, prior)
         };
 
@@ -494,6 +495,8 @@ impl Sentinel {
                             .saturating_add(i64::try_from(elapsed_secs).unwrap_or(i64::MAX)),
                         first_tracked_at: first_tracked,
                         last_tracked_at: now_ts,
+                        total_checkpoints: i64::try_from(session.checkpoint_count)
+                            .unwrap_or(i64::MAX),
                     };
                     if let Err(e) = store.save_document_stats(&stats) {
                         log::warn!("Failed to save document stats for {path_str}: {e}");

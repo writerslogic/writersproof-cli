@@ -247,10 +247,20 @@ where
             if !ptr.is_null() {
                 // SAFETY: ptr is a valid CFMachPortRef obtained from CGEventTapCreate;
                 // re-enabling a timed-out tap is the documented recovery pattern.
-                unsafe { CGEventTapEnable(ptr, true) };
-                let enabled = unsafe { CGEventTapIsEnabled(ptr) };
-                if !enabled {
-                    log::error!("CGEventTap re-enable failed after timeout; marking tap as dead");
+                // Retry up to 3 times with brief delays before marking dead.
+                let mut recovered = false;
+                for attempt in 0..3 {
+                    unsafe { CGEventTapEnable(ptr, true) };
+                    if unsafe { CGEventTapIsEnabled(ptr) } {
+                        recovered = true;
+                        break;
+                    }
+                    if attempt < 2 {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                }
+                if !recovered {
+                    log::error!("CGEventTap re-enable failed after 3 attempts; marking tap as dead");
                     tap_alive.store(false, Ordering::SeqCst);
                 }
             } else {
@@ -265,6 +275,17 @@ where
         }
 
         if event_type == K_CG_EVENT_KEY_DOWN || event_type == K_CG_EVENT_KEY_UP {
+            // Filter auto-repeat: holding a key generates continuous keyDown
+            // events that are not authorship evidence.
+            if event_type == K_CG_EVENT_KEY_DOWN {
+                let is_repeat = unsafe {
+                    CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_AUTOREPEAT)
+                };
+                if is_repeat != 0 {
+                    return;
+                }
+            }
+
             // SAFETY: event is a valid CGEventRef provided by the run loop callback.
             let verification = unsafe { verify_event_source(event) };
 

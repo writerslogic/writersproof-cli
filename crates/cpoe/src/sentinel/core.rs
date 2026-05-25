@@ -867,6 +867,8 @@ impl Sentinel {
                             .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
                             .unwrap_or(now_secs),
                         last_tracked_at: now_secs,
+                        total_checkpoints: i64::try_from(session.checkpoint_count)
+                            .unwrap_or(i64::MAX),
                     }
                 })
                 .collect();

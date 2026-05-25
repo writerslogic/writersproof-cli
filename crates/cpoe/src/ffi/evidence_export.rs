@@ -1105,16 +1105,26 @@ fn build_forensic_summary(
         .map(|wm| wm.mode.to_string())
         .unwrap_or_else(|| "insufficient".to_string());
 
-    let editing_ratio = if let Some(sentinel) = super::sentinel::get_sentinel() {
-        sentinel
-            .sessions()
+    let (editing_ratio, session_keystroke_count) = if let Some(sentinel) = super::sentinel::get_sentinel() {
+        let sessions = sentinel.sessions();
+        let session = sessions
             .iter()
-            .find(|s| s.path == path)
-            .map(|s| s.semantic_counts.editing_ratio())
-            .unwrap_or(0.0)
+            .find(|s| s.path == path);
+        (
+            session.map(|s| s.semantic_counts.editing_ratio()).unwrap_or(0.0),
+            session.map(|s| s.keystroke_count),
+        )
     } else {
-        0.0
+        (0.0, None)
     };
+
+    let keystroke_count = session_keystroke_count.unwrap_or_else(|| {
+        crate::ffi::helpers::open_store()
+            .ok()
+            .and_then(|store| store.load_document_stats(path).ok().flatten())
+            .map(|stats| stats.total_keystrokes as u64)
+            .unwrap_or(events.len() as u64)
+    });
 
     use crate::utils::finite_or;
     let cv = if mean_iki_ms > 0.0 && metrics.cadence.std_dev_iki_ns.is_finite() {
@@ -1129,7 +1139,7 @@ fn build_forensic_summary(
         correction_ratio: finite_or(metrics.cadence.correction_ratio.get(), 0.0),
         writing_mode,
         hurst_exponent: metrics.hurst_exponent.filter(|h| h.is_finite()),
-        keystroke_count: events.len() as u64,
+        keystroke_count,
         editing_ratio: finite_or(editing_ratio, 0.0),
         checkpoint_count: events.iter().filter(|e| e.context_type.as_deref() == Some("checkpoint")).count() as u64,
         assessment_score: finite_or(metrics.assessment_score.get(), 0.0),
@@ -1205,16 +1215,18 @@ fn collect_project_files(
                         .unwrap_or_else(|| path.clone())
                 });
 
-            // Get content hash and keystroke count from events
+            // Get content hash from events and keystroke count from document stats
             let events = store.get_events_for_file(path).unwrap_or_default();
             let content_hash = events
                 .last()
                 .map(|e| hex::encode(e.content_hash))
                 .unwrap_or_default();
-            let keystroke_count: u64 = events
-                .iter()
-                .map(|e| e.size_delta.unsigned_abs() as u64)
-                .sum();
+            let keystroke_count: u64 = store
+                .load_document_stats(path)
+                .ok()
+                .flatten()
+                .map(|stats| stats.total_keystrokes as u64)
+                .unwrap_or(0);
 
             authorproof_protocol::rfc::wire_types::ProjectFileRef {
                 filename: rel_path,

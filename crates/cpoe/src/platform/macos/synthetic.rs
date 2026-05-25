@@ -157,6 +157,12 @@ pub unsafe fn verify_event_source(event: *mut std::ffi::c_void) -> EventVerifica
 /// since there is no ground truth to compare against.
 pub fn validate_dual_layer(cg_count: u64, hid_count: u64) -> DualLayerValidation {
     if hid_count == 0 {
+        if cg_count > 0 {
+            log::warn!(
+                "HID capture inactive (count=0) while CGEventTap has {cg_count} events — \
+                 synthetic keystroke detection disabled"
+            );
+        }
         return DualLayerValidation {
             high_level_count: cg_count,
             low_level_count: 0,

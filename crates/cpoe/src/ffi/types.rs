@@ -364,6 +364,7 @@ pub struct FfiSentinelStatus {
     pub keystroke_count: u64,
     pub focus_duration: String,
     pub permission_state: FfiPermissionState,
+    pub temporal_binding_active: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -429,6 +430,8 @@ pub struct FfiWitnessingStatus {
     pub scroll_event_count: u64,
     /// Cursor attention composite score (0.0-1.0).
     pub cursor_attention_score: f64,
+    /// Whether a server-provided challenge nonce is available for temporal binding.
+    pub temporal_binding_active: bool,
 }
 
 #[derive(Debug, Clone, Default)]
