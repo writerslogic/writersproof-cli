@@ -224,7 +224,7 @@ fn inject_keystroke_inner_v3(
     // key event coalesces at most a handful of OS-buffered events; values above
     // 10 indicate a malformed or adversarial caller and are rejected outright
     // rather than silently clamped.
-    const MAX_COALESCED_COUNT: u64 = 10;
+    const MAX_COALESCED_COUNT: u64 = 50;
     if coalesced_count > MAX_COALESCED_COUNT {
         log::warn!(
             "FFI keystroke injection rejected: coalesced_count={} exceeds max {}",
@@ -404,7 +404,7 @@ fn inject_keystroke_inner_v3(
     if let Some(ref path) = focus {
         let mut sessions_guard = sentinel.sessions.write_recover();
         if let Some(session) = sessions_guard.get_mut(path) {
-            let increment = coalesced_count.clamp(1, 10);
+            let increment = coalesced_count.max(1);
             session.keystroke_count = session.keystroke_count.saturating_add(increment);
             log::debug!(
                 "[FFI_INJECT] COUNTED {:?} total={}",
