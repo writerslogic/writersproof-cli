@@ -702,6 +702,14 @@ pub struct ActiveDictationSession {
     pub keystrokes_at_begin: u64,
     /// Cumulative correction count across all recorded fragments.
     pub total_corrections: u32,
+    /// Number of interim recognition callbacks (non-final fragments).
+    /// Real speech: 4-12/min. TTS through dictation: 0-1/min.
+    pub interim_revision_count: u32,
+    /// Self-repair cycles detected (fragment word count regressed from previous).
+    /// Real composition: 3-8/min. TTS: 0.
+    pub disfluency_count: u32,
+    /// Word count from the most recent fragment (for detecting regressions).
+    pub last_fragment_word_count: u32,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

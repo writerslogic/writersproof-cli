@@ -92,6 +92,12 @@ pub struct FfiForensicBreakdown {
     pub dictation_ratio: f64,
     /// Whether multiple speakers were detected in dictation segments.
     pub multi_speaker_detected: bool,
+    /// Interim recognition revisions per minute (real speech: 4-12, TTS: 0-1).
+    pub dictation_revision_density: f64,
+    /// Self-repair disfluency cycles per minute (real: 3-8, TTS: 0).
+    pub dictation_disfluency_density: f64,
+    /// CV of inter-burst timing across dictation events (high = real, low = TTS).
+    pub dictation_burst_cv: f64,
     /// Enhanced cognitive/transcriptive signal analysis (5 new dimensions).
     pub enhanced_signals: Option<FfiEnhancedSignals>,
     /// Cross-modal consistency: per-check results verifying all evidence channels agree.
@@ -600,6 +606,9 @@ impl FfiForensicBreakdown {
             dictation_plausibility: 0.0,
             dictation_ratio: 0.0,
             multi_speaker_detected: false,
+            dictation_revision_density: 0.0,
+            dictation_disfluency_density: 0.0,
+            dictation_burst_cv: 0.0,
             enhanced_signals: None,
             cross_modal: None,
             focus: None,
@@ -665,6 +674,9 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
     let mut dictation_plausibility = 0.0;
     let mut dictation_ratio = 0.0;
     let mut multi_speaker_detected = false;
+    let mut dictation_revision_density = 0.0;
+    let mut dictation_disfluency_density = 0.0;
+    let mut dictation_burst_cv = 0.0;
     let mut live_ai_tools: Vec<FfiDetectedAiTool> = Vec::new();
     let mut live_cursor_attention: Option<FfiCursorAttention> = None;
 
@@ -704,6 +716,12 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
                 dictation_plausibility = finite_or(comp.dictated_score, 0.0);
                 dictation_ratio = finite_or(comp.dictation_ratio, 0.0);
                 multi_speaker_detected = comp.multi_speaker_detected;
+                let analytics = crate::forensics::dictation::compute_dictation_analytics(
+                    &session.dictation_events, typed_words,
+                );
+                dictation_revision_density = finite_or(analytics.mean_interim_revisions_per_min, 0.0);
+                dictation_disfluency_density = finite_or(analytics.mean_disfluency_per_min, 0.0);
+                dictation_burst_cv = finite_or(analytics.burst_timing_cv, 0.0);
             }
 
             // AI tools detected.
@@ -828,6 +846,9 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
         dictation_plausibility,
         dictation_ratio,
         multi_speaker_detected,
+        dictation_revision_density,
+        dictation_disfluency_density,
+        dictation_burst_cv,
         enhanced_signals: build_enhanced_signals(&metrics, &path),
         cross_modal: metrics.cross_modal.as_ref().map(|cm| FfiCrossModalResult {
             score: finite_or(cm.score, 0.0),

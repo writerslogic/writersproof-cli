@@ -87,6 +87,18 @@ const PENALTY_CROSS_WINDOW_COPY: f64 = 0.15;
 /// Penalty for near-silent ambient environment (suggests TTS or anechoic recording).
 const PENALTY_ANECHOIC: f64 = 0.25;
 
+/// Penalty for zero interim revisions on a multi-fragment session (TTS hallmark).
+const PENALTY_ZERO_REVISIONS: f64 = 0.15;
+
+/// Minimum fragments before applying the zero-revision check.
+const REVISION_MIN_FRAGMENTS: u32 = 3;
+
+/// Penalty for zero disfluencies on sustained speech (TTS hallmark).
+const PENALTY_ZERO_DISFLUENCY: f64 = 0.2;
+
+/// Minimum word count before applying the zero-disfluency check.
+const DISFLUENCY_MIN_WORDS: u32 = 20;
+
 /// Assess whether a dictation event is plausible (not forged).
 ///
 /// Returns a score in `[0.0, 1.0]` where 1.0 = fully plausible and
@@ -157,6 +169,18 @@ pub fn score_dictation_plausibility(event: &DictationEvent) -> f64 {
         score *= PENALTY_ANECHOIC;
     }
 
+    // Zero interim revisions: real speech produces continuous recognition updates.
+    // TTS through dictation produces clean audio with zero mid-recognition revisions.
+    if event.fragment_count >= REVISION_MIN_FRAGMENTS && event.interim_revision_count == 0 {
+        score *= PENALTY_ZERO_REVISIONS;
+    }
+
+    // Zero disfluencies: real speakers produce self-repairs (word retractions)
+    // on sustained speech. TTS never triggers recognizer retractions.
+    if event.word_count >= DISFLUENCY_MIN_WORDS && event.disfluency_count == 0 {
+        score *= PENALTY_ZERO_DISFLUENCY;
+    }
+
     crate::utils::Probability::clamp(score).get()
 }
 
@@ -202,6 +226,12 @@ pub struct DictationAnalytics {
     pub speaker_segments: Vec<SpeakerSegment>,
     pub dictation_ratio_words: f64,
     pub multi_speaker_detected: bool,
+    /// CV of inter-burst timing (gaps between dictation events). High = real, low = TTS.
+    pub burst_timing_cv: f64,
+    /// Mean interim recognition revisions per minute across all events.
+    pub mean_interim_revisions_per_min: f64,
+    /// Mean disfluency (self-repair) cycles per minute across all events.
+    pub mean_disfluency_per_min: f64,
 }
 
 /// Compute aggregated analytics over a session's dictation events.
@@ -223,6 +253,9 @@ pub fn compute_dictation_analytics(
             speaker_segments: Vec::new(),
             dictation_ratio_words: 0.0,
             multi_speaker_detected: false,
+            burst_timing_cv: 0.0,
+            mean_interim_revisions_per_min: 0.0,
+            mean_disfluency_per_min: 0.0,
         };
     }
 
@@ -234,6 +267,8 @@ pub fn compute_dictation_analytics(
     let mut plaus_sum = 0.0;
     let mut min_plaus = 1.0f64;
     let mut timeline = Vec::with_capacity(events.len());
+    let mut total_revisions = 0u32;
+    let mut total_disfluencies = 0u32;
 
     for ev in events {
         total_words = total_words.saturating_add(ev.word_count);
@@ -247,18 +282,52 @@ pub fn compute_dictation_analytics(
             min_plaus = plaus;
         }
         timeline.push((ev.start_ns, plaus));
+        total_revisions += ev.interim_revision_count;
+        total_disfluencies += ev.disfluency_count;
     }
 
     let n = events.len() as f64;
     let total_all_words = total_words.saturating_add(total_typed_words);
     let segments = cluster_speaker_segments(events);
     let multi = segments.iter().any(|s| s.speaker_label > 0);
+    let total_duration_sec = crate::utils::ns_to_secs(total_duration_ns);
+    let total_duration_min = total_duration_sec / 60.0;
+
+    // Burst timing CV: coefficient of variation of gaps between consecutive events.
+    let burst_timing_cv = if events.len() >= 2 {
+        let mut gaps: Vec<f64> = Vec::with_capacity(events.len() - 1);
+        for pair in events.windows(2) {
+            let gap_ns = pair[1].start_ns.saturating_sub(pair[0].end_ns);
+            gaps.push(gap_ns as f64);
+        }
+        let mean_gap = gaps.iter().sum::<f64>() / gaps.len() as f64;
+        if mean_gap > 0.0 {
+            let var = gaps.iter().map(|g| (g - mean_gap).powi(2)).sum::<f64>() / gaps.len() as f64;
+            var.sqrt() / mean_gap
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    // Per-minute rates for revision and disfluency density.
+    let mean_revisions_per_min = if total_duration_min > 0.0 {
+        total_revisions as f64 / total_duration_min
+    } else {
+        0.0
+    };
+    let mean_disfluency_per_min = if total_duration_min > 0.0 {
+        total_disfluencies as f64 / total_duration_min
+    } else {
+        0.0
+    };
 
     DictationAnalytics {
         total_dictation_events: events.len() as u32,
         total_dictated_words: total_words,
         total_dictated_chars: total_chars,
-        total_duration_sec: crate::utils::ns_to_secs(total_duration_ns),
+        total_duration_sec,
         mean_wpm: wpm_sum / n,
         mean_confidence: conf_sum / n,
         mean_plausibility: plaus_sum / n,
@@ -271,6 +340,9 @@ pub fn compute_dictation_analytics(
             0.0
         },
         multi_speaker_detected: multi,
+        burst_timing_cv,
+        mean_interim_revisions_per_min: mean_revisions_per_min,
+        mean_disfluency_per_min,
     }
 }
 
@@ -479,7 +551,55 @@ mod tests {
             speaker_output_active: false,
             ambient_noise_db: -100.0,
             cross_window_similarity: 0.0,
+            interim_revision_count: 5,
+            disfluency_count: 2,
         }
+    }
+
+    #[test]
+    fn zero_revisions_penalized() {
+        let mut event = make_event(30, 30.0, true);
+        event.fragment_count = 5;
+        event.interim_revision_count = 0;
+        let score = score_dictation_plausibility(&event);
+        // Zero revisions on 5 fragments should trigger PENALTY_ZERO_REVISIONS
+        assert!(score < 0.9, "zero revisions should penalize: {score}");
+
+        event.interim_revision_count = 4;
+        let score_with_revisions = score_dictation_plausibility(&event);
+        assert!(score_with_revisions > score, "revisions present should score higher");
+    }
+
+    #[test]
+    fn zero_disfluency_penalized() {
+        let mut event = make_event(30, 30.0, true);
+        event.disfluency_count = 0;
+        let score = score_dictation_plausibility(&event);
+        // Zero disfluencies on 30 words should trigger PENALTY_ZERO_DISFLUENCY
+        assert!(score < 0.85, "zero disfluency should penalize: {score}");
+
+        event.disfluency_count = 3;
+        let score_with_disfluency = score_dictation_plausibility(&event);
+        assert!(score_with_disfluency > score, "disfluencies present should score higher");
+    }
+
+    #[test]
+    fn burst_timing_cv_computed() {
+        let mut ev1 = make_event(20, 10.0, true);
+        ev1.start_ns = 0;
+        ev1.end_ns = 10_000_000_000;
+
+        let mut ev2 = make_event(15, 8.0, true);
+        ev2.start_ns = 15_000_000_000;
+        ev2.end_ns = 23_000_000_000;
+
+        let mut ev3 = make_event(25, 12.0, true);
+        ev3.start_ns = 40_000_000_000; // larger gap
+        ev3.end_ns = 52_000_000_000;
+
+        let analytics = compute_dictation_analytics(&[ev1, ev2, ev3], 100);
+        // Two gaps: 5s and 17s — high variance → high CV
+        assert!(analytics.burst_timing_cv > 0.3, "CV should be high for varied gaps: {}", analytics.burst_timing_cv);
     }
 
     #[test]

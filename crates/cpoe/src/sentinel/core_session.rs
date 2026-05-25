@@ -686,6 +686,9 @@ impl Sentinel {
             ambient_noise_db,
             keystrokes_at_begin,
             total_corrections: 0,
+            interim_revision_count: 0,
+            disfluency_count: 0,
+            last_fragment_word_count: 0,
         });
         true
     }
@@ -738,6 +741,17 @@ impl Sentinel {
         if speaker_output_active {
             active.speaker_output_ever_active = true;
         }
+
+        // Track interim revisions (every non-first fragment is a recognition update).
+        if fragment_index > 0 {
+            active.interim_revision_count += 1;
+        }
+        // Detect disfluency: word count regression means the recognizer retracted
+        // words due to a speaker self-repair ("I want to — no — the character...").
+        if word_count < active.last_fragment_word_count {
+            active.disfluency_count += 1;
+        }
+        active.last_fragment_word_count = word_count;
 
         let timestamp_ns = crate::utils::now_ns();
         let session_id = session.session_id.clone();
@@ -838,6 +852,8 @@ impl Sentinel {
             speaker_output_active: speaker_ever_active,
             ambient_noise_db: active.ambient_noise_db,
             cross_window_similarity,
+            interim_revision_count: active.interim_revision_count,
+            disfluency_count: active.disfluency_count,
         };
         event.plausibility_score =
             crate::forensics::dictation::score_dictation_plausibility(&event);

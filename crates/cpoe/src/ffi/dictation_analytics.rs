@@ -21,6 +21,9 @@ pub struct FfiDictationAnalytics {
     pub typed_score: f64,
     pub dictated_score: f64,
     pub composite_adjustment: f64,
+    pub burst_timing_cv: f64,
+    pub mean_interim_revisions_per_min: f64,
+    pub mean_disfluency_density: f64,
     pub error_message: Option<String>,
 }
 
@@ -62,6 +65,9 @@ impl FfiDictationAnalytics {
             typed_score: 0.0,
             dictated_score: 0.0,
             composite_adjustment: 0.0,
+            burst_timing_cv: 0.0,
+            mean_interim_revisions_per_min: 0.0,
+            mean_disfluency_density: 0.0,
             error_message: Some(msg.into()),
         }
     }
@@ -147,6 +153,9 @@ pub fn ffi_get_dictation_analytics(path: String) -> FfiDictationAnalytics {
             typed_score: scoring.typed_score,
             dictated_score: scoring.dictated_score,
             composite_adjustment: scoring.composite_adjustment,
+            burst_timing_cv: analytics.burst_timing_cv,
+            mean_interim_revisions_per_min: analytics.mean_interim_revisions_per_min,
+            mean_disfluency_density: analytics.mean_disfluency_per_min,
             error_message: None,
         }
     })

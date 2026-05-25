@@ -717,6 +717,14 @@ pub struct DictationEvent {
     /// Text novelty score against content visible in other windows at session end.
     /// 0.0 = novel composition. Values approaching 1.0 = copy of visible text.
     pub cross_window_similarity: f32,
+    /// Interim recognition revision count (non-final fragment callbacks).
+    /// Real speech: 4-12/min. TTS: 0-1/min.
+    #[serde(default)]
+    pub interim_revision_count: u32,
+    /// Self-repair cycles (fragment word count regressed from previous).
+    /// Real composition: 3-8/min. TTS: 0.
+    #[serde(default)]
+    pub disfluency_count: u32,
 }
 
 /// External timestamping anchors (OTS, RFC 3161, notary).
