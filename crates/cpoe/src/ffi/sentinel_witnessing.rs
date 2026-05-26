@@ -306,12 +306,16 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         let focused_session = current_path
             .as_ref()
             .and_then(|p| sessions_map.get(p.as_str()));
-        let doc_has_focus = focused_session.is_some();
         let targeted = sentinel.targeted_path();
+        let targeted_session = targeted.as_ref()
+            .and_then(|p| sessions_map.get(p.as_str()));
+        // Report focus as true when either the AX probe resolved the document
+        // OR the targeted session still has has_focus set (covers the 100-200ms
+        // AX latency window during app switches, so paste detection works).
+        let doc_has_focus = focused_session.is_some()
+            || targeted_session.map(|s| s.has_focus).unwrap_or(false);
         let session = focused_session
-            .or_else(|| {
-                targeted.as_ref().and_then(|p| sessions_map.get(p.as_str()))
-            })
+            .or(targeted_session)
             .or_else(|| {
                 sessions_map
                     .values()
