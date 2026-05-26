@@ -230,6 +230,7 @@ impl C2paManifestBuilder {
             hash: self.document_hash.to_vec(),
             algorithm: "sha256".to_string(),
             exclusions: self.exclusions,
+            pad: Vec::new(),
         };
 
         // Built once; same bytes are hashed for the claim and embedded in JUMBF.
@@ -276,7 +277,17 @@ impl C2paManifestBuilder {
 
         // c2pa.external-reference assertion (hashed link to .cpoe evidence packet)
         if let Some(ref url) = self.evidence_url {
-            let evidence_hash = Sha256::digest(&self.evidence_bytes);
+            // The external reference declares format application/vnd.writersproof.cpoe+cbor,
+            // so the hash must be over CBOR-tagged bytes (tag 0x43504F45). Re-encode from
+            // the packet if the caller passed untagged bytes.
+            let tagged_evidence = if is_cpoe_tagged(&self.evidence_bytes) {
+                self.evidence_bytes.clone()
+            } else {
+                crate::codec::encode_evidence(&self.evidence_packet).map_err(|e| {
+                    Error::Serialization(format!("C2PA: failed to re-encode evidence with tag: {e}"))
+                })?
+            };
+            let evidence_hash = Sha256::digest(&tagged_evidence);
             if self.evidence_packet.checkpoints.is_empty() {
                 log::warn!("C2PA embed: evidence packet has no checkpoints; process timestamps will be absent");
             }
@@ -396,11 +407,11 @@ impl C2paManifestBuilder {
         let sig_url = format!("self#jumbf=/c2pa/{manifest_label}/c2pa.signature");
 
         let claim = C2paClaim {
-            claim_generator_info: vec![ClaimGeneratorInfo {
+            claim_generator_info: ClaimGeneratorInfo {
                 name: "CPoE/authorproof_protocol".to_string(),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
                 spec_version: Some(C2PA_SPEC_VERSION.to_string()),
-            }],
+            },
             instance_id: format!("xmp:iid:{}", hex::encode(&self.evidence_packet.packet_id)),
             signature: sig_url,
             alg: Some("sha256".to_string()),
@@ -481,4 +492,12 @@ fn sign_c2pa_claim(
         )));
     }
     crate::crypto::cose_sign1_c2pa(claim_cbor, signer, cert_der)
+}
+
+/// Check whether raw bytes begin with the CPoE CBOR semantic tag header.
+///
+/// Tag 1129336645 (0x43504F45) is encoded as major type 6 with 4-byte value:
+/// `[0xDA, 0x43, 0x50, 0x4F, 0x45]`.
+fn is_cpoe_tagged(data: &[u8]) -> bool {
+    data.len() >= 5 && data[..5] == [0xDA, 0x43, 0x50, 0x4F, 0x45]
 }

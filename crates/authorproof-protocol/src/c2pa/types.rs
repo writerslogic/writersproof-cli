@@ -128,8 +128,11 @@ pub struct HashDataAssertion {
     /// Algorithm identifier per §15.4.
     #[serde(rename = "alg")]
     pub algorithm: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exclusions: Vec<ExclusionRange>,
+    /// Padding bytes for embedded manifest re-signing (§9.1).
+    #[serde(with = "serde_bytes", default)]
+    pub pad: Vec<u8>,
 }
 
 /// Byte range exclusion for embedded manifests (§9.1).
@@ -226,8 +229,8 @@ pub struct DataSource {
 /// C2PA claim v2 per §10 and §15.6. All field names match the CDDL schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C2paClaim {
-    /// §10.5, required in claim-map-v2 (`[+ claim-generator-info-map]`).
-    pub claim_generator_info: Vec<ClaimGeneratorInfo>,
+    /// §10.5, required in claim-map-v2 (single generator-info-map in V2).
+    pub claim_generator_info: ClaimGeneratorInfo,
 
     /// §10.3, required.
     #[serde(rename = "instanceID")]

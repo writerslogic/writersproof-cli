@@ -59,10 +59,8 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
         ));
     }
 
-    if manifest.claim.claim_generator_info.is_empty()
-        || manifest.claim.claim_generator_info[0].name.is_empty()
-    {
-        errors.push("claim_generator_info must contain at least one entry with a non-empty name".to_string());
+    if manifest.claim.claim_generator_info.name.is_empty() {
+        errors.push("claim_generator_info must have a non-empty name".to_string());
     }
 
     if manifest.claim.instance_id.is_empty() {
