@@ -2220,6 +2220,7 @@ fn looks_like_document_name(s: &str) -> bool {
     for frag in SKIP_TITLE_FRAGMENTS {
         if s.eq_ignore_ascii_case(frag)
             || (s.len() > frag.len()
+                && s.is_char_boundary(frag.len())
                 && s[..frag.len()].eq_ignore_ascii_case(frag)
                 && s[frag.len()..].starts_with(" -"))
         {
