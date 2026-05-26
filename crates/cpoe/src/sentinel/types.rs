@@ -873,6 +873,8 @@ pub struct DocumentSession {
     pub(crate) hw_cosign_chain_index: u64,
     /// Paste context window for keystroke classification (Phase 2.3).
     pub paste_context: Option<PasteContext>,
+    /// Number of times the user skipped a mandatory paste checkpoint.
+    pub paste_checkpoint_skips: u32,
     /// Per-session keystroke semantic counts for evidence enrichment.
     pub(crate) semantic_counts: SemanticAccumulator,
     /// Per-device keystroke counts keyed by keyboard device class.
@@ -1185,6 +1187,7 @@ impl Clone for DocumentSession {
             ref last_hw_cosign_signature,
             hw_cosign_chain_index,
             ref paste_context,
+            paste_checkpoint_skips,
             ref semantic_counts,
             ref device_keystroke_counts,
             file_encoding,
@@ -1242,6 +1245,7 @@ impl Clone for DocumentSession {
             last_hw_cosign_signature: last_hw_cosign_signature.clone(),
             hw_cosign_chain_index,
             paste_context: paste_context.clone(),
+            paste_checkpoint_skips,
             semantic_counts: semantic_counts.clone(),
             device_keystroke_counts: device_keystroke_counts.clone(),
             file_encoding,
@@ -1318,6 +1322,7 @@ impl DocumentSession {
             last_hw_cosign_signature: None,
             hw_cosign_chain_index: 0,
             paste_context: None,
+            paste_checkpoint_skips: 0,
             semantic_counts: SemanticAccumulator::default(),
             device_keystroke_counts: HashMap::new(),
             file_encoding: None,

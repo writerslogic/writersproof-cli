@@ -777,6 +777,30 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         .collect();
 
     build_forensic_flags(&mut flags, &metrics, &profile);
+
+    // Check for skipped paste checkpoints from the live session.
+    {
+        use crate::RwLockRecover as _;
+        if let Some(sentinel) = crate::ffi::sentinel::get_running_sentinel() {
+            let sessions_guard = sentinel.sessions.read_recover();
+            if let Some(session) = sessions_guard.get(&file_path_str) {
+                if session.paste_checkpoint_skips > 0 {
+                    flags.push(ReportFlag {
+                        category: "Integrity".into(),
+                        flag: "Paste Checkpoint Skipped".into(),
+                        detail: format!(
+                            "User skipped {} mandatory paste checkpoint{} during this session. \
+                             Pasted content is undocumented.",
+                            session.paste_checkpoint_skips,
+                            if session.paste_checkpoint_skips == 1 { "" } else { "s" }
+                        ),
+                        signal: FlagSignal::Synthetic,
+                    });
+                }
+            }
+        }
+    }
+
     let forgery = compute_forgery_info(&events, &stats, ips, hardware_backed, &metrics);
     let dimensions = build_dimensions(&stats, &process, &metrics, &sessions, &file_path_str);
 

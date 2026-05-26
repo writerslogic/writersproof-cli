@@ -317,6 +317,37 @@ pub fn ffi_text_fragment_list_for_session(session_id: String) -> Vec<FfiTextFrag
 /// is hashed (SHA-256) and checked against existing fragments. The sentinel's
 /// paste-char counter and keystroke context window are also updated.
 ///
+/// Record that the user skipped a mandatory paste checkpoint.
+///
+/// Increments a per-session counter that is surfaced as a flag in the
+/// forensic report. The skip does not block witnessing but reduces
+/// evidence integrity since the pasted content is undocumented.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_record_paste_checkpoint_skipped() -> bool {
+    use crate::ffi::types::catch_ffi_panic;
+    catch_ffi_panic!(false, {
+    let sentinel = match super::sentinel::get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
+    };
+    use crate::RwLockRecover as _;
+    let focus = sentinel.current_focus()
+        .or_else(|| sentinel.targeted_path());
+    if let Some(ref path) = focus {
+        let mut sessions = sentinel.sessions.write_recover();
+        if let Some(session) = sessions.get_mut(path.as_str()) {
+            session.paste_checkpoint_skips = session.paste_checkpoint_skips.saturating_add(1);
+            log::info!(
+                "Paste checkpoint skipped for {:?} (total skips: {})",
+                path, session.paste_checkpoint_skips
+            );
+            return true;
+        }
+    }
+    false
+    })
+}
+
 /// The pasted text itself is NOT stored — only the hash.
 ///
 /// **Caller contract**: Swift must check `pasted_text.utf8.count <= 10_485_760`
