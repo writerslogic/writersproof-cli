@@ -706,6 +706,12 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     let stats = compute_event_stats(&events, ips)
         .ok_or_else(|| "No events found for this file".to_string())?;
+
+    // Load real cumulative stats from the store (keystroke count, focus time, etc.)
+    // These match what the bento dashboard displays. Fall back to estimates only
+    // when the store has no stats (e.g., exported evidence without a live session).
+    let doc_stats = store.load_document_stats(&file_path_str).ok().flatten();
+
     let base_score = (stats.avg_forensic * 100.0).clamp(0.0, 100.0) as u32;
     let base_verdict = Verdict::from_score_with_events(base_score, events.len());
     let base_lr = compute_likelihood_ratio(base_score);
@@ -732,7 +738,12 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     let (profile, metrics, regions) = get_forensics_cached(&file_path_str, &events);
     let forensic_breakdown = super::forensic_fields::build_forensic_breakdown(&profile, &metrics);
-    populate_behavioral_fields(&mut process, &metrics, stats.keystroke_estimate);
+    let real_keystrokes = doc_stats.as_ref()
+        .map(|d| d.total_keystrokes.max(0) as u64)
+        .filter(|&k| k > 0)
+        .unwrap_or(stats.keystroke_estimate);
+    populate_behavioral_fields(&mut process, &metrics, real_keystrokes);
+    process.total_keystrokes = Some(real_keystrokes);
 
     let (score, verdict, lr, enfsi_tier) = blend_topology_score(
         stats.avg_forensic,
@@ -789,17 +800,33 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         evidence_hash: Some(evidence_chain_hash),
         evidence_cbor_b64: None,
         signing_key_fingerprint: key_fp,
-        document_words: if stats.doc_size > 0 {
-            Some(stats.doc_size.max(0) as u64 / 5)
-        } else {
-            None
+        document_words: {
+            let real_ks = doc_stats.as_ref().map(|d| d.total_keystrokes).unwrap_or(0);
+            if real_ks > 0 {
+                Some(real_ks as u64 / 5)
+            } else if stats.doc_size > 0 {
+                Some(stats.doc_size.max(0) as u64 / 5)
+            } else {
+                None
+            }
         },
-        document_chars: Some(stats.doc_size.max(0) as u64),
+        document_chars: Some(
+            doc_stats.as_ref()
+                .map(|d| d.total_keystrokes.max(0) as u64)
+                .filter(|&k| k > 0)
+                .unwrap_or(stats.doc_size.max(0) as u64)
+        ),
         document_sentences: None,
         document_paragraphs: None,
         evidence_bundle_version: format!("Signed v{} (T{})", env!("CARGO_PKG_VERSION"), tier_num),
-        session_count: sessions.len(),
-        total_duration_min: stats.total_min,
+        session_count: doc_stats.as_ref()
+            .map(|d| d.session_count as usize)
+            .filter(|&c| c > 0)
+            .unwrap_or(sessions.len()),
+        total_duration_min: doc_stats.as_ref()
+            .map(|d| d.total_focus_ms as f64 / 60_000.0)
+            .filter(|&m| m > 0.0)
+            .unwrap_or(stats.total_min),
         revision_events: events.len() as u64,
         device_attestation,
         checkpoints,
