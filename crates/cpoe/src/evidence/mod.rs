@@ -26,3 +26,13 @@ pub use self::builder::{
 };
 
 pub use self::rfc_conversion::RfcConversionError;
+
+/// Strip a COSE_Sign1 envelope if present, returning the inner payload.
+/// If the data is not a valid COSE_Sign1 structure, returns the original bytes.
+pub fn unwrap_cose_or_raw(data: &[u8]) -> Vec<u8> {
+    use coset::CborSerializable;
+    match coset::CoseSign1::from_slice(data) {
+        Ok(sign1) => sign1.payload.unwrap_or_else(|| data.to_vec()),
+        Err(_) => data.to_vec(),
+    }
+}

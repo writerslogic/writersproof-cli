@@ -44,16 +44,7 @@ pub fn device_identity() -> ([u8; 16], String) {
     }
 }
 
-/// Try to unwrap a COSE_Sign1 envelope to get the inner CBOR payload.
-/// If the data is not a valid COSE_Sign1, return it unchanged (raw CBOR).
-/// This allows verification code to handle both signed and unsigned evidence.
-pub fn unwrap_cose_or_raw(data: &[u8]) -> Vec<u8> {
-    use coset::CborSerializable;
-    match coset::CoseSign1::from_slice(data) {
-        Ok(sign1) => sign1.payload.unwrap_or_else(|| data.to_vec()),
-        Err(_) => data.to_vec(),
-    }
-}
+pub use crate::evidence::unwrap_cose_or_raw;
 
 /// Maximum Shannon entropy for the edit-position histogram (log2(20 bins)).
 pub const ENTROPY_NORMALIZATION_FACTOR: f64 = 4.321928;
