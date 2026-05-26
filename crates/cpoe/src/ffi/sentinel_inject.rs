@@ -399,7 +399,18 @@ fn inject_keystroke_inner_v3(
     super::fingerprint::feed_fingerprint_keystroke(&sample, keycode, char_value.chars().next());
 
     // Only count keystrokes when a tracked document is focused.
-    let focus = sentinel.current_focus();
+    // Fall back to targeted_path when current_focus is None (AX focus
+    // monitor has 100-200ms latency; keystrokes arrive before it resolves),
+    // but only if the targeted session still has focus — prevents misattribution
+    // when the user switches to a non-excluded app and current_focus is briefly None.
+    let focus = sentinel.current_focus().or_else(|| {
+        let tp = sentinel.targeted_path()?;
+        let has_focus = sentinel.sessions.read_recover()
+            .get(&tp)
+            .map(|s| s.has_focus)
+            .unwrap_or(false);
+        if has_focus { Some(tp) } else { None }
+    });
     log::debug!("[FFI_INJECT] focus={:?} keycode={}", focus, keycode);
     if let Some(ref path) = focus {
         let mut sessions_guard = sentinel.sessions.write_recover();

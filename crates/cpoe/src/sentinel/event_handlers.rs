@@ -265,8 +265,13 @@ impl EventLoopCtx {
             path,
             session.keystroke_count
         );
+        // When the FFI inject path is active (keystroke_count > 0), it owns
+        // per-document jitter samples. Skip the CGEventTap push to avoid
+        // duplicates (the two paths use different timestamp domains so
+        // timestamp-based dedup cannot work).
         let was_buffered =
-            session.jitter_samples.len() < MAX_DOCUMENT_JITTER_SAMPLES;
+            session.keystroke_count == 0
+            && session.jitter_samples.len() < MAX_DOCUMENT_JITTER_SAMPLES;
         if was_buffered {
             let idx = session.jitter_samples.len();
             session.jitter_samples.push(sample.clone());
