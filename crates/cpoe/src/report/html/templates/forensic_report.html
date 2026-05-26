@@ -306,61 +306,25 @@
   </div>
 </div>
 
-<!-- PAGE 2 — CERTIFICATION -->
-<div class="page">
-  <div class="running-header"><span class="l">§ 1 · Certification of findings</span><span class="r">{{report_id}}</span></div>
-
-  <div class="section-block"><div class="super">§ 1</div><h2>Certification of findings</h2><div class="subtitle">Evaluative statement under the ENFSI Bayesian framework</div></div>
-
-  <div class="cert-intro">
-    <div class="numpara"><span class="n">1.1</span><p>I, David Condrey, of WritersLogic, Inc., examined the cryptographic process evidence associated with the document identified by SHA-256 digest <span class="mono">{{document_hash_truncated}}</span> (the &#x201c;subject document&#x201d;). The examination was conducted in accordance with the Guideline for Evaluative Reporting in Forensic Science published by the European Network of Forensic Science Institutes [Ref.&#x00a0;1] and applied the methodology described in Section 3 of this report.</p></div>
-    <div class="numpara"><span class="n">1.2</span><p>This report evaluates the captured behavioural and cryptographic evidence under two competing propositions:</p></div>
-  </div>
-
-  <div class="prop-grid">
-    <div class="prop-row"><span class="label">H<sub>1</sub></span><span class="text">The subject document was composed in real time at the captured device by a human author entering text directly through the keyboard.</span></div>
-    <div class="prop-row"><span class="label">H<sub>2</sub></span><span class="text">The subject document was produced by transcription, dictation, paste from an external source, or other automated input.</span></div>
-  </div>
-
-  <div class="conclusion-block">
-    <div class="label">Evaluative statement</div>
-    <p class="text">{{evaluative_statement}}</p>
-    <div class="lr-summary">
-      <div><div class="k">Likelihood ratio</div><div class="v">LR = {{likelihood_ratio}}</div></div>
-      <div><div class="k">95% confidence interval</div><div class="v">{{confidence_interval}}</div></div>
-      <div><div class="k">Verbal scale</div><div class="v serif">{{enfsi_verbal_short}}</div></div>
-    </div>
-  </div>
-
-  <div class="signature-block">
-    <p class="declaration">I certify that the foregoing evaluative statement reflects my professional opinion based on the evidence examined and the methodology described herein, and that the cryptographic operations underlying the captured evidence were performed by the WritersLogic CPoE Engine in accordance with the protocol specified in <span class="mono" style="font-size:11px;">draft-condrey-cpoe-protocol-00</span>. My full declaration under 28 U.S.C. § 1746 appears at Section 11.</p>
-    <div class="signature-grid">
-      <div><div class="signature-line signed"></div><div class="signature-label">Examiner of record</div><div class="signature-name">David Condrey</div><div class="signature-creds">Founder and Chief Examiner<br>WritersLogic, Inc.<br>Contributing Member, C2PA · DIF · ToIP</div></div>
-      <div><div class="signature-line"></div><div class="signature-label">Date</div><div class="signature-name">{{date_issued_short}}</div><div class="signature-creds">Pacific Time, San Diego, California</div></div>
-    </div>
-  </div>
-
-  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">2 / 12</span></div>
-</div>
-
-<!-- PAGE 3 — CONTENTS + DOCUMENT IDENTIFICATION -->
+<!-- PAGE 2 — CONTENTS + DOCUMENT IDENTIFICATION -->
 <div class="page">
   <div class="running-header"><span class="l">Contents · Document identification</span><span class="r">{{report_id}}</span></div>
 
   <div class="section-block"><div class="super">Contents</div><h2>Report structure</h2></div>
 
   <div class="toc-table">
-    <div class="toc-row"><span class="n">§ 1</span><span class="t">Certification of findings<span class="d">Evaluative statement and examiner signature</span></span><span class="p">2</span></div>
-    <div class="toc-row"><span class="n">§ 2</span><span class="t">Document identification<span class="d">Subject document, originating device, capture session</span></span><span class="p">3</span></div>
-    <div class="toc-row"><span class="n">§ 3</span><span class="t">Methodology and standards basis<span class="d">Capture procedure, analytical framework, validation</span></span><span class="p">4</span></div>
-    <div class="toc-row"><span class="n">§ 4</span><span class="t">Behavioural profile findings<span class="d">Captured profile against population baselines</span></span><span class="p">5</span></div>
-    <div class="toc-row"><span class="n">§ 5</span><span class="t">Per-dimension stylometric analysis<span class="d">Likelihood ratios across six independent dimensions</span></span><span class="p">6</span></div>
-    <div class="toc-row"><span class="n">§ 6</span><span class="t">Cryptographic evidence chain<span class="d">Hash chain, VDF time-binding, device attestation</span></span><span class="p">7</span></div>
-    <div class="toc-row"><span class="n">§ 7</span><span class="t">Chain of custody<span class="d">Sequential record of evidence handling</span></span><span class="p">8</span></div>
-    <div class="toc-row"><span class="n">§ 8</span><span class="t">Limitations and scope<span class="d">What this report does and does not establish</span></span><span class="p">9</span></div>
-    <div class="toc-row"><span class="n">§ 9</span><span class="t">Examined text<span class="d">Subject document reproduced for record</span></span><span class="p">10</span></div>
-    <div class="toc-row"><span class="n">§ 10</span><span class="t">Certificate of cryptographic proof<span class="d">FRE 902(13) and 902(14) declaration</span></span><span class="p">11</span></div>
-    <div class="toc-row"><span class="n">§ 11</span><span class="t">References<span class="d">Standards, statutes, and supporting publications</span></span><span class="p">12</span></div>
+    <div class="toc-row"><span class="n">§ 1</span><span class="t">Document identification<span class="d">Subject document, originating device, capture session</span></span><span class="p">2</span></div>
+    <div class="toc-row"><span class="n">§ 2</span><span class="t">Methodology and standards basis<span class="d">Capture procedure, analytical framework, validation</span></span><span class="p">3</span></div>
+    <div class="toc-row"><span class="n">§ 3</span><span class="t">Behavioural profile findings<span class="d">Captured profile against population baselines</span></span><span class="p">4</span></div>
+    <div class="toc-row"><span class="n">§ 4</span><span class="t">Per-dimension stylometric analysis<span class="d">Likelihood ratios across six independent dimensions</span></span><span class="p">5</span></div>
+    <div class="toc-row"><span class="n">§ 5</span><span class="t">Cryptographic evidence chain<span class="d">Hash chain, VDF time-binding, device attestation</span></span><span class="p">6</span></div>
+    <div class="toc-row"><span class="n">§ 6</span><span class="t">Chain of custody<span class="d">Sequential record of evidence handling</span></span><span class="p">7</span></div>
+    <div class="toc-row"><span class="n">§ 7</span><span class="t">Advanced forensic signals<span class="d">Deep behavioral metrics and anomaly analysis</span></span><span class="p">8</span></div>
+    <div class="toc-row"><span class="n">§ 8</span><span class="t">Certification of findings<span class="d">Evaluative statement based on evidence above</span></span><span class="p">9</span></div>
+    <div class="toc-row"><span class="n">§ 9</span><span class="t">Limitations and scope<span class="d">What this report does and does not establish</span></span><span class="p">10</span></div>
+    <div class="toc-row"><span class="n">§ 10</span><span class="t">Examined text<span class="d">Subject document reproduced for record</span></span><span class="p">11</span></div>
+    <div class="toc-row"><span class="n">§ 11</span><span class="t">Certificate of cryptographic proof<span class="d">FRE 902(13) and 902(14) declaration</span></span><span class="p">12</span></div>
+    <div class="toc-row"><span class="n">§ 12</span><span class="t">References<span class="d">Standards, statutes, and supporting publications</span></span><span class="p">13</span></div>
   </div>
 
   <div class="section-block" style="margin-top: 36px;"><div class="super">§ 2</div><h2>Document identification</h2><div class="subtitle">Subject of examination and originating environment</div></div>
@@ -540,9 +504,45 @@
   <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">8 / 12</span></div>
 </div>
 
-<!-- PAGE 9 — LIMITATIONS AND SCOPE -->
+<!-- PAGE 9 — CERTIFICATION OF FINDINGS (after evidence) -->
 <div class="page">
-  <div class="running-header"><span class="l">§ 8 · Limitations and scope</span><span class="r">{{report_id}}</span></div>
+  <div class="running-header"><span class="l">§ 8 · Certification of findings</span><span class="r">{{report_id}}</span></div>
+
+  <div class="section-block"><div class="super">§ 8</div><h2>Certification of findings</h2><div class="subtitle">Evaluative statement based on evidence presented in §§ 3&#x2013;7</div></div>
+
+  <div class="cert-intro">
+    <div class="numpara"><span class="n">8.1</span><p>Having examined the behavioural profile (§ 4), per-dimension analysis (§ 5), cryptographic evidence chain (§ 6), and chain of custody (§ 7) for the document identified by SHA-256 digest <span class="mono">{{document_hash_truncated}}</span>, I evaluate the evidence under two competing propositions:</p></div>
+  </div>
+
+  <div class="prop-grid">
+    <div class="prop-row"><span class="label">H<sub>1</sub></span><span class="text">The subject document was composed in real time at the captured device by a human author entering text directly through the keyboard.</span></div>
+    <div class="prop-row"><span class="label">H<sub>2</sub></span><span class="text">The subject document was produced by transcription, dictation, paste from an external source, or other automated input.</span></div>
+  </div>
+
+  <div class="conclusion-block">
+    <div class="label">Evaluative statement</div>
+    <p class="text">{{evaluative_statement}}</p>
+    <div class="lr-summary">
+      <div><div class="k">Likelihood ratio</div><div class="v">LR = {{likelihood_ratio}}</div></div>
+      <div><div class="k">95% confidence interval</div><div class="v">{{confidence_interval}}</div></div>
+      <div><div class="k">Verbal scale</div><div class="v serif">{{enfsi_verbal_short}}</div></div>
+    </div>
+  </div>
+
+  <div class="signature-block">
+    <p class="declaration">I certify that the foregoing evaluative statement reflects my professional opinion based on the evidence examined and the methodology described herein, and that the cryptographic operations underlying the captured evidence were performed by the WritersLogic CPoE Engine in accordance with the protocol specified in <span class="mono" style="font-size:11px;">draft-condrey-cpoe-protocol-00</span>. My full declaration under 28 U.S.C. § 1746 appears at Section 11.</p>
+    <div class="signature-grid">
+      <div><div class="signature-line signed"></div><div class="signature-label">Examiner of record</div><div class="signature-name">David Condrey</div><div class="signature-creds">Founder and Chief Examiner<br>WritersLogic, Inc.<br>Contributing Member, C2PA · DIF · ToIP</div></div>
+      <div><div class="signature-line"></div><div class="signature-label">Date</div><div class="signature-name">{{date_issued_short}}</div><div class="signature-creds">Pacific Time, San Diego, California</div></div>
+    </div>
+  </div>
+
+  <div class="running-footer"><span class="l">WritersLogic, Inc.</span><span class="c">Confidential · Forensic Examination Record</span><span class="r">9 / 12</span></div>
+</div>
+
+<!-- PAGE 10 — LIMITATIONS AND SCOPE -->
+<div class="page">
+  <div class="running-header"><span class="l">§ 9 · Limitations and scope</span><span class="r">{{report_id}}</span></div>
 
   <div class="section-block"><div class="super">§ 8</div><h2>Limitations and scope</h2><div class="subtitle">What this report does and does not establish</div></div>
 
