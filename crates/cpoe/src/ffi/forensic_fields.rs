@@ -76,5 +76,11 @@ pub(crate) fn build_forensic_breakdown(
         composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| m.to_string())),
         labyrinth_determinism: metrics.labyrinth.as_ref().filter(|l| l.is_valid).map(|l| l.determinism).filter(|v| v.is_finite()),
         labyrinth_recurrence: metrics.labyrinth.as_ref().filter(|l| l.is_valid).map(|l| l.recurrence_rate).filter(|v| v.is_finite()),
+        active_probes_score: metrics.active_probes.as_ref().map(|ap| ap.combined_score).filter(|v| v.is_finite()),
+        error_topology_score: metrics.error_topology.as_ref().map(|et| et.score).filter(|v| v.is_finite()),
+        spectral_slope: metrics.spectral_analysis.as_ref().map(|pn| pn.spectral_slope).filter(|v| v.is_finite()),
+        spectral_noise_type: metrics.spectral_analysis.as_ref().map(|pn| format!("{:?}", pn.noise_type)),
+        baseline_deviation: metrics.baseline_comparison.as_ref().map(|bc| bc.mahalanobis_distance).filter(|v| v.is_finite()),
+        ai_fluency_flag: metrics.ai_fluency_flag,
     }
 }

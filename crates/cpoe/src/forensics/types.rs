@@ -428,13 +428,30 @@ pub struct ForensicMetrics {
     /// Real-time transcription suspicion assessment from error ecology streaming.
     /// Present when the sentinel evaluated correction patterns during live capture.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transcription_suspicion:
-        Option<super::error_ecology::TranscriptionSuspicion>,
+    pub transcription_suspicion: Option<super::error_ecology::TranscriptionSuspicion>,
     /// Pre-computed unified typing metrics (BPS, IKI percentiles, CV).
     /// Computed once from IKI intervals, available for downstream consumers
     /// to avoid redundant percentile calculations.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub typing_metrics: Option<TypingMetrics>,
+    /// Active probe results (Galton invariant + reflex gate).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_probes: Option<crate::analysis::ActiveProbeResults>,
+    /// Error topology analysis (correction patterns, key adjacency).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_topology: Option<crate::analysis::ErrorTopology>,
+    /// Spectral analysis (FFT-based noise classification).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spectral_analysis: Option<crate::analysis::PinkNoiseAnalysis>,
+    /// Behavioral fingerprint baseline comparison (Mahalanobis distance).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_comparison: Option<crate::analysis::BaselineComparison>,
+    /// Per-category language classification scores.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_scores: Option<std::collections::HashMap<String, f64>>,
+    /// Word-trigram perplexity below AI fluency threshold.
+    #[serde(default)]
+    pub ai_fluency_flag: bool,
 }
 
 /// Bitfield tracking which forensic analyses completed successfully.
@@ -701,9 +718,7 @@ impl ForensicMetrics {
             RiskLevel::Low => {
                 // V1 requires high confidence AND sufficient analysis coverage.
                 // If >25% of attempted analyses failed, cap at V2.
-                if self.assessment_score > 0.9
-                    && self.analysis_status.success_ratio() >= 0.75
-                {
+                if self.assessment_score > 0.9 && self.analysis_status.success_ratio() >= 0.75 {
                     ForensicVerdict::V1VerifiedHuman
                 } else {
                     ForensicVerdict::V2LikelyHuman

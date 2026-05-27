@@ -82,6 +82,7 @@ pub(super) fn run_forensics(
         attestation_tier: None,
         vdf_merkle_root: None,
         cross_window_matches: Vec::new(),
+        baseline_fingerprint: None,
     };
 
     let has_data = !jitter_samples.is_empty() || !events.is_empty();

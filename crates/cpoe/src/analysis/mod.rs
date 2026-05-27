@@ -26,7 +26,9 @@ pub use active_probes::{
     analyze_galton_invariant, analyze_reflex_gate, ActiveProbeError, ActiveProbeResults,
     GaltonInvariantResult, ProbeSample, ReflexGateResult,
 };
-pub use behavioral_fingerprint::{BehavioralFingerprint, ForgeryAnalysis, ForgeryFlag};
+pub use behavioral_fingerprint::{
+    BaselineComparison, BehavioralFingerprint, ForgeryAnalysis, ForgeryFlag,
+};
 pub use content_detector::{
     ContentAnalysis, ContentDetector, ContextType, KeystrokeMetrics, PatternMatcher, ProseStyle,
 };

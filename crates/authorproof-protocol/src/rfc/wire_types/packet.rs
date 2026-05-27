@@ -198,6 +198,18 @@ pub struct ForensicSummaryWire {
     pub transcription_suspicious: bool,
     #[serde(rename = "25", default, skip_serializing_if = "Option::is_none")]
     pub composition_mode: Option<String>,
+    #[serde(rename = "26", default, skip_serializing_if = "Option::is_none")]
+    pub active_probes_score: Option<f64>,
+    #[serde(rename = "27", default, skip_serializing_if = "Option::is_none")]
+    pub error_topology_score: Option<f64>,
+    #[serde(rename = "28", default, skip_serializing_if = "Option::is_none")]
+    pub spectral_slope: Option<f64>,
+    #[serde(rename = "29", default, skip_serializing_if = "Option::is_none")]
+    pub spectral_noise_type: Option<String>,
+    #[serde(rename = "30", default, skip_serializing_if = "Option::is_none")]
+    pub baseline_deviation: Option<f64>,
+    #[serde(rename = "31", default)]
+    pub ai_fluency_flag: bool,
 }
 
 impl EvidencePacketWire {

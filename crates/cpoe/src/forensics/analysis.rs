@@ -178,6 +178,8 @@ pub struct AnalysisContext {
     pub vdf_merkle_root: Option<[u8; 32]>,
     /// Cross-window transcription matches detected during the session.
     pub cross_window_matches: Vec<crate::transcription::CrossWindowMatch>,
+    /// Stored behavioral fingerprint baseline for comparison.
+    pub baseline_fingerprint: Option<BehavioralFingerprint>,
 }
 
 pub fn analyze_forensics(
@@ -282,9 +284,46 @@ pub fn analyze_forensics_ext_with_focus(
     }
 
     if let Some((fingerprint, forgery)) = behav_r {
+        if let (Some(ref baseline), _) = (&context.baseline_fingerprint, &fingerprint) {
+            metrics.baseline_comparison = fingerprint.compare_to_baseline(baseline);
+        }
         metrics.behavioral = Some(fingerprint);
         metrics.analysis_status.mark_completed(AnalysisKind::Behavioral);
         metrics.forgery_analysis = Some(forgery);
+    }
+
+    // Active probes analysis (Galton invariant + reflex gate)
+    metrics.active_probes = if let Some(samples) = jitter_samples {
+        let probe_samples: Vec<crate::analysis::ProbeSample> = samples.iter()
+            .map(|s| crate::analysis::ProbeSample {
+                timestamp_ns: s.timestamp_ns,
+                interval_ms: s.duration_since_last_ns as f64 / 1_000_000.0,
+                is_perturbed: false,
+                is_stimulus_response: s.duration_since_last_ns > 0,
+            })
+            .collect();
+        if probe_samples.len() >= 30 {
+            let mut ikis: Vec<f64> = samples.iter()
+                .map(|s| s.duration_since_last_ns as f64 / 1_000_000.0)
+                .filter(|&v| v > 0.0)
+                .collect();
+            ikis.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let baseline = ikis.get(ikis.len() / 2).copied().unwrap_or(150.0);
+            let galton = crate::analysis::analyze_galton_invariant(&probe_samples, baseline).ok();
+            let reflex = crate::analysis::analyze_reflex_gate(&probe_samples).ok();
+            Some(crate::analysis::ActiveProbeResults::combine(galton, reflex))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Language classification scores
+    if let Some(text) = document_text {
+        if text.len() >= 50 {
+            metrics.language_scores = Some(crate::analysis::LanguageClassifier::default().score_all(text));
+        }
     }
 
     // Perplexity (trivial cost, sequential)
@@ -303,6 +342,15 @@ pub fn analyze_forensics_ext_with_focus(
         }
     } else {
         metrics.perplexity_score = 1.0;
+    }
+
+    // AI fluency detection via word-trigram perplexity
+    if let Some(text) = document_text {
+        if text.len() >= 100 {
+            let mut model = crate::analysis::perplexity::WordTrigramModel::new();
+            model.train(text);
+            metrics.ai_fluency_flag = model.is_suspiciously_fluent(text);
+        }
     }
 
     // ── Cadence + IKI (sequential — downstream steg/entropy depend on it) ─
@@ -506,6 +554,26 @@ pub fn analyze_forensics_ext_with_focus(
                 metrics.fatigue_trajectory = Some(fatigue);
                 metrics.analysis_status.mark_completed(AnalysisKind::Fatigue);
             }
+
+            // Error topology (correction patterns, key adjacency)
+            metrics.error_topology = {
+                let events: Vec<crate::analysis::TopologyEvent> = samples.iter()
+                    .map(|s| crate::analysis::TopologyEvent {
+                        timestamp_ns: s.timestamp_ns,
+                        event_type: if s.zone == super::constants::CORRECTION_ZONE {
+                            crate::analysis::EventType::Correction
+                        } else {
+                            crate::analysis::EventType::Normal
+                        },
+                        key_code: None,
+                        gap_ns: s.duration_since_last_ns,
+                    })
+                    .collect();
+                crate::analysis::analyze_error_topology(&events).ok()
+            };
+            if let Some(ref et) = metrics.error_topology {
+                if !et.is_valid || et.score < 0.3 { metrics.anomaly_count += 1; }
+            }
         }
 
         // ── Batch C: always-run probes (rayon parallel) ──────────────────
@@ -530,6 +598,16 @@ pub fn analyze_forensics_ext_with_focus(
             );
         if metrics.likelihood_model.is_some() {
             metrics.analysis_status.mark_completed(AnalysisKind::LikelihoodModel);
+        }
+
+        // Spectral analysis (pink noise classification)
+        if iki_intervals.len() >= 32 {
+            metrics.spectral_analysis = crate::analysis::analyze_pink_noise(&iki_intervals, 1000.0).ok();
+        }
+        if let Some(ref pn) = metrics.spectral_analysis {
+            if matches!(pn.noise_type, crate::analysis::NoiseType::White | crate::analysis::NoiseType::Black) {
+                metrics.anomaly_count += 1;
+            }
         }
     }
 
@@ -609,6 +687,37 @@ pub fn analyze_forensics_ext_with_focus(
         metrics.error_ecology.as_ref(),
         metrics.likelihood_model.as_ref(),
     );
+
+    {
+        let mut s = metrics.assessment_score;
+        if let Some(ref ap) = metrics.active_probes {
+            if ap.combined_score > 0.7 {
+                s = Probability::clamp(s.get() + 0.02);
+            } else if ap.combined_score < 0.3 {
+                s = Probability::clamp(s.get() - 0.03);
+            }
+        }
+        if let Some(ref et) = metrics.error_topology {
+            if et.is_valid && et.score < 0.3 {
+                s = Probability::clamp(s.get() - 0.03);
+            }
+        }
+        if let Some(ref pn) = metrics.spectral_analysis {
+            match pn.noise_type {
+                crate::analysis::NoiseType::Pink => {
+                    s = Probability::clamp(s.get() + 0.02);
+                }
+                crate::analysis::NoiseType::White | crate::analysis::NoiseType::Black => {
+                    s = Probability::clamp(s.get() - 0.04);
+                }
+                _ => {}
+            }
+        }
+        if metrics.ai_fluency_flag {
+            s = Probability::clamp(s.get() - 0.03);
+        }
+        metrics.assessment_score = s;
+    }
 
     // Penalize when critical analyses failed — incomplete evidence is less trustworthy.
     // Only applies when analyses were attempted but errored (not skipped for low data).

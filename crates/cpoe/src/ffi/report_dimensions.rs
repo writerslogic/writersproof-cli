@@ -503,6 +503,37 @@ pub(crate) fn build_dimensions(
         ));
     }
 
+    if let Some(ref ap) = metrics.active_probes {
+        dims.push(build_enhanced_dimension(
+            "Active Probes",
+            ap.combined_score,
+            &format!("galton+reflex={:.2}", finite_or(ap.combined_score, 0.0)),
+        ));
+    }
+    if let Some(ref et) = metrics.error_topology {
+        dims.push(build_enhanced_dimension(
+            "Error Topology",
+            et.score,
+            &format!("gap_corr={:.2}, adj_corr={:.2}", finite_or(et.gap_correlation, 0.0), finite_or(et.adjacency_correlation, 0.0)),
+        ));
+    }
+    if let Some(ref pn) = metrics.spectral_analysis {
+        let slope_score = if pn.is_valid { pn.spectral_slope.clamp(0.0, 1.0) } else { 0.3 };
+        dims.push(build_enhanced_dimension(
+            "Spectral Analysis",
+            slope_score,
+            &format!("slope={:.2}, type={:?}", finite_or(pn.spectral_slope, 0.0), pn.noise_type),
+        ));
+    }
+    if let Some(ref bc) = metrics.baseline_comparison {
+        let bc_score = if bc.is_anomalous { 0.2 } else { 0.8 };
+        dims.push(build_enhanced_dimension(
+            "Baseline Comparison",
+            bc_score,
+            &format!("mahalanobis={:.2}", finite_or(bc.mahalanobis_distance, 0.0)),
+        ));
+    }
+
     // Cursor attention from live scroll/position data.
     if let Some(sentinel) = super::sentinel::get_sentinel() {
         if !file_path.is_empty() {

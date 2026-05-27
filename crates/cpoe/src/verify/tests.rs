@@ -157,42 +157,11 @@ fn test_verdict_invalid_declaration_caps_to_v2() {
     // even when all other conditions would produce V1VerifiedHuman:
     // valid signature, plausible duration with VDF, consistent key provenance.
     let forensics = ForensicMetrics {
-        primary: Default::default(),
-        cadence: Default::default(),
-        behavioral: None,
-        forgery_analysis: None,
-        velocity: Default::default(),
-        session_stats: Default::default(),
         assessment_score: crate::utils::Probability::clamp(0.95), // > 0.9, triggers V1 in low-risk case
-        perplexity_score: 0.0,
-        steg_confidence: crate::utils::Probability::ZERO,
-        anomaly_count: 0,
         risk_level: crate::forensics::types::RiskLevel::Low,
         biological_cadence_score: crate::utils::Probability::clamp(0.8),
-        cross_modal: None,
-        forgery_cost: None,
         checkpoint_count: 2,
-        hurst_exponent: None,
-        snr: None,
-        lyapunov: None,
-        iki_compression: None,
-        labyrinth: None,
-        focus: Default::default(),
-        writing_mode: None,
-        cross_window_matches: vec![],
-        clc_metrics: None,
-        repair_locality: None,
-        fatigue_trajectory: None,
-        provenance: None,
-        segment_profiles: vec![],
-        cognitive_load: None,
-        revision_topology: None,
-        error_ecology: None,
-        composition_mode: None,
-        likelihood_model: None,
-        analysis_status: Default::default(),
-        transcription_suspicion: None,
-        typing_metrics: None,
+        ..Default::default()
     };
 
     let v = verdict::compute_verdict(
@@ -271,42 +240,11 @@ fn test_verdict_overlapping_caps_both_apply() {
     // Integration test: both capped (invalid declaration) AND no_vdf apply simultaneously.
     // Verifies the (no_vdf || capped) disjunction in the forensics path (line 85).
     let forensics = ForensicMetrics {
-        primary: Default::default(),
-        cadence: Default::default(),
-        behavioral: None,
-        forgery_analysis: None,
-        velocity: Default::default(),
-        session_stats: Default::default(),
         assessment_score: crate::utils::Probability::clamp(0.95),
-        perplexity_score: 0.0,
-        steg_confidence: crate::utils::Probability::ZERO,
-        anomaly_count: 0,
         risk_level: crate::forensics::types::RiskLevel::Low,
         biological_cadence_score: crate::utils::Probability::clamp(0.8),
-        cross_modal: None,
-        forgery_cost: None,
         checkpoint_count: 2,
-        hurst_exponent: None,
-        snr: None,
-        lyapunov: None,
-        iki_compression: None,
-        labyrinth: None,
-        focus: Default::default(),
-        writing_mode: None,
-        cross_window_matches: vec![],
-        clc_metrics: None,
-        repair_locality: None,
-        fatigue_trajectory: None,
-        provenance: None,
-        segment_profiles: vec![],
-        cognitive_load: None,
-        revision_topology: None,
-        error_ecology: None,
-        composition_mode: None,
-        likelihood_model: None,
-        analysis_status: Default::default(),
-        transcription_suspicion: None,
-        typing_metrics: None,
+        ..Default::default()
     };
 
     let v = verdict::compute_verdict(

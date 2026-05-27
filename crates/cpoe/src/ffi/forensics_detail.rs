@@ -163,7 +163,31 @@ pub struct FfiForensicBreakdown {
     /// Estimated characters from autocomplete/AI (excess over human max velocity).
     pub autocomplete_chars: i64,
     pub cursor_attention: Option<FfiCursorAttention>,
+    /// Active probe combined score (Galton + reflex gate).
+    pub active_probes_score: Option<f64>,
+    pub active_probes_valid: Option<bool>,
+    /// Error topology score and validity.
+    pub error_topology_score: Option<f64>,
+    pub error_topology_valid: Option<bool>,
+    /// Spectral analysis (pink noise classification).
+    pub spectral_slope: Option<f64>,
+    pub spectral_noise_type: Option<String>,
+    pub spectral_valid: Option<bool>,
+    /// Behavioral baseline comparison (Mahalanobis distance).
+    pub baseline_mahalanobis: Option<f64>,
+    pub baseline_anomalous: Option<bool>,
+    /// Language classification scores (category -> score).
+    pub language_scores: Vec<FfiLanguageScore>,
+    /// AI fluency flag from word-trigram perplexity.
+    pub ai_fluency_flag: bool,
     pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiLanguageScore {
+    pub category: String,
+    pub score: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -644,6 +668,17 @@ impl FfiForensicBreakdown {
             high_velocity_bursts: 0,
             autocomplete_chars: 0,
             cursor_attention: None,
+            active_probes_score: None,
+            active_probes_valid: None,
+            error_topology_score: None,
+            error_topology_valid: None,
+            spectral_slope: None,
+            spectral_noise_type: None,
+            spectral_valid: None,
+            baseline_mahalanobis: None,
+            baseline_anomalous: None,
+            language_scores: Vec::new(),
+            ai_fluency_flag: false,
             error_message: Some(msg),
         }
     }
@@ -1067,6 +1102,22 @@ pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
         high_velocity_bursts: usize_u32(metrics.velocity.high_velocity_bursts),
         autocomplete_chars: metrics.velocity.autocomplete_chars,
         cursor_attention: live_cursor_attention,
+        active_probes_score: metrics.active_probes.as_ref().map(|ap| finite_or(ap.combined_score, 0.0)),
+        active_probes_valid: metrics.active_probes.as_ref().map(|ap| ap.all_valid),
+        error_topology_score: metrics.error_topology.as_ref().map(|et| finite_or(et.score, 0.0)),
+        error_topology_valid: metrics.error_topology.as_ref().map(|et| et.is_valid),
+        spectral_slope: metrics.spectral_analysis.as_ref().map(|pn| finite_or(pn.spectral_slope, 0.0)),
+        spectral_noise_type: metrics.spectral_analysis.as_ref().map(|pn| format!("{:?}", pn.noise_type)),
+        spectral_valid: metrics.spectral_analysis.as_ref().map(|pn| pn.is_valid),
+        baseline_mahalanobis: metrics.baseline_comparison.as_ref().map(|bc| finite_or(bc.mahalanobis_distance, 0.0)),
+        baseline_anomalous: metrics.baseline_comparison.as_ref().map(|bc| bc.is_anomalous),
+        language_scores: metrics.language_scores.as_ref().map(|ls| {
+            ls.iter().map(|(k, &v)| FfiLanguageScore {
+                category: k.clone(),
+                score: finite_or(v, 0.0),
+            }).collect()
+        }).unwrap_or_default(),
+        ai_fluency_flag: metrics.ai_fluency_flag,
         error_message: None,
     }
     })

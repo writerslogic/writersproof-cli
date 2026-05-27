@@ -1157,6 +1157,12 @@ fn build_forensic_summary(
         lyapunov_exponent: metrics.lyapunov.as_ref().map(|l| l.exponent),
         transcription_suspicious: metrics.transcription_suspicion.as_ref().is_some_and(|t| t.is_suspicious),
         composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| m.to_string())),
+        active_probes_score: metrics.active_probes.as_ref().map(|ap| ap.combined_score),
+        error_topology_score: metrics.error_topology.as_ref().map(|et| et.score),
+        spectral_slope: metrics.spectral_analysis.as_ref().map(|pn| pn.spectral_slope),
+        spectral_noise_type: metrics.spectral_analysis.as_ref().map(|pn| format!("{:?}", pn.noise_type)),
+        baseline_deviation: metrics.baseline_comparison.as_ref().map(|bc| bc.mahalanobis_distance),
+        ai_fluency_flag: metrics.ai_fluency_flag,
     })
 }
 
