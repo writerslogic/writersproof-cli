@@ -6,7 +6,7 @@ pub(super) fn row(html: &mut String, label: &str, value: &str) -> fmt::Result {
     write!(
         html,
         "<tr><td>{}</td><td>{}</td></tr>",
-        label,
+        html_escape(label),
         html_escape(value)
     )
 }

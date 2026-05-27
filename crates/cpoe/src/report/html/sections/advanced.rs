@@ -74,11 +74,12 @@ pub(in crate::report::html) fn write_verifiable_credential(
         )?;
     }
     if let Some(status) = vc["credentialSubject"]["processAttestation"]["status"].as_str() {
-        let badge_color = match status {
-            "affirming" => "#3d7a4a",
-            "warning" => "#b45309",
-            "contraindicated" => "#b71c1c",
-            _ => "#666",
+        let (display_label, badge_color) = match status {
+            "affirming" => ("Verified", "#3d7a4a"),
+            "warning" => ("Insufficient Evidence", "#b45309"),
+            "contraindicated" => ("Not Verified", "#b71c1c"),
+            "none" => ("Not Evaluated", "#666"),
+            _ => (status, "#666"),
         };
         write!(
             html,
@@ -87,7 +88,7 @@ pub(in crate::report::html) fn write_verifiable_credential(
              border-radius:2px;font-size:10px;font-weight:700;\
              text-transform:uppercase\">{}</span></td></tr>",
             badge_color,
-            html_escape(status)
+            html_escape(display_label)
         )?;
     }
     if let Some(tier) = vc["credentialSubject"]["processAttestation"]["attestationTier"].as_str() {
@@ -149,10 +150,10 @@ pub(in crate::report::html) fn write_verifiable_credential(
         for (key, val) in tv.iter().take(100) {
             let v = val.as_i64().unwrap_or(0);
             let (label, color) = match v as i8 {
-                2 => ("Affirming", "#3d7a4a"),
-                32 => ("Warning", "#b45309"),
-                96 => ("Contraindicated", "#b71c1c"),
-                _ => ("None", "#999"),
+                2 => ("Verified", "#3d7a4a"),
+                32 => ("Insufficient Evidence", "#b45309"),
+                96 => ("Not Verified", "#b71c1c"),
+                _ => ("Not Evaluated", "#999"),
             };
             let mut display_key = String::with_capacity(key.len());
             let mut capitalize_next = true;

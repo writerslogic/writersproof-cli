@@ -89,6 +89,7 @@ const VELOCITY_MIN_EVENTS: usize = 3;
 // Enhanced dimension thresholds
 const ENHANCED_COGNITIVE_THRESHOLD: f64 = 0.7;
 const ENHANCED_MIXED_THRESHOLD: f64 = 0.4;
+const ENHANCED_CONFIDENCE: f64 = 0.80;
 
 fn score_color(s: u32) -> String {
     if s >= 80 {
@@ -160,8 +161,10 @@ fn build_temporal_dimension(
         };
         base.saturating_add(if stats.total_iterations > TEMPORAL_HIGH_ITERATIONS {
             TEMPORAL_BONUS_HIGH
-        } else {
+        } else if stats.total_iterations > 0 {
             TEMPORAL_BONUS_LOW
+        } else {
+            0
         })
         .min(99)
     };
@@ -188,6 +191,15 @@ fn build_edit_dimension(
     metrics: &crate::forensics::ForensicMetrics,
     event_count: usize,
 ) -> DimensionScore {
+    if event_count < EDIT_MIN_EVENTS {
+        return make_dimension(
+            "Edit Pattern Authenticity",
+            0,
+            EDIT_CONFIDENCE_SPARSE,
+            format!("{} events (minimum {} required)", event_count, EDIT_MIN_EVENTS),
+            "Insufficient checkpoint events to evaluate edit patterns.".into(),
+        );
+    }
     let score: u32 = {
         let topo = finite_or(metrics.assessment_score.get(), 0.0);
         let ri = process
@@ -204,22 +216,30 @@ fn build_edit_dimension(
         ((topo * EDIT_TOPOLOGY_WEIGHT + ri_score * EDIT_REVISION_WEIGHT) * 100.0)
             .clamp(0.0, 99.0) as u32
     };
+    let ri = process
+        .revision_intensity
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.0);
     let kd = process
         .revision_intensity
         .filter(|v| v.is_finite())
         .map(|v| format!("{:.0}% revision rate", v * 100.0))
         .unwrap_or_else(|| "edit topology analyzed".to_string());
+    let interpretation = if score >= 75 {
+        "Revision patterns are consistent with iterative human composition including normal correction frequency and non-linear editing."
+    } else if score >= 50 {
+        "Some revision activity detected; patterns are ambiguous between original composition and light editing."
+    } else if ri > EDIT_RI_OPTIMAL_HIGH {
+        "Unusually high revision rate; editing pattern is atypical but may reflect heavy self-editing or restructuring."
+    } else {
+        "Low revision rate or anomalous editing patterns are inconsistent with typical human drafting behavior."
+    };
     make_dimension(
         "Edit Pattern Authenticity",
         score,
-        if event_count >= EDIT_MIN_EVENTS { EDIT_CONFIDENCE_SUFFICIENT } else { EDIT_CONFIDENCE_SPARSE },
+        EDIT_CONFIDENCE_SUFFICIENT,
         kd,
-        dimension_interpretation(
-            score,
-            "Revision patterns are consistent with iterative human composition including normal correction frequency and non-linear editing.",
-            "Some revision activity detected; patterns are ambiguous between original composition and light editing.",
-            "Low revision rate or anomalous editing patterns are inconsistent with typical human drafting behavior.",
-        ),
+        interpretation.into(),
     )
 }
 
@@ -229,10 +249,11 @@ fn build_continuity_dimension(
 ) -> DimensionScore {
     let score: u32 = {
         let session_count = sessions.len();
+        let total_min = finite_or(stats.total_min, 0.0);
         let avg_duration = if session_count > 0 {
-            stats.total_min / session_count as f64
+            total_min / session_count as f64
         } else {
-            stats.total_min
+            0.0
         };
         let base: u32 = if session_count >= CONTINUITY_MIN_MULTI_SESSIONS {
             CONTINUITY_BASE_MULTI
@@ -252,7 +273,7 @@ fn build_continuity_dimension(
         "{} session{}, {:.0} min total",
         sessions.len(),
         if sessions.len() == 1 { "" } else { "s" },
-        stats.total_min
+        finite_or(stats.total_min, 0.0)
     );
     make_dimension(
         "Process Continuity",
@@ -275,6 +296,7 @@ fn build_coherence_dimension(
     let score: u32 = {
         let low_paste = stats
             .paste_ratio_pct
+            .filter(|p| p.is_finite())
             .map(|p| p < COHERENCE_PASTE_THRESHOLD_PCT)
             .unwrap_or(true);
         let has_keystrokes = stats.keystroke_estimate > COHERENCE_MIN_KEYSTROKES;
@@ -295,6 +317,7 @@ fn build_coherence_dimension(
     };
     let kd = stats
         .paste_ratio_pct
+        .filter(|p| p.is_finite())
         .map(|p| format!("{:.1}% paste ratio", p))
         .unwrap_or_else(|| format!("{} paste events", stats.paste_count));
     make_dimension(
@@ -314,11 +337,26 @@ fn build_coherence_dimension(
 fn build_behavioral_dimension(
     metrics: &crate::forensics::ForensicMetrics,
 ) -> DimensionScore {
+    let has_iki_data = metrics.cadence.mean_iki_ns > 0.0
+        && metrics.cadence.mean_iki_ns.is_finite();
+    let sample_count = metrics.cadence.burst_count + metrics.cadence.pause_count;
+
+    if !has_iki_data || sample_count < 5 {
+        return make_dimension(
+            "Behavioral Signature",
+            0,
+            BEHAVIORAL_CONFIDENCE_NO_DATA,
+            format!("{} keystroke intervals recorded (minimum 5 required)", sample_count),
+            "Insufficient keystroke data to compute behavioral metrics. \
+             Burst CV, correction rate, and biological cadence cannot be \
+             meaningfully evaluated."
+                .into(),
+        );
+    }
+
     let score: u32 = {
-        let cv = if metrics.cadence.mean_iki_ns > 0.0
-            && metrics.cadence.std_dev_iki_ns > 0.0
+        let cv = if metrics.cadence.std_dev_iki_ns > 0.0
             && metrics.cadence.std_dev_iki_ns.is_finite()
-            && metrics.cadence.mean_iki_ns.is_finite()
         {
             finite_or(metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns, 0.5)
         } else {
@@ -343,7 +381,7 @@ fn build_behavioral_dimension(
     make_dimension(
         "Behavioral Signature",
         score,
-        if metrics.cadence.mean_iki_ns > 0.0 { BEHAVIORAL_CONFIDENCE_DATA } else { BEHAVIORAL_CONFIDENCE_NO_DATA },
+        BEHAVIORAL_CONFIDENCE_DATA,
         kd,
         dimension_interpretation(
             score,
@@ -369,7 +407,7 @@ fn build_velocity_dimension(
         } else {
             VELOCITY_SCORE_ANOMALOUS
         };
-        (v_score * 100.0) as u32
+        ((v_score * 100.0) as u32).min(99)
     };
     let kd = format!(
         "{:.1} bytes/sec mean velocity",
@@ -394,15 +432,16 @@ fn build_enhanced_dimension(
     composite_score: f64,
     key_discriminator: &str,
 ) -> DimensionScore {
-    let score = (composite_score * 100.0).round().clamp(0.0, 99.0) as u32;
-    let interpretation = if composite_score >= ENHANCED_COGNITIVE_THRESHOLD {
+    let safe_score = finite_or(composite_score, 0.0).clamp(0.0, 1.0);
+    let score = (safe_score * 100.0).round() as u32;
+    let interpretation = if safe_score >= ENHANCED_COGNITIVE_THRESHOLD {
         "Consistent with cognitive authorship"
-    } else if composite_score >= ENHANCED_MIXED_THRESHOLD {
+    } else if safe_score >= ENHANCED_MIXED_THRESHOLD {
         "Mixed signals; ambiguous"
     } else {
         "Consistent with transcriptive or synthetic patterns"
     };
-    make_dimension(name, score, composite_score, key_discriminator.to_string(), interpretation.to_string())
+    make_dimension(name, score, ENHANCED_CONFIDENCE, key_discriminator.to_string(), interpretation.to_string())
 }
 
 /// Assemble all dimension scores from event stats, process evidence, forensic
@@ -430,28 +469,28 @@ pub(crate) fn build_dimensions(
         dims.push(build_enhanced_dimension(
             "Cognitive Load",
             cl.composite_score,
-            &format!("IKI-surprisal rho={:.2}", cl.iki_surprisal_rho),
+            &format!("IKI-surprisal rho={:.2}", finite_or(cl.iki_surprisal_rho, 0.0)),
         ));
     }
     if let Some(ref rt) = metrics.revision_topology {
         dims.push(build_enhanced_dimension(
             "Revision Topology",
             rt.composite_score,
-            &format!("branching={:.1}", rt.graph.mean_branching_factor),
+            &format!("branching={:.1}", finite_or(rt.graph.mean_branching_factor, 0.0)),
         ));
     }
     if let Some(ref ee) = metrics.error_ecology {
         dims.push(build_enhanced_dimension(
             "Error Ecology",
             ee.composite_score,
-            &format!("rapid={:.0}%", ee.rapid_self_correction_pct * 100.0),
+            &format!("rapid={:.0}%", finite_or(ee.rapid_self_correction_pct, 0.0) * 100.0),
         ));
     }
     if let Some(ref lm) = metrics.likelihood_model {
         dims.push(build_enhanced_dimension(
             "Likelihood Model",
             lm.session_p_cognitive,
-            &format!("LLR={:.1}", lm.mean_window_llr),
+            &format!("LLR={:.1}", finite_or(lm.mean_window_llr, 0.0)),
         ));
     }
     if let Some(ref cm) = metrics.composition_mode {
@@ -476,8 +515,8 @@ pub(crate) fn build_dimensions(
                         ca.composite_score,
                         &format!(
                             "scroll bidir={:.0}%, readback={:.0}%",
-                            ca.scroll_bidirectional_ratio * 100.0,
-                            ca.read_back_frequency * 100.0
+                            finite_or(ca.scroll_bidirectional_ratio, 0.0) * 100.0,
+                            finite_or(ca.read_back_frequency, 0.0) * 100.0
                         ),
                     ));
                 }

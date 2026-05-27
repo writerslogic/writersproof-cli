@@ -67,7 +67,7 @@ pub(in crate::report::html) fn write_chain_of_custody(
         r.evidence_bundle_version,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
-        r.total_duration_min,
+        if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
         format_number(r.revision_events),
     );
     row(html, "Evidence Bundle", &bundle)?;
@@ -94,30 +94,31 @@ pub(in crate::report::html) fn write_provenance_breakdown(
         if prov.total_fragments == 1 { "" } else { "s" },
     )?;
 
+    let fin = |v: f64| if v.is_finite() { v } else { 0.0 };
     row(
         html,
         "Original Composition",
-        &format!("{:.1}%", prov.original_composition_pct),
+        &format!("{:.1}%", fin(prov.original_composition_pct)),
     )?;
     row(
         html,
         "Sourced (Verified)",
-        &format!("{:.1}%", prov.sourced_verified_pct),
+        &format!("{:.1}%", fin(prov.sourced_verified_pct)),
     )?;
     row(
         html,
         "Sourced (Unverified)",
-        &format!("{:.1}%", prov.sourced_unknown_pct),
+        &format!("{:.1}%", fin(prov.sourced_unknown_pct)),
     )?;
     row(
         html,
         "Source Trust",
-        &format!("{:.2}", prov.source_trustworthiness),
+        &format!("{:.2}", fin(prov.source_trustworthiness)),
     )?;
     row(
         html,
         "Authenticity Score",
-        &format!("{:.2}", prov.authenticity_score),
+        &format!("{:.2}", fin(prov.authenticity_score)),
     )?;
     row(
         html,
@@ -177,7 +178,9 @@ pub(in crate::report::html) fn write_category_scores(
     write_category_composite_note(html, r)?;
     write!(html, "</div>")?;
 
-    if !r.writing_flow.is_empty() {
+    let has_meaningful_flow = r.writing_flow.len() >= 5
+        && r.writing_flow.iter().any(|p| p.intensity > 0.0);
+    if has_meaningful_flow {
         write_writing_flow(html, r)?;
     }
 
@@ -210,11 +213,12 @@ fn write_writing_flow(html: &mut String, r: &WarReport) -> fmt::Result {
     let max_intensity = r
         .writing_flow
         .iter()
-        .map(|p| p.intensity)
+        .map(|p| if p.intensity.is_finite() { p.intensity } else { 0.0 })
         .fold(0.0_f64, f64::max)
         .max(0.01);
     for point in &r.writing_flow {
-        let pct = (point.intensity / max_intensity * 100.0).min(100.0);
+        let intensity = if point.intensity.is_finite() { point.intensity } else { 0.0 };
+        let pct = (intensity / max_intensity * 100.0).min(100.0);
         let color = match point.phase.as_str() {
             "drafting" => "#3d7a4a",
             "revising" => "#2c5282",
@@ -229,12 +233,14 @@ fn write_writing_flow(html: &mut String, r: &WarReport) -> fmt::Result {
     }
     write!(html, "</div>")?;
     if let (Some(first), Some(last)) = (r.writing_flow.first(), r.writing_flow.last()) {
+        let first_min = if first.offset_min.is_finite() { first.offset_min } else { 0.0 };
+        let last_min = if last.offset_min.is_finite() { last.offset_min } else { 0.0 };
         write!(
             html,
             r#"<div class="flow-labels"><span>{:.0}:00</span><span style="color:#3d7a4a">Drafting</span><span style="color:#d8d8d5">Pause</span><span style="color:#2c5282">Revising</span><span style="color:#5b3c8b">Polish</span><span>{:.0}:{:02.0}</span></div>"#,
-            first.offset_min,
-            last.offset_min as u64,
-            ((last.offset_min % 1.0) * 60.0) as u64,
+            first_min,
+            last_min as u64,
+            ((last_min % 1.0) * 60.0) as u64,
         )?;
     }
     write!(
@@ -267,24 +273,27 @@ pub(in crate::report::html) fn write_process_evidence(
 }
 
 fn write_evidence_revision_intensity(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
+    if p.revision_intensity.is_none() {
+        return Ok(());
+    }
     write!(
         html,
         r#"<div class="evidence-card"><h4>Exhibit A: Revision Intensity</h4>"#
     )?;
-    if let Some(ri) = p.revision_intensity {
+    if let Some(ri) = p.revision_intensity.filter(|v| v.is_finite()) {
         write!(
             html,
-            r#"<div class="metric">{:.2} edits/sentence</div>"#,
-            ri
+            r#"<div class="metric">{:.0}% of content revised</div>"#,
+            ri * 100.0
         )?;
-        let note = if ri > 2.0 {
-            "Heavy revision activity; consistent with careful drafting and self-editing."
-        } else if ri > 0.5 {
+        let note = if ri > 0.65 {
+            "Heavy revision activity; consistent with careful drafting and extensive self-editing."
+        } else if ri > 0.30 {
             "Moderate revision activity; within the expected range for natural composition."
-        } else if ri > 0.1 {
+        } else if ri > 0.05 {
             "Light revision activity; may indicate fluent single-pass writing or dictation."
         } else {
-            "Minimal revision detected; atypical for multi-paragraph human composition."
+            "Minimal revision detected. Most content was entered as a forward-only append, which is atypical for multi-paragraph human composition but may occur in short or highly rehearsed text."
         };
         write!(html, r#"<div class="note">{note}</div>"#)?;
     }
@@ -299,16 +308,19 @@ fn write_evidence_revision_intensity(html: &mut String, p: &ProcessEvidence) -> 
 }
 
 fn write_evidence_pause_distribution(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
+    if p.pause_median_sec.filter(|v| v.is_finite()).is_none() {
+        return Ok(());
+    }
     write!(
         html,
         r#"<div class="evidence-card"><h4>Exhibit B: Pause Distribution</h4>"#
     )?;
-    if let Some(med) = p.pause_median_sec {
+    if let Some(med) = p.pause_median_sec.filter(|v| v.is_finite()) {
         write!(html, r#"<div class="metric">Median: {:.1}s"#, med)?;
-        if let Some(p95) = p.pause_p95_sec {
-            write!(html, " | P95: {:.1}s", p95)?;
+        if let Some(p90) = p.pause_p90_sec.filter(|v| v.is_finite()) {
+            write!(html, " | P90: {:.1}s", p90)?;
         }
-        if let Some(max) = p.pause_max_sec {
+        if let Some(max) = p.pause_max_sec.filter(|v| v.is_finite()) {
             write!(html, " | Max: {:.0}s", max)?;
         }
         write!(html, "</div>")?;
@@ -328,11 +340,14 @@ fn write_evidence_pause_distribution(html: &mut String, p: &ProcessEvidence) -> 
 }
 
 fn write_evidence_paste_ratio(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
+    if p.paste_ratio_pct.is_none() && p.paste_operations.is_none() {
+        return Ok(());
+    }
     write!(
         html,
         r#"<div class="evidence-card"><h4>Exhibit C: Paste Analysis</h4>"#
     )?;
-    if let Some(pr) = p.paste_ratio_pct {
+    if let Some(pr) = p.paste_ratio_pct.filter(|v| v.is_finite()) {
         write!(html, r#"<div class="metric">{:.1}% of total text"#, pr)?;
         if let Some(ops) = p.paste_operations {
             write!(html, " ({} operations)", ops)?;
@@ -364,13 +379,16 @@ fn write_evidence_paste_ratio(html: &mut String, p: &ProcessEvidence) -> fmt::Re
 }
 
 fn write_evidence_keystroke_dynamics(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
+    if p.iki_cv.is_none() && p.total_keystrokes.is_none() {
+        return Ok(());
+    }
     write!(
         html,
         r#"<div class="evidence-card"><h4>Exhibit D: Keystroke Dynamics</h4>"#
     )?;
-    if let Some(cv) = p.iki_cv {
+    if let Some(cv) = p.iki_cv.filter(|v| v.is_finite()) {
         write!(html, r#"<div class="metric">IKI CV: {:.2}"#, cv)?;
-        if let Some(bg) = p.bigram_consistency {
+        if let Some(bg) = p.bigram_consistency.filter(|v| v.is_finite()) {
             write!(html, " | Bigram consistency: {:.2}", bg)?;
         }
         write!(html, "</div>")?;
@@ -400,6 +418,9 @@ fn write_evidence_keystroke_dynamics(html: &mut String, p: &ProcessEvidence) -> 
 }
 
 fn write_evidence_deletion_patterns(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
+    if p.deletion_sequences.is_none() {
+        return Ok(());
+    }
     write!(
         html,
         r#"<div class="evidence-card"><h4>Exhibit E: Deletion Patterns</h4>"#
@@ -410,14 +431,14 @@ fn write_evidence_deletion_patterns(html: &mut String, p: &ProcessEvidence) -> f
             r#"<div class="metric">{} sequences"#,
             format_number(ds)
         )?;
-        if let Some(avg) = p.avg_deletion_length {
+        if let Some(avg) = p.avg_deletion_length.filter(|v| v.is_finite()) {
             write!(html, " | Avg {:.1} chars", avg)?;
         }
         if let Some(sd) = p.select_delete_ops {
             write!(html, " | {} select-delete ops", sd)?;
         }
         write!(html, "</div>")?;
-        let note = if let Some(avg) = p.avg_deletion_length {
+        let note = if let Some(avg) = p.avg_deletion_length.filter(|v| v.is_finite()) {
             if avg < 3.0 {
                 "Short deletion sequences (1-3 characters) indicate real-time typo correction, \
                  a hallmark of keystroke-level human composition."
@@ -437,6 +458,9 @@ fn write_evidence_deletion_patterns(html: &mut String, p: &ProcessEvidence) -> f
 }
 
 fn write_evidence_swf(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
+    if p.swf_checkpoints.is_none() {
+        return Ok(());
+    }
     write!(
         html,
         r#"<div class="evidence-card"><h4>Exhibit F: Verifiable Delay Functions</h4>"#
@@ -458,7 +482,7 @@ fn write_evidence_swf(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
         write!(html, " | Chain: {}", verified)?;
         write!(html, "</div>")?;
     }
-    if let Some(hrs) = p.swf_backdating_hours {
+    if let Some(hrs) = p.swf_backdating_hours.filter(|v| v.is_finite()) {
         write!(
             html,
             r#"<div class="note">Each checkpoint contains a VDF proof that required real wall-clock time to compute. \

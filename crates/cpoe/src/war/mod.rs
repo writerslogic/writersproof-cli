@@ -170,7 +170,7 @@ impl Block {
     /// Domain separation tag for WAR seal signatures.
     /// Prevents cross-protocol confusion by ensuring a signature produced
     /// for the WAR seal cannot be misinterpreted in any other context.
-    const SEAL_SIG_DST: &'static [u8] = b"cpoe-war-seal-v1";
+    pub const SEAL_SIG_DST: &'static [u8] = b"cpoe-war-seal-v1";
 
     /// Sign the WAR block's seal with the given signer (software or hardware).
     ///

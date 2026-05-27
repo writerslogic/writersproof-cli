@@ -5,6 +5,7 @@ mod analysis;
 mod declaration;
 mod evidence;
 mod header;
+mod legal;
 
 use super::helpers::*;
 use crate::report::types::*;
@@ -59,3 +60,4 @@ pub(in crate::report::html) use analysis::*;
 pub(in crate::report::html) use declaration::*;
 pub(in crate::report::html) use evidence::*;
 pub(in crate::report::html) use header::*;
+pub(in crate::report::html) use legal::*;

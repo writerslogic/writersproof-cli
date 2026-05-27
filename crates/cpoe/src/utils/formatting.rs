@@ -25,12 +25,22 @@ pub fn format_bytes(bytes: u64) -> String {
 }
 
 /// Format a duration in seconds as human-readable text.
+///
+/// Values exceeding the age of the universe (~4.3e17 seconds) are capped
+/// as "computationally infeasible" to avoid absurd numeric displays.
 pub fn format_duration_human(seconds: f64) -> String {
     if seconds.is_nan() || seconds < 0.0 {
         return "N/A".to_string();
     }
     if seconds.is_infinite() {
-        return "Infeasible".to_string();
+        return "Computationally infeasible".to_string();
+    }
+    // Cap at age of the universe (~13.8 billion years). Values beyond
+    // this are dominated by hardware key extraction or equivalent
+    // physically infeasible operations.
+    const AGE_OF_UNIVERSE_SEC: f64 = 4.35e17;
+    if seconds > AGE_OF_UNIVERSE_SEC {
+        return "Computationally infeasible (exceeds hardware key extraction bound)".to_string();
     }
     if seconds < 60.0 {
         format!("{:.0} seconds", seconds)
@@ -41,7 +51,12 @@ pub fn format_duration_human(seconds: f64) -> String {
     } else if seconds < 86400.0 * 365.0 {
         format!("{:.1} days", seconds / 86400.0)
     } else {
-        format!("{:.1} years", seconds / (86400.0 * 365.0))
+        let years = seconds / (86400.0 * 365.0);
+        if years > 1e9 {
+            format!("{:.1e} years (effectively infeasible)", years)
+        } else {
+            format!("{:.1} years", years)
+        }
     }
 }
 
@@ -111,7 +126,15 @@ mod tests {
 
     #[test]
     fn format_duration_infinite() {
-        assert_eq!(format_duration_human(f64::INFINITY), "Infeasible");
+        assert_eq!(format_duration_human(f64::INFINITY), "Computationally infeasible");
+    }
+
+    #[test]
+    fn format_duration_infeasible_finite() {
+        assert_eq!(
+            format_duration_human(1e308),
+            "Computationally infeasible (exceeds hardware key extraction bound)"
+        );
     }
 
     #[test]

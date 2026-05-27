@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult, FfiResult, FfiVcVerifyResult};
-use crate::war::ear::{
-    Ar4siStatus, EarAppraisal, EarToken, TrustworthinessVector, VerifierId,
-};
+use crate::war::ear::{EarAppraisal, EarToken, VerifierId};
 use crate::war::profiles::vc;
 use std::collections::BTreeMap;
 
@@ -110,19 +108,47 @@ pub fn ffi_export_vc_cbor(
     })
 }
 
-/// Verify a Verifiable Credential file (JSON or CBOR).
+/// Verify a Verifiable Credential file (JSON or CBOR) using the local device key.
 ///
-/// Detects format from the file extension:
-/// - `.vc.json` or `.json`: Data Integrity proof (eddsa-jcs-2022)
-/// - `.vc.cbor` or `.cbor`: COSE_Sign1 envelope
-///
-/// Returns signature validity and credential metadata. The local device signing
-/// key is used as the verifying key; for cross-device verification the caller
-/// must supply an external key via a dedicated API.
+/// Convenience wrapper around [`ffi_verify_vc_with_key`] that loads the local
+/// device signing key. For cross-device verification, use `ffi_verify_vc_with_key`
+/// with the signer's public key instead.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_verify_vc(vc_path: String) -> FfiVcVerifyResult {
     catch_ffi_panic!(FfiVcVerifyResult::ffi_err("engine internal error"), {
-    log::debug!("ffi_verify_vc: vc_path={}", vc_path);
+    let signing_key = match crate::ffi::helpers::load_signing_key() {
+        Ok(k) => k,
+        Err(e) => return FfiVcVerifyResult::ffi_err(format!("Cannot load signing key: {e}")),
+    };
+    let pub_hex = hex::encode(signing_key.verifying_key().as_bytes());
+    ffi_verify_vc_with_key(vc_path, pub_hex)
+    })
+}
+
+/// Verify a Verifiable Credential file (JSON or CBOR) with an explicit public key.
+///
+/// `verifying_key_hex` is the 32-byte Ed25519 public key as 64 hex characters.
+/// Detects format from the file extension:
+/// - `.vc.json` or `.json`: Data Integrity proof (eddsa-jcs-2022)
+/// - `.vc.cbor` or `.cbor`: COSE_Sign1 envelope
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_verify_vc_with_key(vc_path: String, verifying_key_hex: String) -> FfiVcVerifyResult {
+    catch_ffi_panic!(FfiVcVerifyResult::ffi_err("engine internal error"), {
+    log::debug!("ffi_verify_vc_with_key: vc_path={}", vc_path);
+
+    let key_bytes = match hex::decode(&verifying_key_hex) {
+        Ok(b) if b.len() == 32 => b,
+        Ok(b) => return FfiVcVerifyResult::ffi_err(format!(
+            "Invalid key length: expected 32 bytes, got {}", b.len()
+        )),
+        Err(e) => return FfiVcVerifyResult::ffi_err(format!("Invalid key hex: {e}")),
+    };
+    let verifying_key = match ed25519_dalek::VerifyingKey::from_bytes(
+        key_bytes.as_slice().try_into().unwrap(),
+    ) {
+        Ok(k) => k,
+        Err(e) => return FfiVcVerifyResult::ffi_err(format!("Invalid Ed25519 key: {e}")),
+    };
 
     let path = match crate::sentinel::helpers::validate_path(&vc_path) {
         Ok(p) => p,
@@ -150,12 +176,6 @@ pub fn ffi_verify_vc(vc_path: String) -> FfiVcVerifyResult {
     let path_str = path.to_string_lossy().to_lowercase();
     let is_cbor = path_str.ends_with(".vc.cbor") || path_str.ends_with(".cbor");
 
-    let signing_key = match crate::ffi::helpers::load_signing_key() {
-        Ok(k) => k,
-        Err(e) => return FfiVcVerifyResult::ffi_err(format!("Cannot load signing key: {e}")),
-    };
-    let verifying_key = signing_key.verifying_key();
-
     if is_cbor {
         verify_cbor_vc(&data, &verifying_key)
     } else {
@@ -175,10 +195,22 @@ pub fn ffi_verify_vc(vc_path: String) -> FfiVcVerifyResult {
 /// report's `build_vc_json` does. Returns `(ear, author_did)`.
 fn build_ear_for_path(
     evidence_path: &str,
-    _document_path: &str,
+    document_path: &str,
     signing_key: &ed25519_dalek::SigningKey,
 ) -> Result<(EarToken, String), String> {
     let (report, _) = crate::ffi::report::build_war_report_for_path(evidence_path)?;
+
+    // Verify the document at document_path matches the evidence chain's final hash.
+    let doc_hash = crate::crypto::hash_file(std::path::Path::new(document_path))
+        .map_err(|e| format!("Cannot hash document at {document_path}: {e}"))?;
+    let doc_hash_hex = hex::encode(doc_hash);
+    if doc_hash_hex != report.document_hash {
+        return Err(format!(
+            "Document mismatch: file hash {} does not match evidence hash {}",
+            &doc_hash_hex[..12],
+            &report.document_hash[..12.min(report.document_hash.len())]
+        ));
+    }
 
     let pub_key = signing_key.verifying_key();
     let author_did = crate::identity::did_key_from_public(pub_key.as_bytes())
@@ -187,28 +219,7 @@ fn build_ear_for_path(
 
     let (_, tier_num, _) = crate::ffi::helpers::detect_attestation_tier_info();
 
-    let tv = TrustworthinessVector {
-        sourced_data: if report.score >= 60 {
-            Ar4siStatus::Affirming as i8
-        } else if report.score >= 40 {
-            Ar4siStatus::Warning as i8
-        } else {
-            Ar4siStatus::None as i8
-        },
-        hardware: if tier_num >= 2 {
-            Ar4siStatus::Affirming as i8
-        } else {
-            Ar4siStatus::None as i8
-        },
-        instance_identity: if tier_num >= 3 {
-            Ar4siStatus::Affirming as i8
-        } else if tier_num >= 1 {
-            Ar4siStatus::Warning as i8
-        } else {
-            Ar4siStatus::None as i8
-        },
-        ..Default::default()
-    };
+    let tv = crate::ffi::report::build_trust_vector(&report, tier_num);
 
     let chain_duration = if report.total_duration_min > 0.0 {
         Some((report.total_duration_min * 60.0) as u64)
@@ -220,7 +231,7 @@ fn build_ear_for_path(
         .map_err(|e| format!("Invalid document_hash hex: {e}"))?;
 
     let appraisal = EarAppraisal {
-        ear_status: score_to_ar4si(report.score),
+        ear_status: crate::ffi::report::score_to_ar4si(report.score, report.verdict),
         ear_trustworthiness_vector: Some(tv),
         ear_appraisal_policy_id: Some("urn:writerslogic:policy:pop-standard:1.0".to_string()),
         pop_seal: None,
@@ -249,17 +260,6 @@ fn build_ear_for_path(
     Ok((ear, author_did))
 }
 
-fn score_to_ar4si(score: u32) -> Ar4siStatus {
-    if score >= 60 {
-        Ar4siStatus::Affirming
-    } else if score >= 40 {
-        Ar4siStatus::None
-    } else if score >= 20 {
-        Ar4siStatus::Warning
-    } else {
-        Ar4siStatus::Contraindicated
-    }
-}
 
 fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let parent = path.parent().unwrap_or(std::path::Path::new("."));
@@ -394,10 +394,23 @@ fn verify_data_integrity_proof(
         return false;
     }
 
-    let hex_part = proof.proof_value.strip_prefix('f').unwrap_or("");
+    let hex_part = match proof.proof_value.strip_prefix('f') {
+        Some(h) => h,
+        None => {
+            let prefix = proof.proof_value.chars().next().unwrap_or('\0');
+            log::warn!(
+                "Unsupported multibase prefix '{}' in proofValue; eddsa-jcs-2022 requires 'f' (base16)",
+                prefix
+            );
+            return false;
+        }
+    };
     let sig_bytes = match hex::decode(hex_part) {
         Ok(b) => b,
-        Err(_) => return false,
+        Err(e) => {
+            log::warn!("Invalid hex in proofValue: {e}");
+            return false;
+        }
     };
     let signature = match ed25519_dalek::Signature::from_slice(&sig_bytes) {
         Ok(s) => s,

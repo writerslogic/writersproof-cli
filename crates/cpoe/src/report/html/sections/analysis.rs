@@ -94,27 +94,28 @@ for comparison with published forensic scales. See the Glossary (Section 15) for
         r#"<table class="data"><thead><tr><th>Dimension</th><th>Score</th><th>LR</th><th>Log<sub>10</sub> LR</th><th>Confidence</th><th>Key Discriminator</th></tr></thead><tbody>"#
     )?;
     for d in &r.dimensions {
-        let conf_pct = (d.confidence * 100.0).min(100.0);
+        let conf_pct = if d.confidence.is_finite() { (d.confidence * 100.0).min(100.0) } else { 0.0 };
+        let log_lr = if d.log_lr.is_finite() { format!("{:.2}", d.log_lr) } else { "N/A".to_string() };
         write!(
             html,
-            r#"<tr><td style="color:{color};font-weight:600">{name}</td><td>{score}</td><td>{lr}</td><td>{log_lr:.2}</td><td><div class="confidence-bar" style="width:{conf_pct:.0}px;background:{color}"></div></td><td>{disc}</td></tr>"#,
+            r#"<tr><td style="color:{color};font-weight:600">{name}</td><td>{score}</td><td>{lr}</td><td>{log_lr}</td><td><div class="confidence-bar" style="width:{conf_pct:.0}px;background:{color}"></div></td><td>{disc}</td></tr>"#,
             name = html_escape(&d.name),
             score = d.score,
             lr = format_lr(d.lr),
-            log_lr = d.log_lr,
+            log_lr = log_lr,
             conf_pct = conf_pct,
             color = sanitize_css_color(&d.color),
             disc = html_escape(&d.key_discriminator),
         )?;
     }
-    let combined_log = if r.likelihood_ratio > 0.0 {
-        r.likelihood_ratio.log10()
+    let combined_log = if r.likelihood_ratio.is_finite() && r.likelihood_ratio > 0.0 {
+        format!("{:.2}", r.likelihood_ratio.log10())
     } else {
-        0.0
+        "N/A".to_string()
     };
     write!(
         html,
-        r#"</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--rule)"><td>Combined</td><td>{score}</td><td>{lr}</td><td>{log_lr:.2}</td><td><div class="confidence-bar" style="width:{conf_pct:.0}px;background:#1a4d2e"></div></td><td>All dimensions concordant</td></tr></tfoot>"#,
+        r#"</tbody><tfoot><tr style="font-weight:700;border-top:2px solid var(--rule)"><td>Combined</td><td>{score}</td><td>{lr}</td><td>{log_lr}</td><td><div class="confidence-bar" style="width:{conf_pct:.0}px;background:#1a4d2e"></div></td><td>All dimensions concordant</td></tr></tfoot>"#,
         score = r.score,
         lr = format_lr(r.likelihood_ratio),
         log_lr = combined_log,
@@ -166,7 +167,7 @@ invalidates all subsequent entries, making undetected alteration computationally
             "<tr><td>{ord}</td><td>{ts}</td><td><code>{hash}</code></td><td>{size}</td><td>{vdf}</td><td>{elapsed}</td></tr>",
             ord = cp.ordinal,
             ts = cp.timestamp.format("%H:%M:%S UTC"),
-            hash = hash_short,
+            hash = html_escape(&hash_short),
             size = format_bytes(cp.content_size),
         )?;
     }
@@ -205,11 +206,7 @@ that presented in this report. Higher costs indicate stronger resistance to forg
         } else {
             r#"<span style="color:var(--alert)">&#10007; No</span>"#
         };
-        let cost = if c.cost_cpu_sec.is_infinite() {
-            "Computationally infeasible".to_string()
-        } else {
-            format_duration_human(c.cost_cpu_sec)
-        };
+        let cost = format_duration_human(c.cost_cpu_sec);
         write!(
             html,
             "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",

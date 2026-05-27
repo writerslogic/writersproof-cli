@@ -86,6 +86,52 @@ pub enum Verdict {
 /// `InsufficientData`.
 pub const MIN_VERDICT_EVENTS: usize = 10;
 
+// ---------------------------------------------------------------------------
+// Evidence sufficiency thresholds for evaluative reporting
+// ---------------------------------------------------------------------------
+// Below these thresholds the methodology cannot produce a meaningful
+// evaluative finding. The report refuses to issue an LR, ENFSI tier,
+// or score and outputs an "Examination Withheld" result instead.
+//
+// Derivation from per-module statistical minimums:
+//   - assessment.rs CORRECTION_MIN_EVENTS = 50 (correction ratio penalty)
+//   - likelihood_model.rs MIN_SAMPLES = 30 (per-window LLR computation)
+//   - cognitive_load.rs MIN_SAMPLES = 30, MIN_WORDS_FOR_CORRELATION = 15
+//   - revision_topology.rs MIN_EVENTS = 20
+//   - error_ecology.rs MIN_SAMPLES = 20, MIN_CORRECTIONS = 5
+//   - writing_mode.rs MIN_EVENTS_FOR_MODE = 20
+//   - cross_modal.rs MIN_EVENTS = 10, MIN_JITTER_SAMPLES = 20
+//   - cadence.rs burst analysis needs 10 IKIs, window analysis needs 200
+//
+// The report-level thresholds are set so that (a) the core 6 dimensions
+// all receive enough data to produce non-degenerate scores, and (b) at
+// least two enhanced dimensions (cognitive load, revision topology) can
+// contribute to the combined LR. Values include margin above bare
+// module minimums to account for data loss from filtering and windowing.
+
+/// Minimum keystrokes: from assessment.rs CORRECTION_MIN_EVENTS (50).
+/// Below this, the assessment score cannot apply correction penalties
+/// and the behavioral dimension's IKI statistics are noise-dominated.
+pub const MIN_REPORT_KEYSTROKES: u64 = 50;
+
+/// Minimum session duration (seconds): 60s is the minimum where the
+/// temporal proof chain provides meaningful time-binding (at least one
+/// VDF cycle) and cross-modal MIN_SESSION_DURATION_SEC (10s) is met
+/// with margin for windowed analysis.
+pub const MIN_REPORT_DURATION_SEC: f64 = 60.0;
+
+/// Minimum checkpoint count: from report_dimensions.rs EDIT_MIN_EVENTS
+/// (5). Below this, the edit topology dimension cannot compute revision
+/// patterns and the checkpoint chain is too shallow for forgery cost
+/// estimation.
+pub const MIN_REPORT_CHECKPOINTS: usize = 5;
+
+/// Minimum word count: from cognitive_load.rs
+/// MIN_WORDS_FOR_CORRELATION (15) with margin. Below this, IKI-to-word
+/// surprisal correlation is undefined and the cognitive load dimension
+/// produces no signal.
+pub const MIN_REPORT_WORDS: u64 = 20;
+
 impl Verdict {
     /// Derive a verdict from an assessment score and event count.
     ///
@@ -170,7 +216,7 @@ pub struct ProcessEvidence {
     pub revision_intensity: Option<f64>,
     pub revision_baseline: Option<String>,
     pub pause_median_sec: Option<f64>,
-    pub pause_p95_sec: Option<f64>,
+    pub pause_p90_sec: Option<f64>,
     pub pause_max_sec: Option<f64>,
     pub paste_ratio_pct: Option<f64>,
     pub paste_operations: Option<u64>,
@@ -485,6 +531,56 @@ pub struct ProvenanceSource {
 }
 
 impl WarReport {
+    /// Check whether the captured evidence meets the minimum thresholds
+    /// for evaluative reporting. When this returns `false`, the report
+    /// should refuse to issue an LR, ENFSI tier, or score.
+    pub fn evidence_is_sufficient(&self) -> bool {
+        let keystrokes = self.process.total_keystrokes.unwrap_or(0);
+        let duration_sec = self.total_duration_min * 60.0;
+        let checkpoints = self.checkpoints.len();
+        let words = self.document_words.unwrap_or(0);
+
+        keystrokes >= MIN_REPORT_KEYSTROKES
+            && duration_sec >= MIN_REPORT_DURATION_SEC
+            && checkpoints >= MIN_REPORT_CHECKPOINTS
+            && words >= MIN_REPORT_WORDS
+    }
+
+    /// Return a human-readable explanation of which thresholds are not met.
+    pub fn sufficiency_gaps(&self) -> Vec<String> {
+        let mut gaps = Vec::new();
+        let keystrokes = self.process.total_keystrokes.unwrap_or(0);
+        let duration_sec = self.total_duration_min * 60.0;
+        let checkpoints = self.checkpoints.len();
+        let words = self.document_words.unwrap_or(0);
+
+        if keystrokes < MIN_REPORT_KEYSTROKES {
+            gaps.push(format!(
+                "Keystrokes: {} captured, {} required",
+                keystrokes, MIN_REPORT_KEYSTROKES
+            ));
+        }
+        if duration_sec < MIN_REPORT_DURATION_SEC {
+            gaps.push(format!(
+                "Duration: {:.0}s captured, {:.0}s required",
+                duration_sec, MIN_REPORT_DURATION_SEC
+            ));
+        }
+        if checkpoints < MIN_REPORT_CHECKPOINTS {
+            gaps.push(format!(
+                "Checkpoints: {} captured, {} required",
+                checkpoints, MIN_REPORT_CHECKPOINTS
+            ));
+        }
+        if words < MIN_REPORT_WORDS {
+            gaps.push(format!(
+                "Words: {} captured, {} required",
+                words, MIN_REPORT_WORDS
+            ));
+        }
+        gaps
+    }
+
     /// Generate a report ID in the format WAR-XXXXXXXX.
     pub fn generate_id() -> String {
         let mut bytes = [0u8; 4];
@@ -498,6 +594,112 @@ impl WarReport {
         }
         let hex = hex::encode(bytes).to_uppercase();
         format!("WAR-{}", hex)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_report(keystrokes: u64, duration_min: f64, checkpoints: usize, words: u64) -> WarReport {
+        WarReport {
+            report_id: "WAR-TEST".into(),
+            algorithm_version: "v1.0.0".into(),
+            generated_at: chrono::Utc::now(),
+            schema_version: "WAR-v1.0.0".into(),
+            is_sample: true,
+            score: 50,
+            verdict: Verdict::Inconclusive,
+            verdict_description: String::new(),
+            likelihood_ratio: 1.0,
+            enfsi_tier: EnfsiTier::Weak,
+            document_hash: "aa".repeat(32),
+            evidence_hash: None,
+            evidence_cbor_b64: None,
+            signing_key_fingerprint: "bb".repeat(20),
+            document_words: Some(words),
+            document_chars: Some(words * 5),
+            document_sentences: None,
+            document_paragraphs: None,
+            evidence_bundle_version: "1.0".into(),
+            session_count: 1,
+            total_duration_min: duration_min,
+            revision_events: checkpoints as u64,
+            device_attestation: "test".into(),
+            checkpoints: (0..checkpoints)
+                .map(|i| ReportCheckpoint {
+                    ordinal: i as u64,
+                    timestamp: chrono::Utc::now(),
+                    content_hash: format!("{:064x}", i),
+                    content_size: 100,
+                    vdf_iterations: Some(0),
+                    elapsed_ms: Some(0),
+                })
+                .collect(),
+            sessions: vec![],
+            process: ProcessEvidence {
+                total_keystrokes: Some(keystrokes),
+                ..Default::default()
+            },
+            flags: vec![],
+            forgery: ForgeryInfo::default(),
+            dimensions: vec![],
+            writing_flow: vec![],
+            methodology: None,
+            limitations: vec![],
+            analyzed_text: None,
+            forensic_metrics: None,
+            edit_topology: vec![],
+            activity_contexts: vec![],
+            declaration_summary: None,
+            key_hierarchy_summary: None,
+            physical_context: None,
+            beacon_info: None,
+            anomalies: vec![],
+            verifiable_credential_json: None,
+            author_did: None,
+            provenance_breakdown: None,
+        }
+    }
+
+    #[test]
+    fn insufficient_3_keystrokes_3_checkpoints() {
+        let r = minimal_report(3, 2.0, 3, 129);
+        assert!(!r.evidence_is_sufficient());
+        let gaps = r.sufficiency_gaps();
+        assert!(gaps.iter().any(|g| g.contains("Keystrokes")));
+        assert!(gaps.iter().any(|g| g.contains("Checkpoints")));
+        // Duration (120s >= 60s) and words (129 >= 20) pass
+        assert!(!gaps.iter().any(|g| g.contains("Duration")));
+        assert!(!gaps.iter().any(|g| g.contains("Words")));
+    }
+
+    #[test]
+    fn sufficient_above_all_thresholds() {
+        let r = minimal_report(200, 10.0, 15, 500);
+        assert!(r.evidence_is_sufficient());
+        assert!(r.sufficiency_gaps().is_empty());
+    }
+
+    #[test]
+    fn insufficient_short_session() {
+        // 10 keystrokes (<50), 30s (<60s), 2 checkpoints (<5), 10 words (<20)
+        let r = minimal_report(10, 0.5, 2, 10);
+        assert!(!r.evidence_is_sufficient());
+        let gaps = r.sufficiency_gaps();
+        assert_eq!(gaps.len(), 4); // all four thresholds missed
+    }
+
+    #[test]
+    fn verdict_insufficient_below_min_events() {
+        let v = Verdict::from_score_with_events(85, 5);
+        assert_eq!(v, Verdict::InsufficientData);
+    }
+
+    #[test]
+    fn verdict_verified_above_min_events() {
+        let v = Verdict::from_score_with_events(85, 15);
+        assert_eq!(v, Verdict::VerifiedHuman);
     }
 }
 

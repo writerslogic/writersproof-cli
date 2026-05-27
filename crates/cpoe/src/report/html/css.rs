@@ -23,10 +23,10 @@ fn build_jsonld(r: &WarReport) -> String {
     } else {
         serde_json::Value::Null
     };
-    let log_lr_value: serde_json::Value = if r.likelihood_ratio > 0.0 {
+    let log_lr_value: serde_json::Value = if r.likelihood_ratio.is_finite() && r.likelihood_ratio > 0.0 {
         serde_json::json!(r.likelihood_ratio.log10())
     } else {
-        serde_json::json!(0.0)
+        serde_json::Value::Null
     };
 
     let graph = serde_json::json!({
@@ -105,7 +105,9 @@ fn build_jsonld(r: &WarReport) -> String {
         ]
     });
 
-    serde_json::to_string_pretty(&graph).unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string_pretty(&graph)
+        .unwrap_or_else(|_| "{}".to_string())
+        .replace("</", "<\\/")  // Prevent </script> injection in JSON-LD block
 }
 
 /// Write the `<!DOCTYPE>` through opening `<div class="report">`, including
@@ -123,7 +125,7 @@ pub(super) fn write_head(html: &mut String, r: &WarReport) -> fmt::Result {
     let key_fp = html_escape(&r.signing_key_fingerprint);
     let ts_iso = r.generated_at.to_rfc3339();
     let score = r.score;
-    let lr_log10 = if r.likelihood_ratio > 0.0 {
+    let lr_log10 = if r.likelihood_ratio.is_finite() && r.likelihood_ratio > 0.0 {
         r.likelihood_ratio.log10()
     } else {
         0.0

@@ -31,8 +31,10 @@ pub(in crate::report::html) fn write_examination_metadata(
     let doc_hash_short = if r.document_hash.len() > 16 {
         format!(
             "{}...{}",
-            &r.document_hash[..8],
-            &r.document_hash[r.document_hash.len().saturating_sub(8)..],
+            r.document_hash.get(..8).unwrap_or(&r.document_hash),
+            r.document_hash
+                .get(r.document_hash.len().saturating_sub(8)..)
+                .unwrap_or(&r.document_hash),
         )
     } else {
         r.document_hash.clone()
@@ -54,7 +56,7 @@ pub(in crate::report::html) fn write_examination_metadata(
         hash = html_escape(&doc_hash_short),
         sessions = r.session_count,
         s_plural = if r.session_count == 1 { "" } else { "s" },
-        dur = r.total_duration_min,
+        dur = if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
     )
 }
 
@@ -62,13 +64,29 @@ pub(in crate::report::html) fn write_executive_summary(
     html: &mut String,
     r: &WarReport,
 ) -> fmt::Result {
+    if r.verdict == Verdict::InsufficientData {
+        let gaps = r.sufficiency_gaps();
+        let gap_text = if gaps.is_empty() {
+            String::new()
+        } else {
+            format!(" Unmet thresholds: {}.", html_escape(&gaps.join("; ")))
+        };
+        return write!(
+            html,
+            r#"<div class="executive-summary">
+<p>The captured evidence does not meet the minimum thresholds required for forensic evaluation. No determination regarding authorship is made.{gap_text}</p>
+</div>
+"#,
+        );
+    }
+
     let strength = match r.enfsi_tier {
         EnfsiTier::VeryStrong => "very strongly supports",
         EnfsiTier::Strong => "strongly supports",
         EnfsiTier::ModeratelyStrong => "moderately supports",
         EnfsiTier::Moderate => "provides moderate support for",
         EnfsiTier::Weak => "provides limited support for",
-        EnfsiTier::Against => "does not support",
+        EnfsiTier::Against => "weighs against",
         EnfsiTier::Inconclusive => "is inconclusive regarding",
     };
 
@@ -83,13 +101,13 @@ pub(in crate::report::html) fn write_executive_summary(
         .filter(|f| f.signal == FlagSignal::Synthetic)
         .count();
 
-    let duration_desc = if r.total_duration_min < 1.0 {
+    let dur = if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 };
+    let duration_desc = if dur < 1.0 {
         "less than one minute".to_string()
-    } else if r.total_duration_min < 60.0 {
-        format!("approximately {:.0} minutes", r.total_duration_min)
+    } else if dur < 60.0 {
+        format!("approximately {:.0} minutes", dur)
     } else {
-        let hours = r.total_duration_min / 60.0;
-        format!("approximately {:.1} hours", hours)
+        format!("approximately {:.1} hours", dur / 60.0)
     };
 
     let keystrokes_desc = r

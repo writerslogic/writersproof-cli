@@ -257,32 +257,12 @@ pub fn draw_page1(
     // Colored left border (4mm wide)
     fill_rect(layer, MARGIN_LEFT, y - 4.0, 4.0, 22.0, vc);
 
-    // Score (dark text)
-    text(
-        layer,
-        &format!("{}", r.score),
-        28.0,
-        MARGIN_LEFT + 8.0,
-        y + 4.0,
-        &fonts.bold,
-        BLACK,
-    );
-    text(
-        layer,
-        "/ 100",
-        9.0,
-        MARGIN_LEFT + 26.0,
-        y + 4.0,
-        &fonts.regular,
-        GRAY,
-    );
-
     // Verdict label (dark text)
     text(
         layer,
         r.verdict.label(),
         12.0,
-        MARGIN_LEFT + 46.0,
+        MARGIN_LEFT + 8.0,
         y + 8.0,
         &fonts.bold,
         BLACK,
@@ -291,54 +271,83 @@ pub fn draw_page1(
         layer,
         r.verdict.subtitle(),
         7.5,
-        MARGIN_LEFT + 46.0,
+        MARGIN_LEFT + 8.0,
         y + 2.0,
         &fonts.regular,
         GRAY,
     );
 
-    // Likelihood ratio (dark text)
-    let lr_str = if r.likelihood_ratio >= 100.0 {
-        format!("{:.0}", r.likelihood_ratio)
-    } else {
-        format!("{:.1}", r.likelihood_ratio)
-    };
-    text(
-        layer,
-        &lr_str,
-        16.0,
-        MARGIN_LEFT + 140.0,
-        y + 8.0,
-        &fonts.bold,
-        BLACK,
-    );
-    text(
-        layer,
-        "LR",
-        6.0,
-        MARGIN_LEFT + 140.0,
-        y + 2.0,
-        &fonts.regular,
-        GRAY,
-    );
-    text(
-        layer,
-        r.enfsi_tier.label(),
-        6.0,
-        MARGIN_LEFT + 150.0,
-        y + 2.0,
-        &fonts.regular,
-        GRAY,
-    );
+    if r.verdict != Verdict::InsufficientData {
+        // Score
+        text(
+            layer,
+            &format!("{}", r.score),
+            28.0,
+            MARGIN_LEFT + 110.0,
+            y + 4.0,
+            &fonts.bold,
+            BLACK,
+        );
+        text(
+            layer,
+            "/ 100",
+            9.0,
+            MARGIN_LEFT + 128.0,
+            y + 4.0,
+            &fonts.regular,
+            GRAY,
+        );
+
+        // Likelihood ratio
+        let lr_str = if !r.likelihood_ratio.is_finite() {
+            "N/A".to_string()
+        } else if r.likelihood_ratio >= 100.0 {
+            format!("{:.0}", r.likelihood_ratio)
+        } else {
+            format!("{:.1}", r.likelihood_ratio)
+        };
+        text(
+            layer,
+            &lr_str,
+            16.0,
+            MARGIN_LEFT + 140.0,
+            y + 8.0,
+            &fonts.bold,
+            BLACK,
+        );
+        text(
+            layer,
+            "LR",
+            6.0,
+            MARGIN_LEFT + 140.0,
+            y + 2.0,
+            &fonts.regular,
+            GRAY,
+        );
+        text(
+            layer,
+            r.enfsi_tier.label(),
+            6.0,
+            MARGIN_LEFT + 150.0,
+            y + 2.0,
+            &fonts.regular,
+            GRAY,
+        );
+    }
     y -= 28.0;
 
     // ── ENFSI Evaluative Scale ──
-    let enfsi_statement = format!(
-        "The evidence is approximately {} times more likely if the document was authored by \
-         a human typing in real time (Hp1) than if it was produced by transcription or \
-         automated input (Hp2).",
-        r.likelihood_ratio,
-    );
+    let enfsi_statement = if r.verdict == Verdict::InsufficientData || !r.likelihood_ratio.is_finite() {
+        "Examination withheld: the captured evidence does not meet the minimum thresholds \
+         for evaluative reporting. No likelihood ratio or ENFSI tier is issued.".to_string()
+    } else {
+        format!(
+            "The evidence is approximately {:.1} times more likely if the document was authored by \
+             a human typing in real time (H1) than if it was produced by transcription or \
+             automated input (H2).",
+            r.likelihood_ratio,
+        )
+    };
     for line in wrap_text_lines(&enfsi_statement, 100) {
         text(layer, &line, 6.5, MARGIN_LEFT, y, &fonts.regular, GRAY);
         y -= 3.5;

@@ -111,7 +111,7 @@ pub struct FfiProcessEvidence {
     pub revision_intensity: Option<f64>,
     pub revision_baseline: Option<String>,
     pub pause_median_sec: Option<f64>,
-    pub pause_p95_sec: Option<f64>,
+    pub pause_p90_sec: Option<f64>,
     pub pause_max_sec: Option<f64>,
     pub paste_ratio_pct: Option<f64>,
     pub paste_max_chars: Option<u64>,

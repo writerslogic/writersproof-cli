@@ -1,31 +1,37 @@
 <dl class="glossary">
 <div class="glossary-entry"><dt>Assessment Score</dt>
-<dd>A composite metric (0-100) derived from all analytical dimensions. Higher scores indicate stronger evidence of human authorship. The score is converted to a likelihood ratio for statistical interpretation.</dd></div>
+<dd>A composite metric (0&#8211;100) derived from all analytical dimensions. Higher scores indicate stronger evidence of human authorship. The score is converted to a likelihood ratio for statistical interpretation. A score of 0 indicates insufficient evidence for evaluation, not a negative finding.</dd></div>
 
 <div class="glossary-entry"><dt>Bigram Consistency</dt>
 <dd>A measure of how stable the timing patterns are between specific pairs of consecutive keystrokes (e.g., "th", "er"). Higher values indicate the author has a consistent, practiced typing style.</dd></div>
 
+<div class="glossary-entry"><dt>Checkpoint</dt>
+<dd>A timestamped record of the document's state at a point during composition. Each checkpoint contains a SHA-256 hash of the document content, an HMAC binding to the previous checkpoint, and a VDF proof. The sequence of checkpoints forms a tamper-evident chain; altering any checkpoint invalidates all subsequent entries.</dd></div>
+
 <div class="glossary-entry"><dt>CPoE (Cryptographic Proof-of-Process)</dt>
-<dd>The protocol used to capture and cryptographically bind behavioral evidence during document creation. Defined in draft-condrey-rats-pop.</dd></div>
+<dd>The protocol used to capture and cryptographically bind behavioral evidence during document creation. Specified in Internet-Draft draft-condrey-cpoe-protocol-00.</dd></div>
 
 <div class="glossary-entry"><dt>ENFSI Verbal Equivalence Scale</dt>
-<dd>A standardized scale for expressing the strength of forensic evidence, published by the European Network of Forensic Science Institutes (2015). Ranges from "Against" (LR &lt; 1) through "Very Strong Support" (LR &ge; 10,000).</dd></div>
+<dd>A standardized scale for expressing the strength of forensic evidence, published by the European Network of Forensic Science Institutes (2015). Maps likelihood ratios to verbal descriptors: Against (LR &lt; 1), Weak (1&#8211;10), Moderate (10&#8211;100), Moderately Strong (100&#8211;1,000), Strong (1,000&#8211;10,000), Very Strong (&ge; 10,000). The scale describes evidential weight, not certainty.</dd></div>
 
 <div class="glossary-entry"><dt>H&#8321; / H&#8322;</dt>
-<dd>The two competing hypotheses under evaluation. H&#8321; (proponent): the document was composed through a human writing process. H&#8322; (alternative): the document was generated or substantially produced by automated means.</dd></div>
+<dd>The two competing hypotheses under evaluation. H&#8321; (proponent): the document was composed through a human writing process. H&#8322; (alternative): the document was produced by transcription, dictation, automated generation, or paste from an external source.</dd></div>
+
+<div class="glossary-entry"><dt>HMAC-SHA256</dt>
+<dd>A keyed-hash message authentication code using SHA-256. Used to bind each checkpoint to its predecessor under a session-specific key, ensuring that the chain cannot be modified without detection. Defined in RFC 2104.</dd></div>
 
 <div class="glossary-entry"><dt>IKI CV (Inter-Keystroke Interval Coefficient of Variation)</dt>
-<dd>The coefficient of variation of time intervals between consecutive keystrokes. Higher values indicate more variable (human-like) typing rhythm; very low values (&lt;0.10) suggest automated or replayed input.</dd></div>
+<dd>The coefficient of variation (standard deviation divided by mean) of time intervals between consecutive keystrokes. Human typing typically produces CV values of 0.30&#8211;0.80, reflecting natural rhythm variation. Values below 0.10 suggest automated or replayed input; values above 1.5 may indicate frequent interruptions or multi-tasking.</dd></div>
 
 <div class="glossary-entry"><dt>Likelihood Ratio (LR)</dt>
-<dd>The ratio of the probability of observing the evidence under H&#8321; to the probability under H&#8322;. An LR of 100 means the evidence is 100 times more probable if the document was human-authored than if it was machine-generated.</dd></div>
+<dd>The ratio of the probability of observing the evidence under H&#8321; to the probability under H&#8322;. An LR of 100 means the evidence is 100 times more probable if H&#8321; is true than if H&#8322; is true. An LR of 1.0 is evidentially neutral. An LR below 1.0 favors H&#8322;. The LR does not express the probability that either hypothesis is true; it quantifies the evidential weight of the observations.</dd></div>
 
 <div class="glossary-entry"><dt>Log&#8321;&#8320;(LR)</dt>
-<dd>The base-10 logarithm of the likelihood ratio. A log-LR of 2.0 corresponds to LR = 100; a log-LR of 4.0 corresponds to LR = 10,000.</dd></div>
+<dd>The base-10 logarithm of the likelihood ratio. Positive values favor H&#8321;; negative values favor H&#8322;; zero is neutral. A log-LR of +2.0 corresponds to LR = 100; a log-LR of &#8722;1.0 corresponds to LR = 0.1.</dd></div>
 
 <div class="glossary-entry"><dt>SHA-256</dt>
-<dd>A cryptographic hash function producing a 256-bit (32-byte) digest. Used throughout CPoE for document fingerprinting, checkpoint chaining, and integrity verification. Any change to the input produces a completely different hash.</dd></div>
+<dd>A cryptographic hash function (NIST FIPS 180-4) producing a 256-bit (32-byte) digest. Any change to the input, even a single bit, produces a completely different hash. Used throughout CPoE for document fingerprinting, checkpoint chaining, and integrity verification.</dd></div>
 
 <div class="glossary-entry"><dt>VDF (Verifiable Delay Function)</dt>
-<dd>A cryptographic function that requires a specified amount of sequential computation to evaluate, but whose output can be quickly verified. Used in CPoE to prove that checkpoints were created at real wall-clock intervals, preventing after-the-fact fabrication of evidence.</dd></div>
+<dd>A cryptographic function that requires a specified amount of sequential computation to evaluate, but whose output can be quickly verified by any party. Sequential means the computation cannot be parallelized or accelerated with additional hardware. Used in CPoE to prove that checkpoints were created at real wall-clock intervals, preventing after-the-fact fabrication of evidence.</dd></div>
 </dl>

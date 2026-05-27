@@ -85,8 +85,8 @@ pub fn draw_page2(layer: &PdfLayerReference, r: &WarReport, fonts: &PdfFonts, fo
             p.pause_median_sec
                 .map(|v| {
                     let mut s = format!("Median: {:.1}s", v);
-                    if let Some(p95) = p.pause_p95_sec {
-                        s.push_str(&format!(" | P95: {:.1}s", p95));
+                    if let Some(p90) = p.pause_p90_sec {
+                        s.push_str(&format!(" | P90: {:.1}s", p90));
                     }
                     s
                 })

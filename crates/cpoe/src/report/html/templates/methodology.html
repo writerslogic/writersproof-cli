@@ -1,16 +1,16 @@
 <h3>Competing Hypotheses</h3>
 <div class="hypotheses">
 <div class="hypothesis">
-  <div class="hyp-label">H&#8321; (Prosecution/Proponent Hypothesis)</div>
+  <div class="hyp-label">H&#8321; (Proponent Hypothesis)</div>
   <p>The submitted document was composed through a human writing process, exhibiting behavioral patterns characteristic of natural cognitive composition, including variable keystroke timing, iterative revision, and organic pause structures.</p>
 </div>
 <div class="hypothesis">
   <div class="hyp-label">H&#8322; (Alternative Hypothesis)</div>
-  <p>The submitted document was generated or substantially produced by automated means (including but not limited to large language models), potentially with superficial human editing to mask its origin.</p>
+  <p>The submitted document was generated or substantially produced by automated means (including but not limited to large language models), or entered by transcription, dictation, or paste from an external source.</p>
 </div>
 </div>
 
 <h3>Examination Procedure</h3>
-<p>This examination was conducted using the Cryptographic Proof-of-Process (CPoE) protocol, an automated forensic system that captures behavioral telemetry during document creation. The system records keystroke dynamics, inter-keystroke timing intervals, revision patterns, application focus events, and cursor movements in real time. These observations are cryptographically bound to sequential checkpoints using Verifiable Delay Functions (VDFs), producing a tamper-evident evidentiary chain that can be independently verified by any party.</p>
+<p>This examination was conducted using the Cryptographic Proof-of-Process (CPoE) protocol, an automated forensic system that captures behavioral telemetry during document creation. The system records keystroke dynamics, inter-keystroke timing intervals (IKI; the time gap between consecutive key presses), revision patterns, application focus events, and cursor movements in real time. These observations are cryptographically bound to sequential checkpoints using Verifiable Delay Functions (VDFs; cryptographic primitives requiring sequential computation that cannot be parallelized), producing a tamper-evident evidentiary chain that can be independently verified by any party.</p>
 
-<p style="margin-top:8px">The assessment score is derived from a multi-dimensional analysis comparing observed writing patterns against established distributions for human-authored and machine-generated text. Each analytical dimension produces an independent likelihood ratio (LR). The per-dimension LRs are combined under the assumption of conditional independence to produce a composite LR, which is then classified on the ENFSI verbal equivalence scale. This approach follows the framework described in the ENFSI Guideline for Evaluative Reporting in Forensic Science (2015) and is consistent with the principles of FRE 702 (Daubert) for the admissibility of expert testimony.</p>
+<p style="margin-top:8px">The assessment score is derived from a multi-dimensional analysis comparing observed writing patterns against reference distributions for human-authored and machine-generated text. Each analytical dimension produces an independent likelihood ratio (LR; the ratio of the probability of observing the evidence under H&#8321; to the probability under H&#8322;). The per-dimension LRs are combined by logarithmic summation with cross-correlation weighting applied to correlated dimensions to avoid double-counting evidence. The composite LR is classified on the ENFSI (European Network of Forensic Science Institutes) verbal equivalence scale. This approach follows the framework described in the ENFSI Guideline for Evaluative Reporting in Forensic Science (2015).</p>

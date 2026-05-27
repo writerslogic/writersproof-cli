@@ -185,13 +185,37 @@ pub(crate) fn load_did() -> Result<String, String> {
 }
 
 /// Load the WritersProof API key, if available. Wrapped in Zeroizing for cleanup.
+///
+/// Uses open-then-fstat (same pattern as `load_signing_key`) to avoid TOCTOU
+/// and symlink-following. Size bounded to 1 KiB; intermediates zeroized.
 pub(crate) fn load_api_key() -> Result<Zeroizing<String>, String> {
+    use std::io::Read;
+    use zeroize::Zeroize;
+
     let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
     let key_path = data_dir.join("writersproof_api_key");
-    let key = std::fs::read_to_string(&key_path)
-        .map(|s| s.trim().to_string())
-        .map_err(|e| format!("Failed to read API key: {e}"))?;
-    Ok(Zeroizing::new(key))
+    let key_file = std::fs::File::open(&key_path)
+        .map_err(|_| "API key not found".to_string())?;
+    let meta = key_file
+        .metadata()
+        .map_err(|_| "Cannot stat API key file".to_string())?;
+    if !meta.is_file() {
+        return Err("API key path is not a regular file".to_string());
+    }
+    if meta.len() > 1024 {
+        return Err("API key file too large".to_string());
+    }
+    let mut raw = Zeroizing::new(Vec::new());
+    {
+        let mut f = key_file;
+        f.read_to_end(&mut raw)
+            .map_err(|_| "Failed to read API key".to_string())?;
+    }
+    let mut key_str = String::from_utf8(raw.to_vec())
+        .map_err(|_| "API key is not valid UTF-8".to_string())?;
+    let trimmed = key_str.trim().to_string();
+    key_str.zeroize();
+    Ok(Zeroizing::new(trimmed))
 }
 
 /// Validate a document path and return its canonical string form.
@@ -325,11 +349,16 @@ pub(crate) fn derive_hmac_from_signing_key() -> Option<Zeroizing<Vec<u8>>> {
             return None;
         }
     };
-    if let Ok(meta) = key_file.metadata() {
-        if meta.len() > 1024 {
-            log::error!("Signing key file too large: {} bytes", meta.len());
+    let meta = match key_file.metadata() {
+        Ok(m) => m,
+        Err(e) => {
+            log::warn!("failed to stat signing key file: {e}");
             return None;
         }
+    };
+    if !meta.is_file() || meta.len() > 1024 {
+        log::error!("Signing key file invalid: is_file={}, len={}", meta.is_file(), meta.len());
+        return None;
     }
     let mut raw = Zeroizing::new(Vec::new());
     {
