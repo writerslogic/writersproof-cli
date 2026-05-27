@@ -178,7 +178,7 @@ fn build_revision_graph(sorted: SortedEvents<'_>) -> RevisionGraphMetrics {
     let mean_frontier_distance = if frontier_distances.is_empty() {
         0.0
     } else {
-        frontier_distances.iter().sum::<f64>() / frontier_distances.len() as f64
+        crate::utils::mean(&frontier_distances)
     };
 
     RevisionGraphMetrics {

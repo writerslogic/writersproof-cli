@@ -378,7 +378,7 @@ impl BackspaceSignature {
             relative_sim(self.line_delete_rate, other.line_delete_rate),
             relative_sim(self.forward_delete_rate, other.forward_delete_rate),
         ];
-        sims.iter().sum::<f64>() / sims.len() as f64
+        crate::utils::mean(&sims)
     }
 }
 

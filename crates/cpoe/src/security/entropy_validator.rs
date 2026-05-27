@@ -115,7 +115,7 @@ impl EntropyValidator {
         }
 
         // Calculate statistics
-        let mean_iki = ikis_ms.iter().sum::<f64>() / ikis_ms.len() as f64;
+        let mean_iki = crate::utils::mean(&ikis_ms);
         let variance =
             ikis_ms.iter().map(|x| (x - mean_iki).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
         let std_dev = variance.sqrt();
@@ -229,7 +229,7 @@ impl EntropyValidator {
         }
 
         // Pattern 1: Monotonic timing (all IKIs nearly equal)
-        let mean = ikis_ms.iter().sum::<f64>() / ikis_ms.len() as f64;
+        let mean = crate::utils::mean(&ikis_ms);
         let variance =
             ikis_ms.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
         let std_dev = variance.sqrt();
@@ -253,7 +253,7 @@ impl EntropyValidator {
                 .collect();
 
             if window_ikis.len() > 3 {
-                let w_mean = window_ikis.iter().sum::<f64>() / window_ikis.len() as f64;
+                let w_mean = crate::utils::mean(&window_ikis);
                 let w_var = window_ikis
                     .iter()
                     .map(|x| (x - w_mean).powi(2))

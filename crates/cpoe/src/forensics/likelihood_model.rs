@@ -275,7 +275,7 @@ fn extract_window_features(samples: &[SimpleJitterSample]) -> WindowFeatures {
     let burst_speed_cv = if burst_cvs.is_empty() {
         0.2 // Neutral default.
     } else {
-        burst_cvs.iter().sum::<f64>() / burst_cvs.len() as f64
+        crate::utils::mean(&burst_cvs)
     };
 
     // Post-pause CV: CV of first 3 keystrokes after each pause.

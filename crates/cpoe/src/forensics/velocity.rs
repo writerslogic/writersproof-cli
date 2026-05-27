@@ -50,7 +50,7 @@ pub fn analyze_velocity(sorted: SortedEvents<'_>) -> VelocityMetrics {
     }
 
     if !velocities.is_empty() {
-        metrics.mean_bps = velocities.iter().sum::<f64>() / velocities.len() as f64;
+        metrics.mean_bps = crate::utils::mean(&velocities);
         metrics.max_bps = velocities.iter().cloned().fold(0.0, f64::max);
     }
 

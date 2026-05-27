@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-const INTERVAL_BUCKET_SIZE_MS: u64 = 50;
-const NUM_INTERVAL_BUCKETS: u64 = 10;
+const INTERVAL_BUCKET_SIZE_MS: u64 = crate::jitter::INTERVAL_BUCKET_SIZE_MS as u64;
+const NUM_INTERVAL_BUCKETS: u64 = crate::jitter::NUM_INTERVAL_BUCKETS as u64;
 /// Intervals beyond this threshold are not typing behavior and should be discarded.
 const MAX_TYPING_INTERVAL_MS: u64 = 30_000;
 

@@ -29,7 +29,7 @@ pub use stats::{
     mean_and_std_dev, mean_and_std_dev_f32, mean_and_variance, median, std_dev,
 };
 pub(crate) use time::DateTimeNanosExt;
-pub use time::{duration_to_ms, now_ns, now_secs, ns_elapsed, ns_to_ms, ns_to_secs};
+pub use time::{duration_to_ms, now_ms, now_ns, now_secs, ns_elapsed, ns_to_ms, ns_to_secs};
 pub use validation::{BundleIdValidator, TextValidator, TimestampValidator};
 
 /// Serde helper: skip serializing a `bool` field when it is `false`.
@@ -96,10 +96,28 @@ pub fn get_data_dir() -> Option<std::path::PathBuf> {
     }
 }
 
+/// Legacy data directory path (`~/.writersproof`).
+///
+/// Used by PUF seed storage and Secure Enclave counter files which predate the
+/// platform-aware [`get_data_dir`] path. Checks `CPOE_DATA_DIR` first.
+pub fn get_legacy_data_dir() -> Option<std::path::PathBuf> {
+    if let Ok(dir) = std::env::var("CPOE_DATA_DIR") {
+        return Some(std::path::PathBuf::from(dir));
+    }
+    dirs::home_dir().map(|h| h.join(".writersproof"))
+}
+
 /// Hash a filesystem path (its UTF-8 string representation) with SHA-256.
 pub fn sha256_of_path(path: &std::path::Path) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     Sha256::digest(path.to_string_lossy().as_bytes()).into()
+}
+
+/// Derive a short hex document ID from a filesystem path.
+///
+/// Computes `hex(sha256(path)[0..8])`, producing a 16-char hex string.
+pub fn document_id_from_path(path: &std::path::Path) -> String {
+    hex::encode(&sha256_of_path(path)[..8])
 }
 
 /// Return an error if any value in `vals` is NaN or infinite.

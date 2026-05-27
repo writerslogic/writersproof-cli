@@ -187,8 +187,7 @@ impl SentinelIpcHandler {
         let writersproof_dir = &self.sentinel.config.writersproof_dir;
         let vdf_params = crate::vdf::default_parameters();
 
-        let path_hash = crate::utils::sha256_of_path(&path);
-        let doc_id = hex::encode(&path_hash[0..8]);
+        let doc_id = crate::utils::document_id_from_path(&path);
         let chain_path = writersproof_dir
             .join("chains")
             .join(format!("{doc_id}.json"));

@@ -3,13 +3,14 @@
 //! Generate unforgeable behavioral fingerprints from typing patterns
 
 use crate::analysis::stats;
+use crate::forensics::constants::{BURST_THRESHOLD_MS, PAUSE_THRESHOLD_MS};
 use crate::jitter::SimpleJitterSample;
 use serde::{Deserialize, Serialize};
 
 const MAX_PAUSE_FILTER_MS: f64 = 5000.0;
-const PARAGRAPH_PAUSE_MS: f64 = 2000.0;
+const PARAGRAPH_PAUSE_MS: f64 = PAUSE_THRESHOLD_MS;
 const BURST_SEPARATOR_MS: f64 = 500.0;
-const BURST_INTERVAL_MS: f64 = 200.0;
+const BURST_INTERVAL_MS: f64 = BURST_THRESHOLD_MS;
 const CV_FORGERY_THRESHOLD: f64 = 0.2;
 const SKEWNESS_FORGERY_THRESHOLD: f64 = 0.2;
 const MICRO_PAUSE_MIN_MS: f64 = 150.0;

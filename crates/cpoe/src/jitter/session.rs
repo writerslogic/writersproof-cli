@@ -20,9 +20,10 @@ use zeroize::{Zeroize, Zeroizing};
 
 use super::timestamp_nanos_u64;
 
-pub(crate) const MIN_JITTER: u32 = 500; // microseconds
-pub(crate) const MAX_JITTER: u32 = 3000; // microseconds
-pub(crate) const JITTER_RANGE: u32 = MAX_JITTER - MIN_JITTER;
+pub(crate) const MIN_JITTER: u32 = cpoe_jitter::DEFAULT_JITTER_MIN_US;
+#[allow(dead_code)] // used in tests only (via #[cfg(test)] re-export)
+pub(crate) const MAX_JITTER: u32 = cpoe_jitter::DEFAULT_JITTER_MAX_US;
+pub(crate) const JITTER_RANGE: u32 = cpoe_jitter::DEFAULT_JITTER_RANGE_US;
 pub(crate) const INTERVAL_BUCKET_SIZE_MS: i64 = 50;
 pub(crate) const NUM_INTERVAL_BUCKETS: i64 = 10;
 

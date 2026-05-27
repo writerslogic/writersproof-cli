@@ -22,7 +22,6 @@ use signing::sign;
 use types::{HardwareInfo, SecureEnclaveState};
 
 use super::{Attestation, Binding, Capabilities, Provider, Quote, TpmError};
-use crate::DateTimeNanosExt;
 use crate::MutexRecover;
 use chrono::Utc;
 use sha2::{Digest, Sha256};
@@ -121,10 +120,7 @@ impl Provider for SecureEnclaveProvider {
     fn quote(&self, nonce: &[u8], _pcrs: &[u32]) -> Result<Quote, TpmError> {
         let state = self.state.lock_recover();
         let timestamp = Utc::now();
-        let mut payload = Vec::new();
-        payload.extend_from_slice(nonce);
-        payload.extend_from_slice(&timestamp.timestamp_nanos_safe().to_le_bytes());
-        payload.extend_from_slice(state.device_id.as_bytes());
+        let payload = crate::tpm::build_binding_payload(nonce, &timestamp, &state.device_id);
 
         let signature = sign(&state, &payload)?;
 

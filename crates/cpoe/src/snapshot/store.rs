@@ -5,6 +5,8 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use zeroize::Zeroizing;
 
+use crate::utils::DateTimeNanosExt;
+
 use super::crypto;
 use super::types::{SnapshotEntry, SnapshotMeta, StoreSizeInfo, SIZE_WARNING_THRESHOLD};
 
@@ -104,7 +106,7 @@ impl SnapshotStore {
         let plaintext_bytes = plaintext.as_bytes();
         let content_hash: [u8; 32] = Sha256::digest(plaintext_bytes).into();
         let word_count = count_words(plaintext);
-        let mut timestamp_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let mut timestamp_ns = chrono::Utc::now().timestamp_nanos_safe();
 
         // Encrypt outside the transaction (CPU-bound, don't hold the DB lock).
         // Deterministic encryption means same content always produces the same
@@ -332,7 +334,7 @@ impl SnapshotStore {
         let restored_hash: [u8; 32] = Sha256::digest(restored_bytes).into();
         let restored_wc = count_words(&restored);
 
-        let now_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let now_ns = chrono::Utc::now().timestamp_nanos_safe();
 
         // Encrypt outside transaction (CPU-bound). Deterministic encryption
         // means INSERT OR IGNORE safely handles concurrent inserts.

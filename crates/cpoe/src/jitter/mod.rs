@@ -67,6 +67,7 @@ pub use self::simple::{SimpleJitterSample, SimpleJitterSession};
 pub use self::session::{
     default_parameters, Evidence, Parameters, Sample, Session, SessionData, Statistics,
 };
+pub(crate) use self::session::{INTERVAL_BUCKET_SIZE_MS, NUM_INTERVAL_BUCKETS};
 #[cfg(test)]
 pub(crate) use self::session::{MAX_JITTER, MIN_JITTER};
 

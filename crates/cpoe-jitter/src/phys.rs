@@ -40,8 +40,8 @@ impl Default for PhysJitter {
     fn default() -> Self {
         Self {
             min_entropy_bits: 0,
-            jmin: 500,
-            range: 2500,
+            jmin: crate::DEFAULT_JITTER_MIN_US,
+            range: crate::DEFAULT_JITTER_RANGE_US,
         }
     }
 }

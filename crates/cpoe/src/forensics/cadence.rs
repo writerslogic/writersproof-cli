@@ -5,16 +5,8 @@
 use crate::jitter::SimpleJitterSample;
 use crate::utils::stats::{coefficient_of_variation, mean, mean_and_std_dev, median, std_dev};
 
-use super::constants::CORRECTION_ZONE;
+use super::constants::{BURST_THRESHOLD_NS_F64, CORRECTION_ZONE, PAUSE_THRESHOLD_NS_F64};
 use super::types::{CadenceMetrics, ROBOTIC_CV_THRESHOLD};
-
-/// IKI threshold in nanoseconds for fast-burst detection (200 ms).
-/// f64 version of constants::BURST_THRESHOLD_NS for direct f64 arithmetic.
-const BURST_THRESHOLD_NS_F64: f64 = 200_000_000.0;
-
-/// IKI threshold in nanoseconds for pause detection (2 seconds).
-/// f64 version of constants::PAUSE_THRESHOLD_NS for direct f64 arithmetic.
-const PAUSE_THRESHOLD_NS_F64: f64 = 2_000_000_000.0;
 
 /// IKI threshold in nanoseconds for cognitive pause detection (1 second).
 const COGNITIVE_PAUSE_THRESHOLD_NS: f64 = 1_000_000_000.0;
@@ -68,7 +60,7 @@ pub fn analyze_cadence(samples: &[SimpleJitterSample]) -> CadenceMetrics {
     }
 
     if !pauses.is_empty() {
-        metrics.avg_pause_duration_ns = pauses.iter().sum::<f64>() / pauses.len() as f64;
+        metrics.avg_pause_duration_ns = mean(&pauses);
     }
 
     metrics.percentiles = if ikis.len() < 5 {

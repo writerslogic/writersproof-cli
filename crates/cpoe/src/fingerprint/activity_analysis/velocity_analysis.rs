@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::fingerprint::activity::{weighted_blend, WeightedDistribution};
 
 /// Burst threshold: intervals shorter than this (ms) are considered burst typing.
-const BURST_THRESHOLD_MS: f64 = 200.0;
+const BURST_THRESHOLD_MS: f64 = crate::forensics::constants::BURST_THRESHOLD_MS;
 
 /// Rolling window size for max sustained speed.
 const ROLLING_WINDOW: usize = 3;
@@ -100,7 +100,7 @@ impl VelocityProfile {
             }
         } else {
             // Fewer than ROLLING_WINDOW speeds: use the average of what we have.
-            let avg = burst_speeds.iter().sum::<f64>() / burst_speeds.len() as f64;
+            let avg = crate::utils::mean(&burst_speeds);
             if avg.is_finite() && avg > self.max_sustained_speed {
                 self.max_sustained_speed = avg;
             }

@@ -98,8 +98,7 @@ crate::ffi::types::impl_ffi_err!(FfiBeaconListResult);
 
 fn beacon_sidecar_path(document_path: &str) -> Option<std::path::PathBuf> {
     let data_dir = crate::ffi::helpers::get_data_dir()?;
-    let path_hash = crate::utils::sha256_of_path(std::path::Path::new(document_path));
-    let doc_id = hex::encode(&path_hash[0..8]);
+    let doc_id = crate::utils::document_id_from_path(std::path::Path::new(document_path));
     Some(data_dir.join(format!("{doc_id}.beacon.json")))
 }
 

@@ -143,7 +143,7 @@ const REVISION_SCATTER_WEIGHT: f64 = 0.04;
 const PAUSE_BURST_CORR_WEIGHT: f64 = 0.04;
 
 /// Minimum inter-event gap (nanoseconds) to count as a "thinking pause" (2 seconds).
-const THINKING_PAUSE_THRESHOLD_NS: i64 = 2_000_000_000;
+const THINKING_PAUSE_THRESHOLD_NS: i64 = super::constants::PAUSE_THRESHOLD_NS as i64;
 
 /// Cognitive score at or above this threshold classifies as Cognitive.
 const COGNITIVE_THRESHOLD: f64 = 0.65;
@@ -451,7 +451,7 @@ pub fn analyze_revision_patterns(sorted: SortedEvents<'_>) -> RevisionPattern {
     let avg_revision_depth = if revision_depths.is_empty() {
         0.0
     } else {
-        revision_depths.iter().sum::<f64>() / revision_depths.len() as f64
+        crate::utils::mean(&revision_depths)
     };
 
     let revision_fraction = if deltas.is_empty() {

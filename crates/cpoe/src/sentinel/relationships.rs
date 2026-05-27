@@ -157,7 +157,7 @@ pub fn detect_co_edited_files(
             let avg_gap_ms = if gaps.is_empty() {
                 0.0
             } else {
-                gaps.iter().sum::<f64>() / gaps.len() as f64
+                crate::utils::mean(&gaps)
             };
             CoEditedPair {
                 path_a: path_a.clone(),

@@ -254,7 +254,7 @@ impl TamperingDetector {
             return false;
         }
 
-        let mean_iki = ikis_ms.iter().sum::<f64>() / ikis_ms.len() as f64;
+        let mean_iki = crate::utils::mean(&ikis_ms);
         let max_wpm = 60000.0 / (mean_iki * 5.0); // 5 chars per word
 
         max_wpm > self.speed_limit_wpm
@@ -281,7 +281,7 @@ impl TamperingDetector {
             return false;
         }
 
-        let mean = ikis_ms.iter().sum::<f64>() / ikis_ms.len() as f64;
+        let mean = crate::utils::mean(&ikis_ms);
         let variance =
             ikis_ms.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
         let std_dev = variance.sqrt();

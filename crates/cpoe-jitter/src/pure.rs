@@ -25,8 +25,8 @@ impl PureJitter {
 impl Default for PureJitter {
     fn default() -> Self {
         Self {
-            jmin: 500,
-            range: 2500,
+            jmin: crate::DEFAULT_JITTER_MIN_US,
+            range: crate::DEFAULT_JITTER_RANGE_US,
         }
     }
 }

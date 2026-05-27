@@ -184,18 +184,12 @@ pub fn ed25519_pubkey_to_did_key(pubkey: &[u8]) -> String {
 }
 
 pub fn write_restrictive(path: &Path, data: &[u8]) -> Result<()> {
-    // Write to temp file first, set permissions, then atomic rename.
-    // This prevents a window where the file exists with wrong permissions.
-    let tmp = PathBuf::from(format!("{}.tmp", path.display()));
-    fs::write(&tmp, data).map_err(|e| anyhow!("write {}: {}", tmp.display(), e))?;
-    cpoe::restrict_permissions(&tmp, 0o600).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        anyhow!("chmod {}: {}", tmp.display(), e)
-    })?;
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        anyhow!("rename {} → {}: {}", tmp.display(), path.display(), e)
-    })?;
+    // Use engine's atomic_write (unpredictable temp name + fsync + rename),
+    // then restrict permissions to owner-only.
+    cpoe::crypto::atomic_write(path, data)
+        .map_err(|e| anyhow!("write {}: {}", path.display(), e))?;
+    cpoe::restrict_permissions(path, 0o600)
+        .map_err(|e| anyhow!("chmod {}: {}", path.display(), e))?;
     Ok(())
 }
 

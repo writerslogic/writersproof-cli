@@ -86,41 +86,7 @@ pub(crate) fn load_hmac_key() -> Option<Zeroizing<Vec<u8>>> {
 
 /// Load the Ed25519 signing key from the data directory, zeroizing intermediates.
 pub(crate) fn load_signing_key() -> Result<ed25519_dalek::SigningKey, String> {
-    use std::io::Read;
-    use zeroize::Zeroize;
-
-    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
-    let key_path = data_dir.join("signing_key");
-    // Open first, then fstat the handle to avoid TOCTOU between stat and open.
-    let key_file = std::fs::File::open(&key_path)
-        .map_err(|e| format!("Failed to open signing key: {e}"))?;
-    let meta = key_file
-        .metadata()
-        .map_err(|e| format!("Failed to stat signing key: {e}"))?;
-    if !meta.is_file() {
-        return Err("Signing key path is not a regular file".to_string());
-    }
-    if meta.len() > 1024 {
-        return Err(format!("Signing key file too large: {} bytes", meta.len()));
-    }
-    let mut key_data = Zeroizing::new(Vec::new());
-    {
-        let mut f = key_file;
-        f.read_to_end(&mut key_data)
-            .map_err(|e| format!("Failed to read signing key: {e}"))?;
-    }
-    if key_data.len() < 32 {
-        return Err("Signing key is too short".to_string());
-    }
-    let mut secret: Zeroizing<[u8; 32]> = Zeroizing::new(
-        key_data[..32]
-            .try_into()
-            .map_err(|_| "Invalid signing key length".to_string())?,
-    );
-    drop(key_data);
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(&secret);
-    secret.zeroize();
-    Ok(signing_key)
+    crate::crypto::load_signing_key().map_err(|e| e.to_string())
 }
 
 /// Load a cached CA-signed X.509 certificate, or fall back to self-signed.

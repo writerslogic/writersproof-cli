@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use super::{Binding, Capabilities, Provider, Quote, TpmError};
-use crate::DateTimeNanosExt;
 use crate::MutexRecover;
 use chrono::Utc;
 use ed25519_dalek::Signer;
@@ -103,10 +102,7 @@ impl Provider for SoftwareProvider {
     fn quote(&self, nonce: &[u8], _pcrs: &[u32]) -> Result<Quote, TpmError> {
         let device_id = self.device_id();
         let timestamp = Utc::now();
-        let mut payload = Vec::new();
-        payload.extend_from_slice(nonce);
-        payload.extend_from_slice(&timestamp.timestamp_nanos_safe().to_le_bytes());
-        payload.extend_from_slice(device_id.as_bytes());
+        let payload = super::build_binding_payload(nonce, &timestamp, &device_id);
 
         let signature = self.sign_payload(&payload);
         let public_key = self.public_key();

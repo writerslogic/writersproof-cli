@@ -37,6 +37,13 @@ pub mod traits;
 pub use cognitive::CognitiveTemporalMetrics;
 pub use evidence::{Evidence, EvidenceChain, MAX_EVIDENCE_RECORDS};
 
+/// Default minimum jitter delay in microseconds.
+pub const DEFAULT_JITTER_MIN_US: u32 = 500;
+/// Default maximum jitter delay in microseconds.
+pub const DEFAULT_JITTER_MAX_US: u32 = 3000;
+/// Default jitter range (max - min) in microseconds.
+pub const DEFAULT_JITTER_RANGE_US: u32 = DEFAULT_JITTER_MAX_US - DEFAULT_JITTER_MIN_US;
+
 /// Logistic sigmoid: maps a real value to [0, 1] with steepness `k` around `midpoint`.
 /// Used throughout the forensic classifiers for score normalization.
 #[inline]

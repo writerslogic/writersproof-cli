@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// IKI threshold for burst detection (ms)
-const BURST_IKI_THRESHOLD_MS: f64 = 200.0;
+const BURST_IKI_THRESHOLD_MS: f64 = crate::forensics::constants::BURST_THRESHOLD_MS;
 /// IKI threshold for pause detection (ms)
 const PAUSE_IKI_THRESHOLD_MS: f64 = 500.0;
 
@@ -122,7 +122,7 @@ impl SessionSignature {
             0.0
         };
         self.mean_burst_length = if !burst_lengths.is_empty() {
-            burst_lengths.iter().sum::<f64>() / burst_lengths.len() as f64
+            crate::utils::mean(&burst_lengths)
         } else {
             0.0
         };

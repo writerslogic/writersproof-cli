@@ -78,8 +78,8 @@ impl Default for HumanModel {
             iki_max_us: 2_000_000,
             iki_mean_us: 200_000,
             iki_std_us: 80_000,
-            jitter_min_us: 500,
-            jitter_max_us: 3000,
+            jitter_min_us: crate::DEFAULT_JITTER_MIN_US,
+            jitter_max_us: crate::DEFAULT_JITTER_MAX_US,
             min_sequence_length: 20,
             max_perfect_ratio: 0.05,
         }

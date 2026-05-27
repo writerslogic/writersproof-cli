@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::cpoe_jitter_bridge::helpers::interval_to_bucket;
-use crate::jitter::{encode_zone_transition, keycode_to_zone, TypingProfile, ZoneTransition};
+use crate::jitter::{encode_zone_transition, keycode_to_zone, TypingProfile};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -69,27 +69,6 @@ impl ZoneTrackingEngine {
     }
 
     fn update_profile(&mut self, from_zone: i32, to_zone: i32, bucket: u8) {
-        let idx = bucket as usize;
-        if idx >= self.profile.same_finger_hist.len() {
-            return;
-        }
-        let trans = ZoneTransition {
-            from: from_zone,
-            to: to_zone,
-        };
-        if trans.is_same_finger() {
-            self.profile.same_finger_hist[idx] =
-                self.profile.same_finger_hist[idx].saturating_add(1);
-        } else if trans.is_same_hand() {
-            self.profile.same_hand_hist[idx] = self.profile.same_hand_hist[idx].saturating_add(1);
-        } else {
-            self.profile.alternating_hist[idx] =
-                self.profile.alternating_hist[idx].saturating_add(1);
-            self.profile.alternating_count = self.profile.alternating_count.saturating_add(1);
-        }
-
-        self.profile.total_transitions += 1;
-        self.profile.hand_alternation =
-            self.profile.alternating_count as f32 / self.profile.total_transitions as f32;
+        self.profile.record_transition(from_zone, to_zone, bucket);
     }
 }

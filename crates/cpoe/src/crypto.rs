@@ -388,6 +388,53 @@ pub fn restrict_permissions(path: &Path, mode: u32) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Load the Ed25519 signing key from the data directory with full hardening:
+/// symlink-attack protection via `open_validated`/`canonicalize_validated`,
+/// Unix permission check (rejects group/other-readable keys), and zeroization.
+pub(crate) fn load_signing_key() -> crate::error::Result<ed25519_dalek::SigningKey> {
+    let data_dir = crate::utils::get_data_dir()
+        .ok_or_else(|| crate::error::Error::identity("Data directory not found"))?;
+    let key_path = data_dir.join("signing_key");
+    let (canonical, file) = crate::utils::fs::open_validated(&key_path)
+        .map_err(|e| crate::error::Error::identity(format!("open signing key: {e}")))?;
+    let canonical_data_dir = crate::utils::fs::canonicalize_validated(&data_dir)
+        .map_err(|e| crate::error::Error::identity(format!("canonicalize data directory: {e}")))?;
+    if !canonical.starts_with(&canonical_data_dir) {
+        return Err(crate::error::Error::identity(
+            "signing key path resolves outside data directory (possible symlink attack)",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let meta = file
+            .metadata()
+            .map_err(|e| crate::error::Error::identity(format!("stat signing key: {e}")))?;
+        let mode = meta.mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(crate::error::Error::identity(format!(
+                "signing key file has unsafe permissions {:o}; expected owner-only",
+                mode
+            )));
+        }
+    }
+    let mut buf = Vec::new();
+    let mut reader = std::io::BufReader::new(file);
+    reader
+        .read_to_end(&mut buf)
+        .map_err(|e| crate::error::Error::identity(format!("read signing key: {e}")))?;
+    let key_data = Zeroizing::new(buf);
+    if key_data.len() != 32 {
+        return Err(crate::error::Error::identity(format!(
+            "signing key file has invalid length {} (expected exactly 32)",
+            key_data.len()
+        )));
+    }
+    let mut secret = Zeroizing::new([0u8; 32]);
+    secret.copy_from_slice(&key_data[..32]);
+    Ok(ed25519_dalek::SigningKey::from_bytes(&secret))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

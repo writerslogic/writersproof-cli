@@ -284,13 +284,8 @@ pub fn get_or_create_puf() -> Result<Box<dyn PufProvider>, KeyHierarchyError> {
 }
 
 fn writersproof_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("CPOE_DATA_DIR") {
-        return PathBuf::from(dir);
-    }
-    if let Some(home) = dirs::home_dir() {
-        return home.join(".writersproof");
-    }
-    PathBuf::from(".writersproof")
+    crate::utils::get_legacy_data_dir()
+        .unwrap_or_else(|| PathBuf::from(".writersproof"))
 }
 
 struct HardwarePUF {

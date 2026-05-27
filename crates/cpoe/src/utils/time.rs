@@ -34,6 +34,16 @@ pub fn now_secs() -> u64 {
         .as_secs()
 }
 
+/// Current time as milliseconds since the UNIX epoch.
+#[inline]
+pub fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u64::MAX as u128) as u64
+}
+
 /// Convert nanoseconds to seconds as `f64`.
 #[inline]
 pub fn ns_to_secs(nanos: i64) -> f64 {

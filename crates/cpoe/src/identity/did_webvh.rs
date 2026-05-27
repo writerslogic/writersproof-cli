@@ -7,7 +7,6 @@
 //! key is derived from the master identity via HKDF with a dedicated domain
 //! separator, so a compromise of the did:webvh key does not expose the master.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use affinidi_data_integrity::DataIntegrityError;
@@ -325,7 +324,7 @@ impl WebVHIdentity {
     /// Save the did:webvh state to disk.
     pub fn save(&self) -> Result<(), Error> {
         log::debug!("WebVHIdentity::save: did={}", self.did);
-        let data_dir = data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
+        let data_dir = crate::utils::get_data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
         std::fs::create_dir_all(&data_dir)
             .map_err(|e| Error::identity(format!("create data directory: {e}")))?;
         let dir_meta = std::fs::symlink_metadata(&data_dir)
@@ -382,7 +381,7 @@ impl WebVHIdentity {
     /// Load a previously saved did:webvh identity from disk.
     pub fn load() -> Result<Self, Error> {
         log::debug!("WebVHIdentity::load");
-        let data_dir = data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
+        let data_dir = crate::utils::get_data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
 
         let meta_path = data_dir.join("did_webvh_meta.json");
         let (_canonical, meta_file) = crate::utils::fs::open_validated(&meta_path)
@@ -440,7 +439,7 @@ pub fn load_active_did() -> Result<String, Error> {
     if let Ok(identity) = WebVHIdentity::load() {
         return Ok(identity.did);
     }
-    let sk = load_signing_key()?;
+    let sk = crate::crypto::load_signing_key()?;
     did_key_from_public(sk.verifying_key().as_bytes())
         .ok_or_else(|| Error::identity("invalid public key length for did:key"))
 }
@@ -623,65 +622,6 @@ pub async fn verify_packet_author_did(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn data_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("CPOE_DATA_DIR") {
-        return Some(PathBuf::from(dir));
-    }
-    #[cfg(target_os = "macos")]
-    {
-        dirs::home_dir().map(|h| h.join("Library/Application Support/WritersProof"))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        dirs::data_local_dir().map(|d| d.join("CPoE"))
-    }
-}
-
-fn load_signing_key() -> Result<SigningKey, Error> {
-    let data_dir =
-        data_dir().ok_or_else(|| Error::identity("Data directory not found"))?;
-    let key_path = data_dir.join("signing_key");
-    let (canonical, file) = crate::utils::fs::open_validated(&key_path)
-        .map_err(|e| Error::identity(format!("open signing key: {e}")))?;
-    let canonical_data_dir = crate::utils::fs::canonicalize_validated(&data_dir)
-        .map_err(|e| Error::identity(format!("canonicalize data directory: {e}")))?;
-    if !canonical.starts_with(&canonical_data_dir) {
-        return Err(Error::identity(
-            "signing key path resolves outside data directory (possible symlink attack)",
-        ));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        let meta = file
-            .metadata()
-            .map_err(|e| Error::identity(format!("stat signing key: {e}")))?;
-        let mode = meta.mode() & 0o777;
-        if mode & 0o077 != 0 {
-            return Err(Error::identity(format!(
-                "signing key file has unsafe permissions {:o}; expected owner-only",
-                mode
-            )));
-        }
-    }
-    use std::io::Read;
-    let mut buf = Vec::new();
-    let mut reader = std::io::BufReader::new(file);
-    reader
-        .read_to_end(&mut buf)
-        .map_err(|e| Error::identity(format!("read signing key: {e}")))?;
-    let key_data = zeroize::Zeroizing::new(buf);
-    if key_data.len() != 32 {
-        return Err(Error::identity(format!(
-            "signing key file has invalid length {} (expected exactly 32)",
-            key_data.len()
-        )));
-    }
-    let mut secret = zeroize::Zeroizing::new([0u8; 32]);
-    secret.copy_from_slice(&key_data[..32]);
-    Ok(SigningKey::from_bytes(&secret))
-}
 
 /// Decode a multibase+multicodec Ed25519 public key string to raw 32-byte key.
 /// Handles base58btc ('z') and base16 ('f'/'F') encodings.

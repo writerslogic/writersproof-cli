@@ -140,7 +140,10 @@ impl MachToWallClock {
         }
         let mach_ticks = unsafe { mach_absolute_time() };
         let mach_ns = mach_ticks as u128 * info.numer as u128 / info.denom as u128;
-        let utc_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let utc_ns = {
+            use crate::utils::DateTimeNanosExt;
+            chrono::Utc::now().timestamp_nanos_safe()
+        };
         Self {
             utc_ns,
             mach_ns: mach_ns as u64,

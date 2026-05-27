@@ -149,10 +149,6 @@ pub(super) fn hardware_uuid() -> Option<String> {
 }
 
 pub(super) fn writersproof_dir() -> Result<PathBuf, TpmError> {
-    if let Ok(dir) = std::env::var("CPOE_DATA_DIR") {
-        return Ok(PathBuf::from(dir));
-    }
-    dirs::home_dir()
-        .map(|d| d.join(".writersproof"))
+    crate::utils::get_legacy_data_dir()
         .ok_or_else(|| TpmError::Configuration("cannot determine home directory".into()))
 }

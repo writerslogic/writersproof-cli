@@ -206,7 +206,7 @@ pub(super) fn compute_anonymized_statistics(
     let (mean, std_dev) = if jitter_values.is_empty() {
         (0.0, 0.0)
     } else {
-        let mean = jitter_values.iter().sum::<f64>() / jitter_values.len() as f64;
+        let mean = crate::utils::mean(&jitter_values);
         let variance = jitter_values
             .iter()
             .map(|v| (v - mean).powi(2))

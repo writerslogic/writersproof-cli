@@ -192,8 +192,7 @@ impl Chain {
     ) -> Result<Self> {
         let abs_path = crate::utils::fs::canonicalize_validated(document_path.as_ref())?;
         let path_str = abs_path.to_string_lossy().to_string();
-        let path_hash = crate::utils::sha256_of_path(&abs_path);
-        let document_id = hex::encode(&path_hash[0..8]);
+        let document_id = crate::utils::document_id_from_path(&abs_path);
 
         Ok(Self {
             metadata: ChainMetadata {
@@ -686,8 +685,7 @@ impl Chain {
         writersproof_dir: impl AsRef<Path>,
     ) -> Result<PathBuf> {
         let abs_path = fs::canonicalize(document_path.as_ref())?;
-        let path_hash = crate::utils::sha256_of_path(&abs_path);
-        let doc_id = hex::encode(&path_hash[0..8]);
+        let doc_id = crate::utils::document_id_from_path(&abs_path);
         let chain_path = writersproof_dir
             .as_ref()
             .join("chains")
@@ -712,8 +710,7 @@ impl Chain {
 
         let mut chain = Self::new(&document_path, vdf_params)?;
         let abs_path = fs::canonicalize(document_path.as_ref())?;
-        let path_hash = crate::utils::sha256_of_path(&abs_path);
-        let doc_id = hex::encode(&path_hash[0..8]);
+        let doc_id = crate::utils::document_id_from_path(&abs_path);
         chain.storage_path = Some(
             writersproof_dir
                 .as_ref()

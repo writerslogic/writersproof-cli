@@ -300,7 +300,7 @@ pub fn compute_dictation_analytics(
             let gap_ns = pair[1].start_ns.saturating_sub(pair[0].end_ns);
             gaps.push(gap_ns as f64);
         }
-        let mean_gap = gaps.iter().sum::<f64>() / gaps.len() as f64;
+        let mean_gap = crate::utils::mean(&gaps);
         if mean_gap > 0.0 {
             let var = gaps.iter().map(|g| (g - mean_gap).powi(2)).sum::<f64>() / gaps.len() as f64;
             var.sqrt() / mean_gap

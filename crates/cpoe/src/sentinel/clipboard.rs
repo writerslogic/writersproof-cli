@@ -23,6 +23,7 @@
 use crate::error::Error;
 use crate::sentinel::types::DocumentSession;
 use crate::utils::crypto_helpers;
+use crate::utils::DateTimeNanosExt;
 use crate::{MutexRecover, RwLockRecover};
 use chrono::Utc;
 use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder};
@@ -43,22 +44,7 @@ const CLIPBOARD_DEBOUNCE_MS: u64 = 100;
 /// Maximum monitored apps to prevent resource exhaustion.
 const MAX_MONITORED_APPS: usize = 50;
 
-/// Bundle IDs of known AI assistant applications.
-/// Pastes originating from these apps are flagged with `PASTE_FROM_AI_TOOL`.
-const KNOWN_AI_APP_BUNDLE_IDS: &[&str] = &[
-    "com.anthropic.claudefordesktop",
-    "com.openai.chat",
-    "com.microsoft.copilot",
-    "com.github.copilot",
-    "com.cursor.Cursor",
-    "com.todesktop.230313mzl4w4u92",  // Cursor alternative ID
-    "com.google.bard",
-    "com.google.gemini",
-    "com.perplexity.mac",
-    "io.perplexity.macos",
-    "com.mistral.mistral",
-    "com.cohere.coral",
-];
+use crate::forensics::constants::KNOWN_AI_APP_BUNDLE_IDS;
 
 /// Default monitored applications (writing apps).
 fn default_monitored_apps() -> Vec<String> {
@@ -487,7 +473,7 @@ impl ClipboardMonitor {
         fragment_hash: &[u8; 32],
         signed_evidence: Option<&[u8]>,
     ) -> std::result::Result<(), ClipboardError> {
-        let now = Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let now = Utc::now().timestamp_nanos_safe();
 
         store
             .insert_clipboard_event(

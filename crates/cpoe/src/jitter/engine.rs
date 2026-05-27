@@ -10,7 +10,7 @@ use zeroize::Zeroize;
 use super::content::compute_jitter_sample_hash;
 use super::profile::interval_to_bucket;
 use super::zones::keycode_to_zone;
-use super::zones::{encode_zone_transition, ZoneTransition};
+use super::zones::encode_zone_transition;
 
 /// Zone-committed jitter sample captured during real-time keystroke monitoring.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +48,28 @@ pub struct TypingProfile {
     pub total_transitions: u64,
     #[serde(skip)]
     pub(crate) alternating_count: u64,
+}
+
+impl TypingProfile {
+    /// Record a zone transition into the appropriate histogram bucket.
+    pub fn record_transition(&mut self, from_zone: i32, to_zone: i32, bucket: u8) {
+        let idx = bucket.min(9) as usize;
+        let trans = super::zones::ZoneTransition {
+            from: from_zone,
+            to: to_zone,
+        };
+        if trans.is_same_finger() {
+            self.same_finger_hist[idx] = self.same_finger_hist[idx].saturating_add(1);
+        } else if trans.is_same_hand() {
+            self.same_hand_hist[idx] = self.same_hand_hist[idx].saturating_add(1);
+        } else {
+            self.alternating_hist[idx] = self.alternating_hist[idx].saturating_add(1);
+            self.alternating_count = self.alternating_count.saturating_add(1);
+        }
+        self.total_transitions = self.total_transitions.saturating_add(1);
+        self.hand_alternation =
+            self.alternating_count as f32 / self.total_transitions as f32;
+    }
 }
 
 /// Real-time zone-committed jitter engine for keystroke monitoring sessions.
@@ -149,26 +171,6 @@ impl JitterEngine {
     }
 
     fn update_profile(&mut self, from_zone: i32, to_zone: i32, bucket: u8) {
-        let bucket = bucket.min(9) as usize;
-        let trans = ZoneTransition {
-            from: from_zone,
-            to: to_zone,
-        };
-        if trans.is_same_finger() {
-            self.profile.same_finger_hist[bucket] =
-                self.profile.same_finger_hist[bucket].saturating_add(1);
-        } else if trans.is_same_hand() {
-            self.profile.same_hand_hist[bucket] =
-                self.profile.same_hand_hist[bucket].saturating_add(1);
-        } else {
-            self.profile.alternating_hist[bucket] =
-                self.profile.alternating_hist[bucket].saturating_add(1);
-            self.profile.alternating_count = self.profile.alternating_count.saturating_add(1);
-        }
-
-        self.profile.total_transitions = self.profile.total_transitions.saturating_add(1);
-        // Compute in f64 for precision, then narrow to f32
-        let ratio = self.profile.alternating_count as f64 / self.profile.total_transitions as f64;
-        self.profile.hand_alternation = ratio as f32;
+        self.profile.record_transition(from_zone, to_zone, bucket);
     }
 }

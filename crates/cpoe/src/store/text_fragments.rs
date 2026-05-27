@@ -140,9 +140,7 @@ impl SecureStore {
             );
         }
 
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_millis() as i64;
+        let now_ms = crate::utils::now_ms() as i64;
 
         // Check nonce hasn't been used before
         let nonce_used: bool = self
@@ -584,10 +582,7 @@ pub enum SyncResolutionStrategy {
 /// Panics if the system clock is before the Unix epoch, indicating a severely
 /// misconfigured system unsuitable for evidence timestamping.
 pub fn current_timestamp_ms() -> i64 {
-    let duration = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock is before Unix epoch; evidence timestamps require a valid clock");
-    i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+    crate::utils::now_ms() as i64
 }
 
 /// Generate a 16-byte cryptographic random nonce.
