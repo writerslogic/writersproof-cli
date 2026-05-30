@@ -312,6 +312,9 @@ pub fn handle_focus_event_sync(
                 session_events_tx,
             );
         }
+        FocusEventType::ValueChanged => {
+            // Handled in handle_focus_branch before delegation; should not reach here.
+        }
         FocusEventType::FocusLost | FocusEventType::FocusUnknown => {
             let prev_path = {
                 let focus = current_focus.read_recover();
@@ -842,7 +845,9 @@ pub fn end_session_sync(
 ) {
     let session = sessions.write_recover().remove(path);
 
-    if let Some(session) = session {
+    if let Some(mut session) = session {
+        session.transcription_detector.clear_buffer();
+        session.transcription_detector.clear_matches();
         // Intentionally ignored: broadcast send fails only when no receivers are subscribed
         let _ = session_events_tx.send(SessionEvent {
             event_type: SessionEventType::Ended,
@@ -861,7 +866,9 @@ pub fn end_all_sessions_sync(
 ) {
     let all_sessions: Vec<_> = sessions.write_recover().drain().collect();
 
-    for (path, session) in all_sessions {
+    for (path, mut session) in all_sessions {
+        session.transcription_detector.clear_buffer();
+        session.transcription_detector.clear_matches();
         // Intentionally ignored: broadcast send fails only when no receivers are subscribed
         let _ = session_events_tx.send(SessionEvent {
             event_type: SessionEventType::Ended,
@@ -1427,6 +1434,7 @@ pub fn update_keystroke_context_window(
     paste_time: i64,
     context_window_ms: u64,
     source: super::types::PasteSource,
+    content_kind: super::types::PasteContentKind,
 ) {
     let window_nanos = context_window_ms
         .checked_mul(1_000_000)
@@ -1437,6 +1445,7 @@ pub fn update_keystroke_context_window(
         context_window_end: paste_time.saturating_add(window_nanos),
         keystroke_count_after_paste: 0,
         source,
+        content_kind,
     });
 }
 
@@ -2672,6 +2681,7 @@ mod tests {
             paste_time,
             30_000,
             PasteSource::Unknown,
+            PasteContentKind::default(),
         );
 
         assert!(session.paste_context.is_some());
@@ -2772,6 +2782,7 @@ mod tests {
             paste_time,
             30_000,
             PasteSource::SameDocument,
+            PasteContentKind::default(),
         );
         assert_eq!(
             session.paste_context.as_ref().unwrap().source,
@@ -2783,6 +2794,7 @@ mod tests {
             paste_time,
             30_000,
             PasteSource::External,
+            PasteContentKind::default(),
         );
         assert_eq!(
             session.paste_context.as_ref().unwrap().source,

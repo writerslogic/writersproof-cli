@@ -14,8 +14,8 @@ use crate::jitter;
 use crate::keyhierarchy;
 use crate::platform::HidDeviceInfo;
 use crate::presence;
-use crate::provenance;
-use crate::rfc_conversions::BiologyInvariantClaimExt;
+use crate::evidence::provenance;
+use crate::evidence::rfc_conversions::BiologyInvariantClaimExt;
 use crate::tpm;
 use crate::vdf;
 use authorproof_protocol::rfc::{
@@ -202,6 +202,7 @@ impl Builder {
             fingerprint: None,
             forgery_analysis: None,
             fingerprint_maturity: None,
+            paste_content_breakdown: None,
         });
         self
     }
@@ -234,6 +235,7 @@ impl Builder {
             fingerprint,
             forgery_analysis,
             fingerprint_maturity: None,
+            paste_content_breakdown: None,
         });
 
         self
@@ -249,6 +251,20 @@ impl Builder {
     ) -> Self {
         if let Some(ref mut beh) = self.packet.behavioral {
             beh.fingerprint_maturity = Some(maturity);
+        }
+        self
+    }
+
+    /// Attach paste content breakdown to an existing `BehavioralEvidence` layer.
+    ///
+    /// Must be called after `with_behavioral` or `with_behavioral_full`.
+    /// No-ops silently when no behavioral layer has been attached yet.
+    pub fn with_paste_content_breakdown(
+        mut self,
+        breakdown: crate::forensics::PasteContentBreakdown,
+    ) -> Self {
+        if let Some(ref mut beh) = self.packet.behavioral {
+            beh.paste_content_breakdown = Some(breakdown);
         }
         self
     }

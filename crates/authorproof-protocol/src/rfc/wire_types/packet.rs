@@ -103,7 +103,7 @@ pub struct EvidencePacketWire {
     pub author_did: Option<String>,
 
     /// Original document content embedded in the evidence packet.
-    /// When present, the .cpoe file is a self-contained archive: evidence
+    /// When present, the .c2pa file is a self-contained archive: evidence
     /// plus the document it attests. The content hash in `document` (key 5)
     /// must match SHA-256 of this field.
     #[serde(rename = "21", default, skip_serializing_if = "Option::is_none")]
@@ -135,7 +135,7 @@ pub struct EvidencePacketWire {
 /// Session-level behavioral metrics embedded in the evidence packet.
 ///
 /// These are raw observational metrics only.  Scores and verdicts belong
-/// in the attestation result (`.cwar`), not in the evidence packet, so
+/// in the attestation result, not in the evidence packet, so
 /// that relying parties can apply their own policy to the raw signals.
 ///
 /// ```cddl
@@ -210,6 +210,9 @@ pub struct ForensicSummaryWire {
     pub baseline_deviation: Option<f64>,
     #[serde(rename = "31", default)]
     pub ai_fluency_flag: bool,
+    /// Paste content breakdown: [prose, structured_data, media, formatting_only, mixed].
+    #[serde(rename = "32", default, skip_serializing_if = "Option::is_none")]
+    pub paste_content_breakdown: Option<[u32; 5]>,
 }
 
 impl EvidencePacketWire {

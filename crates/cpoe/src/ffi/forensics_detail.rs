@@ -22,8 +22,12 @@ fn millis_i64(v: u128) -> i64 {
     i64::try_from(v).unwrap_or(i64::MAX)
 }
 
-/// Trailing window duration for live cadence score (120 seconds).
-const LIVE_CADENCE_WINDOW_NS: i64 = 120_000_000_000;
+/// Trailing window duration for live cadence score (30 seconds).
+/// Short enough for the meter to respond within seconds when typing
+/// patterns change (e.g. switching from transcription to original
+/// writing), while still capturing enough samples for statistical
+/// cadence analysis at typical typing speeds.
+const LIVE_CADENCE_WINDOW_NS: i64 = 30_000_000_000;
 
 /// Return the suffix of `samples` whose timestamps fall within
 /// `window_ns` nanoseconds of the newest sample. Samples are
@@ -341,6 +345,12 @@ pub struct FfiCompositionModeSignals {
     pub paste_domesticate_pct: f64,
     pub paste_veneer_pct: f64,
     pub ai_mediated_pct: f64,
+    /// Paste events broken down by content kind.
+    pub paste_prose_count: u32,
+    pub paste_structured_data_count: u32,
+    pub paste_media_count: u32,
+    pub paste_formatting_only_count: u32,
+    pub paste_mixed_count: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -1262,6 +1272,11 @@ fn build_composition_ffi(
         paste_domesticate_pct: finite_or(cm.distribution.paste_domesticate, 0.0),
         paste_veneer_pct: finite_or(cm.distribution.paste_veneer, 0.0),
         ai_mediated_pct: finite_or(cm.distribution.ai_mediated, 0.0),
+        paste_prose_count: usize_u32(cm.paste_content_breakdown.prose_count),
+        paste_structured_data_count: usize_u32(cm.paste_content_breakdown.structured_data_count),
+        paste_media_count: usize_u32(cm.paste_content_breakdown.media_count),
+        paste_formatting_only_count: usize_u32(cm.paste_content_breakdown.formatting_only_count),
+        paste_mixed_count: usize_u32(cm.paste_content_breakdown.mixed_count),
     }
 }
 
@@ -1361,9 +1376,17 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
     // Cadence score from a trailing window of jitter samples so the
     // dashboard score reflects recent typing behavior rather than
     // converging to a fixed value over the full session history.
+    // Uses the raw cadence quality without the maturity ramp, since
+    // the short window (~30s) would artificially suppress the score.
+    // Full-session maturity is conveyed separately via evidence_maturity.
     let cadence_score = finite_or({
         let window = recent_jitter_window(&session.jitter_samples, LIVE_CADENCE_WINDOW_NS);
-        crate::forensics::scoring::cadence_score_from_samples(window)
+        if window.len() < 10 {
+            0.0
+        } else {
+            let metrics = crate::forensics::analyze_cadence(window);
+            crate::forensics::compute_cadence_score(&metrics)
+        }
     }, 0.0);
 
     // Composition mode from cached focus/paste data.

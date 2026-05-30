@@ -334,10 +334,6 @@ pub fn to_signed_verifiable_credential(
 /// COSE content type for Verifiable Credentials per W3C VC+COSE spec (May 2025).
 const COSE_VC_CONTENT_TYPE: &str = "application/vc+cose";
 
-/// Legacy COSE content type accepted for backward compatibility.
-#[allow(dead_code)]
-const COSE_VC_CONTENT_TYPE_LEGACY: &str = "application/vc";
-
 /// Produce a COSE_Sign1-secured Verifiable Credential.
 ///
 /// Per the W3C "Securing Verifiable Credentials using JOSE and COSE"
@@ -353,7 +349,6 @@ pub fn to_cose_secured_vc(
 ) -> Result<Vec<u8>> {
     let vc = build_vc_core(ear, author_did)?;
 
-    // Serialize the VC as CBOR payload.
     let vc_json = serde_json::to_value(&vc)
         .map_err(|e| Error::evidence(format!("VC serialization failed: {e}")))?;
     let mut payload_bytes = Vec::new();

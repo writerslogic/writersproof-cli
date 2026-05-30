@@ -167,7 +167,6 @@ impl SecureStore {
         Ok(store)
     }
 
-    /// Persist a clipboard event to the database.
     #[allow(clippy::too_many_arguments)]
     pub fn insert_clipboard_event(
         &self,
@@ -179,6 +178,8 @@ impl SecureStore {
         timestamp: i64,
         captured_at: i64,
         signed_evidence: Option<&[u8]>,
+        content_kind: Option<u8>,
+        pasteboard_types: Option<&str>,
     ) -> anyhow::Result<()> {
         // Reject timestamps more than 15 minutes in the future. The 15-minute window
         // matches NTP's maximum step-back tolerance: a clock corrected backward by up
@@ -193,7 +194,6 @@ impl SecureStore {
             anyhow::bail!("Clipboard event timestamp is too far in the future");
         }
 
-        // Compute HMAC-SHA256 over evidence-critical fields.
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.hmac_key)
@@ -210,12 +210,15 @@ impl SecureStore {
         if let Some(se) = signed_evidence {
             mac.update(se);
         }
+        if let Some(ck) = content_kind {
+            mac.update(&[ck]);
+        }
         let hmac_tag: [u8; 32] = mac.finalize().into_bytes().into();
 
         self.conn.execute(
             "INSERT INTO clipboard_events
-             (fragment_hash, app_bundle_id, window_title, text_hash, pasteboard_change_count, timestamp, captured_at, hmac, signed_evidence)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             (fragment_hash, app_bundle_id, window_title, text_hash, pasteboard_change_count, timestamp, captured_at, hmac, signed_evidence, content_kind, pasteboard_types)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rusqlite::params![
                 fragment_hash,
                 app_bundle_id,
@@ -225,7 +228,9 @@ impl SecureStore {
                 timestamp,
                 captured_at,
                 hmac_tag,
-                signed_evidence
+                signed_evidence,
+                content_kind,
+                pasteboard_types
             ],
         )?;
         Ok(())

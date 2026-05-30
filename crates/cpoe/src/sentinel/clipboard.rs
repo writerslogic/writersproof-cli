@@ -21,7 +21,7 @@
 //! 4. Emit EvidenceEvent to broadcast channel
 
 use crate::error::Error;
-use crate::sentinel::types::DocumentSession;
+use crate::sentinel::types::{DocumentSession, PasteContentKind, PasteboardTypeInventory};
 use crate::utils::crypto_helpers;
 use crate::utils::DateTimeNanosExt;
 use crate::{MutexRecover, RwLockRecover};
@@ -61,63 +61,36 @@ fn default_monitored_apps() -> Vec<String> {
 }
 
 /// Clipboard monitoring errors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ClipboardError {
     /// NSPasteboard access denied (macOS only).
+    #[error("Pasteboard access denied")]
     PasteboardAccessDenied,
     /// Text encoding failed (non-UTF8 content).
+    #[error("Text encoding failed")]
     TextEncodingFailed,
     /// Clipboard data is invalid or corrupted.
+    #[error("Invalid pasteboard data")]
     InvalidPasteboardData,
     /// No monitored app is in focus.
+    #[error("No monitored app in focus")]
     NoMonitoredAppInFocus,
     /// Text fragment not found in store.
+    #[error("Text fragment not found")]
     NoFragmentFound,
     /// Session not active or not found.
+    #[error("Session not active")]
     SessionNotActive,
     /// Evidence serialization failed.
+    #[error("Evidence serialization failed")]
     EvidenceSerializationFailed,
     /// Monitoring limit exceeded (max apps).
+    #[error("Monitoring limit exceeded")]
     MonitoringLimitExceeded,
     /// Generic error with context.
+    #[error("{0}")]
     Other(String),
 }
-
-impl std::fmt::Display for ClipboardError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClipboardError::PasteboardAccessDenied => {
-                write!(f, "Pasteboard access denied")
-            }
-            ClipboardError::TextEncodingFailed => {
-                write!(f, "Text encoding failed")
-            }
-            ClipboardError::InvalidPasteboardData => {
-                write!(f, "Invalid pasteboard data")
-            }
-            ClipboardError::NoMonitoredAppInFocus => {
-                write!(f, "No monitored app in focus")
-            }
-            ClipboardError::NoFragmentFound => {
-                write!(f, "Text fragment not found")
-            }
-            ClipboardError::SessionNotActive => {
-                write!(f, "Session not active")
-            }
-            ClipboardError::EvidenceSerializationFailed => {
-                write!(f, "Evidence serialization failed")
-            }
-            ClipboardError::MonitoringLimitExceeded => {
-                write!(f, "Monitoring limit exceeded")
-            }
-            ClipboardError::Other(msg) => {
-                write!(f, "{}", msg)
-            }
-        }
-    }
-}
-
-impl std::error::Error for ClipboardError {}
 
 impl From<ClipboardError> for crate::error::Error {
     fn from(e: ClipboardError) -> Self {
@@ -140,6 +113,10 @@ pub struct CopyEvent {
     pub text_hash: [u8; 32],
     /// macOS NSPasteboard change counter for deduplication.
     pub pasteboard_change_count: i32,
+    /// Semantic type of the clipboard content.
+    pub content_kind: PasteContentKind,
+    /// Pasteboard types present at capture time.
+    pub pasteboard_types: PasteboardTypeInventory,
 }
 
 /// Evidence event for async broadcast to other subscribers.
@@ -155,6 +132,8 @@ pub struct EvidenceEvent {
     pub timestamp: i64,
     /// True when the paste originated from a known AI assistant application.
     pub from_ai_tool: bool,
+    /// Semantic type of the pasted content.
+    pub content_kind: PasteContentKind,
 }
 
 /// Returns `true` if the given bundle ID matches a known AI assistant app.
@@ -265,28 +244,23 @@ impl ClipboardMonitor {
                                 source_app: copy_event.app_bundle_id.clone(),
                                 timestamp: copy_event.timestamp,
                                 from_ai_tool,
+                                content_kind: copy_event.content_kind,
                             }) {
                                 log::debug!("No evidence subscribers: {e}");
                             }
                         }
                         Err(e) => {
                             log::trace!("Evidence attachment skipped: {}", e);
-                            // Expected for most copies (not from our sessions)
                         }
                     }
-                    // CB-007: Zeroize plaintext after evidence processing completes
                     copy_event.text.zeroize();
                 }
-                Ok(None) => {
-                    // No change; continue
-                }
+                Ok(None) => {}
                 Err(e) => {
                     log::warn!("Clipboard monitor error: {}", e);
-                    // Continue monitoring; transient errors are expected
                 }
             }
 
-            // CB-011: Support cancellation between poll cycles
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(100)) => {}
                 _ = cancel.cancelled() => {
@@ -308,41 +282,36 @@ impl ClipboardMonitor {
 
         let now = Utc::now().timestamp_millis();
 
-        // Debounce: reject if < 100ms since last copy (lock-free).
         let prev_time = self.last_copy_time.load(Ordering::Acquire);
         if now.saturating_sub(prev_time) < CLIPBOARD_DEBOUNCE_MS as i64 {
             return Ok(None);
         }
 
-        // Async pasteboard read — no locks held across this .await.
         let (current_count, text) = self.read_pasteboard().await?;
 
-        // Dedup via compare_exchange on change count. If another task raced
-        // and already processed this change count, we lose the CAS and skip.
         let prev_count = self.last_change_count.load(Ordering::Acquire);
         if current_count == prev_count {
             return Ok(None);
         }
 
-        // Validate text size and content
-        if text.is_empty() || text.len() > MAX_CLIPBOARD_TEXT_SIZE {
+        let pasteboard_types = super::platform_pasteboard_types().await;
+
+        if text.len() > MAX_CLIPBOARD_TEXT_SIZE {
+            return Ok(None);
+        }
+        // Allow empty text through for media-only pastes (images with no text).
+        if text.is_empty() && !pasteboard_types.has_image {
             return Ok(None);
         }
 
         let app_bundle_id = self.get_focused_app_bundle_id().await?;
 
-        // Only proceed if the focused app is monitored
-        {
-            let apps = self.monitored_apps.read_recover();
-            if !apps.contains(&app_bundle_id) {
-                return Ok(None);
-            }
+        if !self.verify_paste_source_bundle_id(&app_bundle_id)? {
+            return Ok(None);
         }
 
         let window_title = self.get_focused_window_title().await?;
 
-        // Claim this change count atomically. If another task got here first,
-        // compare_exchange fails and we skip (no duplicate processing).
         if self
             .last_change_count
             .compare_exchange(prev_count, current_count, Ordering::AcqRel, Ordering::Acquire)
@@ -352,6 +321,10 @@ impl ClipboardMonitor {
         }
         self.last_copy_time.store(now, Ordering::Release);
 
+        let content_kind = super::content_classifier::classify_paste_content_kind(
+            &text,
+            &pasteboard_types,
+        );
         let text_hash = crypto_helpers::compute_content_hash(text.as_bytes());
 
         Ok(Some(CopyEvent {
@@ -361,19 +334,11 @@ impl ClipboardMonitor {
             text,
             text_hash,
             pasteboard_change_count: current_count,
+            content_kind,
+            pasteboard_types,
         }))
     }
 
-    /// Try to attach evidence to pasteboard if text matches a session fragment.
-    ///
-    /// If text matches a fragment in active session:
-    /// 1. Build evidence packet
-    /// 2. Sign with COSE_Sign1
-    /// 3. Write to pasteboard as "com.writersproof.evidence"
-    /// 4. Cache evidence
-    /// 5. Emit EvidenceEvent
-    ///
-    /// If text not found or session inactive: return Err (expected).
     async fn try_attach_evidence(
         &self,
         copy_event: &CopyEvent,
@@ -383,7 +348,6 @@ impl ClipboardMonitor {
     ) -> std::result::Result<Option<Vec<u8>>, ClipboardError> {
         let text_hex = hex::encode(copy_event.text_hash);
 
-        // Collect focused session IDs under the lock, then drop it before awaiting.
         let focused_ids: Vec<String> = {
             let sessions_guard = sessions.read_recover();
             sessions_guard
@@ -394,7 +358,6 @@ impl ClipboardMonitor {
         };
 
         for session_id in &focused_ids {
-            // Lock store briefly for the lookup, then drop before any await.
             let matches = {
                 let guard = cached_store.lock_recover();
                 match guard.as_ref() {
@@ -427,7 +390,6 @@ impl ClipboardMonitor {
                     })
                 };
 
-                // Lock store again briefly for the persist.
                 {
                     let guard = cached_store.lock_recover();
                     if let Some(store) = guard.as_ref() {
@@ -485,6 +447,8 @@ impl ClipboardMonitor {
                 copy_event.timestamp,
                 now,
                 signed_evidence,
+                Some(copy_event.content_kind as u8),
+                Some(&copy_event.pasteboard_types.utis.join(",")),
             )
             .map_err(|e| ClipboardError::Other(format!("Database persist failed: {}", e)))?;
 
@@ -506,7 +470,6 @@ impl ClipboardMonitor {
     /// Check if a bundle ID is in the trusted monitored apps list.
     ///
     /// Returns Ok(true) if the app is monitored, Ok(false) otherwise.
-    #[allow(dead_code)]
     pub fn verify_paste_source_bundle_id(
         &self,
         bundle_id: &str,
@@ -629,6 +592,8 @@ mod tests {
             text: text.to_string(),
             text_hash: expected_hash,
             pasteboard_change_count: 1,
+            content_kind: PasteContentKind::default(),
+            pasteboard_types: PasteboardTypeInventory::default(),
         };
 
         assert_eq!(event.text_hash, expected_hash);
@@ -643,6 +608,7 @@ mod tests {
             source_app: "com.apple.Notes".to_string(),
             timestamp: 1000,
             from_ai_tool: false,
+            content_kind: PasteContentKind::default(),
         };
 
         assert_eq!(event.fragment_hash, hash);
@@ -670,6 +636,7 @@ mod tests {
             source_app: "test".to_string(),
             timestamp: 1000,
             from_ai_tool: false,
+            content_kind: PasteContentKind::default(),
         };
 
         let _ = monitor.pending_evidence_tx.send(event.clone());

@@ -91,7 +91,6 @@ impl SecureStore {
             return Ok(None);
         }
 
-        // Determine the archive file path.
         let archive_date = chrono::Utc::now().format("%Y%m%d");
         let db_dir = db_path
             .parent()
@@ -154,7 +153,6 @@ impl SecureStore {
             }
         }
 
-        // Create the archive database schema (written to .tmp path).
         self.create_archive_schema(&archive_tmp_path)?;
 
         // ATTACH the archive DB to the active connection so INSERT + DELETE

@@ -13,7 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::sentinel::types::{FocusSwitchRecord, PasteContext};
+use crate::sentinel::types::{FocusSwitchRecord, PasteContentKind, PasteContext};
 #[cfg(test)]
 use crate::sentinel::types::PasteSource;
 
@@ -49,6 +49,10 @@ const SCORE_WEIGHT_DOMESTICATE: f64 = 0.5;
 const SCORE_WEIGHT_VENEER: f64 = 0.1;
 /// Composite score weight for AI-mediated mode.
 const SCORE_WEIGHT_AI: f64 = 0.0;
+
+const PENALTY_STRUCTURED: f64 = 0.15;
+const PENALTY_MEDIA: f64 = 0.20;
+const PENALTY_MIXED: f64 = 0.30;
 
 use super::constants::{AI_APP_PATTERNS, BROWSER_BUNDLE_IDS};
 
@@ -98,6 +102,16 @@ pub struct CompositionModeDistribution {
     pub ai_mediated: f64,
 }
 
+/// Breakdown of paste events by content kind.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PasteContentBreakdown {
+    pub prose_count: usize,
+    pub structured_data_count: usize,
+    pub media_count: usize,
+    pub formatting_only_count: usize,
+    pub mixed_count: usize,
+}
+
 /// Complete composition mode analysis.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CompositionModeMetrics {
@@ -113,6 +127,8 @@ pub struct CompositionModeMetrics {
     pub focus_switch_count: usize,
     /// Composite score: 0.0 = AI-mediated/paste-veneer, 1.0 = pure composition.
     pub composite_score: f64,
+    /// Breakdown of paste events by content kind.
+    pub paste_content_breakdown: PasteContentBreakdown,
 }
 
 // ---------------------------------------------------------------------------
@@ -161,15 +177,30 @@ enum FocusSwitchClass {
     ExtendedAway,
 }
 
-/// Classify a paste event based on post-paste editing.
-fn classify_paste(paste: &PasteContext) -> PasteClass {
-    if paste.keystroke_count_after_paste >= 20 {
+/// Returns `(PasteClass, penalty)` where penalty 0.0–1.0 is how much this
+/// paste contributes to its penalty bucket (prose=1.0, tables/images reduced).
+fn classify_paste(paste: &PasteContext) -> (PasteClass, f64) {
+    if paste.content_kind == PasteContentKind::FormattingOnly {
+        return (PasteClass::Domesticated, 0.0);
+    }
+
+    let class = if paste.keystroke_count_after_paste >= 20 {
         PasteClass::Domesticated
     } else if paste.keystroke_count_after_paste <= 5 {
         PasteClass::Veneer
     } else {
         PasteClass::Moderate
-    }
+    };
+
+    let penalty = match paste.content_kind {
+        PasteContentKind::Prose => 1.0,
+        PasteContentKind::StructuredData => PENALTY_STRUCTURED,
+        PasteContentKind::Media => PENALTY_MEDIA,
+        PasteContentKind::Mixed => PENALTY_MIXED,
+        PasteContentKind::FormattingOnly => 0.0, // handled above
+    };
+
+    (class, penalty)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,17 +294,27 @@ pub fn analyze_composition_mode(
     }
 
     // Classify each paste event, skipping those already consumed by AI cycles.
-    let mut domesticated_count = 0usize;
-    let mut veneer_count = 0usize;
+    let mut domesticated_count = 0f64;
+    let mut veneer_count = 0f64;
+    let mut breakdown = PasteContentBreakdown::default();
 
     for (i, paste) in paste_contexts.iter().enumerate() {
+        match paste.content_kind {
+            PasteContentKind::Prose => breakdown.prose_count += 1,
+            PasteContentKind::StructuredData => breakdown.structured_data_count += 1,
+            PasteContentKind::Media => breakdown.media_count += 1,
+            PasteContentKind::FormattingOnly => breakdown.formatting_only_count += 1,
+            PasteContentKind::Mixed => breakdown.mixed_count += 1,
+        }
+
         if ai_consumed_paste.get(i).copied().unwrap_or(false) {
             continue;
         }
-        match classify_paste(paste) {
-            PasteClass::Domesticated => domesticated_count += 1,
-            PasteClass::Veneer => veneer_count += 1,
-            PasteClass::Moderate => {} // Counted in neither extreme.
+        let (class, penalty) = classify_paste(paste);
+        match class {
+            PasteClass::Domesticated => domesticated_count += penalty,
+            PasteClass::Veneer => veneer_count += penalty,
+            PasteClass::Moderate => {}
         }
     }
 
@@ -286,8 +327,8 @@ pub fn analyze_composition_mode(
     } else {
         0.0
     };
-    let paste_veneer_weight = veneer_count as f64 / total_signals;
-    let paste_domesticate_weight = domesticated_count as f64 / total_signals;
+    let paste_veneer_weight = veneer_count / total_signals;
+    let paste_domesticate_weight = domesticated_count / total_signals;
     let reference_weight = reference_count as f64 / total_signals;
 
     // Pure composition is what's left.
@@ -344,6 +385,7 @@ pub fn analyze_composition_mode(
         paste_event_count: paste_contexts.len(),
         focus_switch_count: focus_switches.len(),
         composite_score,
+        paste_content_breakdown: breakdown,
     })
 }
 
@@ -368,11 +410,20 @@ mod tests {
     }
 
     fn make_paste(keystroke_count: usize, source: PasteSource) -> PasteContext {
+        make_paste_with_kind(keystroke_count, source, PasteContentKind::Prose)
+    }
+
+    fn make_paste_with_kind(
+        keystroke_count: usize,
+        source: PasteSource,
+        content_kind: PasteContentKind,
+    ) -> PasteContext {
         PasteContext {
             paste_time: 1_000_000_000_000, // 1000s in ns
             context_window_end: 1_060_000_000_000,
             keystroke_count_after_paste: keystroke_count,
             source,
+            content_kind,
         }
     }
 
@@ -413,6 +464,7 @@ mod tests {
                 context_window_end: 0,
                 keystroke_count_after_paste: 3,
                 source: PasteSource::External,
+                content_kind: PasteContentKind::Prose,
             },
             PasteContext {
                 paste_time: (SystemTime::UNIX_EPOCH + Duration::from_secs(1045))
@@ -423,6 +475,7 @@ mod tests {
                 context_window_end: 0,
                 keystroke_count_after_paste: 2,
                 source: PasteSource::External,
+                content_kind: PasteContentKind::Prose,
             },
         ];
 
@@ -499,6 +552,7 @@ mod tests {
             context_window_end: 0,
             keystroke_count_after_paste: 3,
             source: PasteSource::External,
+            content_kind: PasteContentKind::Prose,
         }];
         let (cycles, consumed) = count_ai_cycles(&switches, &pastes);
         assert_eq!(cycles, 1, "one paste should match at most one cycle");
@@ -534,6 +588,7 @@ mod tests {
                     context_window_end: 0,
                     keystroke_count_after_paste: 1, // veneer-level
                     source: PasteSource::External,
+                    content_kind: PasteContentKind::Prose,
                 }
             })
             .collect();
@@ -553,5 +608,113 @@ mod tests {
         let pastes = vec![make_paste(10, PasteSource::External)];
         let result = analyze_composition_mode(&switches, &pastes, 50).unwrap();
         assert!(result.composite_score >= 0.0 && result.composite_score <= 1.0);
+    }
+
+    #[test]
+    fn test_structured_data_paste_higher_score_than_prose() {
+        let prose_pastes = vec![
+            make_paste(2, PasteSource::External),
+            make_paste(1, PasteSource::External),
+        ];
+        let table_pastes = vec![
+            make_paste_with_kind(2, PasteSource::External, PasteContentKind::StructuredData),
+            make_paste_with_kind(1, PasteSource::External, PasteContentKind::StructuredData),
+        ];
+        let prose_result = analyze_composition_mode(&[], &prose_pastes, 50).unwrap();
+        let table_result = analyze_composition_mode(&[], &table_pastes, 50).unwrap();
+        assert!(
+            table_result.composite_score > prose_result.composite_score,
+            "table paste score ({}) must exceed prose paste score ({})",
+            table_result.composite_score,
+            prose_result.composite_score,
+        );
+    }
+
+    #[test]
+    fn test_media_paste_higher_score_than_prose() {
+        let prose = vec![make_paste(2, PasteSource::External)];
+        let media = vec![
+            make_paste_with_kind(2, PasteSource::External, PasteContentKind::Media),
+        ];
+        let prose_result = analyze_composition_mode(&[], &prose, 50).unwrap();
+        let media_result = analyze_composition_mode(&[], &media, 50).unwrap();
+        assert!(
+            media_result.composite_score > prose_result.composite_score,
+            "media paste score ({}) must exceed prose paste score ({})",
+            media_result.composite_score,
+            prose_result.composite_score,
+        );
+    }
+
+    #[test]
+    fn test_formatting_only_no_penalty() {
+        let pastes = vec![
+            make_paste_with_kind(0, PasteSource::External, PasteContentKind::FormattingOnly),
+        ];
+        let result = analyze_composition_mode(&[], &pastes, 50).unwrap();
+        // FormattingOnly paste with 0 keystrokes should still yield near-perfect score
+        // because penalty=0.0 means it doesn't contribute to veneer/domesticate buckets.
+        assert!(
+            result.composite_score > 0.9,
+            "formatting-only paste should not penalize: {}",
+            result.composite_score,
+        );
+    }
+
+    #[test]
+    fn test_ai_mediated_overrides_content_kind() {
+        // Even if the paste is structured data, AI-mediated detection should still fire.
+        let base = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
+        let switches: Vec<_> = (0..3)
+            .map(|i| {
+                let offset = i as u64 * 100;
+                FocusSwitchRecord {
+                    lost_at: base + Duration::from_secs(offset),
+                    regained_at: Some(base + Duration::from_secs(offset + 30)),
+                    target_app: "ChatGPT".to_string(),
+                    target_bundle_id: "com.openai.chatgpt".to_string(),
+                }
+            })
+            .collect();
+        let pastes: Vec<_> = (0..3)
+            .map(|i| {
+                let regained = base + Duration::from_secs(i as u64 * 100 + 30);
+                let ns = regained
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as i64
+                    + 2_000_000_000;
+                PasteContext {
+                    paste_time: ns,
+                    context_window_end: 0,
+                    keystroke_count_after_paste: 1,
+                    source: PasteSource::External,
+                    content_kind: PasteContentKind::StructuredData,
+                }
+            })
+            .collect();
+        let result = analyze_composition_mode(&switches, &pastes, 50).unwrap();
+        assert!(
+            result.ai_cycle_count >= 2,
+            "AI cycles must still be detected for structured data pastes"
+        );
+    }
+
+    #[test]
+    fn test_paste_content_breakdown_tracked() {
+        let pastes = vec![
+            make_paste_with_kind(5, PasteSource::External, PasteContentKind::Prose),
+            make_paste_with_kind(5, PasteSource::External, PasteContentKind::StructuredData),
+            make_paste_with_kind(5, PasteSource::External, PasteContentKind::Media),
+            make_paste_with_kind(5, PasteSource::External, PasteContentKind::FormattingOnly),
+            make_paste_with_kind(5, PasteSource::External, PasteContentKind::Mixed),
+        ];
+        let result = analyze_composition_mode(&[], &pastes, 50).unwrap();
+        let b = &result.paste_content_breakdown;
+        assert_eq!(b.prose_count, 1);
+        assert_eq!(b.structured_data_count, 1);
+        assert_eq!(b.media_count, 1);
+        assert_eq!(b.formatting_only_count, 1);
+        assert_eq!(b.mixed_count, 1);
     }
 }

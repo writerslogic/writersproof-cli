@@ -8,6 +8,7 @@
 
 use super::helpers::{load_signing_key, open_store};
 use super::types::{catch_ffi_panic, try_ffi};
+use crate::store::text_fragments::TEXT_FRAGMENT_DST;
 use crate::store::text_fragments::{KeystrokeContext, TextFragment};
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
@@ -66,16 +67,18 @@ pub struct FfiPasteRecordResult {
     pub text_hash_hex: Option<String>,
     pub matched_existing: bool,
     pub matched_session_id: Option<String>,
+    pub content_kind: Option<String>,
     pub error_message: Option<String>,
 }
 
 impl FfiPasteRecordResult {
-    fn ok(hash_hex: String, matched_session_id: Option<String>) -> Self {
+    fn ok(hash_hex: String, matched_session_id: Option<String>, content_kind: &str) -> Self {
         Self {
             success: true,
             text_hash_hex: Some(hash_hex),
             matched_existing: matched_session_id.is_some(),
             matched_session_id,
+            content_kind: Some(content_kind.to_string()),
             error_message: None,
         }
     }
@@ -85,6 +88,7 @@ impl FfiPasteRecordResult {
             text_hash_hex: None,
             matched_existing: false,
             matched_session_id: None,
+            content_kind: None,
             error_message: Some(msg.into()),
         }
     }
@@ -365,6 +369,7 @@ pub fn ffi_sentinel_record_paste(
 ) -> FfiPasteRecordResult {
     catch_ffi_panic!(FfiPasteRecordResult::err("engine internal error"), {
     super::types::run_on_stack(move || {
+    use crate::RwLockRecover as _;
     log::debug!("ffi_sentinel_record_paste: char_count={}, app_bundle_id={}", char_count, app_bundle_id);
     if char_count < 0 {
         return FfiPasteRecordResult::err("char_count must be non-negative");
@@ -384,18 +389,23 @@ pub fn ffi_sentinel_record_paste(
         ));
     }
 
-    // Update sentinel paste counter (same as old ffi_sentinel_notify_paste).
     let sentinel = match super::sentinel::get_running_sentinel() {
         Some(s) => s,
         None => return FfiPasteRecordResult::err("Sentinel not running"),
     };
     sentinel.set_last_paste_chars(char_count);
 
-    // Hash the pasted text.
     let text_hash = hash_text(&pasted_text);
     let text_hash_hex = hex::encode(text_hash);
 
-    // Open store once for both lookup and insert.
+    // Classify from text alone (FFI caller has no pasteboard type info).
+    let inventory = crate::sentinel::types::PasteboardTypeInventory::default();
+    let content_kind = crate::sentinel::content_classifier::classify_paste_content_kind(
+        &pasted_text,
+        &inventory,
+    );
+    let content_kind_str = content_kind.to_string();
+
     let mut store = match open_store() {
         Ok(s) => s,
         Err(e) => {
@@ -405,7 +415,6 @@ pub fn ffi_sentinel_record_paste(
         }
     };
 
-    // Check if this text matches an existing fragment (cross-session provenance).
     let matched_session_id = match store.lookup_fragment_by_hash(&text_hash) {
         Ok(Some(f)) => Some(f.session_id),
         Ok(None) => None,
@@ -415,7 +424,6 @@ pub fn ffi_sentinel_record_paste(
         }
     };
 
-    // Store a fragment for this paste event in the current session.
     let focus = sentinel.current_focus();
     if let Some(ref focused_path) = focus {
         if let Ok(session) = sentinel.session(focused_path) {
@@ -423,7 +431,7 @@ pub fn ffi_sentinel_record_paste(
                 Ok(k) => k,
                 Err(e) => {
                     log::warn!("Cannot sign paste fragment: {e}");
-                    return FfiPasteRecordResult::ok(text_hash_hex, matched_session_id);
+                    return FfiPasteRecordResult::ok(text_hash_hex, matched_session_id, &content_kind_str);
                 }
             };
 
@@ -450,10 +458,29 @@ pub fn ffi_sentinel_record_paste(
             if let Err(e) = store.insert_text_fragment(&fragment) {
                 log::warn!("Failed to store paste fragment: {e}");
             }
+
+            let source = crate::sentinel::helpers::classify_paste_source(
+                Some(&store),
+                &text_hash,
+                &session.session_id,
+            );
+            drop(store);
+            {
+                let mut sessions_guard = sentinel.sessions.write_recover();
+                if let Some(s) = sessions_guard.get_mut(focused_path) {
+                    crate::sentinel::helpers::update_keystroke_context_window(
+                        s,
+                        timestamp_ns,
+                        30_000,
+                        source,
+                        content_kind,
+                    );
+                }
+            }
         }
     }
 
-    FfiPasteRecordResult::ok(text_hash_hex, matched_session_id)
+    FfiPasteRecordResult::ok(text_hash_hex, matched_session_id, &content_kind_str)
     })
     })
 }
@@ -757,10 +784,10 @@ pub fn ffi_apply_remote_fragment(
         };
         let sig = source_signature.to_signature();
         // Reconstruct the domain-tagged payload that was signed.
-        const DST: &[u8] = b"witnessd-text-fragment-v1";
+        let dst = TEXT_FRAGMENT_DST;
         let sid_len = (session_id.len() as u32).to_le_bytes();
-        let mut payload = Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + 16);
-        payload.extend_from_slice(DST);
+        let mut payload = Vec::with_capacity(dst.len() + 4 + session_id.len() + 32 + 8 + 16);
+        payload.extend_from_slice(dst);
         payload.extend_from_slice(&sid_len);
         payload.extend_from_slice(session_id.as_bytes());
         payload.extend_from_slice(&fragment_hash);

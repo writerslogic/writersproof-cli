@@ -447,7 +447,6 @@ fn verify_vc_proof(
     let mut vc_no_proof = vc.clone();
     vc_no_proof.proof = None;
 
-    // Hash the proof options (with empty proofValue)
     let proof_options = super::vc::VcProof {
         proof_value: String::new(),
         ..proof.clone()
@@ -458,7 +457,6 @@ fn verify_vc_proof(
     };
     let proof_options_hash = Sha256::digest(proof_options_canon.as_bytes());
 
-    // Hash the document (without proof)
     let doc_canon = match serde_jcs::to_string(&vc_no_proof) {
         Ok(j) => j,
         Err(_) => return false,

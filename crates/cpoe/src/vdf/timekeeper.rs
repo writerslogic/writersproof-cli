@@ -91,7 +91,6 @@ impl TimeKeeper {
                     })
                     .unwrap_or_else(Utc::now);
 
-                // Seed the VDF from the elapsed duration via domain separation
                 let seed: [u8; 32] = {
                     let mut h = Sha256::new();
                     h.update(b"cpoe-timekeeper-vdf-v1");

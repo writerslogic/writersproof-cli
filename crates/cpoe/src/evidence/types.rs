@@ -12,7 +12,7 @@ use crate::continuation;
 use crate::declaration;
 use crate::jitter;
 use crate::presence;
-use crate::provenance;
+use crate::evidence::provenance;
 use crate::tpm;
 use crate::vdf;
 use authorproof_protocol::rfc::{BiologyInvariantClaim, JitterBinding, TimeEvidence};
@@ -628,6 +628,9 @@ pub struct BehavioralEvidence {
     /// evidence was built. Absent when fingerprinting is disabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fingerprint_maturity: Option<crate::fingerprint::FingerprintMaturity>,
+    /// Breakdown of paste events by content kind (prose, table, media, etc.).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paste_content_breakdown: Option<crate::forensics::PasteContentBreakdown>,
 }
 
 /// Spatial edit region within the document (position range + byte delta).

@@ -79,7 +79,7 @@ pub use writing_mode::{
 pub use cognitive_load::{analyze_cognitive_load, CognitiveLoadMetrics, CognitiveMode};
 pub use composition_mode::{
     analyze_composition_mode, CompositionMode, CompositionModeDistribution,
-    CompositionModeMetrics,
+    CompositionModeMetrics, PasteContentBreakdown,
 };
 pub use error_ecology::{
     analyze_error_ecology, assess_transcription_suspicion, ErrorEcologyMetrics,

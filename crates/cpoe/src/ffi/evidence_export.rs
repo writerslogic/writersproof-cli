@@ -322,7 +322,7 @@ fn build_wire_packet(
 
     let wire_packet = EvidencePacketWire {
         version: 1,
-        profile_uri: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
+        profile_uri: crate::war::ear::CPOE_EVIDENCE_PROFILE.to_string(),
         packet_id,
         created: now_ms,
         document: DocumentRef {
@@ -994,7 +994,7 @@ pub fn ffi_get_compact_ref(path: String) -> String {
     })
 }
 
-/// Extract the embedded document from a .cpoe evidence package.
+/// Extract the embedded document from a C2PA evidence package.
 /// Returns an FfiResult with the output path on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult {
@@ -1003,23 +1003,23 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
     let cpoe_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&cpoe_path)
             .map(|p| p.to_string_lossy().to_string())
-            .map_err(|e| format!("Invalid cpoe path: {e}")),
+            .map_err(|e| format!("Invalid evidence path: {e}")),
         FfiResult
     );
-    const MAX_CPOE_FILE_SIZE: u64 = 256 * 1024 * 1024; // 256 MB
+    const MAX_EVIDENCE_FILE_SIZE: u64 = 256 * 1024 * 1024; // 256 MB
     let meta = try_ffi!(
-        std::fs::metadata(&cpoe_path).map_err(|e| format!("Failed to stat .cpoe file: {e}")),
+        std::fs::metadata(&cpoe_path).map_err(|e| format!("Failed to stat evidence file: {e}")),
         FfiResult
     );
-    if meta.len() > MAX_CPOE_FILE_SIZE {
+    if meta.len() > MAX_EVIDENCE_FILE_SIZE {
         return FfiResult::err(format!(
             "File too large: {} bytes (max {})",
             meta.len(),
-            MAX_CPOE_FILE_SIZE
+            MAX_EVIDENCE_FILE_SIZE
         ));
     }
     let data = try_ffi!(
-        std::fs::read(&cpoe_path).map_err(|e| format!("Failed to read .cpoe file: {e}")),
+        std::fs::read(&cpoe_path).map_err(|e| format!("Failed to read evidence file: {e}")),
         FfiResult
     );
 
@@ -1031,7 +1031,7 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         Ok(w) => w,
         Err(_) => match authorproof_protocol::codec::cbor::decode(&cbor_payload) {
             Ok(w) => w,
-            Err(e) => return FfiResult::err(format!("Invalid .cpoe file: {e}")),
+            Err(e) => return FfiResult::err(format!("Invalid evidence file: {e}")),
         },
     };
 
@@ -1039,7 +1039,7 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         Some(c) => c,
         None => {
             return FfiResult::err(
-                "This .cpoe file does not contain an embedded document.".to_string(),
+                "This evidence file does not contain an embedded document.".to_string(),
             )
         }
     };
@@ -1163,6 +1163,12 @@ fn build_forensic_summary(
         spectral_noise_type: metrics.spectral_analysis.as_ref().map(|pn| format!("{:?}", pn.noise_type)),
         baseline_deviation: metrics.baseline_comparison.as_ref().map(|bc| bc.mahalanobis_distance),
         ai_fluency_flag: metrics.ai_fluency_flag,
+        paste_content_breakdown: metrics.composition_mode.as_ref().map(|cm| {
+            let b = &cm.paste_content_breakdown;
+            let sat = |v: usize| -> u32 { u32::try_from(v).unwrap_or(u32::MAX) };
+            [sat(b.prose_count), sat(b.structured_data_count), sat(b.media_count),
+             sat(b.formatting_only_count), sat(b.mixed_count)]
+        }),
     })
 }
 

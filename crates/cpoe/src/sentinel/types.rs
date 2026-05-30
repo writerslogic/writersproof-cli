@@ -13,6 +13,11 @@ pub enum FocusEventType {
     FocusGained,
     FocusLost,
     FocusUnknown,
+    /// Text content changed in the focused UI element (detected via
+    /// `kAXValueChangedNotification`). Used to detect non-keyboard input
+    /// (dictation, autocomplete, voice control) and to confirm keystroke
+    /// attribution during rapid app switches.
+    ValueChanged,
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +32,9 @@ pub struct FocusEvent {
     /// CGWindowID of the focused window, used as a tiebreaker when two windows
     /// of the same app share a title-inferred session key.
     pub window_id: Option<u32>,
+    /// Character count delta from `kAXValueChangedNotification`. Only set for
+    /// `ValueChanged` events; `None` for all other event types.
+    pub char_count_delta: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -599,6 +607,48 @@ pub struct SaveAsDetection {
     pub content_hash: String,
 }
 
+/// Semantic type of pasted content. Prose is the forgery-risk category;
+/// tables, images, and formatting are legitimate authoring artifacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum PasteContentKind {
+    Prose = 0,
+    StructuredData = 1,
+    Media = 2,
+    FormattingOnly = 3,
+    Mixed = 4,
+}
+
+impl Default for PasteContentKind {
+    fn default() -> Self {
+        Self::Prose
+    }
+}
+
+impl fmt::Display for PasteContentKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Prose => f.write_str("prose"),
+            Self::StructuredData => f.write_str("structured-data"),
+            Self::Media => f.write_str("media"),
+            Self::FormattingOnly => f.write_str("formatting-only"),
+            Self::Mixed => f.write_str("mixed"),
+        }
+    }
+}
+
+/// Pasteboard/clipboard content types present at capture time.
+#[derive(Debug, Clone, Default)]
+pub struct PasteboardTypeInventory {
+    /// Raw UTI strings (macOS) or format names (Windows) for audit logging.
+    pub utis: Vec<String>,
+    pub has_plain_text: bool,
+    pub has_rtf: bool,
+    pub has_html: bool,
+    pub has_image: bool,
+    pub has_spreadsheet: bool,
+}
+
 /// Classification of paste content origin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
@@ -638,6 +688,8 @@ pub struct PasteContext {
     pub keystroke_count_after_paste: usize,
     /// Classification of where the pasted content originated.
     pub source: PasteSource,
+    /// Semantic type of the pasted content (prose, table, image, etc.).
+    pub content_kind: PasteContentKind,
 }
 
 /// How an AI tool detection was established.
@@ -911,6 +963,10 @@ pub struct DocumentSession {
     #[cfg(feature = "content_binding")]
     pub(crate) edit_context_proofs: Vec<EditContextProof>,
     pub(crate) scroll_attention: ScrollAttentionAccumulator,
+    /// Count of AXValueChanged events with no correlated keystroke (non-keyboard input).
+    pub(crate) non_keyboard_change_count: u64,
+    /// Net character delta from non-keyboard AXValueChanged events.
+    pub(crate) non_keyboard_chars_inserted: i64,
 }
 
 /// BLAKE3 keyed hash of the 64-byte window around an edit position.
@@ -1202,6 +1258,8 @@ impl Clone for DocumentSession {
             #[cfg(feature = "content_binding")]
             ref edit_context_proofs,
             ref scroll_attention,
+            non_keyboard_change_count,
+            non_keyboard_chars_inserted,
         } = *self;
 
         Self {
@@ -1260,6 +1318,8 @@ impl Clone for DocumentSession {
             #[cfg(feature = "content_binding")]
             edit_context_proofs: edit_context_proofs.clone(),
             scroll_attention: scroll_attention.clone(),
+            non_keyboard_change_count,
+            non_keyboard_chars_inserted,
         }
     }
 }
@@ -1339,6 +1399,8 @@ impl DocumentSession {
             #[cfg(feature = "content_binding")]
             edit_context_proofs: Vec::new(),
             scroll_attention: ScrollAttentionAccumulator::default(),
+            non_keyboard_change_count: 0,
+            non_keyboard_chars_inserted: 0,
         }
     }
 

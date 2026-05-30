@@ -306,11 +306,6 @@ impl Sentinel {
             .current_fingerprint()
     }
 
-    /// Return the current keystroke count from the activity accumulator.
-    pub fn config(&self) -> &SentinelConfig {
-        &self.config
-    }
-
     /// Toggle document snapshot saving at runtime.
     pub fn set_snapshots_enabled(&self, enabled: bool) {
         self.snapshots_enabled.store(enabled, Ordering::SeqCst);
@@ -345,11 +340,6 @@ impl Sentinel {
     /// Reset mouse idle statistics to initial state.
     pub fn reset_mouse_idle_stats(&self) {
         *self.mouse_idle_stats.write_recover() = crate::platform::MouseIdleStats::new();
-    }
-
-    /// Return a shared reference to the mouse steganography engine.
-    pub fn mouse_stego_engine(&self) -> &Arc<RwLock<crate::platform::MouseStegoEngine>> {
-        &self.mouse_stego_engine
     }
 
     /// Update the mouse stego engine from the given key bytes (avoids re-acquiring signing_key lock).
@@ -469,7 +459,6 @@ impl Sentinel {
             };
         *self.bundle_change_tx.lock_recover() = Some(change_tx_for_bundles.clone());
 
-        // Initialize the document directory watcher for file-save correlation.
         match super::document_watcher::DocumentDirectoryWatcher::new(change_tx_for_bundles) {
             Ok(dw) => {
                 *self.document_watcher.lock_recover() = Some(dw);
@@ -479,8 +468,6 @@ impl Sentinel {
             }
         }
 
-        // Reset bridge health and stopping flag on (re-)start.
-        // running is already true from the compare_exchange above.
         self.bridge_healthy.store(true, Ordering::SeqCst);
         self.stopping.store(false, Ordering::SeqCst);
 
@@ -653,7 +640,6 @@ impl Sentinel {
                         // The keystroke handler already enforced the MIN_NS floor.
                         log::debug!("Entropy-triggered checkpoint firing");
                         ctx.handle_checkpoint_tick().await;
-                        // Reset the deadline timer since we just checkpointed.
                         checkpoint_sleep.as_mut().reset(
                             tokio::time::Instant::now()
                                 + ctx.compute_next_checkpoint_interval(checkpoint_interval_secs),
@@ -687,10 +673,8 @@ impl Sentinel {
             // might never run if the event loop handle is aborted first.
         });
 
-        // Store the event loop handle so it can be aborted on Drop
         *event_loop_handle_ref.lock_recover() = Some(handle);
 
-        // Spawn clipboard monitor with its own cancellation token.
         let clipboard_cancel = tokio_util::sync::CancellationToken::new();
         *self.clipboard_cancel.lock_recover() = Some(clipboard_cancel.clone());
         match super::clipboard::ClipboardMonitor::new() {
@@ -786,8 +770,6 @@ impl Sentinel {
         // tasks bail before opening SQLite (prevents findReusableFd deadlock).
         self.stopping.store(true, Ordering::SeqCst);
 
-        // Send shutdown signal first so the event loop can run cleanup (focus_monitor.stop()).
-        // take() under lock, then await outside to avoid holding lock across .await.
         let tx = self.shutdown_tx.lock_recover().take();
         if let Some(tx) = tx {
             if tx.send(()).await.is_err() {
@@ -795,12 +777,10 @@ impl Sentinel {
             }
         }
 
-        // Cancel the clipboard monitor task.
         if let Some(cancel) = self.clipboard_cancel.lock_recover().take() {
             cancel.cancel();
         }
 
-        // Give the event loop a short window to exit gracefully, then force-abort.
         let handle = self.event_loop_handle.lock_recover().take();
         if let Some(mut handle) = handle {
             match tokio::time::timeout(std::time::Duration::from_millis(500), &mut handle).await {
@@ -1177,6 +1157,7 @@ impl Sentinel {
             window_title: ObfuscatedString::default(),
             timestamp: SystemTime::now(),
             window_id: None,
+            char_count_delta: None,
         };
 
         let wal_dir = self.config.wal_dir.clone();

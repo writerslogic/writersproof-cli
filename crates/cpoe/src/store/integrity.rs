@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 /// On open, if the on-disk version is higher than this, the database was
 /// created by a newer app version and we refuse to open it to prevent
 /// silent data corruption from unrecognized schema changes.
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 
 const KNOWN_TABLES: &[&str] = &[
     "integrity",
@@ -255,6 +255,14 @@ impl SecureStore {
         if !has_column(&self.conn, "clipboard_events", "signed_evidence")? {
             self.conn
                 .execute_batch("ALTER TABLE clipboard_events ADD COLUMN signed_evidence BLOB;")?;
+        }
+
+        // Migration: add content_kind and pasteboard_types to clipboard_events
+        if !has_column(&self.conn, "clipboard_events", "content_kind")? {
+            self.conn.execute_batch(
+                "ALTER TABLE clipboard_events ADD COLUMN content_kind INTEGER;
+                 ALTER TABLE clipboard_events ADD COLUMN pasteboard_types TEXT;",
+            )?;
         }
 
         if !has_column(&self.conn, "secure_events", "challenge_nonce")? {

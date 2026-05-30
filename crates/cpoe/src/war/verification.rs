@@ -628,7 +628,6 @@ pub fn verify_beacon_attestation_with_bundle(
         }
     };
 
-    // Decode the CA public key.
     let ca_pubkey =
         match crate::utils::crypto_types::Ed25519Pubkey::from_hex(&ca_pubkey_hex) {
             Ok(pk) => pk,
@@ -651,7 +650,6 @@ pub fn verify_beacon_attestation_with_bundle(
         }
     };
 
-    // Decode the counter-signature.
     let beacon_sig =
         match crate::utils::crypto_types::Ed25519Sig::from_hex(&attestation.wp_signature) {
             Ok(s) => s,

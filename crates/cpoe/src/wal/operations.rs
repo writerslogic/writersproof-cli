@@ -402,7 +402,6 @@ impl Wal {
         let (last_hash, cumulative_hasher, retained_count, next_seq) = match write_result {
             Ok(v) => v,
             Err(e) => {
-                // Remove the temp file so a retry sees a clean state.
                 if let Err(rm) = fs::remove_file(&new_path) {
                     log::warn!("compact: failed to remove temp file {:?}: {}", new_path, rm);
                 }
@@ -733,8 +732,7 @@ impl Wal {
             offset += (4 + entry_len) as u64;
         }
 
-        // All entries validated. Rebuild in-memory state from the verified data.
-        // Seek the write handle to the end so future appends land in the right place.
+        // Rebuild in-memory state from the verified data.
         state.file.seek(SeekFrom::Start(offset))?;
         state.last_hash = prev_hash;
         state.cumulative_hasher = cumulative_hasher;
