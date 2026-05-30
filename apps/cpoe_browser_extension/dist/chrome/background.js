@@ -1376,43 +1376,6 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 // ---------------------------------------------------------------------------
-// Auth callback — capture tokens from writersproof.com sign-in redirect
-// ---------------------------------------------------------------------------
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-	if (
-		changeInfo.url &&
-		changeInfo.url.startsWith("https://writersproof.com/extension-callback")
-	) {
-		try {
-			const url = new URL(changeInfo.url);
-			const accessToken =
-				url.searchParams.get("access_token") ||
-				url.hash.match(/access_token=([^&]+)/)?.[1];
-			const refreshToken =
-				url.searchParams.get("refresh_token") ||
-				url.hash.match(/refresh_token=([^&]+)/)?.[1];
-			const expiresIn = parseInt(
-				url.searchParams.get("expires_in") || "3600",
-				10,
-			);
-			if (accessToken) {
-				const session = {
-					access_token: accessToken,
-					refresh_token: refreshToken || null,
-					expires_at: Date.now() + expiresIn * 1000,
-				};
-				chrome.storage.local.set({ _wpSession: session });
-				broadcastToPopup({ type: "wp_auth_callback", session });
-				chrome.tabs.remove(tabId).catch(() => {});
-			}
-		} catch (_) {
-			/* malformed URL */
-		}
-	}
-});
-
-// ---------------------------------------------------------------------------
 // Text Attestation — right-click context menu
 // ---------------------------------------------------------------------------
 

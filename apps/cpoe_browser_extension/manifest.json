@@ -9,7 +9,8 @@
     "activeTab",
     "scripting",
     "storage",
-    "contextMenus"
+    "contextMenus",
+    "identity"
   ],
   "optional_host_permissions": [
     "https://*/*"

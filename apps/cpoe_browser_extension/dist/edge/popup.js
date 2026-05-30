@@ -624,23 +624,47 @@ elements.btnAccount.addEventListener("click", () => {
 	elements.accountSection.hidden = !accountVisible;
 });
 
-elements.btnSignin.addEventListener("click", () => {
-	chrome.tabs.create({
-		url: `${WRITERSPROOF_URL}/signin?redirect=extension`,
-	});
+elements.btnSignin.addEventListener("click", async () => {
+	elements.btnSignin.disabled = true;
+	elements.btnSignin.textContent = "Signing in\u2026";
+	try {
+		const redirectUrl = chrome.identity.getRedirectURL("callback");
+		const authUrl =
+			`${SUPABASE_URL}/auth/v1/authorize?provider=google` +
+			`&redirect_to=${encodeURIComponent(redirectUrl)}`;
+		const responseUrl = await chrome.identity.launchWebAuthFlow({
+			url: authUrl,
+			interactive: true,
+		});
+		if (responseUrl) {
+			const hash = new URL(responseUrl).hash.substring(1);
+			const params = new URLSearchParams(hash);
+			const accessToken = params.get("access_token");
+			const refreshToken = params.get("refresh_token");
+			const expiresIn = parseInt(params.get("expires_in") || "3600", 10);
+			if (accessToken) {
+				const session = {
+					access_token: accessToken,
+					refresh_token: refreshToken || null,
+					expires_at: Date.now() + expiresIn * 1000,
+				};
+				await chrome.storage.local.set({ _wpSession: session });
+				await loadSession();
+			}
+		}
+	} catch (err) {
+		if (!err?.message?.includes("canceled")) {
+			showError("Sign-in failed. Please try again.");
+		}
+	} finally {
+		elements.btnSignin.disabled = false;
+		elements.btnSignin.textContent = "Sign in to WritersProof";
+	}
 });
 
 elements.btnSignout.addEventListener("click", async () => {
 	await chrome.storage.local.remove("_wpSession");
 	updateAccountUI(null);
-});
-
-chrome.runtime.onMessage.addListener((message) => {
-	if (message.type === "wp_auth_callback" && message.session) {
-		chrome.storage.local.set({ _wpSession: message.session }).then(() => {
-			loadSession();
-		});
-	}
 });
 
 loadSession();
