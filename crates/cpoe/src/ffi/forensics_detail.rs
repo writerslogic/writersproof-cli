@@ -1373,23 +1373,26 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         0.0,
     );
 
-    // Cadence score from a trailing window of jitter samples so the
-    // dashboard score reflects recent typing behavior rather than
-    // converging to a fixed value over the full session history.
-    // Uses the raw cadence quality without the maturity ramp, since
-    // the short window (~30s) would artificially suppress the score.
-    // Full-session maturity is conveyed separately via evidence_maturity.
-    let cadence_score = finite_or({
-        let window = recent_jitter_window(&session.jitter_samples, LIVE_CADENCE_WINDOW_NS);
+    // Cadence score from a trailing window of jitter samples.
+    let window = recent_jitter_window(&session.jitter_samples, LIVE_CADENCE_WINDOW_NS);
+    let cadence_score = finite_or(
         if window.len() < 10 {
             0.0
         } else {
             let metrics = crate::forensics::analyze_cadence(window);
             crate::forensics::compute_cadence_score(&metrics)
-        }
-    }, 0.0);
+        },
+        0.0,
+    );
 
-    // Composition mode from cached focus/paste data.
+    // Blend multiple cached signals into a composite cognitive score.
+    // The cadence score alone is a single IKI-based signal; adding the
+    // cognitive accumulator's real-time analysis (sentence initiation,
+    // spoofing indicator, editing patterns) and composition mode produces
+    // a more accurate and responsive score.
+    let cognitive_layer = session.cognitive.analyze();
+    let editing_ratio = session.semantic_counts.editing_ratio();
+
     let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
     let pastes: Vec<_> = session.paste_context.iter().cloned().collect();
     let comp_mode = crate::forensics::composition_mode::analyze_composition_mode(
@@ -1397,20 +1400,60 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         &pastes,
         keystroke_count as usize,
     );
+    let composition_score = comp_mode.as_ref().map(|c| c.composite_score).unwrap_or(1.0);
 
     let (writing_mode, cognitive_score) = if keystroke_count < 20 {
         ("insufficient".to_string(), 0.0)
-    } else if cadence_score > 0.6 {
-        ("cognitive".to_string(), cadence_score)
-    } else if cadence_score < 0.4 {
-        ("transcriptive".to_string(), cadence_score)
     } else {
-        ("mixed".to_string(), cadence_score)
+        // Composite: 45% cadence, 25% cognitive layer, 15% composition, 15% editing
+        let cognitive_prob = cognitive_layer
+            .as_ref()
+            .map(|cl| {
+                // Weighted blend of cognitive signals. Spoofing indicator
+                // acts as a penalty (high disagreement between signals).
+                let raw = (cl.sentence_initiation_ratio.clamp(0.0, 1.0) * 0.4
+                    + cl.iki_modality_score.clamp(0.0, 1.0) * 0.3
+                    + cl.non_append_ratio.clamp(0.0, 0.5) * 0.3 * 2.0)
+                    .clamp(0.0, 1.0);
+                let spoof_penalty = cl.spoofing_indicator.clamp(0.0, 0.3);
+                (raw - spoof_penalty).max(0.0)
+            })
+            .unwrap_or(cadence_score);
+
+        let editing_signal = if editing_ratio > 0.15 {
+            1.0 // Substantial editing = cognitive authoring
+        } else if editing_ratio > 0.05 {
+            0.6
+        } else {
+            0.2 // Append-only = likely transcriptive
+        };
+
+        let mut composite = cadence_score * 0.45
+            + cognitive_prob * 0.25
+            + composition_score * 0.15
+            + editing_signal * 0.15;
+
+        if session.transcription_suspicion.is_suspicious {
+            composite -= 0.15;
+        }
+        if !session.ai_tools_detected.is_empty() {
+            composite -= 0.10;
+        }
+        let composite = composite.clamp(0.0, 1.0);
+
+        let mode = if composite > 0.6 {
+            "cognitive"
+        } else if composite < 0.35 {
+            "transcriptive"
+        } else {
+            "mixed"
+        };
+        (mode.to_string(), composite)
     };
 
-    let risk_level = if cadence_score >= 0.7 {
+    let risk_level = if cognitive_score >= 0.7 {
         "low"
-    } else if cadence_score >= 0.4 {
+    } else if cognitive_score >= 0.4 {
         "medium"
     } else if keystroke_count < 10 {
         "insufficient data"
