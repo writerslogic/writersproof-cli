@@ -957,6 +957,8 @@ pub struct DocumentSession {
     /// Cross-window transcription detector: compares typed text against visible
     /// windows to detect retyping from a visible source.
     pub(crate) transcription_detector: crate::transcription::TranscriptionDetector,
+    /// Last writing mode label for hysteresis in live score polling.
+    pub last_writing_mode: Option<String>,
     /// Content-bound edit context proofs: BLAKE3 keyed hashes of the 64-byte
     /// window around each detected cursor reposition. Populated at capture time
     /// when the platform provides document read access.
@@ -1255,6 +1257,7 @@ impl Clone for DocumentSession {
             ref confidence_reason,
             ref transcription_suspicion,
             ref transcription_detector,
+            ref last_writing_mode,
             #[cfg(feature = "content_binding")]
             ref edit_context_proofs,
             ref scroll_attention,
@@ -1315,6 +1318,7 @@ impl Clone for DocumentSession {
             confidence_reason: confidence_reason.clone(),
             transcription_suspicion: transcription_suspicion.clone(),
             transcription_detector: transcription_detector.clone(),
+            last_writing_mode: last_writing_mode.clone(),
             #[cfg(feature = "content_binding")]
             edit_context_proofs: edit_context_proofs.clone(),
             scroll_attention: scroll_attention.clone(),
@@ -1396,6 +1400,7 @@ impl DocumentSession {
             confidence_reason: None,
             transcription_suspicion: Default::default(),
             transcription_detector: crate::transcription::TranscriptionDetector::new(),
+            last_writing_mode: None,
             #[cfg(feature = "content_binding")]
             edit_context_proofs: Vec::new(),
             scroll_attention: ScrollAttentionAccumulator::default(),
