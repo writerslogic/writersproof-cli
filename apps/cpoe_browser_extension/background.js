@@ -41,11 +41,22 @@ const VALID_ACTIONS = new Set([
 	"open_desktop_app",
 ]);
 
+const HEARTBEAT_INTERVAL_MS = 15_000;
+const HEARTBEAT_TIMEOUT_MS = 5_000;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY_MS = 1_000;
+
 let nativePort = null;
 let isConnected = false;
 let isConnecting = false;
 let activeTabId = null;
 let checkpointTimer = null;
+let heartbeatTimer = null;
+let heartbeatTimeout = null;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+let messageQueue = [];
+let isRehandshaking = false;
 
 let operatingMode = "detecting";
 let standaloneSessionId = null;
@@ -159,54 +170,31 @@ function connectToNativeHost() {
 			nativePort = null;
 			isConnected = false;
 			isConnecting = false;
+			stopHeartbeat();
 			secureChannel = null;
 			rehandshakeAttempts = 0;
 
 			if (activeTabId && operatingMode === "native") {
 				console.warn(
-					"[CPoE] Native host disconnected mid-session; switching to standalone mode",
+					"[CPoE] Native host disconnected mid-session; attempting reconnect",
 				);
-				operatingMode = "standalone";
-				capabilities = {
-					hardwareAttestation: false,
-					vdfProofs: false,
-					secureEnclave: false,
-					secureChannel: false,
-					ed25519Signatures: false,
-					hashChain: true,
-					keystrokeJitter: true,
-				};
-				stopCheckpointTimer();
-				chrome.tabs.get(activeTabId, (tab) => {
-					const url = tab?.url || "";
-					const title = tab?.title || "";
-					standaloneStartSession(url, title)
-						.then((result) => {
-							standaloneSessionId = result.session_id;
-							chrome.storage.local.set({
-								_standaloneSessionId: standaloneSessionId,
-								_standaloneTabId: activeTabId,
-								_sessionStartTime: Date.now(),
-							});
-							startCheckpointTimer();
-							updateBadge("S", "#f39c12");
-							broadcastToPopup({
-								type: "session_update",
-								...result,
-								active: true,
-								mode: "standalone",
-							});
-						})
-						.catch(() => {
-							updateBadge("!", "#e74c3c");
-						});
+				updateBadge("!", "#e74c3c");
+				broadcastToPopup({
+					type: "connection_status",
+					connected: false,
+					reconnecting: true,
+					message: "Desktop app disconnected. Reconnecting\u2026",
 				});
+				scheduleReconnect();
 			} else {
 				updateBadge("!", "#e74c3c");
 			}
 		});
 
 		isConnected = true;
+		reconnectAttempts = 0;
+		cancelReconnect();
+		startHeartbeat();
 		updateBadge("", "#2ecc71");
 
 		sendNativeMessage({ type: "ping", protocol_version: PROTOCOL_VERSION });
@@ -219,6 +207,7 @@ function connectToNativeHost() {
 }
 
 function disconnectFromNativeHost() {
+	stopHeartbeat();
 	if (nativePort) {
 		nativePort.disconnect();
 		nativePort = null;
@@ -226,6 +215,122 @@ function disconnectFromNativeHost() {
 	isConnected = false;
 	secureChannel = null;
 	updateBadge("", "#95a5a6");
+}
+
+function startHeartbeat() {
+	stopHeartbeat();
+	heartbeatTimer = setInterval(() => {
+		if (!nativePort || !isConnected) return;
+		heartbeatTimeout = setTimeout(() => {
+			console.warn("[CPoE] Heartbeat timeout — NMH unresponsive");
+			if (nativePort) {
+				nativePort.disconnect();
+			}
+		}, HEARTBEAT_TIMEOUT_MS);
+		try {
+			nativePort.postMessage({
+				type: "ping",
+				protocol_version: PROTOCOL_VERSION,
+			});
+		} catch (_) {
+			clearTimeout(heartbeatTimeout);
+			heartbeatTimeout = null;
+		}
+	}, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+	if (heartbeatTimer) {
+		clearInterval(heartbeatTimer);
+		heartbeatTimer = null;
+	}
+	if (heartbeatTimeout) {
+		clearTimeout(heartbeatTimeout);
+		heartbeatTimeout = null;
+	}
+}
+
+function scheduleReconnect() {
+	if (reconnectTimer) return;
+	if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+		console.warn(
+			"[CPoE] Reconnect attempts exhausted; falling back to standalone",
+		);
+		fallbackToStandalone();
+		return;
+	}
+	const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, reconnectAttempts);
+	reconnectAttempts++;
+	broadcastToPopup({
+		type: "connection_status",
+		connected: false,
+		reconnecting: true,
+		attempt: reconnectAttempts,
+		maxAttempts: MAX_RECONNECT_ATTEMPTS,
+	});
+	reconnectTimer = setTimeout(() => {
+		reconnectTimer = null;
+		connectToNativeHost();
+	}, delay);
+}
+
+function fallbackToStandalone() {
+	operatingMode = "standalone";
+	capabilities = {
+		hardwareAttestation: false,
+		vdfProofs: false,
+		secureEnclave: false,
+		secureChannel: false,
+		ed25519Signatures: false,
+		hashChain: true,
+		keystrokeJitter: true,
+	};
+	stopCheckpointTimer();
+	if (!activeTabId) {
+		updateBadge("S", "#f39c12");
+		return;
+	}
+	chrome.tabs.get(activeTabId, (tab) => {
+		const url = tab?.url || "";
+		const title = tab?.title || "";
+		standaloneStartSession(url, title)
+			.then((result) => {
+				standaloneSessionId = result.session_id;
+				chrome.storage.local.set({
+					_standaloneSessionId: standaloneSessionId,
+					_standaloneTabId: activeTabId,
+					_sessionStartTime: Date.now(),
+				});
+				startCheckpointTimer();
+				updateBadge("S", "#f39c12");
+				broadcastToPopup({
+					type: "session_update",
+					...result,
+					active: true,
+					mode: "standalone",
+					message:
+						"Desktop app unreachable. Evidence continues in browser-only mode.",
+				});
+			})
+			.catch(() => {
+				updateBadge("!", "#e74c3c");
+			});
+	});
+}
+
+function cancelReconnect() {
+	if (reconnectTimer) {
+		clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+	}
+	reconnectAttempts = 0;
+}
+
+function flushMessageQueue() {
+	const queued = messageQueue.splice(0);
+	for (const msg of queued) {
+		sendNativeMessage(msg);
+	}
 }
 
 function initiateSecureChannel() {
@@ -240,7 +345,17 @@ function initiateSecureChannel() {
 
 function sendNativeMessage(message) {
 	if (!nativePort) connectToNativeHost();
-	if (!nativePort) return;
+	if (!nativePort) {
+		if (isRehandshaking && message.type !== "ping") {
+			messageQueue.push(message);
+		}
+		return;
+	}
+
+	if (isRehandshaking && message.type !== "ping") {
+		messageQueue.push(message);
+		return;
+	}
 
 	if (secureChannel && secureChannel.handshakeComplete) {
 		secureChannel
@@ -272,12 +387,21 @@ function handleNativeMessage(message) {
 	switch (message.type) {
 		case "pong":
 			isConnected = true;
+			if (heartbeatTimeout) {
+				clearTimeout(heartbeatTimeout);
+				heartbeatTimeout = null;
+			}
 			if (typeof message.protocol_version === "number") {
 				nativeHostVersion = message.version || null;
 			}
 			updateBadge("", "#2ecc71");
 			initiateSecureChannel();
 			resumeNativeSessionIfPending();
+			broadcastToPopup({
+				type: "connection_status",
+				connected: true,
+				reconnecting: false,
+			});
 			break;
 
 		case "hello_accept":
@@ -308,6 +432,10 @@ function handleNativeMessage(message) {
 					.decrypt(message)
 					.then((inner) => {
 						rehandshakeAttempts = 0;
+						if (isRehandshaking) {
+							isRehandshaking = false;
+							flushMessageQueue();
+						}
 						handleNativeMessage(inner);
 					})
 					.catch((err) => {
@@ -322,6 +450,7 @@ function handleNativeMessage(message) {
 							rehandshakeAttempts < MAX_REHANDSHAKE_ATTEMPTS
 						) {
 							rehandshakeAttempts++;
+							isRehandshaking = true;
 							console.warn(
 								`[CPoE] Secure channel decrypt failed (attempt ${rehandshakeAttempts}/${MAX_REHANDSHAKE_ATTEMPTS}), re-handshaking: ${msg}`,
 							);
@@ -331,8 +460,14 @@ function handleNativeMessage(message) {
 								.performHandshake((m) =>
 									nativePort.postMessage(m),
 								)
+								.then(() => {
+									isRehandshaking = false;
+									flushMessageQueue();
+								})
 								.catch(() => {
 									secureChannel = null;
+									isRehandshaking = false;
+									flushMessageQueue();
 								});
 						} else if (
 							rehandshakeAttempts >= MAX_REHANDSHAKE_ATTEMPTS
@@ -343,6 +478,8 @@ function handleNativeMessage(message) {
 							secureChannel.destroy();
 							secureChannel = null;
 							rehandshakeAttempts = 0;
+							isRehandshaking = false;
+							flushMessageQueue();
 						}
 					});
 			}
