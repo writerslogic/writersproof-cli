@@ -2,9 +2,22 @@
  * CPoE Browser Extension — Popup Script
  */
 
+const WRITERSPROOF_URL = "https://writersproof.com";
+const SUPABASE_URL = "https://auth.writerslogic.com";
+const SUPABASE_ANON_KEY = "sb_publishable_wwoWB3FOs0qIJEDiLhTjOg_MhwFNTYT";
+
 const elements = {
 	modeBadge: document.getElementById("mode-badge"),
 	connectionBadge: document.getElementById("connection-badge"),
+	btnAccount: document.getElementById("btn-account"),
+	accountAvatar: document.getElementById("account-avatar"),
+	accountSection: document.getElementById("account-section"),
+	accountSignedIn: document.getElementById("account-signed-in"),
+	accountSignedOut: document.getElementById("account-signed-out"),
+	accountName: document.getElementById("account-name"),
+	accountEmail: document.getElementById("account-email"),
+	btnSignin: document.getElementById("btn-signin"),
+	btnSignout: document.getElementById("btn-signout"),
 	welcome: document.getElementById("welcome"),
 	welcomeDismiss: document.getElementById("welcome-dismiss"),
 	standaloneNotice: document.getElementById("standalone-notice"),
@@ -512,4 +525,123 @@ if (versionEl) {
 	versionEl.textContent = `v${chrome.runtime.getManifest().version}`;
 }
 
+// --- Account ---
+
+let accountVisible = false;
+
+function updateAccountUI(session) {
+	if (session?.user) {
+		const name =
+			session.user.user_metadata?.full_name ||
+			session.user.email?.split("@")[0] ||
+			"User";
+		const email = session.user.email || "";
+		const initials = name.charAt(0).toUpperCase();
+		elements.accountAvatar.textContent = initials;
+		elements.accountAvatar.classList.remove("signed-out");
+		elements.accountName.textContent = name;
+		elements.accountEmail.textContent = email;
+		elements.accountSignedIn.hidden = false;
+		elements.accountSignedOut.hidden = true;
+	} else {
+		elements.accountAvatar.textContent = "?";
+		elements.accountAvatar.classList.add("signed-out");
+		elements.accountSignedIn.hidden = true;
+		elements.accountSignedOut.hidden = false;
+	}
+}
+
+async function loadSession() {
+	const { _wpSession } = await chrome.storage.local.get("_wpSession");
+	if (!_wpSession?.access_token) {
+		updateAccountUI(null);
+		return null;
+	}
+	try {
+		const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+			headers: {
+				Authorization: `Bearer ${_wpSession.access_token}`,
+				apikey: SUPABASE_ANON_KEY,
+			},
+		});
+		if (res.ok) {
+			const user = await res.json();
+			updateAccountUI({ user });
+			return { user, access_token: _wpSession.access_token };
+		}
+		if (res.status === 401 && _wpSession.refresh_token) {
+			const refreshed = await refreshSession(_wpSession.refresh_token);
+			if (refreshed) return refreshed;
+		}
+	} catch {
+		/* network error — show signed out */
+	}
+	await chrome.storage.local.remove("_wpSession");
+	updateAccountUI(null);
+	return null;
+}
+
+async function refreshSession(refreshToken) {
+	try {
+		const res = await fetch(
+			`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					apikey: SUPABASE_ANON_KEY,
+				},
+				body: JSON.stringify({ refresh_token: refreshToken }),
+			},
+		);
+		if (!res.ok) return null;
+		const data = await res.json();
+		const session = {
+			access_token: data.access_token,
+			refresh_token: data.refresh_token,
+			expires_at: Date.now() + (data.expires_in || 3600) * 1000,
+		};
+		await chrome.storage.local.set({ _wpSession: session });
+		const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+			headers: {
+				Authorization: `Bearer ${session.access_token}`,
+				apikey: SUPABASE_ANON_KEY,
+			},
+		});
+		if (userRes.ok) {
+			const user = await userRes.json();
+			updateAccountUI({ user });
+			return { user, access_token: session.access_token };
+		}
+	} catch {
+		/* ignore */
+	}
+	return null;
+}
+
+elements.btnAccount.addEventListener("click", () => {
+	accountVisible = !accountVisible;
+	elements.accountSection.hidden = !accountVisible;
+});
+
+elements.btnSignin.addEventListener("click", () => {
+	chrome.tabs.create({
+		url: `${WRITERSPROOF_URL}/signin?redirect=extension`,
+	});
+});
+
+elements.btnSignout.addEventListener("click", async () => {
+	await chrome.storage.local.remove("_wpSession");
+	updateAccountUI(null);
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+	if (message.type === "wp_auth_callback" && message.session) {
+		chrome.storage.local.set({ _wpSession: message.session }).then(() => {
+			loadSession();
+		});
+	}
+});
+
+loadSession();
 init();

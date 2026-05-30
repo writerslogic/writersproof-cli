@@ -13,11 +13,34 @@
         <img src="icons/icon-32.png" alt="WritersProof" width="24" height="24">
         <h1>WritersProof</h1>
       </div>
-      <div class="header-badges" aria-live="polite">
-        <span id="mode-badge" class="badge" role="status" aria-label="Operating mode"></span>
-        <span id="connection-badge" class="badge disconnected" role="status" aria-label="Connection status">Detecting...</span>
+      <div class="header-right">
+        <div class="header-badges" aria-live="polite">
+          <span id="mode-badge" class="badge" role="status" aria-label="Operating mode"></span>
+          <span id="connection-badge" class="badge disconnected" role="status" aria-label="Connection status">Detecting...</span>
+        </div>
+        <button id="btn-account" class="btn-account" type="button" aria-label="Account">
+          <span id="account-avatar" class="account-avatar">?</span>
+        </button>
       </div>
     </header>
+
+    <!-- Account section (shown when avatar clicked) -->
+    <section id="account-section" class="card" hidden aria-label="Account">
+      <div id="account-signed-in" hidden>
+        <div class="account-profile">
+          <span id="account-name" class="account-name"></span>
+          <span id="account-email" class="account-email"></span>
+        </div>
+        <div class="account-actions">
+          <a href="https://writersproof.com/profile" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">View Profile</a>
+          <button id="btn-signout" class="btn btn-secondary btn-sm" type="button">Sign Out</button>
+        </div>
+      </div>
+      <div id="account-signed-out">
+        <p class="muted">Sign in to sync your evidence with your WritersProof account.</p>
+        <button id="btn-signin" class="btn btn-primary" type="button">Sign in to WritersProof</button>
+      </div>
+    </section>
 
     <!-- First-run welcome (shown once, dismissed permanently) -->
     <section id="welcome" class="card welcome-card" hidden aria-label="Welcome">

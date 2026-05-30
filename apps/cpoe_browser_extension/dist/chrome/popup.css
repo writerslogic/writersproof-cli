@@ -54,9 +54,69 @@ header {
   letter-spacing: 0.5px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .header-badges {
   display: flex;
   gap: 6px;
+}
+
+.btn-account {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.account-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #7c4dff);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.account-avatar.signed-out {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.account-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.account-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.account-email {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.account-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-sm {
+  font-size: 11px;
+  padding: 4px 10px;
 }
 
 .badge {
