@@ -113,16 +113,28 @@
 	];
 
 	let customDomainsList = [];
+	let autoDetectEditors = false;
 
-	chrome.storage.local.get(["customDomains", "contentTier"], (result) => {
-		customDomainsList = result.customDomains || [];
-		if (result.contentTier === "core" || result.contentTier === "maximum") {
-			contentTier = result.contentTier;
-		}
-	});
+	chrome.storage.local.get(
+		["customDomains", "contentTier", "autoDetectEditors"],
+		(result) => {
+			customDomainsList = result.customDomains || [];
+			autoDetectEditors = !!result.autoDetectEditors;
+			if (
+				result.contentTier === "core" ||
+				result.contentTier === "maximum"
+			) {
+				contentTier = result.contentTier;
+			}
+		},
+	);
 	chrome.storage.onChanged.addListener((changes) => {
 		if (changes.customDomains) {
 			customDomainsList = changes.customDomains.newValue || [];
+			cachedSiteId = undefined;
+		}
+		if (changes.autoDetectEditors) {
+			autoDetectEditors = !!changes.autoDetectEditors.newValue;
 			cachedSiteId = undefined;
 		}
 		if (changes.contentTier) {
@@ -168,6 +180,11 @@
 					return cachedSiteId;
 				}
 			}
+		}
+
+		if (autoDetectEditors && window.location.protocol === "https:") {
+			cachedSiteId = SITE_GENERIC;
+			return cachedSiteId;
 		}
 
 		cachedSiteId = null;

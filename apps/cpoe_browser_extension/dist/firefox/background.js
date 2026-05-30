@@ -677,6 +677,9 @@ function matchesCustomDomain(url) {
 }
 
 const CUSTOM_SCRIPT_ID = "cpoe-custom-domains";
+const AUTODETECT_SCRIPT_ID = "cpoe-autodetect";
+
+let autoDetectEnabled = false;
 
 function syncCustomContentScripts(domains) {
 	if (!domains || domains.length === 0) {
@@ -703,10 +706,58 @@ function syncCustomContentScripts(domains) {
 		});
 }
 
+function syncAutoDetect(enabled) {
+	autoDetectEnabled = enabled;
+	if (!enabled) {
+		chrome.scripting
+			.unregisterContentScripts({ ids: [AUTODETECT_SCRIPT_ID] })
+			.catch(() => {});
+		return;
+	}
+	chrome.permissions.contains({ origins: ["https://*/*"] }, (granted) => {
+		if (!granted) {
+			chrome.permissions.request(
+				{ origins: ["https://*/*"] },
+				(accepted) => {
+					if (accepted) {
+						registerAutoDetectScript();
+					} else {
+						autoDetectEnabled = false;
+						chrome.storage.local.set({ autoDetectEditors: false });
+					}
+				},
+			);
+		} else {
+			registerAutoDetectScript();
+		}
+	});
+}
+
+function registerAutoDetectScript() {
+	chrome.scripting
+		.unregisterContentScripts({ ids: [AUTODETECT_SCRIPT_ID] })
+		.catch(() => {})
+		.then(() => {
+			chrome.scripting
+				.registerContentScripts([
+					{
+						id: AUTODETECT_SCRIPT_ID,
+						matches: ["https://*/*"],
+						js: ["content.js"],
+						runAt: "document_idle",
+					},
+				])
+				.catch(() => {});
+		});
+}
+
 chrome.storage.onChanged.addListener((changes) => {
 	if (changes.customDomains) {
 		loadCustomDomains();
 		syncCustomContentScripts(changes.customDomains.newValue || []);
+	}
+	if (changes.autoDetectEditors) {
+		syncAutoDetect(!!changes.autoDetectEditors.newValue);
 	}
 	if (changes.checkpointInterval) {
 		const raw = changes.checkpointInterval.newValue;
@@ -725,20 +776,27 @@ chrome.storage.onChanged.addListener((changes) => {
 });
 
 loadCustomDomains();
-chrome.storage.local.get(["customDomains", "checkpointInterval"], (result) => {
-	syncCustomContentScripts(result.customDomains || []);
-	if (typeof result.checkpointInterval === "number") {
-		checkpointIntervalMs = Math.max(
-			MIN_CHECKPOINT_INTERVAL_MS,
-			Math.min(
-				MAX_CHECKPOINT_INTERVAL_MS,
-				result.checkpointInterval * 1000,
-			),
-		);
-	}
-});
+chrome.storage.local.get(
+	["customDomains", "checkpointInterval", "autoDetectEditors"],
+	(result) => {
+		syncCustomContentScripts(result.customDomains || []);
+		if (result.autoDetectEditors) {
+			syncAutoDetect(true);
+		}
+		if (typeof result.checkpointInterval === "number") {
+			checkpointIntervalMs = Math.max(
+				MIN_CHECKPOINT_INTERVAL_MS,
+				Math.min(
+					MAX_CHECKPOINT_INTERVAL_MS,
+					result.checkpointInterval * 1000,
+				),
+			);
+		}
+	},
+);
 
 function isAllowedOrigin(url) {
+	if (autoDetectEnabled && url.startsWith("https://")) return true;
 	return (
 		ALLOWED_ORIGINS.some((re) => re.test(url)) || matchesCustomDomain(url)
 	);
