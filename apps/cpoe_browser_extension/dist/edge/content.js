@@ -372,8 +372,10 @@
 					toolHost: detectedWritingTools.host,
 				};
 
-				if (contentTier === "maximum") {
+				if (contentTier === "enhanced" || contentTier === "maximum") {
 					msg.documentTitle = getDocumentTitle();
+				}
+				if (contentTier === "maximum") {
 					const now = Date.now();
 					mutationRateWindow.push(now);
 					const cutoff = now - MUTATION_RATE_WINDOW_MS;

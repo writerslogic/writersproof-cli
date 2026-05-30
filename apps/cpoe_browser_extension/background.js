@@ -9,8 +9,12 @@
  * Users can install the desktop app later to upgrade their evidence quality.
  */
 
-importScripts("standalone.js");
-importScripts("secure-channel.js");
+// Chrome/Edge: service worker must import scripts explicitly.
+// Firefox: background.scripts in manifest loads them; importScripts is unavailable.
+if (typeof importScripts === "function") {
+	importScripts("standalone.js");
+	importScripts("secure-channel.js");
+}
 
 const NATIVE_HOST_NAME = "com.writerslogic.witnessd";
 const PROTOCOL_VERSION = 1;
@@ -932,13 +936,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function startCheckpointTimer() {
 	stopCheckpointTimer();
 	checkpointTimer = setInterval(() => {
-		if (activeTabId) {
+		if (!activeTabId) return;
+		chrome.tabs.get(activeTabId, (tab) => {
+			if (
+				chrome.runtime.lastError ||
+				!tab ||
+				!tab.url ||
+				!isAllowedOrigin(tab.url)
+			) {
+				stopCheckpointTimer();
+				return;
+			}
 			chrome.tabs
 				.sendMessage(activeTabId, { action: "capture_state" })
 				.catch(() => {
 					stopCheckpointTimer();
 				});
-		}
+		});
 	}, checkpointIntervalMs);
 }
 
@@ -1150,6 +1164,16 @@ async function handleStandaloneActionInner(message, sender, sendResponse) {
 				} else {
 					updateBadge(String(result.checkpoint_count), "#f39c12");
 					broadcastToPopup({ type: "checkpoint_update", ...result });
+					if (result.quotaWarning) {
+						const mb = (
+							(result.quotaRemaining || 0) /
+							(1024 * 1024)
+						).toFixed(1);
+						broadcastToPopup({
+							type: "error",
+							message: `Storage running low (${mb} MB remaining). Install the desktop app or export your evidence soon.`,
+						});
+					}
 					sendResponse({ ok: true, mode: "standalone" });
 				}
 			}
