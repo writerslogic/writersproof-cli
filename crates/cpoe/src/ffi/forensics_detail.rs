@@ -1444,19 +1444,18 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         // Hysteresis: use the previous mode to bias thresholds so the label
         // doesn't flicker. Entering "transcriptive" requires a lower score
         // than leaving it requires a higher one.
+        // Hysteresis: biased thresholds based on previous mode.
+        // Entering a state requires crossing a higher bar than staying in it.
         let prev_mode = session.last_writing_mode.as_deref().unwrap_or("insufficient");
         let mode = match prev_mode {
             "transcriptive" => {
-                // Already transcriptive: need 0.50+ to escape to mixed
-                if composite >= 0.50 { "cognitive" } else if composite >= 0.40 { "mixed" } else { "transcriptive" }
+                if composite >= 0.55 { "cognitive" } else if composite >= 0.45 { "mixed" } else { "transcriptive" }
             }
             "cognitive" => {
-                // Already cognitive: need to drop below 0.30 to enter transcriptive
-                if composite >= 0.50 { "cognitive" } else if composite >= 0.30 { "mixed" } else { "transcriptive" }
+                if composite >= 0.45 { "cognitive" } else if composite >= 0.25 { "mixed" } else { "transcriptive" }
             }
             _ => {
-                // Mixed or insufficient: symmetric thresholds
-                if composite > 0.55 { "cognitive" } else if composite < 0.35 { "transcriptive" } else { "mixed" }
+                if composite >= 0.55 { "cognitive" } else if composite < 0.35 { "transcriptive" } else { "mixed" }
             }
         };
         (mode.to_string(), composite)
