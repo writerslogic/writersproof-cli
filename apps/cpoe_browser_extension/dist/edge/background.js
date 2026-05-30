@@ -628,6 +628,23 @@ const ALLOWED_ORIGINS = [
 	/^https:\/\/(www\.)?languagetool\.org\//,
 	/^https:\/\/app\.gitbook\.com\//,
 	/^https:\/\/(www\.)?fictionpress\.com\//,
+	/^https:\/\/(www\.)?scribblehub\.com\//,
+	/^https:\/\/(www\.)?royalroad\.com\//,
+	/^https:\/\/app\.grammarly\.com\//,
+	/^https:\/\/(www\.)?prowritingaid\.com\//,
+	/^https:\/\/(www\.)?novelai\.net\//,
+	/^https:\/\/(www\.)?dabblewriter\.com\//,
+	/^https:\/\/(www\.)?atticus\.io\//,
+	/^https:\/\/(www\.)?reedsy\.com\//,
+	/^https:\/\/(www\.)?leanpub\.com\//,
+	/^https:\/\/(www\.)?penana\.com\//,
+	/^https:\/\/(www\.)?quotev\.com\//,
+	/^https:\/\/docs\.zoho\.com\//,
+	/^https:\/\/(www\.)?deepl\.com\/write/,
+	/^https:\/\/roamresearch\.com\//,
+	/^https:\/\/(www\.)?remnote\.com\//,
+	/^https:\/\/(www\.)?typeshare\.co\//,
+	/^https:\/\/(www\.)?bearblog\.dev\//,
 ];
 
 let customDomainList = [];

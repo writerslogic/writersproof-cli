@@ -20,9 +20,12 @@ case "$(uname -s)" in
   *)      echo "Unsupported OS: $(uname -s)"; exit 1 ;;
 esac
 
-# Find binary
+# Find binary — check WritersProof.app bundle first, then build dirs, then PATH
 BINARY_PATH=""
-if [ -f "${SCRIPT_DIR}/../target/release/${HOST_BINARY}" ]; then
+APP_BUNDLE="/Applications/WritersProof.app/Contents/MacOS/${HOST_BINARY}"
+if [ -f "${APP_BUNDLE}" ]; then
+  BINARY_PATH="${APP_BUNDLE}"
+elif [ -f "${SCRIPT_DIR}/../target/release/${HOST_BINARY}" ]; then
   BINARY_PATH="${SCRIPT_DIR}/../target/release/${HOST_BINARY}"
 elif [ -f "${SCRIPT_DIR}/../target/debug/${HOST_BINARY}" ]; then
   BINARY_PATH="${SCRIPT_DIR}/../target/debug/${HOST_BINARY}"
@@ -30,7 +33,7 @@ elif command -v "${HOST_BINARY}" &>/dev/null; then
   BINARY_PATH="$(command -v "${HOST_BINARY}")"
 else
   echo "Error: Cannot find ${HOST_BINARY} binary."
-  echo "Build it first: cargo build --release --bin ${HOST_BINARY}"
+  echo "Install WritersProof.app first, or build: cargo build --release --bin ${HOST_BINARY}"
   exit 1
 fi
 

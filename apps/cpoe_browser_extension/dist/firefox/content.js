@@ -93,6 +93,23 @@
 		"www.languagetool.org",
 		"app.gitbook.com",
 		"www.fictionpress.com",
+		"www.scribblehub.com",
+		"www.royalroad.com",
+		"app.grammarly.com",
+		"www.prowritingaid.com",
+		"www.novelai.net",
+		"www.dabblewriter.com",
+		"www.atticus.io",
+		"www.reedsy.com",
+		"www.leanpub.com",
+		"www.penana.com",
+		"www.quotev.com",
+		"docs.zoho.com",
+		"www.deepl.com",
+		"roamresearch.com",
+		"www.remnote.com",
+		"www.typeshare.co",
+		"www.bearblog.dev",
 	];
 
 	let customDomainsList = [];

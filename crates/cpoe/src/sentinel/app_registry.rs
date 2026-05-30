@@ -30,6 +30,104 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+/// How the engine witnesses content for a given application.
+///
+/// `Auto` (default) selects the mode based on `StoragePattern`:
+/// - `FileBased` / `BundleBased` → file-level hashing (current behavior)
+/// - `ContainerBased` / `CloudLibrary` / `DatabaseBacked` → content-level
+///   paragraph Merkle trees
+///
+/// Users can override per-app in settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WitnessingMode {
+    /// Automatically select based on the app's `StoragePattern`.
+    #[default]
+    Auto,
+    /// Hash the document file directly at each checkpoint.
+    FileLevel,
+    /// Build a paragraph-level Merkle tree from extracted text content.
+    ContentLevel,
+    /// File hash + content Merkle tree (for apps like Word that save files
+    /// but also export to different formats).
+    Hybrid,
+}
+
+impl WitnessingMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WitnessingMode::Auto => "auto",
+            WitnessingMode::FileLevel => "file_level",
+            WitnessingMode::ContentLevel => "content_level",
+            WitnessingMode::Hybrid => "hybrid",
+        }
+    }
+
+    /// Resolve `Auto` to a concrete mode based on the app's storage pattern.
+    pub fn resolve(self, storage: StoragePattern) -> Self {
+        if self != WitnessingMode::Auto {
+            return self;
+        }
+        match storage {
+            StoragePattern::FileBased | StoragePattern::BundleBased => WitnessingMode::FileLevel,
+            StoragePattern::ContainerBased
+            | StoragePattern::CloudLibrary
+            | StoragePattern::DatabaseBacked => WitnessingMode::ContentLevel,
+        }
+    }
+}
+
+impl std::str::FromStr for WitnessingMode {
+    type Err = ();
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(WitnessingMode::Auto),
+            "file_level" => Ok(WitnessingMode::FileLevel),
+            "content_level" => Ok(WitnessingMode::ContentLevel),
+            "hybrid" => Ok(WitnessingMode::Hybrid),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Granularity for content-level witnessing.
+///
+/// Controls how text is segmented before hashing into the content Merkle tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentGranularity {
+    /// Split on double-newlines (blank lines). Best for prose.
+    #[default]
+    Paragraph,
+    /// Split on sentence boundaries (period/question/exclamation + space).
+    /// Finer granularity, larger proofs.
+    Sentence,
+    /// Split on single newlines. Best for code, poetry, screenplays.
+    Block,
+}
+
+impl ContentGranularity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ContentGranularity::Paragraph => "paragraph",
+            ContentGranularity::Sentence => "sentence",
+            ContentGranularity::Block => "block",
+        }
+    }
+}
+
+impl std::str::FromStr for ContentGranularity {
+    type Err = ();
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "paragraph" => Ok(ContentGranularity::Paragraph),
+            "sentence" => Ok(ContentGranularity::Sentence),
+            "block" => Ok(ContentGranularity::Block),
+            _ => Err(()),
+        }
+    }
+}
+
 /// How a writing application stores its content on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -120,6 +218,9 @@ pub struct WritingApp {
     /// the window title. `Generic` covers the common `"name - App"` pattern;
     /// app-specific variants handle known stable formats.
     pub title_parser: TitleParserVariant,
+    /// How the engine witnesses content for this app. `Auto` selects based on
+    /// `storage`. Users can override per-app in settings.
+    pub witnessing_mode: WitnessingMode,
 }
 
 /// A user-added writing application, persisted to `user_apps.json`.
@@ -134,6 +235,8 @@ pub struct UserWritingApp {
     pub default_debounce_ms: Option<u64>,
     #[serde(default)]
     pub title_parser: TitleParserVariant,
+    #[serde(default)]
+    pub witnessing_mode: WitnessingMode,
     /// When this entry was added (Unix timestamp in JSON).
     #[serde(with = "system_time_serde")]
     pub added_at: SystemTime,
@@ -153,6 +256,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.microsoft.onenote.mac",
@@ -164,6 +268,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple iWork ────────────────────────────────────────────────────────
     WritingApp {
@@ -174,6 +279,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Ulysses ────────────────────────────────────────────────────────────
     WritingApp {
@@ -187,6 +293,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Bear ────────────────────────────────────────────────────────────────
     WritingApp {
@@ -199,6 +306,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: Some(50),
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── iA Writer ──────────────────────────────────────────────────────────
     WritingApp {
@@ -209,6 +317,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Scrivener ──────────────────────────────────────────────────────────
     WritingApp {
@@ -219,6 +328,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: Some(300),
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Vellum ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -229,6 +339,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: Some(300),
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Affinity Publisher ─────────────────────────────────────────────────
     WritingApp {
@@ -239,6 +350,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.seriflabs.affinitypublisher2",
@@ -248,6 +360,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Drafts ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -261,6 +374,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
     WritingApp {
@@ -273,6 +387,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Highland 2 ─────────────────────────────────────────────────────────
     WritingApp {
@@ -283,6 +398,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Final Draft ────────────────────────────────────────────────────────
     WritingApp {
@@ -293,6 +409,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.finaldraft.mac.fd11",
@@ -302,6 +419,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Fade In ────────────────────────────────────────────────────────────
     WritingApp {
@@ -312,6 +430,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Hemingway Editor ───────────────────────────────────────────────────
     WritingApp {
@@ -322,6 +441,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true, // Electron; exposes limited AX info
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.typora.Typora",
@@ -331,6 +451,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── MarkText ───────────────────────────────────────────────────────────
     WritingApp {
@@ -341,6 +462,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Obsidian ────────────────────────────────────────────────────────────
     WritingApp {
@@ -351,6 +473,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Obsidian,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Typora ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -361,6 +484,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Zettlr ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -371,6 +495,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Logseq ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -381,25 +506,32 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Notion ─────────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.notion.id",
         display_name: "Notion",
         storage: StoragePattern::ContainerBased,
-        container_paths: &[],
+        container_paths: &[
+            "Library/Application Support/Notion",
+        ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.notion.Notion",
         display_name: "Notion",
         storage: StoragePattern::ContainerBased,
-        container_paths: &[],
+        container_paths: &[
+            "Library/Containers/com.notion.Notion/Data/Library/Application Support/Notion",
+        ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Figma ──────────────────────────────────────────────────────────────
     WritingApp {
@@ -410,6 +542,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Cursor ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -420,6 +553,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── VS Code ────────────────────────────────────────────────────────────
     WritingApp {
@@ -430,6 +564,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.microsoft.VSCodeInsiders",
@@ -439,6 +574,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Noteship ───────────────────────────────────────────────────────────
     WritingApp {
@@ -449,6 +585,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Notebooks ──────────────────────────────────────────────────────────
     WritingApp {
@@ -459,6 +596,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Mellel ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -469,6 +607,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Nisus Writer ───────────────────────────────────────────────────────
     WritingApp {
@@ -479,6 +618,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── TextEdit (built-in) ────────────────────────────────────────────────
     WritingApp {
@@ -489,6 +629,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── BBEdit ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -499,6 +640,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::BBEdit,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Ghostwriter ────────────────────────────────────────────────────────
     WritingApp {
@@ -509,6 +651,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Manuskript ─────────────────────────────────────────────────────────
     WritingApp {
@@ -519,6 +662,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── LibreOffice Writer ─────────────────────────────────────────────────
     WritingApp {
@@ -529,6 +673,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Marked 2 (preview app; writers use it with other editors) ──────────
     WritingApp {
@@ -539,6 +684,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Taskpaper ──────────────────────────────────────────────────────────
     WritingApp {
@@ -549,6 +695,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── FoldingText ────────────────────────────────────────────────────────
     WritingApp {
@@ -559,6 +706,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Byword ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -569,6 +717,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Markdown Editor ────────────────────────────────────────────────────
     WritingApp {
@@ -579,6 +728,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Coppice ────────────────────────────────────────────────────────────
     WritingApp {
@@ -589,6 +739,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Bike Outliner ──────────────────────────────────────────────────────
     WritingApp {
@@ -599,6 +750,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── OmniOutliner ───────────────────────────────────────────────────────
     WritingApp {
@@ -609,6 +761,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Celtx (web, but has a desktop wrapper) ─────────────────────────────
     WritingApp {
@@ -619,6 +772,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple Notes ────────────────────────────────────────────────────────
     WritingApp {
@@ -632,6 +786,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: Some(50),
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Sublime Text ───────────────────────────────────────────────────────
     WritingApp {
@@ -642,6 +797,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.sublimetext.3",
@@ -651,6 +807,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Nova ───────────────────────────────────────────────────────────────
     WritingApp {
@@ -661,6 +818,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Nova,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Storyist ───────────────────────────────────────────────────────────
     WritingApp {
@@ -671,6 +829,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── WriteRoom ──────────────────────────────────────────────────────────
     WritingApp {
@@ -681,6 +840,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── OmmWriter ──────────────────────────────────────────────────────────
     WritingApp {
@@ -691,6 +851,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true, // limited AX support
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Warp (modern terminal — vim/emacs authors) ─────────────────────────
     WritingApp {
@@ -701,6 +862,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true, // title shows cwd / running command
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Adobe InDesign ─────────────────────────────────────────────────────
     WritingApp {
@@ -711,6 +873,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Keynote ────────────────────────────────────────────────────────────
     WritingApp {
@@ -721,6 +884,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── PowerPoint ─────────────────────────────────────────────────────────
     WritingApp {
@@ -731,6 +895,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple Mail ─────────────────────────────────────────────────────────
     WritingApp {
@@ -741,6 +906,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true, // compose windows only expose subject
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Microsoft Outlook ──────────────────────────────────────────────────
     WritingApp {
@@ -751,6 +917,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true, // compose windows only expose subject
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── TeXShop ────────────────────────────────────────────────────────────
     WritingApp {
@@ -761,6 +928,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Texpad ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -771,6 +939,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
     WritingApp {
@@ -783,6 +952,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Day One ────────────────────────────────────────────────────────────
     WritingApp {
@@ -795,6 +965,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: Some(50),
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── MacDown ────────────────────────────────────────────────────────────
     WritingApp {
@@ -805,6 +976,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── GoodNotes ──────────────────────────────────────────────────────────
     WritingApp {
@@ -817,6 +989,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── CotEditor ──────────────────────────────────────────────────────────
     WritingApp {
@@ -827,6 +1000,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── MacVim ─────────────────────────────────────────────────────────────
     WritingApp {
@@ -837,6 +1011,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: false,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Zed ────────────────────────────────────────────────────────────────
     WritingApp {
@@ -847,6 +1022,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "dev.zed.Zed-Preview",
@@ -856,6 +1032,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
     },
     // ── Terminal Emulators ────────────────────────────────────────────────
     WritingApp {
@@ -866,6 +1043,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::TerminalEditor,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.googlecode.iterm2",
@@ -875,6 +1053,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::TerminalEditor,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "com.github.wez.wezterm",
@@ -884,6 +1063,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::TerminalEditor,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "net.kovidgoyal.kitty",
@@ -893,6 +1073,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::TerminalEditor,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "io.alacritty",
@@ -902,6 +1083,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::TerminalEditor,
+        witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
         bundle_id: "dev.warp.Warp-Stable",
@@ -911,6 +1093,235 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         needs_title_inference: true,
         default_debounce_ms: None,
         title_parser: TitleParserVariant::TerminalEditor,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    // ── Opaque Container Apps (content-level witnessing) ──────────────────
+    WritingApp {
+        bundle_id: "com.eastgate.Tinderbox",
+        display_name: "Tinderbox",
+        storage: StoragePattern::DatabaseBacked,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: Some(100),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::ContentLevel,
+    },
+    WritingApp {
+        bundle_id: "com.devon-technologies.think3",
+        display_name: "DEVONthink 3",
+        storage: StoragePattern::DatabaseBacked,
+        container_paths: &[
+            "Library/Application Support/DEVONthink 3",
+        ],
+        needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::ContentLevel,
+    },
+    // ── Additional Writing & Note Apps ────────────────────────────────────
+    WritingApp {
+        bundle_id: "com.grammarly.ProjectLlama",
+        display_name: "Grammarly",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.writefull.writefull",
+        display_name: "Writefull",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.prowritingaid.prowritingaid",
+        display_name: "ProWritingAid",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "org.mozilla.thunderbird",
+        display_name: "Thunderbird",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.apple.Reminders",
+        display_name: "Reminders",
+        storage: StoragePattern::DatabaseBacked,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.goodnotesapp.GoodNotes5",
+        display_name: "GoodNotes 5",
+        storage: StoragePattern::CloudLibrary,
+        container_paths: &[
+            "Library/Group Containers/group.com.goodnotesapp.x",
+        ],
+        needs_title_inference: true,
+        default_debounce_ms: Some(100),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::ContentLevel,
+    },
+    WritingApp {
+        bundle_id: "com.apple.freeform",
+        display_name: "Freeform",
+        storage: StoragePattern::DatabaseBacked,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: Some(100),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::ContentLevel,
+    },
+    WritingApp {
+        bundle_id: "com.jetbrains.intellij",
+        display_name: "IntelliJ IDEA",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.jetbrains.WebStorm",
+        display_name: "WebStorm",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.jetbrains.pycharm",
+        display_name: "PyCharm",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.jetbrains.goland",
+        display_name: "GoLand",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.jetbrains.rustrover",
+        display_name: "RustRover",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.apple.dt.Xcode",
+        display_name: "Xcode",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.github.atom",
+        display_name: "Atom",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::VSCode,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.noteship.app",
+        display_name: "Noteship",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.atticus.mac",
+        display_name: "Atticus",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.dabblewriter.Dabble",
+        display_name: "Dabble",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.iawriter.mac",
+        display_name: "iA Writer",
+        storage: StoragePattern::CloudLibrary,
+        container_paths: &[
+            "Library/Mobile Documents/27N4MQEA55~pro~writer/Documents",
+        ],
+        needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "app.novelai.desktop",
+        display_name: "NovelAI",
+        storage: StoragePattern::ContainerBased,
+        container_paths: &[],
+        needs_title_inference: true,
+        default_debounce_ms: Some(50),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.apptorium.Pockity",
+        display_name: "Pockity",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
     },
 ];
 
@@ -1448,6 +1859,7 @@ mod tests {
             probe_confidence: ProbeConfidence::High,
             default_debounce_ms: None,
             title_parser: TitleParserVariant::Generic,
+            witnessing_mode: WitnessingMode::Auto,
         };
         let json = serde_json::to_string(&app).unwrap();
         let rt: UserWritingApp = serde_json::from_str(&json).unwrap();
@@ -1532,6 +1944,7 @@ mod tests {
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
             title_parser: TitleParserVariant::Generic,
+            witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
     }
@@ -1550,6 +1963,7 @@ mod tests {
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
             title_parser: TitleParserVariant::Generic,
+            witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
     }
@@ -1571,6 +1985,7 @@ mod tests {
             probe_confidence: ProbeConfidence::Medium,
             default_debounce_ms: None,
             title_parser: TitleParserVariant::Generic,
+            witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
 
@@ -1593,6 +2008,7 @@ mod tests {
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
             title_parser: TitleParserVariant::Generic,
+            witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
         assert_eq!(reg.user_apps().len(), 1);
@@ -1630,6 +2046,7 @@ mod tests {
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
             title_parser: TitleParserVariant::Generic,
+            witnessing_mode: WitnessingMode::Auto,
         };
         reg.add_user_app(app()).unwrap();
         reg.add_user_app(app()).unwrap();

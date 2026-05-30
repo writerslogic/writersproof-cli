@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WritersProof",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "Prove you wrote it. WritersProof captures cryptographic evidence of your writing process across web-based editors and publishing platforms.",
   "homepage_url": "https://writerslogic.com",
   "permissions": [
@@ -61,7 +61,21 @@
     "https://*.wordpress.com/*",
     "https://*.ghost.io/*",
     "https://substack.com/*",
-    "https://*.substack.com/*"
+    "https://*.substack.com/*",
+    "https://www.scribblehub.com/*",
+    "https://www.royalroad.com/*",
+    "https://www.novelai.net/*",
+    "https://www.dabblewriter.com/*",
+    "https://www.atticus.io/*",
+    "https://www.leanpub.com/*",
+    "https://www.quotev.com/*",
+    "https://docs.zoho.com/*",
+    "https://roamresearch.com/*",
+    "https://www.remnote.com/*",
+    "https://www.typeshare.co/*",
+    "https://www.bearblog.dev/*",
+    "https://app.gitbook.com/*",
+    "https://www.fictionpress.com/*"
   ],
   "browser_specific_settings": {
     "gecko": {
@@ -121,7 +135,21 @@
         "https://wordpress.com/post/*",
         "https://*.wordpress.com/wp-admin/post*",
         "https://*.ghost.io/ghost/*",
-        "https://*.substack.com/publish/post/*"
+        "https://*.substack.com/publish/post/*",
+        "https://www.scribblehub.com/*",
+        "https://www.royalroad.com/*",
+        "https://www.novelai.net/*",
+        "https://www.dabblewriter.com/*",
+        "https://www.atticus.io/*",
+        "https://www.leanpub.com/*",
+        "https://www.quotev.com/*",
+        "https://docs.zoho.com/*",
+        "https://roamresearch.com/*",
+        "https://www.remnote.com/*",
+        "https://www.typeshare.co/*",
+        "https://www.bearblog.dev/*",
+        "https://app.gitbook.com/*",
+        "https://www.fictionpress.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
