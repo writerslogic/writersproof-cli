@@ -208,33 +208,24 @@ impl VdfAggregateProof {
 }
 
 /// Aggregate proof operation errors
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AggregateError {
     /// Attempted to extract a proof type that does not match the method.
+    #[error("Attempted to extract wrong proof type")]
     WrongMethod,
     /// Inner proof bytes failed to deserialize.
+    #[error("Failed to deserialize proof")]
     DeserializationError,
     /// Aggregate proof verification failed.
+    #[error("Proof verification failed")]
     VerificationFailed,
     /// Merkle inclusion path is invalid.
+    #[error("Invalid Merkle path")]
     InvalidMerklePath,
     /// Required verification key not found.
+    #[error("Verification key not found")]
     MissingVerificationKey,
 }
-
-impl std::fmt::Display for AggregateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::WrongMethod => write!(f, "Attempted to extract wrong proof type"),
-            Self::DeserializationError => write!(f, "Failed to deserialize proof"),
-            Self::VerificationFailed => write!(f, "Proof verification failed"),
-            Self::InvalidMerklePath => write!(f, "Invalid Merkle path"),
-            Self::MissingVerificationKey => write!(f, "Verification key not found"),
-        }
-    }
-}
-
-impl std::error::Error for AggregateError {}
 
 #[derive(Debug)]
 /// Incremental builder for `MerkleVdfProof`

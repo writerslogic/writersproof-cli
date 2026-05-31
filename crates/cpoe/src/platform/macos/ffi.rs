@@ -190,7 +190,19 @@ extern "C" {
     pub fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
     pub fn CGPreflightListenEventAccess() -> bool;
     pub fn CGRequestListenEventAccess() -> bool;
+}
 
+/// IOHIDRequestType constants for IOHIDCheckAccess / IOHIDRequestAccess.
+pub const K_IOHID_REQUEST_TYPE_LISTEN_EVENT: u32 = 1;
+
+/// IOHIDAccessType return values from IOHIDCheckAccess.
+pub const K_IOHID_ACCESS_TYPE_GRANTED: u32 = 0;
+
+#[allow(dead_code)]
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    pub fn IOHIDCheckAccess(request_type: u32) -> u32;
+    pub fn IOHIDRequestAccess(request_type: u32) -> bool;
 }
 
 // CGEventField constants (values from Apple's CGEventTypes.h)

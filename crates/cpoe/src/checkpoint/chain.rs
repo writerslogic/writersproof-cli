@@ -67,7 +67,7 @@ pub struct Chain {
     storage_path: Option<PathBuf>,
     /// Optional MMR coordinator for anti-deletion anchoring.
     #[serde(skip)]
-    mmr: Option<crate::checkpoint_mmr::CheckpointMmr>,
+    mmr: Option<crate::checkpoint::mmr::CheckpointMmr>,
     /// Optional forensic gating configuration.
     #[serde(skip)]
     forensic_gate: Option<ForensicGateConfig>,
@@ -90,7 +90,7 @@ impl Chain {
     }
 
     /// Attach an MMR coordinator so each commit anchors its root in the signed hash.
-    pub fn with_mmr(mut self, mmr: crate::checkpoint_mmr::CheckpointMmr) -> Self {
+    pub fn with_mmr(mut self, mmr: crate::checkpoint::mmr::CheckpointMmr) -> Self {
         self.mmr = Some(mmr);
         self
     }

@@ -538,9 +538,76 @@ fn platform_probe(bundle_id: &str) -> ProbeResult {
 }
 
 #[cfg(target_os = "windows")]
-fn find_windows_app_dir(_bundle_id: &str) -> Option<PathBuf> {
-    // Placeholder: registry lookup or PATH scan.
-    // Windows apps don't use bundle IDs; this would need a mapping.
+fn find_windows_app_dir(bundle_id: &str) -> Option<PathBuf> {
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
+        REG_SZ, REG_VALUE_TYPE,
+    };
+
+    let exe_name = bundle_id
+        .rsplit('.')
+        .next()
+        .unwrap_or(bundle_id);
+
+    let subkey = format!(
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{}.exe",
+        exe_name
+    );
+    let subkey_wide: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe {
+        let mut hkey = HKEY::default();
+        if RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            windows::core::PCWSTR(subkey_wide.as_ptr()),
+            0,
+            KEY_READ,
+            &mut hkey,
+        )
+        .is_ok()
+        {
+            let mut buf = [0u16; 1024];
+            let mut size = (buf.len() * 2) as u32;
+            let mut kind = REG_VALUE_TYPE::default();
+            let result = RegQueryValueExW(
+                hkey,
+                windows::core::PCWSTR::null(),
+                None,
+                Some(&mut kind),
+                Some(buf.as_mut_ptr() as *mut u8),
+                Some(&mut size),
+            );
+            let _ = RegCloseKey(hkey);
+            if result.is_ok() && kind == REG_SZ && size > 2 {
+                let char_count = (size as usize / 2).saturating_sub(1);
+                let path_str = String::from_utf16_lossy(&buf[..char_count]);
+                let path = PathBuf::from(&path_str);
+                if let Some(parent) = path.parent() {
+                    return Some(parent.to_path_buf());
+                }
+            }
+        }
+    }
+
+    let candidates: Vec<PathBuf> = [
+        std::env::var("ProgramFiles").ok(),
+        std::env::var("ProgramFiles(x86)").ok(),
+        std::env::var("LOCALAPPDATA")
+            .ok()
+            .map(|p| format!("{}\\Programs", p)),
+    ]
+    .iter()
+    .flatten()
+    .map(PathBuf::from)
+    .collect();
+
+    for base in &candidates {
+        let candidate = base.join(exe_name);
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+
     None
 }
 

@@ -224,7 +224,7 @@ fn consume_item(stack: &mut Vec<u64>) {
 
 /// Serialize a value to deterministic CBOR bytes.
 pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>> {
-    let mut buffer = Vec::new();
+    let mut buffer = Vec::with_capacity(256);
     ciborium::into_writer(value, &mut buffer).map_err(|e| CodecError::CborEncode(e.to_string()))?;
     Ok(buffer)
 }
@@ -254,7 +254,7 @@ pub fn encode_to<T: Serialize, W: Write>(value: &T, writer: W) -> Result<()> {
 
 /// Deserialize a value from a CBOR reader, limited to [`MAX_CBOR_PAYLOAD`] bytes.
 pub fn decode_from<T: DeserializeOwned, R: Read>(reader: R) -> Result<T> {
-    let mut buf = Vec::new();
+    let mut buf = Vec::with_capacity(4096);
     reader
         .take(MAX_CBOR_PAYLOAD as u64)
         .read_to_end(&mut buf)

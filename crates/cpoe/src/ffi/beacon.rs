@@ -3,7 +3,7 @@
 use crate::ffi::helpers::{
     load_api_key, load_did, load_events_for_path, load_signing_key, open_store, validate_path_str,
 };
-use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi};
 use std::sync::OnceLock;
 
 /// Maximum evidence file size for FFI reads (64 MB).
@@ -132,7 +132,7 @@ pub(crate) fn load_beacon_attestation(
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconResult {
-    catch_ffi_panic!(FfiBeaconResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiBeaconResult, {
     log::debug!("ffi_submit_beacon: document_path={} timeout_secs={}", document_path, timeout_secs);
     let (canonical, _store, events) =
         try_ffi!(load_events_for_path(&document_path), FfiBeaconResult);
@@ -287,7 +287,7 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_check_beacon_status(document_path: String) -> FfiBeaconResult {
-    catch_ffi_panic!(FfiBeaconResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiBeaconResult, {
     log::debug!("ffi_check_beacon_status: document_path={}", document_path);
     let canonical = try_ffi!(validate_path_str(&document_path), FfiBeaconResult);
     let data = try_ffi!(read_bounded(&canonical), FfiBeaconResult);
@@ -359,7 +359,7 @@ fn check_beacon_from_store(canonical: &str) -> FfiBeaconResult {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_beacons(document_path: String) -> FfiBeaconListResult {
-    catch_ffi_panic!(FfiBeaconListResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiBeaconListResult, {
     log::debug!("ffi_list_beacons: document_path={}", document_path);
     let canonical = try_ffi!(validate_path_str(&document_path), FfiBeaconListResult);
     let data = try_ffi!(read_bounded(&canonical), FfiBeaconListResult);

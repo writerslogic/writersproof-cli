@@ -15,8 +15,8 @@ use super::types::{
 #[derive(Debug)]
 /// Collects anonymized sessions and manages disk persistence / upload.
 pub struct ResearchCollector {
-    config: ResearchConfig,
-    sessions: Vec<AnonymizedSession>,
+    pub(crate) config: ResearchConfig,
+    pub(crate) sessions: Vec<AnonymizedSession>,
 }
 
 impl ResearchCollector {
@@ -28,14 +28,9 @@ impl ResearchCollector {
         }
     }
 
-    /// Return `true` if the user has opted in to research contribution.
-    pub fn is_enabled(&self) -> bool {
-        self.config.contribute_to_research
-    }
-
     /// Anonymize and enqueue a session (no-op if disabled or below min samples).
     pub fn add_session(&mut self, evidence: &Evidence) {
-        if !self.is_enabled() {
+        if !self.config.contribute_to_research {
             return;
         }
 
@@ -50,11 +45,6 @@ impl ResearchCollector {
             let excess = self.sessions.len() - self.config.max_sessions;
             self.sessions.drain(..excess);
         }
-    }
-
-    /// Return the number of sessions currently buffered.
-    pub fn session_count(&self) -> usize {
-        self.sessions.len()
     }
 
     /// Build a serializable export envelope from all buffered sessions.
@@ -147,7 +137,7 @@ impl ResearchCollector {
     /// `anon` role; there is no read access. All submitted data is anonymized
     /// (no user identifiers, no raw keystrokes).
     pub async fn upload(&mut self) -> Result<UploadResult, String> {
-        if !self.is_enabled() {
+        if !self.config.contribute_to_research {
             return Err("Research contribution not enabled".to_string());
         }
 
@@ -181,7 +171,7 @@ impl ResearchCollector {
 
     /// Return `true` if research is enabled and enough sessions are buffered.
     pub fn should_upload(&self) -> bool {
-        self.is_enabled() && self.sessions.len() >= MIN_SESSIONS_FOR_UPLOAD
+        self.config.contribute_to_research && self.sessions.len() >= MIN_SESSIONS_FOR_UPLOAD
     }
 
     /// Export sessions if upload conditions are met; returns `None` otherwise.

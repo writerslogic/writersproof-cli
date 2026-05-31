@@ -2,6 +2,7 @@
 
 use super::defaults;
 use crate::error::{Error, Result};
+use crate::sentinel::app_registry::{ContentGranularity, WitnessingMode};
 use crate::vdf::params::Parameters as VdfParameters;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -321,6 +322,8 @@ pub struct SentinelConfig {
     /// When true, evidence signing is refused if the platform Secure Enclave or
     /// TPM is unavailable and the session would fall back to software-only attestation.
     pub require_hardware_attestation: bool,
+    pub default_witnessing_mode: WitnessingMode,
+    pub default_content_granularity: ContentGranularity,
 }
 
 impl Default for SentinelConfig {
@@ -426,6 +429,8 @@ impl Default for SentinelConfig {
             focus_debounce_ms: 150,
             snapshots_enabled: false,
             require_hardware_attestation: false,
+            default_witnessing_mode: WitnessingMode::Auto,
+            default_content_granularity: ContentGranularity::Paragraph,
         }
     }
 }

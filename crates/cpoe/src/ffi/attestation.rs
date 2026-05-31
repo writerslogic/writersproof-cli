@@ -40,7 +40,7 @@ pub fn ffi_get_attestation_info() -> FfiAttestationInfo {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_reseal_identity() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_reseal_identity");
     let data_dir = match get_data_dir() {
         Some(d) => d,
@@ -246,6 +246,14 @@ fn run_command_with_timeout(cmd: &'static str, args: &'static [&'static str]) ->
         .filter(|s| !s.is_empty())
 }
 
+/// Populate OnceLock caches for device model and OS version.
+/// Called from a background thread during ffi_init to avoid priority inversion
+/// when ffi_sign_attestation_challenge runs on a high-QoS thread.
+pub(super) fn prewarm_device_info() {
+    let _ = get_model();
+    let _ = get_os_version();
+}
+
 fn get_model() -> String {
     static CACHED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     CACHED
@@ -257,7 +265,11 @@ fn get_model() -> String {
             }
             #[cfg(target_os = "windows")]
             {
-                "Windows PC".to_string()
+                read_registry_string(
+                    "HARDWARE\\DESCRIPTION\\System\\BIOS",
+                    "SystemProductName",
+                )
+                .unwrap_or_else(|| "Windows PC".to_string())
             }
             #[cfg(target_os = "linux")]
             {
@@ -279,7 +291,19 @@ fn get_os_version() -> String {
             }
             #[cfg(target_os = "windows")]
             {
-                "Windows".to_string()
+                let product = read_registry_string(
+                    "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+                    "ProductName",
+                );
+                let build = read_registry_string(
+                    "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+                    "CurrentBuildNumber",
+                );
+                match (product, build) {
+                    (Some(p), Some(b)) => format!("{p} (Build {b})"),
+                    (Some(p), None) => p,
+                    _ => "Windows".to_string(),
+                }
             }
             #[cfg(target_os = "linux")]
             {
@@ -287,4 +311,47 @@ fn get_os_version() -> String {
             }
         })
         .clone()
+}
+
+#[cfg(target_os = "windows")]
+fn read_registry_string(subkey: &str, value_name: &str) -> Option<String> {
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
+        REG_SZ, REG_VALUE_TYPE,
+    };
+
+    let subkey_wide: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
+    let value_wide: Vec<u16> = value_name.encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe {
+        let mut hkey = HKEY::default();
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            windows::core::PCWSTR(subkey_wide.as_ptr()),
+            0,
+            KEY_READ,
+            &mut hkey,
+        )
+        .ok()?;
+
+        let mut buf = [0u16; 512];
+        let mut size = (buf.len() * 2) as u32;
+        let mut kind = REG_VALUE_TYPE::default();
+        let result = RegQueryValueExW(
+            hkey,
+            windows::core::PCWSTR(value_wide.as_ptr()),
+            None,
+            Some(&mut kind),
+            Some(buf.as_mut_ptr() as *mut u8),
+            Some(&mut size),
+        );
+        let _ = RegCloseKey(hkey);
+        result.ok()?;
+        if kind != REG_SZ || size < 2 {
+            return None;
+        }
+        let char_count = (size as usize / 2).saturating_sub(1);
+        let s = String::from_utf16_lossy(&buf[..char_count]);
+        if s.is_empty() { None } else { Some(s) }
+    }
 }

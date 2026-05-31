@@ -16,6 +16,9 @@ pub mod macos;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+#[cfg(target_os = "windows")]
+pub mod windows_hid;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 
@@ -181,3 +184,6 @@ pub use macos::{
 
 #[cfg(target_os = "windows")]
 pub use status::FocusInfo as WindowsFocusInfo;
+
+#[cfg(target_os = "windows")]
+pub use windows_hid::HidInputCapture;

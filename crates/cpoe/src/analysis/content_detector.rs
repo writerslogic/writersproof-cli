@@ -836,18 +836,14 @@ impl ContentDetector {
         // Softmax over raw scores; select the category with highest probability.
         // Because softmax is order-preserving this selects the same winner as max,
         // but gives a principled probability distribution for future diagnostics.
-        let max_s = candidates.iter().map(|(_, s)| *s).fold(f64::NEG_INFINITY, f64::max);
-        let exps: Vec<f64> = candidates.iter().map(|(_, s)| (s - max_s).exp()).collect();
-        let sum_exp: f64 = exps.iter().sum();
-        let best_idx = exps
+        let best_idx = candidates
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|(_, (_, a)), (_, (_, b))| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(i, _)| i)
             .unwrap_or(0);
 
         let (best_type, best_score) = candidates[best_idx];
-        let _ = sum_exp; // softmax probabilities available for future diagnostics
 
         if best_score < MIN_CLASSIFICATION_CONFIDENCE {
             return (ContextType::Unknown, best_score);

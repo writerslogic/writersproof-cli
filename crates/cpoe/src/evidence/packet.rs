@@ -330,9 +330,6 @@ impl Packet {
         match format {
             Format::Cbor => codec::cbor::encode_cpoe(self)
                 .map_err(|e| Error::evidence(format!("encode failed: {e}"))),
-            Format::CborWar => Err(Error::evidence(
-                "CborWar format is for attestation results, not evidence packets",
-            )),
             Format::Json => serde_json::to_vec_pretty(self)
                 .map_err(|e| Error::evidence(format!("encode failed: {e}"))),
         }
@@ -360,9 +357,6 @@ impl Packet {
                 codec::cbor::decode_cpoe(data)
                     .map_err(|e| Error::evidence(format!("decode failed: {e}")))
             }
-            Format::CborWar => Err(Error::evidence(
-                "CborWar format is for attestation results, not evidence packets",
-            )),
             Format::Json => serde_json::from_slice(data)
                 .map_err(|e| Error::evidence(format!("decode failed: {e}"))),
         }
@@ -378,9 +372,6 @@ impl Packet {
                 codec::cbor::decode_cpoe(data)
                     .map_err(|e| Error::evidence(format!("decode failed: {e}")))
             }
-            Format::CborWar => Err(Error::evidence(
-                "CborWar format is for attestation results, not evidence packets",
-            )),
             Format::Json => serde_json::from_slice(data)
                 .map_err(|e| Error::evidence(format!("decode failed: {e}"))),
         }
@@ -693,11 +684,6 @@ impl Packet {
     /// Return true if the packet has both a signature and public key.
     pub fn is_signed(&self) -> bool {
         self.packet_signature.is_some() && self.signing_public_key.is_some()
-    }
-
-    /// Return the verifier nonce, if set.
-    pub fn get_verifier_nonce(&self) -> Option<&[u8; 32]> {
-        self.verifier_nonce.as_ref()
     }
 
     /// Derive trust tier: `Attested` > `NonceBound` > `Signed` > `Local`.

@@ -81,7 +81,7 @@ pub fn ffi_add_user_writing_app(
     needs_title_inference: bool,
     confidence: String,
 ) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_add_user_writing_app: bundle_id={}, display_name={}", bundle_id, display_name);
     let data_dir = match get_data_dir() {
         Some(d) => d,
@@ -102,6 +102,7 @@ pub fn ffi_add_user_writing_app(
         probe_confidence,
         default_debounce_ms: None,
         title_parser: crate::sentinel::app_registry::TitleParserVariant::default(),
+        witnessing_mode: crate::sentinel::app_registry::WitnessingMode::default(),
     };
     let mut registry = crate::sentinel::app_registry::AppRegistry::load(&data_dir);
     match registry.add_user_app(app) {
@@ -114,7 +115,7 @@ pub fn ffi_add_user_writing_app(
 /// Remove a user app by bundle ID. Persists immediately.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_remove_user_writing_app(bundle_id: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_remove_user_writing_app: bundle_id={}", bundle_id);
     let data_dir = match get_data_dir() {
         Some(d) => d,

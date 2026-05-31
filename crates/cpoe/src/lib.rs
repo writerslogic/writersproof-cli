@@ -14,12 +14,11 @@ pub mod ffi;
 uniffi::setup_scaffolding!("cpoe_engine");
 
 pub mod checkpoint;
-pub mod checkpoint_mmr;
 pub mod collaboration;
+pub mod content;
 pub mod continuation;
 pub mod evidence;
 pub mod mmr;
-pub mod provenance;
 
 pub mod analysis;
 pub mod baseline;
@@ -28,7 +27,6 @@ pub mod forensics;
 pub mod jitter;
 pub mod physics;
 pub mod presence;
-mod rfc_conversions;
 
 pub mod crypto;
 pub mod keyhierarchy;
@@ -48,7 +46,6 @@ pub mod sentinel;
 pub mod serde_utils;
 pub mod snapshot;
 pub mod store;
-pub mod timing;
 pub mod utils;
 pub mod verify;
 pub mod wal;
@@ -103,7 +100,7 @@ pub use crate::collaboration::{
 };
 pub use crate::continuation::{ContinuationSection, ContinuationSummary};
 pub use crate::physics::PhysicalContext;
-pub use crate::provenance::{
+pub use crate::evidence::provenance::{
     DerivationClaim, DerivationType, ProvenanceLink, ProvenanceMetadata, ProvenanceSection,
 };
 pub use crate::research::{

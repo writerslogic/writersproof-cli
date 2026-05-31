@@ -9,51 +9,26 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use uuid::Uuid;
 
 /// Comprehensive error type for Continuation logic.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ContinuationError {
+    #[error("packet_sequence overflow: u32::MAX reached")]
     SequenceOverflow,
+    #[error("packets_in_series overflow: u32::MAX reached")]
     PacketsInSeriesOverflow,
+    #[error("Non-first packet must have prev_packet_chain_hash")]
     MissingPrevChainHash,
+    #[error("Non-first packet must have prev_packet_id")]
     MissingPrevPacketId,
+    #[error("prev_packet_chain_hash must not be empty")]
     EmptyChainHash,
+    #[error("First packet (sequence 0) must not have prev_packet_chain_hash")]
     UnexpectedPrevChainHash,
+    #[error("packets_in_series ({found}) does not match sequence + 1 ({expected})")]
     PacketCountMismatch { expected: u32, found: u32 },
 }
-
-impl fmt::Display for ContinuationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::SequenceOverflow => write!(f, "packet_sequence overflow: u32::MAX reached"),
-            Self::PacketsInSeriesOverflow => {
-                write!(f, "packets_in_series overflow: u32::MAX reached")
-            }
-            Self::MissingPrevChainHash => {
-                write!(f, "Non-first packet must have prev_packet_chain_hash")
-            }
-            Self::MissingPrevPacketId => {
-                write!(f, "Non-first packet must have prev_packet_id")
-            }
-            Self::EmptyChainHash => {
-                write!(f, "prev_packet_chain_hash must not be empty")
-            }
-            Self::UnexpectedPrevChainHash => write!(
-                f,
-                "First packet (sequence 0) must not have prev_packet_chain_hash"
-            ),
-            Self::PacketCountMismatch { expected, found } => write!(
-                f,
-                "packets_in_series ({}) does not match sequence + 1 ({})",
-                found, expected
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ContinuationError {}
 
 /// Running totals across an Evidence series.
 #[derive(Debug, Clone, Serialize, Deserialize)]

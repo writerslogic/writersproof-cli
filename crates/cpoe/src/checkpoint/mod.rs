@@ -5,6 +5,8 @@
 mod chain;
 mod chain_helpers;
 mod chain_verification;
+pub mod mmr;
+pub mod timing;
 mod types;
 
 #[cfg(test)]

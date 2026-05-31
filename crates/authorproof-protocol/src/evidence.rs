@@ -13,8 +13,7 @@ use rand::RngCore;
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// CPoP profile URI per IETF draft specification.
-const PROFILE_URI: &str = "urn:ietf:params:rats:eat:profile:pop:1.0";
+use crate::war::ear::{CPOE_EVIDENCE_PROFILE, POP_EAR_PROFILE};
 
 fn hash_document_ref(doc: &DocumentRef) -> Result<HashValue> {
     doc.compute_hash()
@@ -59,7 +58,7 @@ impl Builder {
 
         Ok(Self {
             version: 1,
-            profile_uri: PROFILE_URI.to_string(),
+            profile_uri: CPOE_EVIDENCE_PROFILE.to_string(),
             packet_id,
             created: now,
             document,
@@ -301,10 +300,10 @@ impl Verifier {
             )));
         }
 
-        if packet.profile_uri != PROFILE_URI {
+        if packet.profile_uri != CPOE_EVIDENCE_PROFILE && packet.profile_uri != POP_EAR_PROFILE {
             return Err(Error::Validation(format!(
                 "Invalid profile_uri: expected \"{}\", got \"{}\"",
-                PROFILE_URI, packet.profile_uri
+                CPOE_EVIDENCE_PROFILE, packet.profile_uri
             )));
         }
 
@@ -356,7 +355,7 @@ impl Verifier {
             )));
         }
 
-        let mut seen_checkpoint_ids = HashSet::new();
+        let mut seen_checkpoint_ids = HashSet::with_capacity(packet.checkpoints.len());
         for checkpoint in &packet.checkpoints {
             if checkpoint.checkpoint_id.len() != 16 {
                 return Err(Error::Validation(format!(

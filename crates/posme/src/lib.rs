@@ -17,6 +17,7 @@ pub mod hash;
 pub mod merkle;
 pub mod params;
 pub mod proof;
+pub mod seed;
 
 #[cfg(feature = "prover")]
 pub mod init;

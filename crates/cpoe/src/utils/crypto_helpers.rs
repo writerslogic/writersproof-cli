@@ -26,91 +26,81 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> Result<()> {
 
 /// Build signed payload with consistent format across all modules.
 /// Format: namespace || field1_len || field1 || field2_len || field2 || ...
+///
+/// Uses a single contiguous buffer to avoid intermediate heap allocations.
+/// Each `push_*` method writes directly: 4-byte LE length prefix + data.
+/// The namespace (first field) is written without a length prefix.
 #[derive(Debug, Clone)]
 pub struct SignedPayloadBuilder {
-    fields: Vec<Vec<u8>>,
+    buf: Vec<u8>,
 }
 
 impl SignedPayloadBuilder {
     /// Create a new payload builder with a namespace identifier.
     /// Namespace examples: "text-fragment-v1", "wal-entry-v1", "evidence-packet-v1"
     pub fn new(namespace: &str) -> Self {
-        SignedPayloadBuilder {
-            fields: vec![namespace.as_bytes().to_vec()],
-        }
+        let mut buf = Vec::with_capacity(256);
+        buf.extend_from_slice(namespace.as_bytes());
+        Self { buf }
+    }
+
+    /// Write a length-prefixed field directly into the buffer.
+    fn push_field(mut self, data: &[u8]) -> Self {
+        self.buf
+            .extend_from_slice(&(data.len() as u32).to_le_bytes());
+        self.buf.extend_from_slice(data);
+        self
     }
 
     /// Append raw bytes to payload.
-    pub fn push_bytes(mut self, data: &[u8]) -> Self {
-        self.fields.push(data.to_vec());
-        self
+    pub fn push_bytes(self, data: &[u8]) -> Self {
+        self.push_field(data)
     }
 
     /// Append UTF-8 string to payload.
-    pub fn push_string(mut self, s: &str) -> Self {
-        self.fields.push(s.as_bytes().to_vec());
-        self
+    pub fn push_string(self, s: &str) -> Self {
+        self.push_field(s.as_bytes())
     }
 
     /// Append i64 (little-endian) to payload.
-    pub fn push_i64(mut self, val: i64) -> Self {
-        self.fields.push(val.to_le_bytes().to_vec());
-        self
+    pub fn push_i64(self, val: i64) -> Self {
+        self.push_field(&val.to_le_bytes())
     }
 
     /// Append f64 (little-endian) to payload.
-    pub fn push_f64(mut self, val: f64) -> Self {
-        self.fields.push(val.to_le_bytes().to_vec());
-        self
+    pub fn push_f64(self, val: f64) -> Self {
+        self.push_field(&val.to_le_bytes())
     }
 
     /// Append u32 (little-endian) to payload.
-    pub fn push_u32(mut self, val: u32) -> Self {
-        self.fields.push(val.to_le_bytes().to_vec());
-        self
+    pub fn push_u32(self, val: u32) -> Self {
+        self.push_field(&val.to_le_bytes())
     }
 
     /// Append u64 (little-endian) to payload.
-    pub fn push_u64(mut self, val: u64) -> Self {
-        self.fields.push(val.to_le_bytes().to_vec());
-        self
+    pub fn push_u64(self, val: u64) -> Self {
+        self.push_field(&val.to_le_bytes())
     }
 
     /// Append u8 to payload.
-    pub fn push_u8(mut self, val: u8) -> Self {
-        self.fields.push(vec![val]);
-        self
+    pub fn push_u8(self, val: u8) -> Self {
+        self.push_field(&[val])
     }
 
     /// Append f32 (little-endian) to payload.
-    pub fn push_f32(mut self, val: f32) -> Self {
-        self.fields.push(val.to_le_bytes().to_vec());
-        self
+    pub fn push_f32(self, val: f32) -> Self {
+        self.push_field(&val.to_le_bytes())
     }
 
     /// Append bool as a single byte (0x00 = false, 0x01 = true).
-    pub fn push_bool(mut self, val: bool) -> Self {
-        self.fields.push(vec![val as u8]);
-        self
+    pub fn push_bool(self, val: bool) -> Self {
+        self.push_field(&[val as u8])
     }
 
-    /// Build final payload with length prefixes for variable fields.
-    /// Returns: namespace || 4-byte-len || field1 || 4-byte-len || field2 || ...
+    /// Return the assembled payload buffer.
+    /// Format: namespace || 4-byte-len || field1 || 4-byte-len || field2 || ...
     pub fn build(self) -> Vec<u8> {
-        let mut result = Vec::new();
-
-        for (i, field) in self.fields.iter().enumerate() {
-            if i == 0 {
-                // Namespace (no length prefix, fixed)
-                result.extend_from_slice(field);
-            } else {
-                // All other fields: 4-byte length prefix + data
-                result.extend_from_slice(&(field.len() as u32).to_le_bytes());
-                result.extend_from_slice(field);
-            }
-        }
-
-        result
+        self.buf
     }
 }
 
@@ -212,11 +202,7 @@ impl NonceManager {
 pub fn compute_content_hash(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(data);
-    let result = hasher.finalize();
-
-    let mut hash = [0u8; 32];
-    hash.copy_from_slice(&result[..]);
-    hash
+    hasher.finalize().into()
 }
 
 /// Compute BLAKE3 hash of arbitrary data.

@@ -384,9 +384,13 @@ impl EventLoopCtx {
         };
 
         if should_cross_check {
+            // Use a sliding window of recent samples so the suspicion flag
+            // recovers when the user switches from transcription to original writing.
+            const SUSPICION_WINDOW: usize = 200;
+            let window_start = session.jitter_samples.len().saturating_sub(SUSPICION_WINDOW);
             session.transcription_suspicion =
                 crate::forensics::error_ecology::assess_transcription_suspicion(
-                    &session.jitter_samples,
+                    &session.jitter_samples[window_start..],
                 );
         }
 
@@ -549,6 +553,27 @@ impl EventLoopCtx {
     /// Handle a focus event and optionally start a bundle monitor.
     pub(super) fn handle_focus_branch(&mut self, event: FocusEvent) {
         log::debug!("handle_focus_branch: type={:?} app={}", event.event_type, event.app_bundle_id);
+
+        // ValueChanged events from kAXValueChangedNotification: correlate with
+        // recent keystrokes to detect non-keyboard text input.
+        if event.event_type == FocusEventType::ValueChanged {
+            let recent_keystroke = self.last_keydown_ts_ns > 0
+                && self.last_keystroke_time.elapsed()
+                    < std::time::Duration::from_millis(500);
+            if !recent_keystroke {
+                if let Some(ref path) = self.cached_focus {
+                    let mut map = self.sessions.write_recover();
+                    if let Some(session) = map.get_mut(path.as_str()) {
+                        session.non_keyboard_change_count += 1;
+                        if let Some(delta) = event.char_count_delta {
+                            session.non_keyboard_chars_inserted += delta;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
         handle_focus_event_sync(
             event,
             &self.sessions,

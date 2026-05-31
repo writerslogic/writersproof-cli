@@ -703,7 +703,7 @@ crate::ffi::types::impl_ffi_err!(FfiForensicBreakdown);
 /// rich structured data suitable for native UI display.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_forensic_breakdown(path: String) -> FfiForensicBreakdown {
-    catch_ffi_panic!(FfiForensicBreakdown::error("engine internal error".to_string()), {
+    catch_ffi_panic!(@err FfiForensicBreakdown, {
     super::types::run_on_stack(move || {
     log::debug!("ffi_get_forensic_breakdown: path={}", path);
     let (path, _store, events) = try_ffi!(load_events_for_path(&path), FfiForensicBreakdown);
@@ -1402,8 +1402,13 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
     );
     let composition_score = comp_mode.as_ref().map(|c| c.composite_score).unwrap_or(1.0);
 
+    // Evidence maturity factor: sessions start with high assumed quality
+    // (benefit of the doubt) and quality gates tighten as data accumulates.
+    // At 20 keystrokes, maturity is ~0.04; at 200, ~0.4; at 500+, ~1.0.
+    let maturity = (keystroke_count as f64 / 500.0).min(1.0);
+
     let (writing_mode, cognitive_score) = if keystroke_count < 20 {
-        ("insufficient".to_string(), 0.0)
+        ("insufficient".to_string(), 0.8)
     } else {
         // Composite: 45% cadence, 25% cognitive layer, 15% composition, 15% editing
         let cognitive_prob = cognitive_layer
@@ -1428,16 +1433,21 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
             0.2 // Append-only = likely transcriptive
         };
 
-        let mut composite = cadence_score * 0.45
+        let measured = cadence_score * 0.45
             + cognitive_prob * 0.25
             + composition_score * 0.15
             + editing_signal * 0.15;
 
+        // Blend measured score with a generous prior (0.8) based on data maturity.
+        // Early session: mostly prior (benefit of the doubt).
+        // Mature session: mostly measured (evidence-driven).
+        let mut composite = measured * maturity + 0.8 * (1.0 - maturity);
+
         if session.transcription_suspicion.is_suspicious {
-            composite -= 0.15;
+            composite -= 0.15 * maturity;
         }
         if !session.ai_tools_detected.is_empty() {
-            composite -= 0.10;
+            composite -= 0.10 * maturity;
         }
         let composite = composite.clamp(0.0, 1.0);
 

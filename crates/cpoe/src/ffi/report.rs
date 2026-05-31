@@ -6,7 +6,7 @@ use crate::ffi::types::catch_ffi_panic;
 use crate::report::*;
 use crate::utils::finite_or;
 use crate::war::ear::{
-    Ar4siStatus, EarAppraisal, EarToken, SealClaims, TrustworthinessVector, VerifierId,
+    engine_verifier_id, Ar4siStatus, EarAppraisal, EarToken, SealClaims, TrustworthinessVector,
 };
 use chrono::DateTime;
 use sha2::{Digest, Sha256};
@@ -332,19 +332,18 @@ fn load_signing_key_and_seed() -> (Option<ed25519_dalek::SigningKey>, String, St
             let vk = signing_key.verifying_key();
             let fp = hex::encode(&vk.as_bytes()[..4]);
 
-            use hkdf::Hkdf;
-            use sha2::Sha256;
-            // Explicit salt for domain separation; signing_key has ZeroizeOnDrop.
-            let hk = Hkdf::<Sha256>::new(Some(b"cpoe-guilloche-v1"), signing_key.as_bytes());
-            let mut seed = [0u8; 32];
-            let seed_hex = if hk.expand(b"cpoe-guilloche-seed-v1", &mut seed).is_err() {
-                log::error!("HKDF expand failed for guilloche seed");
-                seed.zeroize();
-                String::new()
-            } else {
-                let result = hex::encode(seed);
-                seed.zeroize();
-                result
+            let seed_hex = match crate::utils::key_derivation::derive_guilloche_seed(
+                signing_key.as_bytes(),
+            ) {
+                Ok(mut seed) => {
+                    let result = hex::encode(&seed);
+                    seed.zeroize();
+                    result
+                }
+                Err(e) => {
+                    log::error!("HKDF expand failed for guilloche seed: {e}");
+                    String::new()
+                }
             };
 
             (fp, seed_hex)
@@ -572,14 +571,14 @@ fn compute_forgery_info(
         vdf_rate: ips,
         checkpoint_count: events.len() as u64,
         chain_duration_sec,
-        has_jitter_binding: false,
-        jitter_sample_count: 0,
+        has_jitter_binding: stats.keystroke_estimate > 0,
+        jitter_sample_count: stats.keystroke_estimate,
         has_hardware_attestation: hardware_backed,
         has_behavioral_fingerprint: metrics.behavioral.is_some(),
         cross_modal_consistent: cm_total > 0 && cm_passed == cm_total,
         cross_modal_passed: cm_passed,
         cross_modal_total: cm_total,
-        has_external_time_anchor: false,
+        has_external_time_anchor: events.iter().any(|e| e.challenge_nonce.is_some()),
         has_content_key_entanglement: events
             .iter()
             .any(|e| e.vdf_input.is_some() && e.vdf_output.is_some()),
@@ -850,12 +849,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
                     None
                 }
             }),
-        document_chars: Some(
-            doc_stats.as_ref()
-                .map(|d| d.total_keystrokes.max(0) as u64)
-                .filter(|&k| k > 0)
-                .unwrap_or(stats.doc_size.max(0) as u64)
-        ),
+        document_chars: Some(stats.doc_size.max(0) as u64),
         document_sentences: None,
         document_paragraphs: None,
         evidence_bundle_version: format!("Signed v{} (T{})", env!("CARGO_PKG_VERSION"), tier_num),
@@ -939,6 +933,8 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
             dim.lr = 1.0;
             dim.log_lr = 0.0;
         }
+        // Clear human-signal flags that would contradict the InsufficientData verdict.
+        war_report.flags.retain(|f| f.signal != FlagSignal::Human);
         war_report.limitations.insert(
             0,
             format!(
@@ -1510,9 +1506,9 @@ fn build_vc_json(
     submods.insert("pop".to_string(), appraisal);
 
     let ear = EarToken {
-        eat_profile: crate::war::ear::POP_EAR_PROFILE.to_string(),
+        eat_profile: crate::war::ear::CPOE_EAR_PROFILE.to_string(),
         iat: chrono::Utc::now().timestamp(),
-        ear_verifier_id: VerifierId::default(),
+        ear_verifier_id: engine_verifier_id(),
         submods,
     };
 

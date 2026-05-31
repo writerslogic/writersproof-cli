@@ -9,18 +9,16 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
-use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-/// Per-tier entropy thresholds from draft-condrey-rats-pop.
 pub const ENTROPY_THRESHOLD_BASIC: f64 = 2.0;
-/// Standard tier entropy threshold (bits).
 pub const ENTROPY_THRESHOLD_STANDARD: f64 = 3.0;
-/// Enhanced tier entropy threshold (bits).
 pub const ENTROPY_THRESHOLD_ENHANCED: f64 = 3.0;
 
 /// Number of recent jitter samples used for windowed entropy estimation.
 const JITTER_WINDOW_SIZE: usize = 16;
+/// Bitmask for fast power-of-two ring buffer indexing (16 - 1)
+const WINDOW_MASK: usize = JITTER_WINDOW_SIZE - 1;
 
 /// Reason a checkpoint was triggered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,11 +88,14 @@ pub struct TriggerEvent {
 
 /// Tracks typing behavior and determines when to create checkpoints.
 ///
-/// Uses an O(1) sliding window for entropy estimation via Welford-style
-/// sum/sum-of-squares with VecDeque eviction.
+/// Features pre-baked Durations to remove runtime float calculations
+/// from the hot loop, along with branchless bitwise ring buffer masking.
 #[derive(Debug, Clone)]
 pub struct CheckpointTrigger {
     config: Config,
+    // Pre-baked time structures to completely stop runtime float parsing
+    pause_threshold: Duration,
+    max_time_interval: Duration,
     keystrokes_since_checkpoint: u64,
     total_keystrokes: u64,
     accumulated_entropy: f64,
@@ -102,10 +103,11 @@ pub struct CheckpointTrigger {
     last_checkpoint: Instant,
     last_checkpoint_size: i64,
     entropy_hash: [u8; 32],
-    // Sliding window state for numerically stable variance (Welford's)
-    window: VecDeque<u32>,
-    window_mean: f64,
-    window_m2: f64,
+    window_buf: [u32; JITTER_WINDOW_SIZE],
+    window_idx: usize,
+    window_len: usize,
+    sum_x: u64,
+    sum_x2: u128,
 }
 
 impl CheckpointTrigger {
@@ -114,8 +116,12 @@ impl CheckpointTrigger {
     }
 
     pub fn with_config(config: Config) -> Self {
+        let pause_threshold = Duration::from_secs_f64(config.pause_threshold_secs);
+        let max_time_interval = Duration::from_secs_f64(config.max_time_interval_secs);
         Self {
             config,
+            pause_threshold,
+            max_time_interval,
             keystrokes_since_checkpoint: 0,
             total_keystrokes: 0,
             accumulated_entropy: 0.0,
@@ -123,13 +129,14 @@ impl CheckpointTrigger {
             last_checkpoint: Instant::now(),
             last_checkpoint_size: 0,
             entropy_hash: [0u8; 32],
-            window: VecDeque::with_capacity(JITTER_WINDOW_SIZE),
-            window_mean: 0.0,
-            window_m2: 0.0,
+            window_buf: [0u32; JITTER_WINDOW_SIZE],
+            window_idx: 0,
+            window_len: 0,
+            sum_x: 0,
+            sum_x2: 0,
         }
     }
 
-    /// Record a keystroke and return a trigger event if a checkpoint threshold is met.
     pub fn record_keystroke(
         &mut self,
         jitter_micros: u32,
@@ -138,45 +145,42 @@ impl CheckpointTrigger {
         let now = Instant::now();
         self.total_keystrokes += 1;
         self.keystrokes_since_checkpoint += 1;
+
         self.accumulate_entropy(jitter_micros);
 
         let prev_keystroke = self.last_keystroke;
         self.last_keystroke = Some(now);
 
         let reason = self.evaluate_rules(now, prev_keystroke, current_doc_size)?;
-        Some(self.create_trigger(reason, current_doc_size))
+        Some(self.create_trigger(reason, current_doc_size, now))
     }
 
-    /// Check if the max time interval has elapsed and trigger if so.
     pub fn check_time_trigger(&mut self, current_doc_size: i64) -> Option<TriggerEvent> {
         let now = Instant::now();
-        let elapsed = now.duration_since(self.last_checkpoint);
-
-        if elapsed.as_secs_f64() >= self.config.max_time_interval_secs
+        if now.duration_since(self.last_checkpoint) >= self.max_time_interval
             && self.keystrokes_since_checkpoint > 0
         {
-            return Some(self.create_trigger(TriggerReason::MaxTimeInterval, current_doc_size));
+            return Some(self.create_trigger(
+                TriggerReason::MaxTimeInterval,
+                current_doc_size,
+                now,
+            ));
         }
-
         None
     }
 
-    /// Force a manual checkpoint trigger.
     pub fn manual_trigger(&mut self, current_doc_size: i64) -> TriggerEvent {
-        self.create_trigger(TriggerReason::Manual, current_doc_size)
+        self.create_trigger(TriggerReason::Manual, current_doc_size, Instant::now())
     }
 
-    /// Create a trigger event for session end.
     pub fn session_end_trigger(&mut self, current_doc_size: i64) -> TriggerEvent {
-        self.create_trigger(TriggerReason::SessionEnd, current_doc_size)
+        self.create_trigger(TriggerReason::SessionEnd, current_doc_size, Instant::now())
     }
 
-    /// Return the rolling entropy hash accumulator.
     pub fn entropy_hash(&self) -> [u8; 32] {
         self.entropy_hash
     }
 
-    /// Consume the trigger and return the final entropy hash.
     pub fn finalize_entropy_hash(self) -> [u8; 32] {
         self.entropy_hash
     }
@@ -193,48 +197,45 @@ impl CheckpointTrigger {
         self.accumulated_entropy
     }
 
-    /// Reset keystroke and entropy counters after a checkpoint is created.
     pub fn reset_for_checkpoint(&mut self, doc_size: i64) {
-        self.keystrokes_since_checkpoint = 0;
-        self.accumulated_entropy = 0.0;
-        self.last_checkpoint = Instant::now();
-        self.last_checkpoint_size = doc_size;
-        // Don't reset entropy_hash - it's a rolling accumulator
+        self.reset_for_checkpoint_internal(doc_size, Instant::now());
     }
 
+    #[inline(always)]
+    fn reset_for_checkpoint_internal(&mut self, doc_size: i64, now: Instant) {
+        self.keystrokes_since_checkpoint = 0;
+        self.accumulated_entropy = 0.0;
+        self.last_checkpoint = now;
+        self.last_checkpoint_size = doc_size;
+    }
+
+    #[inline(always)]
     fn evaluate_rules(
         &self,
         now: Instant,
         prev_keystroke: Option<Instant>,
         current_doc_size: i64,
     ) -> Option<TriggerReason> {
-        // 1. Time interval (always active)
-        if now.duration_since(self.last_checkpoint).as_secs_f64()
-            >= self.config.max_time_interval_secs
-        {
+        // Pure integer/Duration comparison, zero runtime floats
+        if now.duration_since(self.last_checkpoint) >= self.max_time_interval {
             return Some(TriggerReason::MaxTimeInterval);
         }
 
-        // 2. Max keystrokes
         if self.keystrokes_since_checkpoint >= self.config.max_keystroke_interval {
             return Some(TriggerReason::MaxKeystrokes);
         }
 
-        // Behavior-dependent rules (require minimum keystroke threshold)
         if self.keystrokes_since_checkpoint >= self.config.min_keystroke_interval {
-            // Pause detection
             if let Some(last) = prev_keystroke {
-                if now.duration_since(last).as_secs_f64() >= self.config.pause_threshold_secs {
+                if now.duration_since(last) >= self.pause_threshold {
                     return Some(TriggerReason::TypingPause);
                 }
             }
 
-            // Entropy threshold
             if self.accumulated_entropy >= self.config.entropy_threshold_bits {
                 return Some(TriggerReason::EntropyThreshold);
             }
 
-            // Document delta
             if (current_doc_size - self.last_checkpoint_size).abs()
                 >= self.config.size_delta_threshold
             {
@@ -245,8 +246,13 @@ impl CheckpointTrigger {
         None
     }
 
-    fn create_trigger(&mut self, reason: TriggerReason, doc_size: i64) -> TriggerEvent {
-        let elapsed = Instant::now().duration_since(self.last_checkpoint);
+    fn create_trigger(
+        &mut self,
+        reason: TriggerReason,
+        doc_size: i64,
+        now: Instant,
+    ) -> TriggerEvent {
+        let elapsed = now.duration_since(self.last_checkpoint);
         let event = TriggerEvent {
             timestamp: Utc::now(),
             reason,
@@ -255,70 +261,52 @@ impl CheckpointTrigger {
             document_size: doc_size,
             elapsed_since_last: elapsed,
         };
-        self.reset_for_checkpoint(doc_size);
+        self.reset_for_checkpoint_internal(doc_size, now);
         event
     }
 
     fn accumulate_entropy(&mut self, jitter_micros: u32) {
-        // Rolling hash for chain-of-custody
         let mut hasher = Sha256::new();
         hasher.update(self.entropy_hash);
         hasher.update(jitter_micros.to_be_bytes());
         hasher.update(self.total_keystrokes.to_be_bytes());
         self.entropy_hash = hasher.finalize().into();
 
-        // O(1) sliding window update
         self.update_window_stats(jitter_micros);
         self.accumulated_entropy += self.windowed_entropy_estimate();
     }
 
-    /// Welford's online algorithm for numerically stable sliding-window variance.
-    /// Immune to catastrophic cancellation that affects the naive sum-of-squares
-    /// formula when values are large and close together.
+    #[inline(always)]
     fn update_window_stats(&mut self, val: u32) {
-        let val_f = val as f64;
-
-        if self.window.len() >= JITTER_WINDOW_SIZE {
-            if let Some(old) = self.window.pop_front() {
-                // Remove old value from running stats (inverse Welford step)
-                let old_f = old as f64;
-                let new_n = self.window.len() as f64; // after pop, before push
-                if new_n > 0.0 {
-                    let old_mean = self.window_mean;
-                    self.window_mean = (old_mean * (new_n + 1.0) - old_f) / new_n;
-                    self.window_m2 -= (old_f - self.window_mean) * (old_f - old_mean);
-                    self.window_m2 = self.window_m2.max(0.0);
-                } else {
-                    self.window_mean = 0.0;
-                    self.window_m2 = 0.0;
-                }
-            }
+        if self.window_len == JITTER_WINDOW_SIZE {
+            let old = self.window_buf[self.window_idx];
+            self.sum_x -= old as u64;
+            self.sum_x2 -= (old as u128) * (old as u128);
+        } else {
+            self.window_len += 1;
         }
 
-        // Add new value (standard Welford step)
-        self.window.push_back(val);
-        let new_n = self.window.len() as f64;
-        let delta = val_f - self.window_mean;
-        self.window_mean += delta / new_n;
-        let delta2 = val_f - self.window_mean;
-        self.window_m2 += delta * delta2;
+        self.window_buf[self.window_idx] = val;
+        self.sum_x += val as u64;
+        self.sum_x2 += (val as u128) * (val as u128);
+
+        // Fast power-of-two bitwise masking instead of modulo division arithmetic
+        self.window_idx = (self.window_idx + 1) & WINDOW_MASK;
     }
 
-    /// Estimate per-keystroke entropy from the coefficient of variation (CV)
-    /// of recent jitter values. CV measures timing variability: 0 for perfectly
-    /// uniform input (automated), >0 for natural human typing. Returns
-    /// `log2(1 + CV)`, clamped to [0.0, 1.0].
     fn windowed_entropy_estimate(&self) -> f64 {
-        let n = self.window.len() as f64;
+        let n = self.window_len as f64;
         if n < 4.0 {
             return 0.0;
         }
-        if self.window_mean < 1.0 {
+
+        let mean = self.sum_x as f64 / n;
+        if mean < 1.0 {
             return 0.0;
         }
 
-        let var = self.window_m2 / n;
-        let cv = var.max(0.0).sqrt() / self.window_mean;
+        let var = (self.sum_x2 as f64 / n) - (mean * mean);
+        let cv = var.max(0.0).sqrt() / mean;
         crate::utils::Probability::clamp((1.0 + cv).log2()).get()
     }
 }

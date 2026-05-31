@@ -53,7 +53,7 @@ pub(crate) fn ffi_runtime() -> Result<Arc<tokio::runtime::Runtime>, String> {
 /// Start the sentinel daemon in-process.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_start() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_sentinel_start called");
     // Reset injection state from any previous run (SI-008/SI-009).
     super::sentinel_inject::reset_inject_state();
@@ -204,7 +204,7 @@ pub fn ffi_sentinel_start() -> FfiResult {
 /// Stop the sentinel daemon.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_stop() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_sentinel_stop called");
     let sentinel = match get_sentinel() {
         Some(s) => s,
@@ -260,7 +260,7 @@ pub fn ffi_sentinel_is_running() -> bool {
 /// Restart keystroke capture after a tap failure (e.g. macOS sleep/wake).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_restart_keystroke_capture() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_sentinel_restart_keystroke_capture called");
     let sentinel = match get_sentinel() {
         Some(s) => s,

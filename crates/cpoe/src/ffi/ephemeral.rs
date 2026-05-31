@@ -201,7 +201,7 @@ pub fn ffi_start_ephemeral_session(context_label: String) -> FfiEphemeralSession
 /// Create an in-memory checkpoint of the current content.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_ephemeral_checkpoint: session_id={}", session_id);
     evict_stale_sessions();
 
@@ -308,7 +308,7 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
 /// Accumulate keystroke timing intervals for jitter analysis.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_inject_jitter(session_id: String, intervals: Vec<u64>) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_ephemeral_inject_jitter: session_id={}, intervals_len={}", session_id, intervals.len());
     if intervals.len() > MAX_JITTER_INTERVALS * 10 {
         return FfiResult::err(format!(
@@ -501,7 +501,7 @@ pub fn ffi_ephemeral_checkpoint_hash(
     message: String,
     commitment: Option<String>,
 ) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_ephemeral_checkpoint_hash: session_id={}, byte_count={}", session_id, byte_count);
     let mut entry = match sessions().get_mut(&session_id) {
         Some(e) => e,
@@ -613,7 +613,7 @@ pub fn ffi_ephemeral_checkpoint_hash(
 /// Set the canary seed for an ephemeral session (derived during NMH handshake).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_set_canary_seed(session_id: String, canary_seed_hex: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_ephemeral_set_canary_seed: session_id={}, seed_len={}", session_id, canary_seed_hex.len());
     let mut entry = match sessions().get_mut(&session_id) {
         Some(e) => e,

@@ -56,7 +56,7 @@ pub fn ffi_config_get_excluded_paths() -> Vec<String> {
 /// Add a path to the excluded directories list.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_add_excluded_path(path: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_config_add_excluded_path: path={}", path);
     if path.is_empty() {
         return FfiResult::err("Path cannot be empty");
@@ -81,7 +81,7 @@ pub fn ffi_config_add_excluded_path(path: String) -> FfiResult {
 /// Remove a path from the excluded directories list.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_remove_excluded_path(path: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_config_remove_excluded_path: path={}", path);
     let target = PathBuf::from(&path);
     with_config_mut(|config| {
@@ -110,7 +110,7 @@ pub fn ffi_config_get_allowed_extensions() -> Vec<String> {
 /// Add a file extension to the allowed list (without leading dot).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_add_allowed_extension(extension: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_config_add_allowed_extension: extension={}", extension);
     let ext = extension.trim_start_matches('.').to_lowercase();
     if ext.is_empty() {
@@ -132,7 +132,7 @@ pub fn ffi_config_add_allowed_extension(extension: String) -> FfiResult {
 /// Remove a file extension from the allowed list.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_remove_allowed_extension(extension: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_config_remove_allowed_extension: extension={}", extension);
     let ext = extension.trim_start_matches('.').to_lowercase();
     with_config_mut(|config| {
@@ -161,7 +161,7 @@ pub fn ffi_config_get_research_enabled() -> bool {
 /// Enable or disable anonymous research data contribution.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_set_research_enabled(enabled: bool) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_config_set_research_enabled: enabled={}", enabled);
     with_config_mut(|config| {
         config.research.contribute_to_research = enabled;

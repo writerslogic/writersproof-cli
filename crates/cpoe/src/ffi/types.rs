@@ -42,15 +42,49 @@ macro_rules! try_ffi {
 }
 pub(crate) use try_ffi;
 
+/// Extract a human-readable message from a panic payload.
+pub(crate) fn panic_message(payload: &dyn std::any::Any) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
+    }
+}
+
 /// Wrap an FFI function body in `catch_unwind` to convert Rust panics into
 /// error values rather than crashing the Swift process.
+///
 /// Usage: `catch_ffi_panic!(fallback_expr, { /* statements */ })`
 /// where `fallback_expr` is the value returned on panic.
+///
+/// When a panic is caught the actual panic message is logged at error level
+/// so it appears in the system log, making FFI failures diagnosable.
 macro_rules! catch_ffi_panic {
+    // Variant for FfiErrResult types: propagates panic message into the error.
+    // Usage: catch_ffi_panic!(@err ReturnType, { body })
+    (@err $ret:ty, { $($body:tt)* }) => {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| { $($body)* })) {
+            Ok(result) => result,
+            Err(payload) => {
+                let msg = $crate::ffi::types::panic_message(&*payload);
+                log::error!("FFI panic caught: {}", msg);
+                <$ret as $crate::ffi::types::FfiErrResult>::ffi_err(
+                    format!("engine panic: {}", msg)
+                )
+            }
+        }
+    };
+    // Original variant for non-FfiErrResult fallbacks (bool, Vec, etc.).
     ($fallback:expr, { $($body:tt)* }) => {
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| { $($body)* })) {
             Ok(result) => result,
-            Err(_) => $fallback,
+            Err(payload) => {
+                let msg = $crate::ffi::types::panic_message(&*payload);
+                log::error!("FFI panic caught: {}", msg);
+                $fallback
+            }
         }
     };
 }

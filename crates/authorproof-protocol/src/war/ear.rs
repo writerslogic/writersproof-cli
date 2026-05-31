@@ -14,7 +14,14 @@ use crate::rfc::wire_types::attestation::{
     AbsenceClaim, EntropyReport, ForensicSummary, ForgeryCostEstimate,
 };
 
-/// EAT profile URI per draft-condrey-rats-pop-protocol.
+/// EAT profile URI for CPoE Attestation Results per draft-condrey-cpoe-protocol.
+pub const CPOE_EAR_PROFILE: &str = "urn:ietf:params:rats:eat:profile:cpoe:1.0";
+
+/// Evidence packet profile URI per draft-condrey-cpoe-protocol.
+pub const CPOE_EVIDENCE_PROFILE: &str = "urn:ietf:params:cpoe:profile:1.0";
+
+/// Legacy EAT profile URI (draft-condrey-rats-pop). Kept for backward compatibility
+/// when verifying old evidence packets.
 pub const POP_EAR_PROFILE: &str = "urn:ietf:params:rats:eat:profile:pop:1.0";
 
 pub const CWT_KEY_IAT: i64 = 6;
@@ -167,13 +174,18 @@ impl TrustworthinessVector {
         )
     }
 
-    /// Parse from header string format.
+    /// Parse from header string format. Rejects non-standard AR4SI values.
     pub fn parse_header(s: &str) -> Option<Self> {
+        const VALID_AR4SI: &[i8] = &[0, 2, 32, 96];
         let mut vals = [0i8; 8];
         let labels = ["II=", "CO=", "EX=", "FS=", "HW=", "RO=", "SO=", "SD="];
         for (i, label) in labels.iter().enumerate() {
             let part = s.split_whitespace().find(|p| p.starts_with(label))?;
-            vals[i] = part.strip_prefix(label)?.parse().ok()?;
+            let v: i8 = part.strip_prefix(label)?.parse().ok()?;
+            if !VALID_AR4SI.contains(&v) {
+                return None;
+            }
+            vals[i] = v;
         }
         Some(Self {
             instance_identity: vals[0],
@@ -304,6 +316,14 @@ pub struct EarAppraisal {
     /// Warning messages
     #[serde(rename = "70009", default, skip_serializing_if = "Option::is_none")]
     pub pop_warnings: Option<Vec<String>>,
+
+    /// Process start timestamp (ISO 8601)
+    #[serde(rename = "70010", default, skip_serializing_if = "Option::is_none")]
+    pub pop_process_start: Option<String>,
+
+    /// Process end timestamp (ISO 8601)
+    #[serde(rename = "70011", default, skip_serializing_if = "Option::is_none")]
+    pub pop_process_end: Option<String>,
 }
 
 /// EAR token per draft-ietf-rats-ear, carrying one or more appraisals.
@@ -351,6 +371,9 @@ impl EarToken {
             .unwrap_or(Ar4siStatus::None)
     }
 
+    // TODO: draft-condrey-cpoe-appraisal specifies the submods key should be the
+    // evidence-ref hash, not the fixed string "pop". Update all callers and
+    // constructors (submods.insert("pop", ...)) to use the packet hash as key.
     pub fn pop_appraisal(&self) -> Option<&EarAppraisal> {
         self.submods.get("pop")
     }
@@ -430,6 +453,8 @@ mod tests {
                 pop_chain_duration: None,
                 pop_absence_claims: None,
                 pop_warnings: None,
+                pop_process_start: None,
+                pop_process_end: None,
             },
         );
         submods.insert(
@@ -447,11 +472,13 @@ mod tests {
                 pop_chain_duration: None,
                 pop_absence_claims: None,
                 pop_warnings: None,
+                pop_process_start: None,
+                pop_process_end: None,
             },
         );
 
         let token = EarToken {
-            eat_profile: POP_EAR_PROFILE.to_string(),
+            eat_profile: CPOE_EAR_PROFILE.to_string(),
             iat: 0,
             ear_verifier_id: VerifierId::default(),
             submods,

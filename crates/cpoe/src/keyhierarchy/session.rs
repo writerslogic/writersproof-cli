@@ -323,7 +323,7 @@ impl Session {
             return Err(KeyHierarchyError::RatchetWiped);
         }
 
-        let payload = crate::checkpoint_mmr::metadata_signing_payload(metadata);
+        let payload = crate::checkpoint::mmr::metadata_signing_payload(metadata);
 
         let signing_seed = hkdf_expand(
             self.ratchet.current.as_bytes(),

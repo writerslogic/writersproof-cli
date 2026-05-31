@@ -719,6 +719,18 @@ fn migrate_macos_keychain() {
             return;
         }
 
+        // If the legacy data directory doesn't exist, there are no old
+        // keyring-stored credentials to migrate. Write the flag immediately
+        // to prevent future attempts. This avoids calling
+        // SecKeychainFindGenericPassword which blocks indefinitely when the
+        // app runs as a background agent (LSUIElement=true).
+        if !data_dir.exists() {
+            log::info!("No legacy data directory; skipping keychain migration");
+            let _ = std::fs::create_dir_all(&data_dir);
+            let _ = std::fs::write(&flag_path, "skipped-fresh");
+            return;
+        }
+
         log::info!("Starting one-time macOS keychain access policy migration...");
 
         let accounts = [
@@ -732,31 +744,55 @@ fn migrate_macos_keychain() {
 
         let mut any_failed = false;
         for account in accounts {
-            if let Ok(entry) = keyring::Entry::new(SERVICE_NAME, account) {
-                if let Ok(mut encoded) = entry.get_password() {
-                    match general_purpose::STANDARD.decode(&encoded) {
-                        Ok(data) => {
-                            encoded.zeroize();
-                            let data = Zeroizing::new(data);
-                            match save_macos(account, &data) {
-                                Ok(()) => {
-                                    if let Err(e) = entry.delete_password() {
-                                        log::warn!("failed to delete old keyring entry during migration: {e}");
+            // Wrap keyring access in a timeout thread to prevent indefinite
+            // blocking when the login keychain prompts for authorization and
+            // the app is a background agent that cannot display the dialog.
+            let svc = SERVICE_NAME.to_string();
+            let acct = account.to_string();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _ = std::thread::spawn(move || {
+                let result = keyring::Entry::new(&svc, &acct)
+                    .and_then(|e| e.get_password());
+                let _ = tx.send(result);
+            });
+            let password = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(Ok(pw)) => Some(pw),
+                Ok(Err(_)) => None,   // No entry or access denied
+                Err(_) => {
+                    log::warn!(
+                        "Keychain migration timed out for {account} (authorization dialog blocked?)"
+                    );
+                    None
+                }
+            };
+            if let Some(mut encoded) = password {
+                match general_purpose::STANDARD.decode(&encoded) {
+                    Ok(data) => {
+                        encoded.zeroize();
+                        let data = Zeroizing::new(data);
+                        match save_macos(account, &data) {
+                            Ok(()) => {
+                                // Delete the old keyring entry after successful migration.
+                                let svc = SERVICE_NAME.to_string();
+                                let acct = account.to_string();
+                                let _ = std::thread::spawn(move || {
+                                    if let Ok(entry) = keyring::Entry::new(&svc, &acct) {
+                                        let _ = entry.delete_password();
                                     }
-                                }
-                                Err(e) => {
-                                    log::warn!("Keychain migration failed for {account}: {e}");
-                                    any_failed = true;
-                                }
+                                });
+                            }
+                            Err(e) => {
+                                log::warn!("Keychain migration failed for {account}: {e}");
+                                any_failed = true;
                             }
                         }
-                        Err(e) => {
-                            encoded.zeroize();
-                            log::warn!(
-                                "Keychain migration: base64 decode failed for {account}: {e}"
-                            );
-                            any_failed = true;
-                        }
+                    }
+                    Err(e) => {
+                        encoded.zeroize();
+                        log::warn!(
+                            "Keychain migration: base64 decode failed for {account}: {e}"
+                        );
+                        any_failed = true;
                     }
                 }
             }

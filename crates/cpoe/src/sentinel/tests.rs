@@ -464,6 +464,7 @@ fn make_focus_event(
         window_title: ObfuscatedString::new("Test Window"),
         timestamp: std::time::SystemTime::now(),
         window_id: None,
+        char_count_delta: None,
     }
 }
 

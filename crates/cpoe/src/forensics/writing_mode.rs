@@ -602,6 +602,9 @@ fn compute_pause_burst_correlation(sorted: SortedEvents<'_>) -> f64 {
     let pauses: Vec<f64> = pairs.iter().map(|p| p.0).collect();
     let bursts: Vec<f64> = pairs.iter().map(|p| p.1).collect();
     let rho = crate::utils::stats::spearman_correlation(&pauses, &bursts);
+    if !rho.is_finite() {
+        return 0.5;
+    }
     // Map [-1, 1] → [0, 1]: correlation ≥ 0.1 is cognitive, near 0 is suspicious.
     ((rho + 1.0) / 2.0).clamp(0.0, 1.0)
 }

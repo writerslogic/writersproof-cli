@@ -18,6 +18,6 @@ mod tests;
 
 pub use async_client::{AsyncIpcClient, AsyncIpcClientError};
 pub use messages::{IpcErrorCode, IpcMessage, IpcMessageHandler};
-pub use rbac::{check_authorization, required_role, IpcRole};
+pub use rbac::{required_role, IpcRole};
 pub use server::IpcServer;
 pub(crate) use sync_client::IpcClient;

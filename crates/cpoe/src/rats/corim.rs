@@ -42,7 +42,7 @@ pub struct CpopReferenceValues {
 impl Default for CpopReferenceValues {
     fn default() -> Self {
         Self {
-            min_entropy_bits: crate::timing::ENTROPY_THRESHOLD_STANDARD,
+            min_entropy_bits: crate::checkpoint::timing::ENTROPY_THRESHOLD_STANDARD,
             vdf_duration_bounds: (0.5, 3.0),
             min_checkpoints_standard: 3,
             min_checkpoints_enhanced: 3,
@@ -260,7 +260,7 @@ mod tests {
         let rv = CpopReferenceValues::default();
         // Verify CoRIM defaults match the actual code constants they reference.
         assert!(
-            (rv.min_entropy_bits - crate::timing::ENTROPY_THRESHOLD_STANDARD).abs() < f64::EPSILON,
+            (rv.min_entropy_bits - crate::checkpoint::timing::ENTROPY_THRESHOLD_STANDARD).abs() < f64::EPSILON,
             "min_entropy_bits should match timing::ENTROPY_THRESHOLD_STANDARD"
         );
         // VDF bounds: verify::SWF_DURATION_RATIO_MIN / MAX

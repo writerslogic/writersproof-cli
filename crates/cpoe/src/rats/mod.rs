@@ -19,6 +19,9 @@ pub mod scitt;
 pub mod toip;
 pub mod types;
 
+/// C2PA media type used for evidence packets and attestation results.
+pub const C2PA_MEDIA_TYPE: &str = "application/c2pa";
+
 pub use corim::CpopReferenceValues;
 #[allow(deprecated)]
 pub use eat::decode_eat_cwt_unverified;
@@ -35,7 +38,7 @@ mod tests {
 
     use crate::tpm::{Provider, SoftwareProvider};
     use crate::war::ear::{
-        Ar4siStatus, EarAppraisal, EarToken, TrustworthinessVector, VerifierId, POP_EAR_PROFILE,
+        Ar4siStatus, EarAppraisal, EarToken, TrustworthinessVector, VerifierId, CPOE_EAR_PROFILE,
     };
 
     #[allow(deprecated)]
@@ -73,7 +76,7 @@ mod tests {
         );
 
         EarToken {
-            eat_profile: POP_EAR_PROFILE.to_string(),
+            eat_profile: CPOE_EAR_PROFILE.to_string(),
             iat: 1711324800,
             ear_verifier_id: VerifierId::default(),
             submods,
@@ -210,12 +213,12 @@ mod tests {
 
         // Evidence wrapper
         let evidence = Evidence::new(vec![0xD2, 0x84, 0x01]);
-        assert_eq!(evidence.media_type, Evidence::MEDIA_TYPE);
+        assert_eq!(Evidence::MEDIA_TYPE, super::C2PA_MEDIA_TYPE);
         assert_eq!(evidence.as_bytes(), &[0xD2, 0x84, 0x01]);
 
         // AttestationResult wrapper
         let result = AttestationResult::new(vec![0xD2, 0x84, 0x02]);
-        assert_eq!(result.media_type, AttestationResult::MEDIA_TYPE);
+        assert_eq!(AttestationResult::MEDIA_TYPE, super::C2PA_MEDIA_TYPE);
         assert_eq!(result.as_bytes(), &[0xD2, 0x84, 0x02]);
 
         // Equality

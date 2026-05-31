@@ -122,7 +122,7 @@ fn notarize_full_round_trip() {
     let post_resp = client
         .post("https://api.writersproof.com/v1/notarize")
         .header("X-API-Key", &api_key)
-        .header("Content-Type", "application/vnd.writersproof.cpop+cbor")
+        .header("Content-Type", "application/c2pa")
         .body(cpop_bytes.clone())
         .timeout(Duration::from_secs(30))
         .send()

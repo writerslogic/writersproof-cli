@@ -92,7 +92,7 @@ pub fn draw_evidence_page(
         if ty < bottom {
             text(
                 layer,
-                "[payload truncated, see .cpoe file for full evidence]",
+                "[payload truncated, see .c2pa sidecar for full evidence]",
                 4.5,
                 MARGIN_LEFT + 3.0,
                 ty,

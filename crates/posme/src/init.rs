@@ -13,7 +13,7 @@ use crate::merkle::MerkleTree;
 /// Block 0: data = H(DST_INIT || seed || 0)
 /// Block i: data = H(DST_INIT || seed || i || A[i-1].data || A[floor(i/2)].data)
 /// All:     causal = H(DST_CAUSAL || seed || i)
-pub fn initialize(seed: &[u8], n: u32) -> (Vec<Block>, MerkleTree, [u8; 32], [u8; 32]) {
+pub(crate) fn initialize(seed: &[u8], n: u32) -> (Vec<Block>, MerkleTree, [u8; 32], [u8; 32]) {
     let mut blocks = vec![Block::zeroed(); n as usize];
 
     blocks[0].data = posme_hash(&[DST_INIT, seed, &i2osp(0)]);

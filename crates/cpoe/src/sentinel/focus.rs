@@ -147,6 +147,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                             window_title: info.title.clone(),
                             timestamp: SystemTime::now(),
                             window_id: info.window_number,
+                            char_count_delta: None,
                         })
                         .await
                         .is_err()
@@ -204,6 +205,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 window_title: ObfuscatedString::default(),
                                 timestamp: SystemTime::now(),
                                 window_id: None,
+                                char_count_delta: None,
                             });
                             last_app.clear();
                             last_path = None;
@@ -275,6 +277,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     window_title: ObfuscatedString::default(),
                                     timestamp: SystemTime::now(),
                                     window_id: None,
+                                    char_count_delta: None,
                                 });
                             }
                             send_or_break!(FocusEvent {
@@ -286,6 +289,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 window_title: info.title.clone(),
                                 timestamp: SystemTime::now(),
                                 window_id: info.window_number,
+                                char_count_delta: None,
                             });
                             last_path = info.path.clone();
                         }
@@ -307,6 +311,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     window_title: ObfuscatedString::default(),
                                     timestamp: SystemTime::now(),
                                     window_id: None,
+                                    char_count_delta: None,
                                 });
                             }
                             send_or_break!(FocusEvent {
@@ -318,6 +323,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 window_title: info.title.clone(),
                                 timestamp: SystemTime::now(),
                                 window_id: info.window_number,
+                                char_count_delta: None,
                             });
                             last_path = info.path.clone();
                         }
@@ -354,6 +360,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     window_title: ObfuscatedString::default(),
                                     timestamp: SystemTime::now(),
                                     window_id: None,
+                                    char_count_delta: None,
                                 });
                             }
                             pending_loss = None;
@@ -402,6 +409,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                     window_title: info.title.clone(),
                                     timestamp: SystemTime::now(),
                                     window_id: info.window_number,
+                                    char_count_delta: None,
                                 });
                                 last_path = effective_path;
                             } else {

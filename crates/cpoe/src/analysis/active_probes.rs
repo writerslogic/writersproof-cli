@@ -4,7 +4,6 @@
 //! RFC draft-condrey-rats-pop-01 §5.5: Galton invariant and reflex gate probes.
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 const PERTURBATION_THRESHOLD_FRACTION: f64 = 0.3;
 const MIN_GALTON_SAMPLES: usize = 20;
@@ -18,38 +17,17 @@ const MIN_STIMULUS_RESPONSES: usize = 5;
 const MIN_AUTOCORRELATION_SAMPLES: usize = 3;
 
 /// Comprehensive error type for Active Probe analyses
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ActiveProbeError {
+    #[error("Insufficient samples for Galton analysis: found {found}, minimum {required}")]
     InsufficientGaltonSamples { found: usize, required: usize },
+    #[error("Insufficient perturbations detected: found {found}, minimum {required}")]
     InsufficientPerturbations { found: usize, required: usize },
+    #[error("Could not calculate absorption rates")]
     CalculateAbsorptionFailed,
+    #[error("Insufficient stimulus responses: found {found}, minimum {required}")]
     InsufficientStimulusResponses { found: usize, required: usize },
 }
-
-impl fmt::Display for ActiveProbeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientGaltonSamples { found, required } => write!(
-                f,
-                "Insufficient samples for Galton analysis: found {}, minimum {}",
-                found, required
-            ),
-            Self::InsufficientPerturbations { found, required } => write!(
-                f,
-                "Insufficient perturbations detected: found {}, minimum {}",
-                found, required
-            ),
-            Self::CalculateAbsorptionFailed => write!(f, "Could not calculate absorption rates"),
-            Self::InsufficientStimulusResponses { found, required } => write!(
-                f,
-                "Insufficient stimulus responses: found {}, minimum {}",
-                found, required
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ActiveProbeError {}
 
 // --- Math Helpers ---
 

@@ -4,30 +4,52 @@ use crate::rfc::EvidencePacket;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::ASSERTION_LABEL_CPOE;
-
-/// C2PA process assertion carrying CPoP evidence metadata.
+/// Top-level process proof assertion (`com.writerslogic.process-proof`).
 ///
-/// `jitter_seals` are derived from each checkpoint's `checkpoint_hash` (not `jitter_hash`)
-/// because the checkpoint hash commits to the full checkpoint state including any jitter
-/// binding, making it the strongest per-checkpoint seal available in all attestation tiers.
+/// Contains the verdict, trust assessment, and composite signal scores.
+/// This is the first assertion a verifier reads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProcessAssertion {
-    pub label: String,
+pub struct ProcessProofAssertion {
     pub version: u32,
+    #[serde(rename = "evidenceId")]
     pub evidence_id: String,
+    #[serde(rename = "evidenceHash")]
     pub evidence_hash: String,
-    pub jitter_seals: Vec<JitterSeal>,
-    /// Forensic signal scores from the 5 analysis dimensions.
-    /// Each is a composite [0.0, 1.0] where 1.0 = strongly cognitive.
-    #[serde(rename = "forensicSignals", skip_serializing_if = "Option::is_none")]
-    pub forensic_signals: Option<ForensicSignalScores>,
-    /// Dominant composition mode during authoring.
-    #[serde(rename = "compositionMode", skip_serializing_if = "Option::is_none")]
-    pub composition_mode: Option<String>,
-    /// Writing mode classification: "cognitive", "transcriptive", "mixed".
+    /// Overall verdict: "human-authored", "mixed-input", "transcriptive", "insufficient".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<String>,
+    /// Overall assessment score [0.0, 1.0].
+    #[serde(rename = "assessmentScore", skip_serializing_if = "Option::is_none")]
+    pub assessment_score: Option<f64>,
+    /// Risk level: "low", "medium", "high", "insufficient".
+    #[serde(rename = "riskLevel", skip_serializing_if = "Option::is_none")]
+    pub risk_level: Option<String>,
+    /// Writing mode: "cognitive", "transcriptive", "mixed", "insufficient".
     #[serde(rename = "writingMode", skip_serializing_if = "Option::is_none")]
     pub writing_mode: Option<String>,
+    /// Composition mode: "direct-composition", "ai-mediated", "mixed".
+    #[serde(rename = "compositionMode", skip_serializing_if = "Option::is_none")]
+    pub composition_mode: Option<String>,
+    /// Attestation tier: 1=software, 2=enhanced, 3=hardware.
+    #[serde(rename = "attestationTier", skip_serializing_if = "Option::is_none")]
+    pub attestation_tier: Option<u8>,
+    /// Per-dimension composite signal scores [0.0, 1.0].
+    #[serde(rename = "signalScores", skip_serializing_if = "Option::is_none")]
+    pub signal_scores: Option<ForensicSignalScores>,
+    /// Estimated adversary effort to forge this evidence [0.0, 1.0].
+    #[serde(rename = "forgeryDifficulty", skip_serializing_if = "Option::is_none")]
+    pub forgery_difficulty: Option<f64>,
+    #[serde(rename = "transcriptionSuspicious", skip_serializing_if = "Option::is_none")]
+    pub transcription_suspicious: Option<bool>,
+    #[serde(rename = "aiFluencyFlag", skip_serializing_if = "Option::is_none")]
+    pub ai_fluency_flag: Option<bool>,
+    /// Count of successful analysis modules (out of 18).
+    #[serde(rename = "analysisCompleteness", skip_serializing_if = "Option::is_none")]
+    pub analysis_completeness: Option<u32>,
+    #[serde(rename = "processStart", skip_serializing_if = "Option::is_none")]
+    pub process_start: Option<String>,
+    #[serde(rename = "processEnd", skip_serializing_if = "Option::is_none")]
+    pub process_end: Option<String>,
 }
 
 /// Per-dimension forensic signal scores projected into C2PA assertions.
@@ -58,11 +80,289 @@ pub struct JitterSeal {
     pub seal_hash: String,
 }
 
-impl ProcessAssertion {
+impl ProcessProofAssertion {
     pub fn from_evidence(packet: &EvidencePacket, original_bytes: &[u8]) -> Self {
         let hash = Sha256::digest(original_bytes);
+        Self {
+            version: 2,
+            evidence_id: hex::encode(&packet.packet_id),
+            evidence_hash: hex::encode(hash),
+            verdict: None,
+            assessment_score: None,
+            risk_level: None,
+            writing_mode: None,
+            composition_mode: None,
+            attestation_tier: packet.attestation_tier.map(|t| t as u8),
+            signal_scores: None,
+            forgery_difficulty: None,
+            transcription_suspicious: None,
+            ai_fluency_flag: None,
+            analysis_completeness: None,
+            process_start: None,
+            process_end: None,
+        }
+    }
+}
 
-        let jitter_seals = packet
+/// Keystroke cadence assertion (`com.writerslogic.keystroke-cadence`).
+///
+/// Timing fingerprint enabling independent cadence verification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeystrokeCadenceAssertion {
+    pub version: u32,
+    #[serde(rename = "keystrokeCount")]
+    pub keystroke_count: u64,
+    #[serde(rename = "sessionDurationSec")]
+    pub session_duration_sec: f64,
+    pub timing: CadenceTiming,
+    pub dwell: CadenceDwell,
+    pub corrections: CadenceCorrections,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fatigue: Option<CadenceFatigue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spectral: Option<CadenceSpectral>,
+    #[serde(rename = "hurstExponent", skip_serializing_if = "Option::is_none")]
+    pub hurst_exponent: Option<f64>,
+    #[serde(rename = "biologicalCadenceScore", skip_serializing_if = "Option::is_none")]
+    pub biological_cadence_score: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CadenceTiming {
+    #[serde(rename = "meanIkiMs")]
+    pub mean_iki_ms: f64,
+    #[serde(rename = "medianIkiMs")]
+    pub median_iki_ms: f64,
+    #[serde(rename = "coefficientOfVariation")]
+    pub coefficient_of_variation: f64,
+    #[serde(rename = "ikiPercentiles")]
+    pub iki_percentiles: [f64; 5],
+    #[serde(rename = "burstCount")]
+    pub burst_count: u64,
+    #[serde(rename = "avgBurstLength")]
+    pub avg_burst_length: f64,
+    #[serde(rename = "pauseCount")]
+    pub pause_count: u64,
+    #[serde(rename = "avgPauseDurationMs")]
+    pub avg_pause_duration_ms: f64,
+    #[serde(rename = "pauseDepthDistribution")]
+    pub pause_depth_distribution: [f64; 3],
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CadenceDwell {
+    #[serde(rename = "meanDwellMs")]
+    pub mean_dwell_ms: f64,
+    #[serde(rename = "dwellCv")]
+    pub dwell_cv: f64,
+    #[serde(rename = "meanFlightMs")]
+    pub mean_flight_ms: f64,
+    #[serde(rename = "flightCv")]
+    pub flight_cv: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CadenceCorrections {
+    #[serde(rename = "correctionRatio")]
+    pub correction_ratio: f64,
+    #[serde(rename = "crossHandTimingRatio")]
+    pub cross_hand_timing_ratio: f64,
+    #[serde(rename = "postPauseCv")]
+    pub post_pause_cv: f64,
+    #[serde(rename = "ikiAutocorrelation")]
+    pub iki_autocorrelation: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CadenceFatigue {
+    pub phase: u8,
+    #[serde(rename = "trajectoryResidual")]
+    pub trajectory_residual: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CadenceSpectral {
+    pub slope: f64,
+    #[serde(rename = "noiseType")]
+    pub noise_type: String,
+}
+
+/// Cognitive markers assertion (`com.writerslogic.cognitive-markers`).
+///
+/// Deep behavioral analysis: the evidence that typing was cognitive, not mechanical.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CognitiveMarkersAssertion {
+    pub version: u32,
+    #[serde(rename = "cognitiveLoad", skip_serializing_if = "Option::is_none")]
+    pub cognitive_load: Option<CognitiveLoadSignals>,
+    #[serde(rename = "revisionTopology", skip_serializing_if = "Option::is_none")]
+    pub revision_topology: Option<RevisionTopologySignals>,
+    #[serde(rename = "errorEcology", skip_serializing_if = "Option::is_none")]
+    pub error_ecology: Option<ErrorEcologySignals>,
+    #[serde(rename = "likelihoodModel", skip_serializing_if = "Option::is_none")]
+    pub likelihood_model: Option<LikelihoodModelSignals>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus: Option<FocusSignals>,
+    #[serde(rename = "editMetrics", skip_serializing_if = "Option::is_none")]
+    pub edit_metrics: Option<EditMetricSignals>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CognitiveLoadSignals {
+    #[serde(rename = "ikiSurprisalRho")]
+    pub iki_surprisal_rho: f64,
+    #[serde(rename = "sentenceArcRSquared")]
+    pub sentence_arc_r_squared: f64,
+    #[serde(rename = "structuralPauseConcentration")]
+    pub structural_pause_concentration: f64,
+    #[serde(rename = "compositeScore")]
+    pub composite_score: f64,
+    #[serde(rename = "deepPauseCount")]
+    pub deep_pause_count: u64,
+    #[serde(rename = "boundaryCount")]
+    pub boundary_count: u64,
+    #[serde(rename = "wordCount")]
+    pub word_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevisionTopologySignals {
+    #[serde(rename = "meanBranchingFactor")]
+    pub mean_branching_factor: f64,
+    #[serde(rename = "meanRevisitDepth")]
+    pub mean_revisit_depth: f64,
+    #[serde(rename = "meanFrontierDistance")]
+    pub mean_frontier_distance: f64,
+    #[serde(rename = "activeRegionCount")]
+    pub active_region_count: u64,
+    #[serde(rename = "detourRatio")]
+    pub detour_ratio: f64,
+    #[serde(rename = "leadingEdgeDivergence")]
+    pub leading_edge_divergence: f64,
+    #[serde(rename = "insertionPointEntropy")]
+    pub insertion_point_entropy: f64,
+    #[serde(rename = "revisionTypes")]
+    pub revision_types: RevisionTypeBreakdown,
+    #[serde(rename = "compositeScore")]
+    pub composite_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevisionTypeBreakdown {
+    #[serde(rename = "subWordMotorPct")]
+    pub sub_word_motor_pct: f64,
+    #[serde(rename = "wordSubstitutionPct")]
+    pub word_substitution_pct: f64,
+    #[serde(rename = "clauseRestructuringPct")]
+    pub clause_restructuring_pct: f64,
+    #[serde(rename = "positionalInsertionPct")]
+    pub positional_insertion_pct: f64,
+    #[serde(rename = "totalRevisions")]
+    pub total_revisions: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorEcologySignals {
+    #[serde(rename = "rapidSelfCorrectionPct")]
+    pub rapid_self_correction_pct: f64,
+    #[serde(rename = "immediateSmallCorrectionPct")]
+    pub immediate_small_correction_pct: f64,
+    #[serde(rename = "delayedCorrectionPct")]
+    pub delayed_correction_pct: f64,
+    #[serde(rename = "bulkCorrectionPct")]
+    pub bulk_correction_pct: f64,
+    #[serde(rename = "falseStartPct")]
+    pub false_start_pct: f64,
+    #[serde(rename = "totalCorrections")]
+    pub total_corrections: u64,
+    #[serde(rename = "correctionRate")]
+    pub correction_rate: f64,
+    #[serde(rename = "jsdFromCognitive")]
+    pub jsd_from_cognitive: f64,
+    #[serde(rename = "jsdFromTranscriptive")]
+    pub jsd_from_transcriptive: f64,
+    #[serde(rename = "compositeScore")]
+    pub composite_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LikelihoodModelSignals {
+    #[serde(rename = "sessionLlr")]
+    pub session_llr: f64,
+    #[serde(rename = "sessionPCognitive")]
+    pub session_p_cognitive: f64,
+    #[serde(rename = "windowCount")]
+    pub window_count: u64,
+    #[serde(rename = "cognitiveWindowCount")]
+    pub cognitive_window_count: u64,
+    #[serde(rename = "transcriptiveWindowCount")]
+    pub transcriptive_window_count: u64,
+    #[serde(rename = "meanWindowLlr")]
+    pub mean_window_llr: f64,
+    #[serde(rename = "llrStdDev")]
+    pub llr_std_dev: f64,
+    #[serde(rename = "compositeScore")]
+    pub composite_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FocusSignals {
+    #[serde(rename = "switchCount")]
+    pub switch_count: u64,
+    #[serde(rename = "outOfFocusRatio")]
+    pub out_of_focus_ratio: f64,
+    #[serde(rename = "aiAppSwitchCount")]
+    pub ai_app_switch_count: u64,
+    #[serde(rename = "midTypingSwitchRatio")]
+    pub mid_typing_switch_ratio: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditMetricSignals {
+    #[serde(rename = "monotonicAppendRatio")]
+    pub monotonic_append_ratio: f64,
+    #[serde(rename = "editEntropy")]
+    pub edit_entropy: f64,
+    #[serde(rename = "timingEntropy")]
+    pub timing_entropy: f64,
+    #[serde(rename = "pauseEntropy")]
+    pub pause_entropy: f64,
+    #[serde(rename = "positiveNegativeRatio")]
+    pub positive_negative_ratio: f64,
+    #[serde(rename = "deletionClustering")]
+    pub deletion_clustering: f64,
+}
+
+/// Evidence chain assertion (`com.writerslogic.evidence-chain`).
+///
+/// Per-checkpoint temporal seals binding evidence to time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvidenceChainAssertion {
+    pub version: u32,
+    #[serde(rename = "checkpointCount")]
+    pub checkpoint_count: u64,
+    #[serde(rename = "chainDurationSec")]
+    pub chain_duration_sec: f64,
+    pub seals: Vec<JitterSeal>,
+    #[serde(rename = "sessionStats", skip_serializing_if = "Option::is_none")]
+    pub session_stats: Option<SessionStatsSignals>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionStatsSignals {
+    #[serde(rename = "sessionCount")]
+    pub session_count: u64,
+    #[serde(rename = "avgSessionDurationSec")]
+    pub avg_session_duration_sec: f64,
+    #[serde(rename = "totalEditingTimeSec")]
+    pub total_editing_time_sec: f64,
+    #[serde(rename = "timeSpanSec")]
+    pub time_span_sec: f64,
+}
+
+impl EvidenceChainAssertion {
+    pub fn from_evidence(packet: &EvidencePacket) -> Self {
+        let seals: Vec<JitterSeal> = packet
             .checkpoints
             .iter()
             .map(|cp| JitterSeal {
@@ -71,16 +371,19 @@ impl ProcessAssertion {
                 seal_hash: hex::encode(&cp.checkpoint_hash.digest),
             })
             .collect();
-
+        let chain_duration_sec = if let (Some(first), Some(last)) =
+            (packet.checkpoints.first(), packet.checkpoints.last())
+        {
+            (last.timestamp.saturating_sub(first.timestamp)) as f64 / 1000.0
+        } else {
+            0.0
+        };
         Self {
-            label: ASSERTION_LABEL_CPOE.to_string(),
-            version: packet.version,
-            evidence_id: hex::encode(&packet.packet_id),
-            evidence_hash: hex::encode(hash),
-            jitter_seals,
-            forensic_signals: None,
-            composition_mode: None,
-            writing_mode: None,
+            version: 1,
+            checkpoint_count: seals.len() as u64,
+            chain_duration_sec,
+            seals,
+            session_stats: None,
         }
     }
 }

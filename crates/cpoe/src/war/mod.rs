@@ -7,7 +7,6 @@
 
 pub mod appraisal;
 pub mod common;
-pub mod compat;
 pub mod ear;
 pub mod encoding;
 pub mod profiles;
@@ -19,7 +18,10 @@ pub mod verification;
 mod tests;
 
 pub use appraisal::appraise;
-pub use ear::{Ar4siStatus, EarAppraisal, EarToken, SealClaims, TrustworthinessVector, VerifierId};
+pub use ear::{
+    engine_verifier_id, Ar4siStatus, EarAppraisal, EarToken, SealClaims, TrustworthinessVector,
+    VerifierId,
+};
 pub use encoding::word_wrap;
 pub use types::{Block, CheckResult, ForensicDetails, Seal, VerificationReport, Version};
 pub use verification::compute_seal;

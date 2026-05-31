@@ -2,35 +2,18 @@
 
 //! Statistical utility functions.
 
-use std::fmt;
-
 /// Comprehensive error type for statistical operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StatsError {
+    #[error("Insufficient data points: found {found}, minimum {required} required")]
     InsufficientData { found: usize, required: usize },
+    #[error("Data length mismatch: X has {x_len}, Y has {y_len}")]
     LengthMismatch { x_len: usize, y_len: usize },
+    #[error("No variance in independent variable (X data)")]
     NoVariance,
+    #[error("Degenerate regression: slope is NaN/Inf")]
     DegenerateRegression,
 }
-
-impl fmt::Display for StatsError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientData { found, required } => write!(
-                f,
-                "Insufficient data points: found {}, minimum {} required",
-                found, required
-            ),
-            Self::LengthMismatch { x_len, y_len } => {
-                write!(f, "Data length mismatch: X has {}, Y has {}", x_len, y_len)
-            }
-            Self::NoVariance => write!(f, "No variance in independent variable (X data)"),
-            Self::DegenerateRegression => write!(f, "Degenerate regression: slope is NaN/Inf"),
-        }
-    }
-}
-
-impl std::error::Error for StatsError {}
 
 /// Divide `a / b`, returning `fallback` when `b` is zero or the result is
 /// not finite (NaN / Infinity).

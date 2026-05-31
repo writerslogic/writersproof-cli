@@ -7,36 +7,19 @@
 //! suggests LLM-like replay; incompressible (high entropy) suggests random noise.
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Comprehensive error type for IKI Compression analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IkiCompressionError {
+    #[error("Insufficient IKI samples: found {found}, minimum {required} required")]
     InsufficientSamples { found: usize, required: usize },
+    #[error("IKI values exceed 10^12 ns (>1000s); likely invalid input")]
     InvalidInputExceedsBounds,
+    #[error("Input contains non-finite values")]
     NonFiniteValues,
+    #[error("No valid positive intervals to compress")]
     EmptyByteStream,
 }
-
-impl fmt::Display for IkiCompressionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientSamples { found, required } => write!(
-                f,
-                "Insufficient IKI samples: found {}, minimum {} required",
-                found, required
-            ),
-            Self::InvalidInputExceedsBounds => write!(
-                f,
-                "IKI values exceed 10^12 ns (>1000s); likely invalid input"
-            ),
-            Self::NonFiniteValues => write!(f, "Input contains non-finite values"),
-            Self::EmptyByteStream => write!(f, "No valid positive intervals to compress"),
-        }
-    }
-}
-
-impl std::error::Error for IkiCompressionError {}
 
 /// Compression ratio below this suggests generated/replay data (high structure, low entropy).
 /// Derived from empirical tests on LLM playback vs human typing.

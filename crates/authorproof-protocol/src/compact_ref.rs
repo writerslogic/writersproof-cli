@@ -172,36 +172,27 @@ impl CompactEvidenceRef {
 }
 
 /// Compact reference decoding/verification errors.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CompactRefError {
     /// URI does not start with `cpoe-ref:`.
+    #[error("URI must start with 'cpoe-ref:'")]
     InvalidPrefix,
     /// Base64 decoding failed.
+    #[error("Invalid base64 encoding")]
     InvalidBase64,
     /// Serialization or deserialization failed (CBOR or JSON).
+    #[error("serialization/deserialization failed")]
     SerializationError,
     /// Ed25519 signature verification failed.
+    #[error("Signature verification failed")]
     InvalidSignature,
     /// Document hash does not match the referenced evidence.
+    #[error("Hash does not match Evidence")]
     HashMismatch,
     /// `evidence_uri` is empty; a retrieval location is required for signing.
+    #[error("evidence_uri is required for signing")]
     MissingEvidenceUri,
 }
-
-impl std::fmt::Display for CompactRefError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidPrefix => write!(f, "URI must start with 'cpoe-ref:'"),
-            Self::InvalidBase64 => write!(f, "Invalid base64 encoding"),
-            Self::SerializationError => write!(f, "serialization/deserialization failed"),
-            Self::InvalidSignature => write!(f, "Signature verification failed"),
-            Self::HashMismatch => write!(f, "Hash does not match Evidence"),
-            Self::MissingEvidenceUri => write!(f, "evidence_uri is required for signing"),
-        }
-    }
-}
-
-impl std::error::Error for CompactRefError {}
 
 #[cfg(test)]
 mod tests {

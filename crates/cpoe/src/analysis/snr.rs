@@ -7,31 +7,17 @@
 //! will have an abnormally high SNR across all windows.
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Comprehensive error type for SNR analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SnrError {
+    #[error("Insufficient IKI samples: found {found}, minimum {required} required")]
     InsufficientSamples { found: usize, required: usize },
+    #[error("Insufficient sliding windows for SNR analysis")]
     InsufficientWindows,
+    #[error("Input contains non-finite values")]
     NonFiniteValues,
 }
-
-impl fmt::Display for SnrError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientSamples { found, required } => write!(
-                f,
-                "Insufficient IKI samples: found {}, minimum {} required",
-                found, required
-            ),
-            Self::InsufficientWindows => write!(f, "Insufficient sliding windows for SNR analysis"),
-            Self::NonFiniteValues => write!(f, "Input contains non-finite values"),
-        }
-    }
-}
-
-impl std::error::Error for SnrError {}
 
 /// SNR above this threshold across all windows indicates synthetic input.
 const SNR_SYNTHETIC_THRESHOLD_DB: f64 = 20.0;

@@ -642,7 +642,7 @@ impl WritersProofClient {
         let mut req = self
             .client
             .post(&url)
-            .header("Content-Type", "application/vnd.writersproof.cpoe+cbor")
+            .header("Content-Type", crate::rats::C2PA_MEDIA_TYPE)
             .body(evidence_cbor.to_vec());
 
         if let Some(ref jwt) = self.jwt {

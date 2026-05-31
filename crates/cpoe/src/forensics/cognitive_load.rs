@@ -523,7 +523,14 @@ impl std::fmt::Display for CognitiveMode {
 
 impl CognitiveLoadMetrics {
     /// Classify the cognitive mode from the composite score.
+    ///
+    /// Requires meaningful correlation data: if the word-scale signal
+    /// (iki_surprisal_rho) is near zero, the composite score is unreliable
+    /// and we return Unknown instead of a false Transcription label.
     pub fn cognitive_mode(&self) -> CognitiveMode {
+        if self.iki_surprisal_rho.abs() < 0.05 && self.sentence_count < 3 {
+            return CognitiveMode::Unknown;
+        }
         if self.composite_score >= 0.6 {
             CognitiveMode::Creative
         } else if self.composite_score >= 0.3 {

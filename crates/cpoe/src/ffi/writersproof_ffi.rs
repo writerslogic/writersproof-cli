@@ -3,6 +3,9 @@
 use crate::ffi::helpers::{load_api_key, load_did, load_events_for_path, load_signing_key, open_store};
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 
+/// Domain separation tag for anchor signatures.
+const ANCHOR_DST: &[u8] = b"witnessd-anchor-v1";
+
 /// Anchor a document's latest checkpoint to the WritersProof transparency log.
 ///
 /// Uses the latest event_hash from the store (matching CLI behavior), signs
@@ -13,7 +16,7 @@ use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 /// `ffiAnchorToWritersProof` (capital P) matching the Swift call site.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_anchor_to_writers_proof: document_path={}", document_path);
     if document_path.len() > 4096 {
         return FfiResult::err("Document path too long".to_string());
@@ -38,9 +41,8 @@ pub fn ffi_anchor_to_writers_proof(document_path: String) -> FfiResult {
     // Load signing key and sign the raw hash bytes (matches CLI: signing_key.sign(latest.event_hash.as_slice()))
     let signing_key = try_ffi!(load_signing_key(), FfiResult);
     let signature = {
-        const DST: &[u8] = b"witnessd-anchor-v1";
-        let mut payload = Vec::with_capacity(DST.len() + latest.event_hash.len());
-        payload.extend_from_slice(DST);
+        let mut payload = Vec::with_capacity(ANCHOR_DST.len() + latest.event_hash.len());
+        payload.extend_from_slice(ANCHOR_DST);
         payload.extend_from_slice(latest.event_hash.as_slice());
         super::conv::sign_hex(&signing_key, &payload)
     };
@@ -118,7 +120,7 @@ pub fn ffi_publish_evidence(
     ai_declaration: Option<String>,
 ) -> crate::ffi::types::FfiPublishResult {
     use crate::ffi::types::{FfiErrResult, FfiPublishResult};
-    catch_ffi_panic!(FfiPublishResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiPublishResult, {
     log::debug!("ffi_publish_evidence: document_path={} attestation_len={} ai_declaration={}", document_path, attestation.len(), ai_declaration.is_some());
 
     const MAX_ATTESTATION_LEN: usize = 1_000_000;
@@ -284,7 +286,7 @@ pub fn ffi_sync_text_attestation(
     attested_at: String,
     app_bundle_id: String,
 ) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_sync_text_attestation: content_hash={} tier={} writersproof_id={} app_bundle_id={}", content_hash, tier, writersproof_id, app_bundle_id);
     if content_hash.len() != 64 || !content_hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return FfiResult::err("content_hash must be 64 hex characters".to_string());
@@ -384,10 +386,9 @@ pub fn ffi_sync_text_attestation(
         Ok(Ok(_)) => {
             // Re-sign with anchor-specific DST for transparency log.
             let anchor_sig = {
-                    const DST: &[u8] = b"witnessd-anchor-v1";
                     let hash_bytes = hex::decode(&anchor_evidence_hash).unwrap_or_default();
-                    let mut payload = Vec::with_capacity(DST.len() + hash_bytes.len());
-                    payload.extend_from_slice(DST);
+                    let mut payload = Vec::with_capacity(ANCHOR_DST.len() + hash_bytes.len());
+                    payload.extend_from_slice(ANCHOR_DST);
                     payload.extend_from_slice(&hash_bytes);
                     super::conv::sign_hex(&signing_key, &payload)
                 };
@@ -452,7 +453,7 @@ pub fn ffi_sync_text_attestation(
 /// Returns the number of successful submissions.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_drain_text_attestation_queue() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_drain_text_attestation_queue");
     let api_key = match load_api_key() {
         Ok(k) if k.is_empty() => {

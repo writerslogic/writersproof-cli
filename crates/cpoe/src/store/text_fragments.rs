@@ -6,6 +6,9 @@ use rusqlite::params;
 use rusqlite::OptionalExtension;
 use std::str::FromStr;
 
+/// Domain separation tag for text fragment signatures.
+pub const TEXT_FRAGMENT_DST: &[u8] = b"witnessd-text-fragment-v1";
+
 /// Keystroke context indicating the source of keystroke input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeystrokeContext {
@@ -303,11 +306,11 @@ impl SecureStore {
         public_key: &[u8; 32],
     ) -> anyhow::Result<bool> {
         // Build payload matching sign_fragment: DST || sid_len || session_id || hash || ts || nonce
-        const DST: &[u8] = b"witnessd-text-fragment-v1";
+        let dst = TEXT_FRAGMENT_DST;
         let sid_len = (session_id.len() as u32).to_le_bytes();
         let mut payload =
-            Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + nonce.len());
-        payload.extend_from_slice(DST);
+            Vec::with_capacity(dst.len() + 4 + session_id.len() + 32 + 8 + nonce.len());
+        payload.extend_from_slice(dst);
         payload.extend_from_slice(&sid_len);
         payload.extend_from_slice(session_id.as_bytes());
         payload.extend_from_slice(fragment_hash);
@@ -602,10 +605,10 @@ pub fn sign_fragment(
     nonce: &[u8; 16],
 ) -> [u8; 64] {
     use ed25519_dalek::Signer;
-    const DST: &[u8] = b"witnessd-text-fragment-v1";
+    let dst = TEXT_FRAGMENT_DST;
     let sid_len = (session_id.len() as u32).to_le_bytes();
-    let mut payload = Vec::with_capacity(DST.len() + 4 + session_id.len() + 32 + 8 + 16);
-    payload.extend_from_slice(DST);
+    let mut payload = Vec::with_capacity(dst.len() + 4 + session_id.len() + 32 + 8 + 16);
+    payload.extend_from_slice(dst);
     payload.extend_from_slice(&sid_len);
     payload.extend_from_slice(session_id.as_bytes());
     payload.extend_from_slice(fragment_hash);

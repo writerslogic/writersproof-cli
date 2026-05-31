@@ -25,7 +25,7 @@ use cpoe_engine::tpm::{Provider, SoftwareProvider};
 use cpoe_engine::trust_policy::profiles;
 use cpoe_engine::vdf;
 use cpoe_engine::war::ear::{
-    Ar4siStatus, EarAppraisal, EarToken, TrustworthinessVector, VerifierId, POP_EAR_PROFILE,
+    Ar4siStatus, EarAppraisal, EarToken, TrustworthinessVector, VerifierId, CPOE_EAR_PROFILE,
 };
 use cpoe_engine::war::profiles::c2pa::{self, ASSERTION_LABEL};
 use cpoe_engine::war::profiles::standards::AiDisclosureLevel;
@@ -97,7 +97,7 @@ fn test_c2pa_assertion_has_required_fields() {
 
     // ear_profile matches the EAT profile URI
     assert_eq!(
-        assertion.data.ear_profile, POP_EAR_PROFILE,
+        assertion.data.ear_profile, CPOE_EAR_PROFILE,
         "ear_profile must match the EAT profile URI"
     );
 
@@ -259,7 +259,7 @@ fn test_rats_cwt_roundtrip() {
     );
 
     let ear = EarToken {
-        eat_profile: POP_EAR_PROFILE.to_string(),
+        eat_profile: CPOE_EAR_PROFILE.to_string(),
         iat: 1711324800,
         ear_verifier_id: VerifierId::default(),
         submods,

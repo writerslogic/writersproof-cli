@@ -8,6 +8,8 @@
 
 pub mod cert;
 pub mod embed;
+pub mod standalone;
+pub mod text_embed;
 pub mod trust;
 mod builder;
 mod jumbf;
@@ -19,19 +21,37 @@ mod tests;
 
 pub use builder::C2paManifestBuilder;
 pub use embed::{embed_in_pdf, embed_manifest_in_pdf, hash_with_exclusions, sidecar_path, supports_embedding};
-pub use jumbf::{encode_jumbf, verify_jumbf_structure};
+pub use standalone::StandaloneManifestBuilder;
+pub use jumbf::{decode_jumbf, encode_jumbf, verify_jumbf_structure};
 pub use trust::{evaluate_trust, TrustLevel};
 pub use types::{
     Action, ActionParameters, ActionsAssertion, AiContentProfile, AiDisclosureAssertion,
-    AssertionMetadata, AssetInfo, AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo,
-    DataSource, ExclusionRange, ExternalReferenceAssertion, ForensicSignalScores,
-    HashDataAssertion, HashedExtUri, HashedUri, HashExclusion, JitterSeal, JumbfInfo,
+    AssertionMetadata, AssetInfo, AssetType, C2paClaim, C2paManifest, CadenceCorrections,
+    CadenceDwell, CadenceFatigue, CadenceSpectral, CadenceTiming, ClaimGeneratorInfo,
+    CognitiveLoadSignals, CognitiveMarkersAssertion, DataSource, EditMetricSignals,
+    ErrorEcologySignals, EvidenceChainAssertion, ExclusionRange, ExternalReferenceAssertion,
+    FocusSignals, ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri,
+    HashExclusion, JitterSeal, JumbfInfo, KeystrokeCadenceAssertion, LikelihoodModelSignals,
     LocalTimestampAssertion, MetadataAssertion, C2paIngredient, IngredientMetadata,
-    ProcessAssertion, SoftwareAgent, ValidationResult, VcReferenceAssertion,
+    ProcessProofAssertion, RevisionTopologySignals, RevisionTypeBreakdown,
+    SessionStatsSignals, SoftwareAgent, ValidationResult, VcReferenceAssertion,
 };
 pub use validation::{validate_manifest, verify_manifest_signature, verify_manifest_with_key};
 
-pub const ASSERTION_LABEL_CPOE: &str = "org.cpoe.evidence";
+// Legacy alias for backward compatibility during migration.
+pub type ProcessAssertion = ProcessProofAssertion;
+
+// Custom assertion labels (com.writerslogic.* namespace per C2PA §12.5).
+pub const ASSERTION_LABEL_PROCESS_PROOF: &str = "com.writerslogic.process-proof";
+pub const ASSERTION_LABEL_KEYSTROKE_CADENCE: &str = "com.writerslogic.keystroke-cadence";
+pub const ASSERTION_LABEL_COGNITIVE_MARKERS: &str = "com.writerslogic.cognitive-markers";
+pub const ASSERTION_LABEL_EVIDENCE_CHAIN: &str = "com.writerslogic.evidence-chain";
+pub const ASSERTION_LABEL_VC_EMBEDDED: &str = "com.writerslogic.verifiable-credential";
+
+// Legacy alias — old label used in manifests prior to namespace migration.
+pub const ASSERTION_LABEL_CPOE: &str = ASSERTION_LABEL_PROCESS_PROOF;
+
+// Standard C2PA assertion labels.
 pub const ASSERTION_LABEL_ACTIONS: &str = "c2pa.actions.v2";
 pub const ASSERTION_LABEL_HASH_DATA: &str = "c2pa.hash.data";
 pub const ASSERTION_LABEL_METADATA: &str = "c2pa.metadata";

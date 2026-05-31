@@ -327,6 +327,12 @@ impl SecureStore {
         std::fs::rename(&archive_tmp_path, &archive_path)
             .context("Failed to rename tmp archive to final path")?;
 
+        if let Some(parent) = archive_path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+
         // Reclaim space.
         self.conn.execute_batch("VACUUM")?;
 

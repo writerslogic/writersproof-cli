@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn test_cawg_identity_missing_pop_submod() {
         let ear = EarToken {
-            eat_profile: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
+            eat_profile: crate::war::ear::CPOE_EAR_PROFILE.to_string(),
             iat: Utc::now().timestamp(),
             ear_verifier_id: VerifierId::default(),
             submods: BTreeMap::new(),

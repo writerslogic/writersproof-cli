@@ -53,7 +53,8 @@ impl AnonymizedSession {
             })
             .collect();
 
-        let statistics = compute_anonymized_statistics(&evidence.statistics, &samples);
+        // TODO: pass phys_ratio from cpoe_jitter_bridge session when available
+        let statistics = compute_anonymized_statistics(&evidence.statistics, &samples, None);
 
         Self {
             research_id,
@@ -149,8 +150,17 @@ fn detect_memory_bucket() -> String {
 
 #[cfg(target_os = "windows")]
 fn detect_memory_bucket() -> String {
-    // TODO: implement via GlobalMemoryStatusEx (requires unsafe)
-    "unknown".to_string()
+    use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+
+    let mut info = MEMORYSTATUSEX {
+        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GlobalMemoryStatusEx(&mut info) }.is_err() {
+        return "unknown".to_string();
+    }
+    let gb = info.ullTotalPhys / (1024 * 1024 * 1024);
+    memory_gb_to_bucket(gb)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -158,7 +168,7 @@ fn detect_memory_bucket() -> String {
     "unknown".to_string()
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows", test))]
 pub(super) fn memory_gb_to_bucket(gb: u64) -> String {
     match gb {
         0..=4 => "<=4GB",
@@ -182,6 +192,7 @@ pub(super) fn detect_os_type() -> OsType {
 pub(super) fn compute_anonymized_statistics(
     stats: &Statistics,
     samples: &[AnonymizedSample],
+    phys_ratio: Option<f64>,
 ) -> AnonymizedStatistics {
     let duration_secs = stats.duration.as_secs();
     let duration_bucket = match duration_secs {
@@ -231,8 +242,8 @@ pub(super) fn compute_anonymized_statistics(
         jitter_std_dev: noisy_std,
         min_jitter_micros: min_jitter,
         max_jitter_micros: max_jitter,
-        phys_ratio: None,
-        entropy_source: None,
+        phys_ratio,
+        entropy_source: phys_ratio.map(describe_entropy_source),
     }
 }
 
@@ -253,19 +264,6 @@ fn add_laplace_noise(value: f64, scale: f64) -> f64 {
     }
 }
 
-/// Like `compute_anonymized_statistics` but includes hardware entropy metrics.
-#[cfg(feature = "cpoe_jitter")]
-pub fn compute_anonymized_statistics_hybrid(
-    stats: &Statistics,
-    samples: &[AnonymizedSample],
-    phys_ratio: f64,
-) -> AnonymizedStatistics {
-    let mut base = compute_anonymized_statistics(stats, samples);
-    base.phys_ratio = Some(phys_ratio);
-    base.entropy_source = Some(describe_entropy_source(phys_ratio));
-    base
-}
-
 #[cfg(feature = "cpoe_jitter")]
 fn describe_entropy_source(phys_ratio: f64) -> String {
     if phys_ratio > 0.9 {
@@ -277,4 +275,9 @@ fn describe_entropy_source(phys_ratio: f64) -> String {
     } else {
         "pure HMAC (no hardware entropy)".to_string()
     }
+}
+
+#[cfg(not(feature = "cpoe_jitter"))]
+fn describe_entropy_source(_phys_ratio: f64) -> String {
+    "unknown".to_string()
 }

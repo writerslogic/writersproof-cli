@@ -441,17 +441,19 @@ impl EvidenceChain {
         Ok(())
     }
 
-    /// Verify the HMAC chain in constant time. Replays every record's MAC and
-    /// compares the final value against the stored `chain_mac` via `subtle`.
+    /// Verify the HMAC chain in constant time. Pre-computes the HMAC key
+    /// schedule once and clones the base state per record, avoiding repeated
+    /// key expansion (two SHA-256 compressions) in the verification loop.
     pub fn verify_integrity(&self, secret: &[u8; 32]) -> bool {
         use hmac::{Hmac, Mac};
         use subtle::ConstantTimeEq;
 
         type HmacSha256 = Hmac<sha2::Sha256>;
 
+        let base_mac = HmacSha256::new_from_slice(secret).expect("HMAC accepts any key size");
         let mut expected_mac = [0u8; 32];
         for evidence in &self.records {
-            let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC accepts any key size");
+            let mut mac = base_mac.clone();
             mac.update(&expected_mac);
             evidence.hash_into_mac(&mut mac);
             let result = mac.finalize().into_bytes();
@@ -462,13 +464,15 @@ impl EvidenceChain {
     }
 
     /// Verify the SHA-256 hash chain in constant time for unkeyed chains.
+    /// Pre-initializes the hasher state once and clones per record.
     pub fn verify_integrity_unkeyed(&self) -> bool {
         use sha2::{Digest, Sha256};
         use subtle::ConstantTimeEq;
 
+        let base_hasher = Sha256::new();
         let mut expected_mac = [0u8; 32];
         for evidence in &self.records {
-            let mut hasher = Sha256::new();
+            let mut hasher = base_hasher.clone();
             hasher.update(expected_mac);
             evidence.hash_into(&mut hasher);
             let result = hasher.finalize();

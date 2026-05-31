@@ -9,7 +9,7 @@ pub(in crate::report::html) fn write_embedded_evidence(
     if let Some(ref b64) = r.evidence_cbor_b64 {
         writeln!(
             html,
-            r#"<script type="application/vnd.writerslogic.cpoe+cbor">{}</script>"#,
+            r#"<script type="application/c2pa">{}</script>"#,
             html_escape(b64),
         )?;
     }
@@ -17,7 +17,7 @@ pub(in crate::report::html) fn write_embedded_evidence(
         writeln!(
             html,
             r#"<script type="application/ld+json">{}</script>"#,
-            html_escape(vc_json),
+            vc_json.replace("</", "<\\/"),
         )?;
     }
     Ok(())
@@ -48,7 +48,7 @@ pub(in crate::report::html) fn write_verifiable_credential(
          independently verified using any VC 2.0 compliant verifier.</p>",
     );
 
-    html.push_str(r#"<table class="data-table" style="margin:8px 0">"#);
+    html.push_str(r#"<table class="data" style="margin:8px 0">"#);
     if let Some(issuer) = vc["issuer"].as_str() {
         write!(
             html,
@@ -184,7 +184,7 @@ pub(in crate::report::html) fn write_verifiable_credential(
     );
     write!(
         html,
-        r#"<pre style="font-size:10px;max-height:300px;overflow:auto;background:var(--bg-card);padding:10px;border:1px solid var(--border);margin-top:6px">{}</pre>"#,
+        r#"<pre style="font-size:10px;max-height:300px;overflow:auto;background:var(--bg-warm);padding:10px;border:1px solid var(--border);margin-top:6px">{}</pre>"#,
         html_escape(vc_json),
     )?;
     html.push_str("</details></div>");

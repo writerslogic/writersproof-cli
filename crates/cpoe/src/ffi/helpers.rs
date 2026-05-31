@@ -71,17 +71,19 @@ pub(crate) fn get_db_path() -> Option<PathBuf> {
 }
 
 pub(crate) fn load_hmac_key() -> Option<Zeroizing<Vec<u8>>> {
-    if let Ok(Some(key)) = crate::identity::SecureStorage::load_hmac_key() {
-        return Some(key);
+    // Derive from signing_key file first: fast, no Keychain I/O, no dialogs.
+    // Keychain access (SecItemCopyMatching/SecItemAdd) can block indefinitely
+    // when the binary's code signature doesn't match the ACL on existing
+    // keychain items, or when the app is a background agent (LSUIElement).
+    if let Some(derived) = derive_hmac_from_signing_key() {
+        return Some(derived);
     }
 
-    let key = derive_hmac_from_signing_key()?;
-
-    if let Err(e) = crate::identity::SecureStorage::save_hmac_key(&key) {
-        log::warn!("Failed to migrate signing key to secure storage: {}", e);
-    }
-
-    Some(key)
+    // signing_key file not found. On a fresh install before ffi_init creates
+    // it, this is expected. Do NOT fall back to Keychain here: SecItemCopyMatching
+    // can block indefinitely on macOS background agents (LSUIElement).
+    log::debug!("HMAC key derivation unavailable: signing_key not found");
+    None
 }
 
 /// Load the Ed25519 signing key from the data directory, zeroizing intermediates.
@@ -231,11 +233,6 @@ pub(crate) fn open_store_at(db_path: &std::path::Path) -> Result<SecureStore, St
             if let Some(key) = derive_hmac_from_signing_key() {
                 if let Ok(store) = SecureStore::open(db_path, key) {
                     log::info!("Opened database with signing-key-derived HMAC");
-                    if let Some(k) = derive_hmac_from_signing_key() {
-                        if let Err(e) = crate::identity::SecureStorage::save_hmac_key(&k) {
-                            log::warn!("Failed to persist migrated HMAC key: {e}");
-                        }
-                    }
                     return Ok(store);
                 }
             }
@@ -257,29 +254,6 @@ pub(crate) fn open_store_at(db_path: &std::path::Path) -> Result<SecureStore, St
                     }
                     match SecureStore::open(db_path, k) {
                         Ok(store) => {
-                            // Persist the migrated HMAC key so future opens succeed
-                            if let Some(migrated) = load_hmac_key() {
-                                if let Err(e) =
-                                    crate::identity::SecureStorage::save_hmac_key(&migrated)
-                                {
-                                    // Recreated DB is valid but key not persisted;
-                                    // roll back to avoid an inconsistent state where
-                                    // the new DB exists but the old key is gone.
-                                    log::error!(
-                                        "Failed to persist HMAC key after recreate: {e}; \
-                                         restoring backup"
-                                    );
-                                    if let Err(e2) = std::fs::remove_file(db_path) {
-                                        log::warn!("rollback: remove new DB failed: {e2}");
-                                    }
-                                    if let Err(e2) = std::fs::rename(&backup_path, db_path) {
-                                        log::warn!("rollback: restore backup failed: {e2}");
-                                    }
-                                    return Err(format!(
-                                        "DB recreated but HMAC key persist failed: {e}"
-                                    ));
-                                }
-                            }
                             return Ok(store);
                         }
                         Err(e) => {

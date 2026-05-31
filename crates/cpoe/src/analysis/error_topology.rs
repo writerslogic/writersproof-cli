@@ -15,27 +15,13 @@
 //! score. Consider wiring `analysis/hurst.rs` here for a future improvement.
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Comprehensive error type for Error Topology analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ErrorTopologyError {
+    #[error("Insufficient events for error topology analysis: found {found}, minimum {required}")]
     InsufficientEvents { found: usize, required: usize },
 }
-
-impl fmt::Display for ErrorTopologyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientEvents { found, required } => write!(
-                f,
-                "Insufficient events for error topology analysis: found {}, minimum {}",
-                found, required
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ErrorTopologyError {}
 
 /// Error topology analysis result.
 #[derive(Debug, Clone, Serialize, Deserialize)]

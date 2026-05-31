@@ -25,6 +25,39 @@ pub fn runtime_integrity_check() -> Result<()> {
         check_debugger_attached()?;
         check_injected_libraries()?;
     }
+    #[cfg(target_os = "windows")]
+    {
+        check_debugger_windows()?;
+        check_remote_debugger_windows()?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn check_debugger_windows() -> Result<()> {
+    use windows::Win32::System::Diagnostics::Debug::IsDebuggerPresent;
+    if unsafe { IsDebuggerPresent() }.as_bool() {
+        return Err(Error::crypto(
+            "signing refused: user-mode debugger attached (IsDebuggerPresent)",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn check_remote_debugger_windows() -> Result<()> {
+    use windows::Win32::System::Diagnostics::Debug::CheckRemoteDebuggerPresent;
+    use windows::Win32::System::Threading::GetCurrentProcess;
+
+    let mut debugger_present = false;
+    let result = unsafe {
+        CheckRemoteDebuggerPresent(GetCurrentProcess(), &mut debugger_present)
+    };
+    if result.is_ok() && debugger_present {
+        return Err(Error::crypto(
+            "signing refused: remote debugger attached (CheckRemoteDebuggerPresent)",
+        ));
+    }
     Ok(())
 }
 

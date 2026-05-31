@@ -6,27 +6,13 @@
 
 use super::stats::sq_dist;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Comprehensive error type for Labyrinth analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LabyrinthError {
+    #[error("Insufficient data: found {found} points, minimum {required} required")]
     InsufficientDataPoints { found: usize, required: usize },
 }
-
-impl fmt::Display for LabyrinthError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientDataPoints { found, required } => write!(
-                f,
-                "Insufficient data: found {} points, minimum {} required",
-                found, required
-            ),
-        }
-    }
-}
-
-impl std::error::Error for LabyrinthError {}
 
 /// Result of labyrinth structure analysis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,13 +101,16 @@ pub fn analyze_labyrinth(
     } else {
         keystroke_deltas
     };
-    let k_norm = normalize(capped);
+    let mut k_norm: Vec<f64> = capped.to_vec();
+    normalize_in_place(&mut k_norm);
     let has_mouse = mouse_coords.len() >= MIN_LABYRINTH_DATA_POINTS;
 
     let embed = if has_mouse {
-        let mx: Vec<f64> = mouse_coords.iter().map(|p| p.0).collect();
-        let my: Vec<f64> = mouse_coords.iter().map(|p| p.1).collect();
-        construct_fused_embedding(&k_norm, &normalize(&mx), &normalize(&my), dim, delay)
+        let mut mx: Vec<f64> = mouse_coords.iter().map(|p| p.0).collect();
+        let mut my: Vec<f64> = mouse_coords.iter().map(|p| p.1).collect();
+        normalize_in_place(&mut mx);
+        normalize_in_place(&mut my);
+        construct_fused_embedding(&k_norm, &mx, &my, dim, delay)
     } else {
         construct_1d_embedding(&k_norm, dim, delay)
     };
@@ -155,14 +144,14 @@ pub fn analyze_labyrinth(
 // Normalization
 // ---------------------------------------------------------------------------
 
-fn normalize(data: &[f64]) -> Vec<f64> {
+fn normalize_in_place(data: &mut [f64]) {
     if data.iter().any(|v| !v.is_finite()) {
-        // Reject non-finite values instead of silently propagating them
         log::warn!("labyrinth normalize: non-finite values in input, replacing with zeros");
-        return data
-            .iter()
-            .map(|v| if v.is_finite() { *v } else { 0.0 })
-            .collect();
+        for v in data.iter_mut() {
+            if !v.is_finite() {
+                *v = 0.0;
+            }
+        }
     }
     let (min, max) = data
         .iter()
@@ -170,7 +159,9 @@ fn normalize(data: &[f64]) -> Vec<f64> {
             (m.min(x), ax.max(x))
         });
     let range = (max - min).max(1e-9);
-    data.iter().map(|&x| (x - min) / range).collect()
+    for x in data.iter_mut() {
+        *x = (*x - min) / range;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -385,29 +376,25 @@ fn estimate_correlation_dimension(embed: &FlatEmbedding) -> f64 {
 fn detect_quantization(embed: &FlatEmbedding) -> f64 {
     let n = embed.count;
     let scales: [f64; 4] = [0.001, 0.0015, 0.002, 0.0025];
-    let counts: Vec<usize> = scales
-        .iter()
-        .map(|r| {
-            let r: f64 = *r;
-            let r_sq = r.powi(2);
-            let mut total = 0usize;
-            for i in 0..n {
-                let p_i = embed.get_point(i);
-                for j in 0..n {
-                    if i != j && sq_dist(p_i, embed.get_point(j)) < r_sq {
-                        total += 1;
-                    }
+    let mut plateaus = 0;
+    let mut prev_count: Option<usize> = None;
+    for r in scales {
+        let r_sq = r.powi(2);
+        let mut total = 0usize;
+        for i in 0..n {
+            let p_i = embed.get_point(i);
+            for j in 0..n {
+                if i != j && sq_dist(p_i, embed.get_point(j)) < r_sq {
+                    total += 1;
                 }
             }
-            total
-        })
-        .collect();
-
-    let mut plateaus = 0;
-    for i in 1..counts.len() {
-        if counts[i] == counts[i - 1] && counts[i] > 0 {
-            plateaus += 1;
         }
+        if let Some(prev) = prev_count {
+            if total == prev && total > 0 {
+                plateaus += 1;
+            }
+        }
+        prev_count = Some(total);
     }
     plateaus as f64 / (scales.len() - 1) as f64
 }

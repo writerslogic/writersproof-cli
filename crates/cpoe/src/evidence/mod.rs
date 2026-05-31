@@ -5,7 +5,9 @@
 mod builder;
 pub mod hw_cosign;
 mod packet;
+pub mod provenance;
 mod rfc_conversion;
+pub(crate) mod rfc_conversions;
 #[cfg(test)]
 mod tests;
 mod types;

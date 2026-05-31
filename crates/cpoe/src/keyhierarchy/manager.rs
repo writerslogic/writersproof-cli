@@ -8,11 +8,11 @@ use crate::checkpoint;
 use super::error::KeyHierarchyError;
 use super::identity::derive_master_identity;
 use super::session::{start_session, start_session_with_key};
-use super::types::{KeyHierarchyEvidence, MasterIdentity, PufProvider, Session};
+use super::types::{MasterIdentity, PufProvider, Session};
 
 pub struct SessionManager {
-    session: Session,
-    identity: MasterIdentity,
+    pub session: Session,
+    pub identity: MasterIdentity,
     /// Retained to keep PUF provider alive for session recovery
     _puf: Box<dyn PufProvider>,
     /// Retained for document re-loading during session recovery
@@ -90,29 +90,12 @@ impl SessionManager {
         Ok(())
     }
 
-    /// End the current session. This method is idempotent; calling it
-    /// multiple times has no additional effect.
-    pub fn end(&mut self) {
-        self.session.end();
-    }
-
-    pub fn identity(&self) -> &MasterIdentity {
-        &self.identity
-    }
-
-    pub fn session(&self) -> &Session {
-        &self.session
-    }
-
-    pub fn export_evidence(&self) -> KeyHierarchyEvidence {
-        self.session.export(&self.identity)
-    }
 }
 
 #[derive(Debug)]
 pub struct ChainSigner {
-    chain: checkpoint::Chain,
-    manager: SessionManager,
+    pub chain: checkpoint::Chain,
+    pub manager: SessionManager,
 }
 
 impl ChainSigner {
@@ -154,26 +137,6 @@ impl ChainSigner {
             .commit_with_vdf_duration(message, vdf_duration)
             .map_err(|e| KeyHierarchyError::Crypto(format!("{e:#}")))?;
         self.sign_last_checkpoint()
-    }
-
-    pub fn end(&mut self) {
-        self.manager.end();
-    }
-
-    pub fn chain(&self) -> &checkpoint::Chain {
-        &self.chain
-    }
-
-    pub fn signed_checkpoints(&self) -> &[checkpoint::Checkpoint] {
-        &self.chain.checkpoints
-    }
-
-    pub fn key_hierarchy_evidence(&self) -> KeyHierarchyEvidence {
-        self.manager.export_evidence()
-    }
-
-    pub fn identity(&self) -> &MasterIdentity {
-        self.manager.identity()
     }
 }
 

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-//! Bridge implementations between internal Engine Analysis and RFC Protocol types.
-//!
-//! These conversions transform high-fidelity engine results into the serialized
-//! structures required by the AuthorProof RFC specifications.
-
 use authorproof_protocol::rfc::biology::{
     AnomalyFlag, AnomalyType, BiologyInvariantClaim, BiologyMeasurements, BiologyScoringParameters,
     ErrorTopology, PinkNoiseAnalysis,
@@ -15,14 +10,14 @@ use authorproof_protocol::rfc::jitter_binding::{
 
 const GALTON_BASELINE_ABSORPTION: f64 = 0.55;
 const ROBOTIC_CV_THRESHOLD: f64 = 0.15;
-const STANDARD_Z_SCORES: [f64; 5] = [-1.2815, -0.6745, 0.0, 0.6745, 1.2815];
 
 impl From<&crate::analysis::pink_noise::PinkNoiseAnalysis> for PinkNoiseAnalysis {
+    #[inline(always)]
     fn from(analysis: &crate::analysis::pink_noise::PinkNoiseAnalysis) -> Self {
         Self {
             spectral_slope: analysis.spectral_slope,
             r_squared: analysis.r_squared,
-            low_freq_power: 1.0, // Normalized baseline
+            low_freq_power: 1.0,
             high_freq_power: if analysis.spectral_slope.is_finite() {
                 10f64.powf(-analysis.spectral_slope)
             } else {
@@ -34,6 +29,7 @@ impl From<&crate::analysis::pink_noise::PinkNoiseAnalysis> for PinkNoiseAnalysis
 }
 
 impl From<&crate::analysis::error_topology::ErrorTopology> for ErrorTopology {
+    #[inline(always)]
     fn from(topology: &crate::analysis::error_topology::ErrorTopology) -> Self {
         Self {
             gap_ratio: topology.gap_correlation,
@@ -55,7 +51,7 @@ pub trait BiologyInvariantClaimExt {
 }
 
 impl BiologyInvariantClaimExt for BiologyInvariantClaim {
-    /// Constructs a protocol-ready Claim, automatically evaluating biometric anomalies.
+    #[inline]
     fn from_analysis(
         measurements: BiologyMeasurements,
         hurst: Option<&crate::analysis::hurst::HurstAnalysis>,
@@ -64,61 +60,68 @@ impl BiologyInvariantClaimExt for BiologyInvariantClaim {
     ) -> BiologyInvariantClaim {
         let mut claim = Self::new(measurements, BiologyScoringParameters::default());
 
-        // 1. Hurst Exponent Evaluation
         if let Some(h) = hurst {
             claim.hurst_exponent = Some(h.exponent);
             if h.is_white_noise() {
-                claim.push_anomaly(
-                    AnomalyType::WhiteNoiseHurst,
-                    3,
-                    format!("Hurst {:.3}: stochastic white noise detected", h.exponent),
-                );
+                claim.add_anomaly(AnomalyFlag {
+                    anomaly_type: AnomalyType::WhiteNoiseHurst,
+                    description: format!(
+                        "Hurst {:.3}: stochastic white noise detected",
+                        h.exponent
+                    ),
+                    severity: 3,
+                    timestamp_ms: None,
+                });
             } else if h.is_suspiciously_predictable() {
-                claim.push_anomaly(
-                    AnomalyType::PredictableHurst,
-                    3,
-                    format!(
+                claim.add_anomaly(AnomalyFlag {
+                    anomaly_type: AnomalyType::PredictableHurst,
+                    description: format!(
                         "Hurst {:.3}: mechanical predictability detected",
                         h.exponent
                     ),
-                );
+                    severity: 3,
+                    timestamp_ms: None,
+                });
             }
         }
 
-        // 2. Pink Noise (Spectral) Evaluation
         if let Some(pn) = pink_noise {
             claim.pink_noise = Some(pn.into());
             if !pn.is_biologically_plausible() {
-                claim.push_anomaly(
-                    AnomalyType::SpectralAnomaly,
-                    2,
-                    format!("Spectral slope {:.3} is non-biological", pn.spectral_slope),
-                );
+                claim.add_anomaly(AnomalyFlag {
+                    anomaly_type: AnomalyType::SpectralAnomaly,
+                    description: format!(
+                        "Spectral slope {:.3} is non-biological",
+                        pn.spectral_slope
+                    ),
+                    severity: 2,
+                    timestamp_ms: None,
+                });
             }
         }
 
-        // 3. Error Topology (Cadence Mapping) Evaluation
         if let Some(et) = error_topology {
             claim.error_topology = Some(et.into());
             if !et.is_valid {
-                claim.push_anomaly(
-                    AnomalyType::ErrorTopologyFail,
-                    2,
-                    format!("Error topology score {:.3} rejected", et.score),
-                );
+                claim.add_anomaly(AnomalyFlag {
+                    anomaly_type: AnomalyType::ErrorTopologyFail,
+                    description: format!("Error topology score {:.3} rejected", et.score),
+                    severity: 2,
+                    timestamp_ms: None,
+                });
             }
         }
 
-        // 4. Global Robotic Detection (CV Analysis)
         if claim.measurements.coefficient_of_variation < ROBOTIC_CV_THRESHOLD {
-            claim.push_anomaly(
-                AnomalyType::RoboticCadence,
-                3,
-                format!(
+            claim.add_anomaly(AnomalyFlag {
+                anomaly_type: AnomalyType::RoboticCadence,
+                description: format!(
                     "CV {:.3} indicates automated input",
                     claim.measurements.coefficient_of_variation
                 ),
-            );
+                severity: 3,
+                timestamp_ms: None,
+            });
         }
 
         claim.compute_score();
@@ -126,22 +129,8 @@ impl BiologyInvariantClaimExt for BiologyInvariantClaim {
     }
 }
 
-trait AnomalyHelper {
-    fn push_anomaly(&mut self, kind: AnomalyType, severity: u8, desc: String);
-}
-
-impl AnomalyHelper for BiologyInvariantClaim {
-    fn push_anomaly(&mut self, kind: AnomalyType, severity: u8, desc: String) {
-        self.add_anomaly(AnomalyFlag {
-            anomaly_type: kind,
-            description: desc,
-            severity,
-            timestamp_ms: None,
-        });
-    }
-}
-
 impl From<&crate::analysis::active_probes::GaltonInvariantResult> for GaltonInvariant {
+    #[inline(always)]
     fn from(result: &crate::analysis::active_probes::GaltonInvariantResult) -> Self {
         let abs_coeff = result.absorption_coefficient;
         Self {
@@ -159,26 +148,31 @@ impl From<&crate::analysis::active_probes::GaltonInvariantResult> for GaltonInva
 }
 
 impl From<&crate::analysis::active_probes::ReflexGateResult> for ReflexGate {
+    #[inline(always)]
     fn from(result: &crate::analysis::active_probes::ReflexGateResult) -> Self {
-        let (m, s) = (result.mean_latency_ms, result.std_latency_ms);
-
-        // Elite: Map percentiles using precise Z-scores in a single pass
-        let mut percentiles = [0.0; 5];
-        for (i, z) in STANDARD_Z_SCORES.iter().enumerate() {
-            percentiles[i] = (m + z * s).max(0.0);
-        }
+        let m = result.mean_latency_ms;
+        let s = result.std_latency_ms;
+        let s_128 = 1.2815 * s;
+        let s_067 = 0.6745 * s;
 
         Self {
             mean_latency_ms: m,
             std_dev_ms: s,
             event_count: result.response_count as u32,
-            percentiles,
+            percentiles: [
+                (m - s_128).max(0.0),
+                (m - s_067).max(0.0),
+                m.max(0.0),
+                (m + s_067).max(0.0),
+                (m + s_128).max(0.0),
+            ],
             passed: result.is_valid,
         }
     }
 }
 
 impl From<&crate::analysis::active_probes::ActiveProbeResults> for ActiveProbes {
+    #[inline(always)]
     fn from(results: &crate::analysis::active_probes::ActiveProbeResults) -> Self {
         Self {
             galton_invariant: results.galton.as_ref().map(Into::into),
@@ -188,6 +182,7 @@ impl From<&crate::analysis::active_probes::ActiveProbeResults> for ActiveProbes 
 }
 
 impl From<&crate::analysis::labyrinth::LabyrinthAnalysis> for LabyrinthStructure {
+    #[inline(always)]
     fn from(analysis: &crate::analysis::labyrinth::LabyrinthAnalysis) -> Self {
         Self {
             embedding_dimension: analysis.embedding_dimension as u8,

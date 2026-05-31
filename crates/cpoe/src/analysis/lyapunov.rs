@@ -7,37 +7,19 @@
 //! An anomalously high exponent indicates random noise (no deterministic structure).
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Comprehensive error type for Lyapunov analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LyapunovError {
+    #[error("Insufficient data points: found {found}, minimum {required} required")]
     InsufficientDataPoints { found: usize, required: usize },
+    #[error("Embedding length too short after delay: found {found}, minimum {required} required")]
     InsufficientEmbeddingLength { found: usize, required: usize },
+    #[error("Insufficient iterations for regression")]
     InsufficientIterations,
+    #[error("Input contains non-finite values")]
     NonFiniteValues,
 }
-
-impl fmt::Display for LyapunovError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientDataPoints { found, required } => write!(
-                f,
-                "Insufficient data points: found {}, minimum {} required",
-                found, required
-            ),
-            Self::InsufficientEmbeddingLength { found, required } => write!(
-                f,
-                "Embedding length too short after delay: found {}, minimum {} required",
-                found, required
-            ),
-            Self::InsufficientIterations => write!(f, "Insufficient iterations for regression"),
-            Self::NonFiniteValues => write!(f, "Input contains non-finite values"),
-        }
-    }
-}
-
-impl std::error::Error for LyapunovError {}
 
 /// Minimum data points for Lyapunov analysis.
 const MIN_DATA_POINTS: usize = 100;

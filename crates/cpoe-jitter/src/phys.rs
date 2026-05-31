@@ -2,11 +2,17 @@
 
 //! Hardware-based entropy source using TSC/CNTVCT timing measurements.
 
-use std::collections::HashMap;
-
 use sha2::{Digest, Sha256};
 
 use crate::{EntropySource, Error, Jitter, JitterEngine, PhysHash};
+
+/// Number of timing samples captured per entropy estimation.
+const SAMPLE_COUNT: usize = 256;
+/// Maximum number of inter-sample deltas.
+const MAX_DELTAS: usize = SAMPLE_COUNT - 1;
+/// Maximum quantization bins for entropy estimation. Sized so the
+/// Markov transition matrix fits comfortably on the stack (4 KiB at 64²).
+const MAX_QUANT_BINS: usize = 64;
 
 /// Hardware-based jitter engine using TSC/CNTVCT timing measurements.
 ///
@@ -72,53 +78,24 @@ impl PhysJitter {
         self.with_jitter_range(jmin, range).ok()
     }
 
+    /// Capture timing samples into a caller-provided stack buffer.
+    ///
+    /// Delegates to [`read_hardware_counter`] on hardware targets, consolidating
+    /// all architecture-specific intrinsics (TSC, CNTVCT, memory fences) behind
+    /// a single abstraction point. On software-only builds, mixes `getrandom`
+    /// kernel entropy with timing measurements.
     #[cfg(feature = "hardware")]
-    fn capture_timing_samples(&self, count: usize) -> Result<Vec<u64>, Error> {
-        let mut samples = Vec::with_capacity(count);
-        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-        let start = std::time::Instant::now();
-
-        for _ in 0..count {
-            #[cfg(target_arch = "x86_64")]
-            {
-                let tsc: u64;
-                // SAFETY: _mm_lfence and _rdtsc are safe CPU intrinsics for reading the timestamp counter
-                // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
-                unsafe {
-                    core::arch::x86_64::_mm_lfence();
-                    tsc = core::arch::x86_64::_rdtsc();
-                    core::arch::x86_64::_mm_lfence();
-                }
-                samples.push(tsc);
-            }
-
-            #[cfg(target_arch = "aarch64")]
-            {
-                let cntvct: u64;
-                // SAFETY: Reading cntvct_el0 is a safe operation to get the virtual timer count
-                // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage
-                unsafe {
-                    core::arch::asm!("mrs {}, cntvct_el0", out(reg) cntvct);
-                }
-                samples.push(cntvct);
-            }
-
-            #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-            {
-                // Limitation: Instant resolution is OS-dependent (often ~1us);
-                // tight-loop reads may yield duplicate timestamps, reducing entropy.
-                samples.push(start.elapsed().as_nanos() as u64);
-            }
+    fn capture_timing_samples(&self, out: &mut [u64; SAMPLE_COUNT]) -> Result<(), Error> {
+        for s in out.iter_mut() {
+            *s = read_hardware_counter();
         }
-
-        Ok(samples)
+        Ok(())
     }
 
     #[cfg(not(feature = "hardware"))]
-    fn capture_timing_samples(&self, count: usize) -> Result<Vec<u64>, Error> {
+    fn capture_timing_samples(&self, out: &mut [u64; SAMPLE_COUNT]) -> Result<(), Error> {
         use std::time::Instant;
 
-        let mut samples = Vec::with_capacity(count);
         let start = Instant::now();
 
         let mut kernel_entropy = [0u8; 8];
@@ -127,29 +104,32 @@ impl PhysJitter {
         })?;
         let kernel_seed = u64::from_le_bytes(kernel_entropy);
 
-        for i in 0..count {
+        for (i, s) in out.iter_mut().enumerate() {
             let timing = start.elapsed().as_nanos() as u64;
             // Minimal mixing: XOR with a sequential counter provides only trivial
             // diffusion. Entropy quality depends primarily on kernel_seed.
             let varied_seed = kernel_seed ^ (i as u64);
-            samples.push(timing ^ varied_seed);
+            *s = timing ^ varied_seed;
 
             std::hint::spin_loop();
 
             core::hint::black_box(timing);
         }
 
-        Ok(samples)
+        Ok(())
     }
 
     /// Estimate min-entropy (H_∞) of timing samples using multiple estimators
     /// per NIST SP 800-90B §6.3 (non-IID track), returning the minimum as a
     /// conservative bound.
     ///
-    /// The previous std-dev estimator was vulnerable to spoofed distributions:
-    /// alternating extreme values yield high dispersion but only 1 bit of true
-    /// min-entropy. This implementation uses frequency and transition analysis
-    /// to measure actual unpredictability.
+    /// All intermediate buffers are stack-allocated:
+    /// - Deltas: `[i64; MAX_DELTAS]` (≈ 2 KiB)
+    /// - Quantized bins: `[u8; MAX_DELTAS]` (255 B)
+    /// - MCV frequencies: `[u16; MAX_QUANT_BINS]` (128 B)
+    /// - Markov transitions: `[u8; MAX_QUANT_BINS²]` (4 KiB)
+    ///
+    /// Total stack footprint: ≈ 6.4 KiB, constant regardless of input.
     fn estimate_min_entropy(&self, samples: &[u64]) -> u8 {
         const MAX_ENTROPY_BITS: u8 = 64;
 
@@ -157,10 +137,14 @@ impl PhysJitter {
             return 0;
         }
 
-        let deltas: Vec<i64> = samples
-            .windows(2)
-            .map(|w| w[1].wrapping_sub(w[0]) as i64)
-            .collect();
+        let n_deltas = (samples.len() - 1).min(MAX_DELTAS);
+
+        // Stack-allocated deltas.
+        let mut delta_buf = [0i64; MAX_DELTAS];
+        for i in 0..n_deltas {
+            delta_buf[i] = samples[i + 1].wrapping_sub(samples[i]) as i64;
+        }
+        let deltas = &delta_buf[..n_deltas];
 
         // Health test: coarse timer produces duplicate timestamps.
         let zero_count = deltas.iter().filter(|&&d| d == 0).count();
@@ -170,18 +154,20 @@ impl PhysJitter {
 
         // Health test: repetition count (SP 800-90B §4.4.1).
         // C = 1 + ⌈-log2(α) / H⌉ with α = 2⁻²⁰, H = 1 → C = 21.
-        if max_consecutive_run(&deltas) >= 21 {
+        if max_consecutive_run(deltas) >= 21 {
             return 0;
         }
 
-        // Quantize deltas into uniform-width bins for frequency analysis.
-        let bins = adaptive_quantize(&deltas);
+        // Quantize deltas into uniform-width bins (stack-allocated output).
+        let mut bin_buf = [0u8; MAX_DELTAS];
+        let n_bins = adaptive_quantize_into(deltas, &mut bin_buf[..n_deltas]);
+        let bins = &bin_buf[..n_deltas];
 
         // Most Common Value estimate (SP 800-90B §6.3.1).
-        let h_mcv = mcv_min_entropy(&bins);
+        let h_mcv = mcv_min_entropy_arr(bins);
 
         // Lag-1 Markov estimate (SP 800-90B §6.3.3).
-        let h_markov = markov_min_entropy(&bins);
+        let h_markov = markov_min_entropy_arr(bins, n_bins);
 
         let h_min = h_mcv.min(h_markov);
 
@@ -195,7 +181,8 @@ impl PhysJitter {
 
 impl EntropySource for PhysJitter {
     fn sample(&self, inputs: &[u8]) -> Result<PhysHash, Error> {
-        let samples = self.capture_timing_samples(256)?;
+        let mut samples = [0u64; SAMPLE_COUNT];
+        self.capture_timing_samples(&mut samples)?;
         let entropy_bits = self.estimate_min_entropy(&samples);
         if entropy_bits < self.min_entropy_bits {
             return Err(Error::InsufficientEntropy {
@@ -231,36 +218,46 @@ impl JitterEngine for PhysJitter {
     }
 }
 
-/// Quantize deltas into uniform-width bins spanning the observed range.
-/// Uses sqrt(n) bins (clamped to [8, 128]) for balanced frequency estimation
-/// without the concentration artifacts of logarithmic binning.
-fn adaptive_quantize(deltas: &[i64]) -> Vec<i32> {
+/// Quantize deltas into uniform-width bins, writing results to `out`.
+/// Uses sqrt(n) bins (clamped to [8, MAX_QUANT_BINS]) for balanced frequency
+/// estimation. Returns the number of distinct bin slots used.
+///
+/// All output values are in `0..MAX_QUANT_BINS` so they can directly index
+/// the stack-allocated frequency and transition arrays.
+fn adaptive_quantize_into(deltas: &[i64], out: &mut [u8]) -> usize {
+    debug_assert!(out.len() >= deltas.len());
     if deltas.is_empty() {
-        return Vec::new();
+        return 0;
     }
     let lo = *deltas.iter().min().unwrap() as i128;
     let hi = *deltas.iter().max().unwrap() as i128;
     if lo == hi {
-        return vec![0; deltas.len()];
+        for b in out[..deltas.len()].iter_mut() {
+            *b = 0;
+        }
+        return 1;
     }
     let range = (hi - lo) as u128;
-    let n_bins = (deltas.len() as f64).sqrt().ceil().clamp(8.0, 128.0) as u128;
+    let n_bins = (deltas.len() as f64).sqrt().ceil().clamp(8.0, MAX_QUANT_BINS as f64) as u128;
     let bin_width = (range / n_bins).max(1);
-    deltas
-        .iter()
-        .map(|&d| ((d as i128 - lo) as u128 / bin_width) as i32)
-        .collect()
+    for (i, &d) in deltas.iter().enumerate() {
+        out[i] = ((d as i128 - lo) as u128 / bin_width).min((MAX_QUANT_BINS - 1) as u128) as u8;
+    }
+    n_bins as usize
 }
 
 /// Most Common Value min-entropy estimate (SP 800-90B §6.3.1).
 /// H_∞ = -log2(p_max) where p_max = max_freq / n.
-fn mcv_min_entropy(bins: &[i32]) -> f64 {
-    let mut freq: HashMap<i32, usize> = HashMap::new();
+///
+/// Uses a flat `[u16; MAX_QUANT_BINS]` (128 B) frequency array on the stack
+/// instead of a heap-allocated `HashMap`.
+fn mcv_min_entropy_arr(bins: &[u8]) -> f64 {
+    let mut freq = [0u16; MAX_QUANT_BINS];
     for &b in bins {
-        *freq.entry(b).or_insert(0) += 1;
+        freq[b as usize] += 1;
     }
     let n = bins.len() as f64;
-    let p_max = freq.values().copied().max().unwrap_or(0) as f64 / n;
+    let p_max = freq.iter().copied().max().unwrap_or(0) as f64 / n;
     if p_max <= 0.0 {
         return 0.0;
     }
@@ -269,34 +266,42 @@ fn mcv_min_entropy(bins: &[i32]) -> f64 {
 
 /// Lag-1 Markov min-entropy estimate (SP 800-90B §6.3.3).
 ///
-/// For each bin value with sufficient observations, computes the probability
-/// of its most likely successor. Returns -log2 of the worst-case (highest)
-/// transition probability. This catches alternating, sequential, and other
-/// patterns with strong serial dependencies that MCV alone misses.
-fn markov_min_entropy(bins: &[i32]) -> f64 {
+/// Uses a flat `[u8; MAX_QUANT_BINS²]` transition matrix on the stack (4 KiB)
+/// instead of nested `HashMap`s. Each cell counts transitions from bin `src`
+/// to bin `dst`. With ≤ 255 transitions total, `u8` cannot overflow.
+fn markov_min_entropy_arr(bins: &[u8], n_bins: usize) -> f64 {
     if bins.len() < 2 {
         return 0.0;
     }
 
-    let mut transitions: HashMap<i32, HashMap<i32, usize>> = HashMap::new();
-    let mut source_counts: HashMap<i32, usize> = HashMap::new();
+    let mut transitions = [0u8; MAX_QUANT_BINS * MAX_QUANT_BINS];
+    let mut source_counts = [0u16; MAX_QUANT_BINS];
 
     for w in bins.windows(2) {
-        *transitions.entry(w[0]).or_default().entry(w[1]).or_insert(0) += 1;
-        *source_counts.entry(w[0]).or_insert(0) += 1;
+        let src = w[0] as usize;
+        let dst = w[1] as usize;
+        transitions[src * MAX_QUANT_BINS + dst] =
+            transitions[src * MAX_QUANT_BINS + dst].saturating_add(1);
+        source_counts[src] += 1;
     }
 
     let mut max_p = 0.0f64;
     let mut had_data = false;
+    let scan_bins = n_bins.min(MAX_QUANT_BINS);
 
-    for (src, successors) in &transitions {
-        let total = source_counts[src];
+    for (src, &src_count) in source_counts.iter().enumerate().take(scan_bins) {
+        let total = src_count as usize;
         if total < 4 {
             continue;
         }
         had_data = true;
-        let best = *successors.values().max().unwrap_or(&0);
-        let p = best as f64 / total as f64;
+        let row_start = src * MAX_QUANT_BINS;
+        let best = transitions[row_start..row_start + scan_bins]
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0) as f64;
+        let p = best / total as f64;
         if p > max_p {
             max_p = p;
         }
@@ -339,6 +344,9 @@ fn max_consecutive_run(values: &[i64]) -> usize {
 /// Used by [`crate::evidence::KeystrokeBindingChain`] to bind each keystroke
 /// to the hardware counter at the moment it fires, creating a causal chain
 /// that cannot be reordered or synthesized without knowing the counter values.
+///
+/// All architecture-specific intrinsics and memory fences are isolated here
+/// so that the rest of the crate remains decoupled from platform target flags.
 pub fn read_hardware_counter() -> u64 {
     #[cfg(feature = "hardware")]
     {
@@ -422,16 +430,21 @@ mod tests {
     #[test]
     fn adaptive_quantize_basics() {
         // All identical → all bin 0.
-        assert_eq!(adaptive_quantize(&[5, 5, 5]), vec![0, 0, 0]);
+        let mut out = [0u8; 3];
+        let n = adaptive_quantize_into(&[5, 5, 5], &mut out);
+        assert_eq!(&out, &[0, 0, 0]);
+        assert_eq!(n, 1);
         // Two extremes → distinct bins.
-        let bins = adaptive_quantize(&[0, 1000]);
-        assert_ne!(bins[0], bins[1]);
+        let mut out = [0u8; 2];
+        adaptive_quantize_into(&[0, 1000], &mut out);
+        assert_ne!(out[0], out[1]);
         // Empty input.
-        assert!(adaptive_quantize(&[]).is_empty());
+        assert_eq!(adaptive_quantize_into(&[], &mut []), 0);
         // Uniform spread across 16 values → at least 8 distinct bins.
         let deltas: Vec<i64> = (0..16).map(|i| i * 1000).collect();
-        let bins = adaptive_quantize(&deltas);
-        let unique: std::collections::HashSet<i32> = bins.iter().copied().collect();
+        let mut out = [0u8; 16];
+        adaptive_quantize_into(&deltas, &mut out);
+        let unique: std::collections::HashSet<u8> = out.iter().copied().collect();
         assert!(unique.len() >= 8, "expected ≥ 8 bins, got {}", unique.len());
     }
 

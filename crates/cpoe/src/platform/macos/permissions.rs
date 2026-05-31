@@ -3,7 +3,8 @@
 //! macOS permission handling for Accessibility and Input Monitoring.
 
 use super::ffi::{
-    AXIsProcessTrustedWithOptions, CGPreflightListenEventAccess, CGRequestListenEventAccess,
+    AXIsProcessTrustedWithOptions, IOHIDCheckAccess, IOHIDRequestAccess,
+    K_IOHID_ACCESS_TYPE_GRANTED, K_IOHID_REQUEST_TYPE_LISTEN_EVENT,
 };
 use super::PermissionStatus;
 use core_foundation::base::TCFType;
@@ -28,11 +29,11 @@ pub fn request_accessibility_permissions() -> bool {
 }
 
 pub fn check_input_monitoring_permissions() -> bool {
-    unsafe { CGPreflightListenEventAccess() }
+    unsafe { IOHIDCheckAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT) == K_IOHID_ACCESS_TYPE_GRANTED }
 }
 
 pub fn request_input_monitoring_permissions() -> bool {
-    unsafe { CGRequestListenEventAccess() }
+    unsafe { IOHIDRequestAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT) }
 }
 
 pub fn get_permission_status() -> PermissionStatus {

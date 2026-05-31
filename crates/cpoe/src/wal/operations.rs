@@ -791,6 +791,13 @@ impl Wal {
 
         fs::rename(&state.path, &archive_path)?;
 
+        // Sync parent directory to ensure rename is durable on crash.
+        if let Some(parent) = archive_path.parent() {
+            if let Ok(dir) = fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+
         // Preserve the sequence number so the new WAL continues where the old one
         // left off (AUD-108). This prevents sequence reuse across rotations.
         let continued_sequence = state.next_sequence;

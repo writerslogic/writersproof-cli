@@ -16,40 +16,23 @@
 //! - Accept H ∈ [0.55, 0.85] as biologically plausible
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Comprehensive error type for Hurst analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum HurstError {
+    #[error("Insufficient data points: found {found}, minimum {required} required")]
     InsufficientDataPoints { found: usize, required: usize },
+    #[error("Insufficient window sizes for reliable estimation")]
     InsufficientWindows,
+    #[error("Insufficient scales for reliable DFA estimation")]
     InsufficientScales,
+    #[error("Linear regression failed: {0}")]
     RegressionFailed(String),
+    #[error("Regression produced NaN/Inf; likely caused by constant variance or zero fluctuation")]
     RegressionProducedNaN,
+    #[error("Input contains non-finite values")]
     NonFiniteValues,
 }
-
-impl fmt::Display for HurstError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientDataPoints { found, required } => write!(
-                f,
-                "Insufficient data points: found {}, minimum {} required",
-                found, required
-            ),
-            Self::InsufficientWindows => write!(f, "Insufficient window sizes for reliable estimation"),
-            Self::InsufficientScales => write!(f, "Insufficient scales for reliable DFA estimation"),
-            Self::RegressionFailed(msg) => write!(f, "Linear regression failed: {}", msg),
-            Self::RegressionProducedNaN => write!(
-                f,
-                "Regression produced NaN/Inf; likely caused by constant variance or zero fluctuation"
-            ),
-            Self::NonFiniteValues => write!(f, "Input contains non-finite values"),
-        }
-    }
-}
-
-impl std::error::Error for HurstError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HurstAnalysis {

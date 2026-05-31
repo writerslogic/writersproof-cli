@@ -53,7 +53,18 @@ impl PlatformProvider for DefaultPlatformProvider {
             crate::tpm::secure_enclave::try_init()
                 .map(|p| std::sync::Arc::new(p) as std::sync::Arc<dyn crate::tpm::Provider>)
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(provider) = crate::tpm::windows::try_init() {
+                return Some(
+                    std::sync::Arc::new(provider) as std::sync::Arc<dyn crate::tpm::Provider>
+                );
+            }
+            crate::tpm::SoftwareProvider::try_new()
+                .map(|p| std::sync::Arc::new(p) as std::sync::Arc<dyn crate::tpm::Provider>)
+                .ok()
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             crate::tpm::SoftwareProvider::try_new()
                 .map(|p| std::sync::Arc::new(p) as std::sync::Arc<dyn crate::tpm::Provider>)

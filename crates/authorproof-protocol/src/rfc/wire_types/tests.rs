@@ -143,7 +143,7 @@ fn create_test_evidence_packet() -> EvidencePacketWire {
 
     EvidencePacketWire {
         version: 1,
-        profile_uri: "urn:ietf:params:pop:profile:1.0".to_string(),
+        profile_uri: crate::war::ear::CPOE_EVIDENCE_PROFILE.to_string(),
         packet_id: [0xFF; 16],
         created: 1700000000000,
         document: DocumentRef {

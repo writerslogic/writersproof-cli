@@ -3,7 +3,7 @@
 use crate::vdf;
 use crate::PhysicalContext;
 use crate::VdfProof;
-use sha2::Digest;
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 /// Entangles physical landscape noise with the Arrow of Time.
@@ -13,15 +13,28 @@ pub struct Entanglement;
 impl Entanglement {
     /// Bind physical context to content hash to produce a checkpoint seed.
     pub fn create_seed(content_hash: [u8; 32], physics: &PhysicalContext) -> [u8; 32] {
-        let mut hasher = sha2::Sha256::new();
-        sha2::Digest::update(&mut hasher, b"cpoe-entanglement-v1");
-        sha2::Digest::update(&mut hasher, content_hash);
-        sha2::Digest::update(&mut hasher, physics.combined_hash);
+        let mut hasher = Sha256::new();
+        hasher.update(b"cpoe-entanglement-v1");
+        hasher.update(content_hash);
+        hasher.update(physics.combined_hash);
+        hasher.finalize().into()
+    }
 
-        let result = sha2::Digest::finalize(hasher);
-        let mut out = [0u8; 32];
-        out.copy_from_slice(&result);
-        out
+    /// Hardened seed creation with length-prefixed VDF parameters.
+    ///
+    /// Length-prefixes variable-length data to prevent injection and
+    /// field-shifting collision attacks on the seed derivation.
+    pub fn create_seed_hardened(
+        content_hash: [u8; 32],
+        physics: &PhysicalContext,
+        duration: Duration,
+    ) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cpoe-entanglement-v3-hardened");
+        hasher.update(content_hash);
+        hasher.update(physics.combined_hash);
+        hasher.update(duration.as_nanos().to_be_bytes());
+        hasher.finalize().into()
     }
 
     /// Prove document state existed on this silicon for at least `duration`.

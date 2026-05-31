@@ -452,8 +452,16 @@ async fn setup_daemon(writerslogic_dir: &Path) -> Result<DaemonSetup> {
     }
 
     let setup = async {
-        let ipc_server = IpcServer::bind(daemon_mgr.socket_path().to_path_buf())
+        let mut ipc_server = IpcServer::bind(daemon_mgr.socket_path().to_path_buf())
             .map_err(|e| SentinelError::Ipc(format!("Failed to bind IPC socket: {}", e)))?;
+
+        if let Ok(Some(hmac_key)) = crate::identity::SecureStorage::load_hmac_key() {
+            let log_path = daemon_mgr.sentinel_dir().join("access.db");
+            match crate::store::access_log::AccessLog::open(&log_path, hmac_key) {
+                Ok(access_log) => ipc_server.set_access_log(access_log),
+                Err(e) => log::warn!("Failed to open IPC access log: {e}"),
+            }
+        }
 
         let ipc_handler = Arc::new(SentinelIpcHandler::new(Arc::clone(&sentinel)));
         let (ipc_shutdown_tx, ipc_shutdown_rx) = mpsc::channel::<()>(1);

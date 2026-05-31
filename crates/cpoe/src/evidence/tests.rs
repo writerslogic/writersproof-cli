@@ -784,7 +784,7 @@ fn test_packet_sign_with_nonce() {
 
     assert!(packet.is_signed());
     assert!(packet.has_verifier_nonce());
-    assert_eq!(packet.get_verifier_nonce(), Some(&nonce));
+    assert_eq!(packet.verifier_nonce.as_ref(), Some(&nonce));
 
     packet.verify_signature(Some(&nonce)).expect("verify");
 }
@@ -921,7 +921,7 @@ fn test_set_verifier_nonce_clears_signature() {
     assert!(packet.packet_signature.is_none());
     assert!(packet.signing_public_key.is_none());
     assert!(packet.has_verifier_nonce());
-    assert_eq!(packet.get_verifier_nonce(), Some(&nonce2));
+    assert_eq!(packet.verifier_nonce.as_ref(), Some(&nonce2));
 }
 
 #[test]

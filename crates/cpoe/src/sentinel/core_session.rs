@@ -7,7 +7,7 @@ use super::types::*;
 use crate::crypto::ObfuscatedString;
 use crate::ipc::IpcErrorCode;
 use crate::wal::{EntryType, Wal};
-use crate::{MutexRecover, RwLockRecover};
+use crate::RwLockRecover;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::Digest;
 use std::path::Path;
@@ -550,11 +550,6 @@ impl Sentinel {
     /// Return the paths of all currently tracked files.
     pub fn tracked_files(&self) -> Vec<String> {
         self.sessions.read_recover().keys().cloned().collect()
-    }
-
-    /// Return the sentinel start time, or None if not yet started.
-    pub fn start_time(&self) -> Option<SystemTime> {
-        *self.start_time.lock_recover()
     }
 
     /// Compute and persist an updated authorship baseline digest from accumulated activity.

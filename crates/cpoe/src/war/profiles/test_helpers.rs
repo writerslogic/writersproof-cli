@@ -36,7 +36,7 @@ pub fn make_ear(chain_length: u64, chain_duration: u64) -> EarToken {
         },
     );
     EarToken {
-        eat_profile: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
+        eat_profile: crate::war::ear::CPOE_EAR_PROFILE.to_string(),
         iat: Utc::now().timestamp(),
         ear_verifier_id: VerifierId::default(),
         submods,

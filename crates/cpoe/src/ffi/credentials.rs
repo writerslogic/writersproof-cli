@@ -3,7 +3,7 @@
 //! FFI bindings for ISO mDoc-style authorship credentials.
 
 use super::helpers::{load_signing_key, open_store};
-use super::types::{catch_ffi_panic, try_ffi, FfiErrResult};
+use super::types::{catch_ffi_panic, try_ffi};
 use crate::credentials::AuthorshipCredential;
 
 // ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ pub fn ffi_create_authorship_credential(
     process_verdict: String,
     confidence: f64,
 ) -> FfiCredentialResult {
-    catch_ffi_panic!(FfiCredentialResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiCredentialResult, {
     log::debug!("ffi_create_authorship_credential: session_id={}, attestation_tier={}", session_id, attestation_tier);
     if session_id.is_empty() {
         return FfiCredentialResult::err("Session ID is required");
@@ -192,7 +192,7 @@ pub fn ffi_create_authorship_credential(
 /// Sign a credential with the device signing key.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sign_credential(credential_cbor_hex: String) -> FfiSignedCredentialResult {
-    catch_ffi_panic!(FfiSignedCredentialResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiSignedCredentialResult, {
     log::debug!("ffi_sign_credential: credential_cbor_hex_len={}", credential_cbor_hex.len());
     if credential_cbor_hex.len() > 20_000 {
         return FfiSignedCredentialResult::err("Credential hex too large".to_string());
@@ -225,7 +225,7 @@ pub fn ffi_verify_credential(
     signed_cbor_hex: String,
     public_key_hex: String,
 ) -> FfiVerificationResult {
-    catch_ffi_panic!(FfiVerificationResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiVerificationResult, {
     log::debug!("ffi_verify_credential: signed_cbor_hex_len={}", signed_cbor_hex.len());
     let signed_bytes = match hex::decode(&signed_cbor_hex) {
         Ok(b) => b,
@@ -259,7 +259,7 @@ pub fn ffi_verify_credential(
 /// Get credential status (valid/expired) from CBOR bytes.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_credential_status(credential_cbor_hex: String) -> FfiCredentialStatusResult {
-    catch_ffi_panic!(FfiCredentialStatusResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiCredentialStatusResult, {
     log::debug!("ffi_get_credential_status: credential_cbor_hex_len={}", credential_cbor_hex.len());
     let cbor_bytes = match hex::decode(&credential_cbor_hex) {
         Ok(b) => b,

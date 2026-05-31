@@ -79,12 +79,22 @@ fn build_test_manifest() -> C2paManifest {
 fn cpoe_assertion_from_evidence() {
     let packet = test_evidence_packet();
     let evidence_bytes = b"fake evidence cbor";
-    let assertion = ProcessAssertion::from_evidence(&packet, evidence_bytes);
+    let assertion = ProcessProofAssertion::from_evidence(&packet, evidence_bytes);
 
-    assert_eq!(assertion.label, ASSERTION_LABEL_CPOE);
-    assert_eq!(assertion.version, 1);
-    assert_eq!(assertion.jitter_seals.len(), 3);
+    assert_eq!(assertion.version, 2);
     assert!(!assertion.evidence_hash.is_empty());
+    assert!(!assertion.evidence_id.is_empty());
+}
+
+#[test]
+fn evidence_chain_from_evidence() {
+    let packet = test_evidence_packet();
+    let chain = EvidenceChainAssertion::from_evidence(&packet);
+
+    assert_eq!(chain.version, 1);
+    assert_eq!(chain.checkpoint_count, 3);
+    assert_eq!(chain.seals.len(), 3);
+    assert!(chain.chain_duration_sec > 0.0);
 }
 
 #[test]
@@ -111,8 +121,8 @@ fn claim_v2_required_fields() {
         !manifest.claim.claim_generator_info.name.is_empty(),
         "claim_generator_info must have name"
     );
-    // 3 core assertions + 1 metadata assertion (title was set in build_test_manifest)
-    assert_eq!(manifest.claim.created_assertions.len(), 4);
+    // 4 core assertions (hash-data, actions, process-proof, evidence-chain) + 1 metadata (title)
+    assert_eq!(manifest.claim.created_assertions.len(), 5);
 }
 
 #[test]
@@ -518,7 +528,7 @@ fn validate_manifest_catches_bad_signature() {
 #[test]
 fn process_assertion_forensic_signals_json_roundtrip() {
     let packet = test_evidence_packet();
-    let mut assertion = ProcessAssertion::from_evidence(&packet, b"test bytes");
+    let mut assertion = ProcessProofAssertion::from_evidence(&packet, b"test bytes");
 
     let signals = ForensicSignalScores {
         cognitive_load: 0.82,
@@ -527,14 +537,14 @@ fn process_assertion_forensic_signals_json_roundtrip() {
         likelihood_model: 0.74,
         composition_mode: 0.88,
     };
-    assertion.forensic_signals = Some(signals);
+    assertion.signal_scores = Some(signals);
     assertion.composition_mode = Some("pure_composition".to_string());
     assertion.writing_mode = Some("cognitive".to_string());
 
     let json = serde_json::to_string(&assertion).expect("serialize");
-    let roundtrip: ProcessAssertion = serde_json::from_str(&json).expect("deserialize");
+    let roundtrip: ProcessProofAssertion = serde_json::from_str(&json).expect("deserialize");
 
-    let rt_signals = roundtrip.forensic_signals.expect("forensic_signals present");
+    let rt_signals = roundtrip.signal_scores.expect("signal_scores present");
     assert!((rt_signals.cognitive_load - 0.82).abs() < f64::EPSILON);
     assert!((rt_signals.revision_topology - 0.65).abs() < f64::EPSILON);
     assert!((rt_signals.error_ecology - 0.91).abs() < f64::EPSILON);
@@ -550,16 +560,16 @@ fn process_assertion_forensic_signals_json_roundtrip() {
     assert!(json.contains("\"likelihoodModel\""), "should use camelCase: {json}");
     assert!(json.contains("\"compositionMode\""), "should use camelCase: {json}");
     assert!(json.contains("\"writingMode\""), "should use camelCase: {json}");
-    assert!(json.contains("\"forensicSignals\""), "should use camelCase: {json}");
+    assert!(json.contains("\"signalScores\""), "should use camelCase: {json}");
 }
 
 #[test]
 fn process_assertion_without_signals_omits_fields() {
     let packet = test_evidence_packet();
-    let assertion = ProcessAssertion::from_evidence(&packet, b"test bytes");
+    let assertion = ProcessProofAssertion::from_evidence(&packet, b"test bytes");
 
     let json = serde_json::to_string(&assertion).expect("serialize");
-    assert!(!json.contains("forensicSignals"), "None fields should be skipped: {json}");
+    assert!(!json.contains("signalScores"), "None fields should be skipped: {json}");
     assert!(!json.contains("compositionMode"), "None fields should be skipped: {json}");
     assert!(!json.contains("writingMode"), "None fields should be skipped: {json}");
 }
@@ -616,21 +626,18 @@ fn manifest_with_forensic_signals_and_ai_disclosure() {
         .any(|a| a.url.contains(ASSERTION_LABEL_AI_DISCLOSURE));
     assert!(has_ai, "AI disclosure assertion should be present");
 
-    // Verify CPoE assertion contains forensic signals by finding and decoding it.
-    let cpoe_idx = manifest
+    // Verify process-proof assertion contains forensic signals by finding and decoding it.
+    let pp_idx = manifest
         .claim
         .created_assertions
         .iter()
-        .position(|a| a.url.contains(ASSERTION_LABEL_CPOE))
-        .expect("CPoE assertion should exist");
-    let cpoe_box = &manifest.assertion_boxes[cpoe_idx];
-    // The box has an 8-byte jumb header, then a jumd child, then a json child.
-    // Search for our signal value in the raw bytes as a sanity check.
-    let box_str = String::from_utf8_lossy(cpoe_box);
-    assert!(
-        box_str.contains("cognitiveLoad"),
-        "CPoE assertion box should contain forensic signals"
-    );
+        .position(|a| a.url.contains(ASSERTION_LABEL_PROCESS_PROOF))
+        .expect("process-proof assertion should exist");
+    let pp_payload = extract_assertion_content(&manifest.assertion_boxes[pp_idx], "cbor")
+        .expect("process-proof must contain CBOR content box");
+    let pp: ProcessProofAssertion =
+        ciborium::from_reader(&pp_payload[..]).expect("process-proof CBOR must deserialize");
+    assert!(pp.signal_scores.is_some(), "process-proof should contain signal scores");
 
     // Validate the full manifest structure.
     let result = validate_manifest(&manifest);
@@ -835,7 +842,7 @@ fn create_minimal_png() -> Vec<u8> {
 ///  4. COSE_Sign1 Ed25519 signature verification
 ///  5. x5chain contains DER X.509 certificate
 ///  6. JUMBF box structure (ISO 19566-5)
-///  7. org.cpoe.evidence assertion present with correct jitter seals
+///  7. com.writerslogic.process-proof + evidence-chain assertions present
 ///  8. Forensic signal scores round-trip through the assertion
 ///  9. c2pa.hash.data assertion matches document SHA-256
 /// 10. c2pa.actions.v2 records c2pa.created
@@ -855,7 +862,7 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
 
     let packet = EvidencePacket {
         version: 1,
-        profile_uri: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
+        profile_uri: crate::war::ear::CPOE_EVIDENCE_PROFILE.to_string(),
         packet_id: vec![0x42; 16],
         created: base_time,
         document: DocumentRef {
@@ -1048,29 +1055,52 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
     assert!(jumbf_text.contains("c2pa.assertions"));
     assert!(jumbf_text.contains("c2pa.signature"));
 
-    // === Phase 9: Verify org.cpoe.evidence assertion ===
-    let cpoe_idx = manifest
+    // === Phase 9: Verify com.writerslogic.process-proof assertion ===
+    let pp_idx = manifest
         .claim
         .created_assertions
         .iter()
-        .position(|a| a.url.contains(ASSERTION_LABEL_CPOE))
-        .expect("org.cpoe.evidence assertion must exist in claim");
-    let json_payload = extract_assertion_content(&manifest.assertion_boxes[cpoe_idx], "json")
-        .expect("PoP assertion must contain JSON content box");
-    let pop: ProcessAssertion =
-        serde_json::from_slice(&json_payload).expect("PoP assertion JSON must deserialize");
+        .position(|a| a.url.contains(ASSERTION_LABEL_PROCESS_PROOF))
+        .expect("process-proof assertion must exist in claim");
+    let cbor_payload = extract_assertion_content(&manifest.assertion_boxes[pp_idx], "cbor")
+        .expect("process-proof must contain CBOR content box");
+    let pop: ProcessProofAssertion =
+        ciborium::from_reader(&cbor_payload[..]).expect("process-proof CBOR must deserialize");
 
-    assert_eq!(pop.label, ASSERTION_LABEL_CPOE);
-    assert_eq!(pop.version, 1);
+    assert_eq!(pop.version, 2);
     assert_eq!(pop.evidence_id, hex::encode(vec![0x42u8; 16]));
     assert_eq!(
         pop.evidence_hash,
         hex::encode(sha2::Sha256::digest(&evidence_bytes))
     );
 
-    // Jitter seals must correspond to our 3 checkpoints.
-    assert_eq!(pop.jitter_seals.len(), 3);
-    for (i, seal) in pop.jitter_seals.iter().enumerate() {
+    // Forensic signals roundtrip.
+    let fs = pop
+        .signal_scores
+        .expect("signal_scores must be present");
+    assert!((fs.cognitive_load - 0.82).abs() < f64::EPSILON);
+    assert!((fs.revision_topology - 0.65).abs() < f64::EPSILON);
+    assert!((fs.error_ecology - 0.91).abs() < f64::EPSILON);
+    assert!((fs.likelihood_model - 0.74).abs() < f64::EPSILON);
+    assert!((fs.composition_mode - 0.88).abs() < f64::EPSILON);
+    assert_eq!(pop.composition_mode.as_deref(), Some("pure_composition"));
+    assert_eq!(pop.writing_mode.as_deref(), Some("cognitive"));
+
+    // === Phase 9b: Verify com.writerslogic.evidence-chain assertion ===
+    let ec_idx = manifest
+        .claim
+        .created_assertions
+        .iter()
+        .position(|a| a.url.contains(ASSERTION_LABEL_EVIDENCE_CHAIN))
+        .expect("evidence-chain assertion must exist in claim");
+    let ec_payload = extract_assertion_content(&manifest.assertion_boxes[ec_idx], "cbor")
+        .expect("evidence-chain must contain CBOR content box");
+    let chain: EvidenceChainAssertion =
+        ciborium::from_reader(&ec_payload[..]).expect("evidence-chain CBOR must deserialize");
+
+    assert_eq!(chain.checkpoint_count, 3);
+    assert_eq!(chain.seals.len(), 3);
+    for (i, seal) in chain.seals.iter().enumerate() {
         assert_eq!(seal.sequence, i as u64, "seal {i} sequence");
         assert_eq!(
             seal.seal_hash,
@@ -1079,18 +1109,6 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
         );
         assert_eq!(seal.timestamp, packet.checkpoints[i].timestamp);
     }
-
-    // Forensic signals roundtrip.
-    let fs = pop
-        .forensic_signals
-        .expect("forensic signals must be present");
-    assert!((fs.cognitive_load - 0.82).abs() < f64::EPSILON);
-    assert!((fs.revision_topology - 0.65).abs() < f64::EPSILON);
-    assert!((fs.error_ecology - 0.91).abs() < f64::EPSILON);
-    assert!((fs.likelihood_model - 0.74).abs() < f64::EPSILON);
-    assert!((fs.composition_mode - 0.88).abs() < f64::EPSILON);
-    assert_eq!(pop.composition_mode.as_deref(), Some("pure_composition"));
-    assert_eq!(pop.writing_mode.as_deref(), Some("cognitive"));
 
     // === Phase 10: Verify c2pa.hash.data assertion ===
     let hash_idx = manifest
@@ -1185,7 +1203,7 @@ fn c2pa_rs_reader_parses_our_jumbf() {
 
     let packet = EvidencePacket {
         version: 1,
-        profile_uri: "urn:ietf:params:rats:eat:profile:pop:1.0".to_string(),
+        profile_uri: crate::war::ear::CPOE_EVIDENCE_PROFILE.to_string(),
         packet_id: vec![0x42; 16],
         created: base_time,
         document: DocumentRef {
@@ -1248,8 +1266,8 @@ fn c2pa_rs_reader_parses_our_jumbf() {
     let manifests = root["manifests"].as_object().expect("manifests object");
     if !manifests.is_empty() {
         assert!(
-            json_str.contains("org.cpoe.evidence"),
-            "c2pa-rs manifest JSON must contain our PoP assertion.\nJSON:\n{}",
+            json_str.contains("com.writerslogic.process-proof"),
+            "c2pa-rs manifest JSON must contain our process-proof assertion.\nJSON:\n{}",
             json_str
         );
         assert!(json_str.contains("c2pa.hash.data"));
@@ -1270,4 +1288,65 @@ fn c2pa_rs_reader_parses_our_jumbf() {
         "c2pa-rs must parse our claim CBOR without claim-level errors.\nJSON:\n{}",
         json_str
     );
+}
+
+#[test]
+fn generate_conformance_sample_c2pa() {
+    use std::io::Write;
+    let out_dir = match std::env::var("CPOE_CONFORMANCE_DIR") {
+        Ok(d) => d,
+        Err(_) => return, // skip unless env var set
+    };
+
+    let essay = include_bytes!("../../../../c2pa-conformance-sample/sample-essay.txt");
+    let doc_hash: [u8; 32] = sha2::Sha256::digest(essay).into();
+
+    let base_time = 1_717_000_000_000u64;
+    let packet = EvidencePacket {
+        version: 1,
+        profile_uri: crate::war::ear::CPOE_EVIDENCE_PROFILE.to_string(),
+        packet_id: vec![0x42; 16],
+        created: base_time,
+        document: DocumentRef {
+            content_hash: HashValue {
+                algorithm: HashAlgorithm::Sha256,
+                digest: doc_hash.to_vec(),
+            },
+            filename: Some("sample-essay.txt".to_string()),
+            byte_length: essay.len() as u64,
+            char_count: essay.len() as u64,
+        },
+        checkpoints: vec![
+            make_checkpoint(0, base_time + 60_000),
+            make_checkpoint(1, base_time + 180_000),
+            make_checkpoint(2, base_time + 300_000),
+        ],
+        attestation_tier: Some(crate::rfc::AttestationTier::SoftwareOnly),
+        baseline_verification: None,
+    };
+
+    let evidence_bytes = crate::codec::encode_evidence(&packet).unwrap();
+    let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+    let cert_der = super::cert::generate_self_signed_cert(&signing_key).unwrap();
+
+    let jumbf = C2paManifestBuilder::new(packet, evidence_bytes, doc_hash)
+        .cert_der(cert_der)
+        .document_filename("sample-essay.txt")
+        .format("text/plain")
+        .title("The Role of Cryptographic Attestation in Modern Publishing")
+        .evidence_url("https://verify.writersproof.com/evidence/conformance-sample")
+        .build_jumbf(&signing_key)
+        .unwrap();
+
+    // Build reverse sidecar (JUMBF + embedded asset)
+    let container = super::container::build_reverse_sidecar(
+        &jumbf, essay, "sample-essay.txt", "text/plain"
+    ).unwrap();
+
+    let sidecar_path = format!("{}/sample-essay.c2pa", out_dir);
+    let jumbf_path = format!("{}/sample-essay.jumbf", out_dir);
+
+    std::fs::write(&sidecar_path, &container).unwrap();
+    std::fs::write(&jumbf_path, &jumbf).unwrap();
+    eprintln!("Wrote {} (container: {} bytes, JUMBF: {} bytes)", sidecar_path, container.len(), jumbf.len());
 }

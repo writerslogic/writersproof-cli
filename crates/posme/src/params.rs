@@ -4,7 +4,6 @@
 
 use crate::error::{PosmeError, Result};
 
-/// PoSME execution parameters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PosmeParams {
     /// Number of 64-byte blocks in the arena (N). Must be a power of 2.
@@ -19,77 +18,79 @@ pub struct PosmeParams {
     pub recursion_depth: u8,
 }
 
-// Minimum parameter bounds per the draft.
-const MIN_ARENA_BLOCKS: u32 = 1 << 10; // 64 KiB (relaxed for testing)
+const MIN_ARENA_BLOCKS: u32 = 1 << 10;
 const MIN_READS_PER_STEP: u8 = 4;
+const MAX_READS_PER_STEP: u8 = 8;
 const MIN_CHALLENGES: u16 = 2;
 const MIN_RECURSION_DEPTH: u8 = 1;
 const MAX_RECURSION_DEPTH: u8 = 8;
-// Maximum bounds to prevent OOM on untrusted proofs.
-// Arena: 2^22 blocks = 256 MiB arena (2x headroom over MAXIMUM tier 2^21).
-// Steps: 2^24 (2x headroom over MAXIMUM tier 4*2^21 = 2^23).
 const MAX_ARENA_BLOCKS: u32 = 1 << 22;
 const MAX_TOTAL_STEPS: u32 = 1 << 24;
 
 impl PosmeParams {
-    /// Validate parameters against minimum bounds.
     pub fn validate(&self) -> Result<()> {
         if self.arena_blocks < MIN_ARENA_BLOCKS {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "arena_blocks {} < minimum {MIN_ARENA_BLOCKS}",
                 self.arena_blocks
             )));
         }
         if self.arena_blocks > MAX_ARENA_BLOCKS {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "arena_blocks {} > maximum {MAX_ARENA_BLOCKS}",
                 self.arena_blocks
             )));
         }
         if !self.arena_blocks.is_power_of_two() {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "arena_blocks {} must be a power of 2",
                 self.arena_blocks
             )));
         }
         if self.total_steps < self.arena_blocks {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "total_steps {} < arena_blocks {} (rho must be >= 1)",
                 self.total_steps, self.arena_blocks
             )));
         }
         if self.total_steps > MAX_TOTAL_STEPS {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "total_steps {} > maximum {MAX_TOTAL_STEPS}",
                 self.total_steps
             )));
         }
         if self.reads_per_step < MIN_READS_PER_STEP {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "reads_per_step {} < minimum {MIN_READS_PER_STEP}",
                 self.reads_per_step
             )));
         }
+        if self.reads_per_step > MAX_READS_PER_STEP {
+            return Err(PosmeError::invalid_params(format!(
+                "reads_per_step {} > maximum {MAX_READS_PER_STEP}",
+                self.reads_per_step
+            )));
+        }
         if self.challenges < MIN_CHALLENGES {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "challenges {} < minimum {MIN_CHALLENGES}",
                 self.challenges
             )));
         }
         if u32::from(self.challenges) > self.total_steps {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "challenges {} > total_steps {} (pigeonhole: not enough unique steps)",
                 self.challenges, self.total_steps
             )));
         }
         if self.recursion_depth < MIN_RECURSION_DEPTH {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "recursion_depth {} < minimum {MIN_RECURSION_DEPTH}",
                 self.recursion_depth
             )));
         }
         if self.recursion_depth > MAX_RECURSION_DEPTH {
-            return Err(PosmeError::InvalidParams(format!(
+            return Err(PosmeError::invalid_params(format!(
                 "recursion_depth {} > maximum {MAX_RECURSION_DEPTH}",
                 self.recursion_depth
             )));
@@ -97,17 +98,15 @@ impl PosmeParams {
         Ok(())
     }
 
-    /// Write density rho = K/N.
     pub fn rho(&self) -> f64 {
         self.total_steps as f64 / self.arena_blocks as f64
     }
 
-    /// Arena size in bytes.
     pub fn arena_bytes(&self) -> u64 {
         self.arena_blocks as u64 * 64
     }
 
-    /// CORE tier: 4 MiB arena, rho=4, d=8, Q=32, R=1. ~50 MiB peak RAM.
+    /// CORE tier: 4 MiB arena, rho=4, d=8, Q=32, R=1.
     pub fn core() -> Self {
         Self {
             arena_blocks: 1 << 16,
@@ -118,7 +117,7 @@ impl PosmeParams {
         }
     }
 
-    /// STANDARD tier: 16 MiB arena, rho=4, d=8, Q=48, R=1. ~150 MiB peak RAM.
+    /// STANDARD tier: 16 MiB arena, rho=4, d=8, Q=48, R=1.
     pub fn standard() -> Self {
         Self {
             arena_blocks: 1 << 18,
@@ -129,7 +128,7 @@ impl PosmeParams {
         }
     }
 
-    /// ENHANCED tier: 64 MiB arena, rho=4, d=8, Q=64, R=2. ~500 MiB peak RAM.
+    /// ENHANCED tier: 64 MiB arena, rho=4, d=8, Q=64, R=2.
     pub fn enhanced() -> Self {
         Self {
             arena_blocks: 1 << 20,
@@ -140,7 +139,7 @@ impl PosmeParams {
         }
     }
 
-    /// MAXIMUM tier: 128 MiB arena, rho=4, d=8, Q=128, R=3. ~900 MiB peak RAM.
+    /// MAXIMUM tier: 128 MiB arena, rho=4, d=8, Q=128, R=3.
     pub fn maximum() -> Self {
         Self {
             arena_blocks: 1 << 21,
@@ -151,14 +150,13 @@ impl PosmeParams {
         }
     }
 
-    /// Select tier by content tier (1=core, 2=standard, 3=enhanced, 4=maximum).
     pub fn for_tier(tier: u8) -> Result<Self> {
         match tier {
             1 => Ok(Self::core()),
             2 => Ok(Self::standard()),
             3 => Ok(Self::enhanced()),
             4 => Ok(Self::maximum()),
-            _ => Err(PosmeError::InvalidParams(format!(
+            _ => Err(PosmeError::invalid_params(format!(
                 "tier {tier} out of range [1, 4]"
             ))),
         }
@@ -166,7 +164,7 @@ impl PosmeParams {
 
     /// Deterministic byte encoding of all parameters for Fiat-Shamir binding.
     /// Layout: N (4B) || K (4B) || d (1B) || Q (2B) || R (1B) = 12 bytes.
-    pub fn to_challenge_bytes(&self) -> [u8; 12] {
+    pub(crate) fn to_challenge_bytes(self) -> [u8; 12] {
         let mut buf = [0u8; 12];
         buf[0..4].copy_from_slice(&self.arena_blocks.to_be_bytes());
         buf[4..8].copy_from_slice(&self.total_steps.to_be_bytes());
@@ -176,8 +174,8 @@ impl PosmeParams {
         buf
     }
 
-    /// Small parameters for testing (fast execution).
-    pub fn test() -> Self {
+    #[cfg(test)]
+    pub(crate) fn test() -> Self {
         Self {
             arena_blocks: 1 << 10,
             total_steps: 4 * (1 << 10),
@@ -210,7 +208,7 @@ mod tests {
     #[test]
     fn test_params_arena_bytes() {
         let p = PosmeParams::core();
-        assert_eq!(p.arena_bytes(), 4 * 1024 * 1024); // 4 MiB
+        assert_eq!(p.arena_bytes(), 4 * 1024 * 1024);
     }
 
     #[test]
@@ -244,8 +242,15 @@ mod tests {
     #[test]
     fn reject_arena_blocks_above_max() {
         let mut p = PosmeParams::test();
-        p.arena_blocks = 1 << 23; // exceeds MAX_ARENA_BLOCKS (1 << 22)
-        p.total_steps = p.arena_blocks; // satisfy rho >= 1
+        p.arena_blocks = 1 << 23;
+        p.total_steps = p.arena_blocks;
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn reject_reads_per_step_above_max() {
+        let mut p = PosmeParams::test();
+        p.reads_per_step = MAX_READS_PER_STEP + 1;
         assert!(p.validate().is_err());
     }
 }

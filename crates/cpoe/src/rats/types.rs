@@ -40,20 +40,15 @@ impl RatsRole {
 pub struct Evidence {
     /// Raw CBOR bytes of the evidence packet (COSE_Sign1 envelope).
     pub cbor_bytes: Vec<u8>,
-    /// Media type for this evidence format.
-    pub media_type: &'static str,
 }
 
 impl Evidence {
-    /// CPoE evidence media type (vendor tree, pending RFC publication).
-    pub const MEDIA_TYPE: &'static str = "application/vnd.writersproof.cpoe+cbor";
+    /// C2PA evidence media type.
+    pub const MEDIA_TYPE: &'static str = super::C2PA_MEDIA_TYPE;
 
     /// Wrap raw CBOR evidence bytes.
     pub fn new(cbor_bytes: Vec<u8>) -> Self {
-        Self {
-            cbor_bytes,
-            media_type: Self::MEDIA_TYPE,
-        }
+        Self { cbor_bytes }
     }
 
     /// Return the raw CBOR payload.
@@ -68,20 +63,15 @@ impl Evidence {
 pub struct AttestationResult {
     /// Signed CWT bytes carrying the EAR token (COSE_Sign1 envelope).
     pub cwt_bytes: Vec<u8>,
-    /// Media type for this attestation result format.
-    pub media_type: &'static str,
 }
 
 impl AttestationResult {
-    /// CPoE attestation result media type (vendor tree).
-    pub const MEDIA_TYPE: &'static str = "application/vnd.writersproof.cwar+cbor";
+    /// Attestation result media type (C2PA).
+    pub const MEDIA_TYPE: &'static str = super::C2PA_MEDIA_TYPE;
 
     /// Wrap signed CWT bytes.
     pub fn new(cwt_bytes: Vec<u8>) -> Self {
-        Self {
-            cwt_bytes,
-            media_type: Self::MEDIA_TYPE,
-        }
+        Self { cwt_bytes }
     }
 
     /// Return the raw CWT payload.

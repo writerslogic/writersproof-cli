@@ -227,7 +227,13 @@ pub struct TranscriptionSuspicion {
 
 /// Threshold for unexplained-corrections-to-keystrokes ratio above which
 /// the sentinel raises a transcription suspicion flag.
-const TRANSCRIPTION_SUSPICION_THRESHOLD: f64 = 0.15;
+/// Raised from 0.15 to 0.25: the original threshold flagged normal writers
+/// who pause before correcting typos (non-rapid bulk deletions).
+const TRANSCRIPTION_SUSPICION_THRESHOLD: f64 = 0.25;
+
+/// Minimum sample count before transcription suspicion can fire.
+/// Short sessions produce noisy ratios; require enough data for a stable signal.
+const TRANSCRIPTION_MIN_SAMPLES: usize = 100;
 
 /// Lightweight streaming assessment of correction patterns for real-time use.
 ///
@@ -290,8 +296,12 @@ pub fn assess_transcription_suspicion(
         0.5
     };
 
-    let is_suspicious = unexplained_correction_ratio > TRANSCRIPTION_SUSPICION_THRESHOLD
-        || (total_corrections >= MIN_CORRECTIONS && ecology_score < 0.3);
+    // Require ALL of: enough data, high unexplained ratio, AND low ecology score.
+    // The old OR logic flagged normal writers who paused before correcting typos.
+    let is_suspicious = sample_count >= TRANSCRIPTION_MIN_SAMPLES
+        && unexplained_correction_ratio > TRANSCRIPTION_SUSPICION_THRESHOLD
+        && total_corrections >= MIN_CORRECTIONS
+        && ecology_score < 0.4;
 
     TranscriptionSuspicion {
         is_suspicious,

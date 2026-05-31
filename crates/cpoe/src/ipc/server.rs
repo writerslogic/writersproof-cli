@@ -25,6 +25,15 @@ pub(super) fn len_to_u32(len: usize) -> Result<[u8; 4]> {
         .to_le_bytes())
 }
 
+/// Executables allowed to connect over the IPC socket.
+#[cfg(unix)]
+const ALLOWED_PEER_EXECUTABLES: &[&str] = &[
+    "cpoe",              // CLI binary
+    "cpoe_cli",          // CLI binary (alt name)
+    "WritersLogic",      // macOS GUI app
+    "writerslogic",      // Linux GUI
+];
+
 /// Platform-aware IPC server (Unix socket or Windows named pipe).
 pub struct IpcServer {
     #[cfg(not(target_os = "windows"))]
@@ -353,7 +362,7 @@ async fn handle_connection<H: IpcMessageHandler>(
     access_log: Option<Arc<Mutex<AccessLog>>>,
 ) {
     // H-012: reject connections from different UIDs on Unix sockets.
-    match stream.peer_cred() {
+    let peer_pid = match stream.peer_cred() {
         Ok(cred) => {
             // SAFETY: getuid() is a no-arg POSIX syscall with no preconditions.
             let my_uid = unsafe { libc::getuid() };
@@ -366,12 +375,22 @@ async fn handle_connection<H: IpcMessageHandler>(
                 );
                 return;
             }
+            cred.pid()
         }
         Err(e) => {
             log::error!(
                 "IPC: failed to get peer credentials on unix-socket: {} (rejecting)",
                 e
             );
+            return;
+        }
+    };
+
+    // Verify the peer executable (Linux: /proc path check, macOS: PID validation).
+    if let Some(pid) = peer_pid {
+        if let Err(e) = super::unix_socket::verify_peer_executable(pid, ALLOWED_PEER_EXECUTABLES)
+        {
+            log::error!("IPC: peer executable verification failed: {e}");
             return;
         }
     }

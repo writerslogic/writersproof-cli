@@ -1369,7 +1369,7 @@ fn test_chain_handles_empty_file() {
 #[test]
 fn test_mmr_anchored_chain_verifies() {
     let (dir, path) = temp_document();
-    let mmr = crate::checkpoint_mmr::CheckpointMmr::in_memory().expect("in-memory mmr");
+    let mmr = crate::checkpoint::mmr::CheckpointMmr::in_memory().expect("in-memory mmr");
     let mut chain = test_chain(&path).with_mmr(mmr);
 
     let cp0 = chain
@@ -1403,7 +1403,7 @@ fn test_mmr_proof_cross_checkpoint_anchor() {
     use crate::mmr::InclusionProof;
 
     let (dir, path) = temp_document();
-    let mmr = crate::checkpoint_mmr::CheckpointMmr::in_memory().expect("in-memory mmr");
+    let mmr = crate::checkpoint::mmr::CheckpointMmr::in_memory().expect("in-memory mmr");
     let mut chain = test_chain(&path).with_mmr(mmr);
 
     chain
@@ -1435,7 +1435,7 @@ fn test_mmr_proof_cross_checkpoint_anchor() {
 #[test]
 fn test_mmr_tampered_root_rejected() {
     let (dir, path) = temp_document();
-    let mmr = crate::checkpoint_mmr::CheckpointMmr::in_memory().expect("in-memory mmr");
+    let mmr = crate::checkpoint::mmr::CheckpointMmr::in_memory().expect("in-memory mmr");
     let mut chain = test_chain(&path).with_mmr(mmr);
 
     chain

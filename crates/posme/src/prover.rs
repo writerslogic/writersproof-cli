@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! PoSME proof generation: execute K steps, derive challenges, build proof.
-//!
-//! Two-pass strategy: the execution pass stores per-step roots (32 bytes each)
-//! and builds a root chain commitment. Dead allocations (arena, tree, roots) are
-//! freed between passes. Challenged steps are replayed to regenerate witnesses.
 
 use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
@@ -16,9 +12,9 @@ use crate::init::initialize;
 use crate::merkle::MerkleTree;
 use crate::params::PosmeParams;
 use crate::proof::*;
-use crate::step::{posme_step, StepLog};
+use crate::step::{posme_step, posme_step_light, StepLog};
 
-/// Root chain Merkle tree: commits to all K+1 arena roots.
+/// 0-indexed root chain Merkle tree over K+1 arena roots.
 struct RootChain {
     nodes: Vec<[u8; LAMBDA]>,
     n: usize,
@@ -27,33 +23,35 @@ struct RootChain {
 impl RootChain {
     fn build(roots: &[[u8; LAMBDA]]) -> Self {
         let n = roots.len().next_power_of_two();
-        let mut nodes = vec![[0u8; LAMBDA]; 2 * n];
+        let size = 2 * n - 1;
+        let mut nodes = vec![[0u8; LAMBDA]; size];
+        let leaf_base = n - 1;
         for (i, root) in roots.iter().enumerate() {
-            nodes[n + i] = *root;
+            nodes[leaf_base + i] = *root;
         }
-        for i in (1..n).rev() {
-            nodes[i] = posme_hash(&[&nodes[2 * i], &nodes[2 * i + 1]]);
+        for i in (0..leaf_base).rev() {
+            nodes[i] = posme_hash(&[&nodes[2 * i + 1], &nodes[2 * i + 2]]);
         }
         Self { nodes, n }
     }
 
     fn root(&self) -> [u8; LAMBDA] {
-        self.nodes[1]
+        self.nodes[0]
     }
 
     fn prove(&self, index: usize) -> Vec<[u8; LAMBDA]> {
         let depth = (self.n as u32).trailing_zeros() as usize;
         let mut path = Vec::with_capacity(depth);
-        let mut pos = self.n + index;
+        let mut pos = self.n - 1 + index;
         for _ in 0..depth {
-            path.push(self.nodes[pos ^ 1]);
-            pos /= 2;
+            let sibling = if pos & 1 == 1 { pos + 1 } else { pos - 1 };
+            path.push(self.nodes[sibling]);
+            pos = (pos - 1) / 2;
         }
         path
     }
 }
 
-/// Track which step last wrote each block.
 struct WriteIndex {
     last_writer: Vec<u32>,
 }
@@ -87,7 +85,7 @@ fn build_step_proof(
     let rc_path_before = ctx.root_chain.prove(log.step_id as usize - 1);
     let rc_path_after = ctx.root_chain.prove(log.step_id as usize);
 
-    let reads: Vec<ReadWitness> = log.read_addrs.iter().zip(&log.read_blocks).map(|(&addr, &block)| {
+    let reads: Vec<ReadWitness> = log.read_addrs().iter().zip(log.read_blocks()).map(|(&addr, &block)| {
         ReadWitness {
             address: addr,
             block,
@@ -102,7 +100,7 @@ fn build_step_proof(
         merkle_path: tree_before.prove(log.write_addr),
     };
 
-    let writers: Vec<WriterProof> = log.read_addrs.iter().map(|&addr| {
+    let writers: Vec<WriterProof> = log.read_addrs().iter().map(|&addr| {
         let ws = ctx.write_index.last_writer_of(addr);
         if ws == 0 {
             WriterProof {
@@ -134,8 +132,6 @@ fn build_step_proof(
     }
 }
 
-/// Generate init block witnesses for seed binding.
-/// Uses Fiat-Shamir to select INIT_WITNESS_COUNT block indices deterministically.
 fn generate_init_witnesses(
     seed: &[u8],
     init_tree: &MerkleTree,
@@ -148,7 +144,7 @@ fn generate_init_witnesses(
     let mut counter = 0u32;
     while witnesses.len() < INIT_WITNESS_COUNT {
         let h = posme_hash(&[&sigma, &i2osp(counter)]);
-        let idx = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) % n;
+        let idx = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) & (n - 1);
         counter += 1;
         if witnesses.iter().any(|w: &InitWitness| w.index == idx) {
             continue;
@@ -162,7 +158,6 @@ fn generate_init_witnesses(
     witnesses
 }
 
-/// Replay from init, building StepProofs only for the specified target steps.
 fn replay_for_writer_proofs(
     seed: &[u8],
     params: &PosmeParams,
@@ -185,44 +180,53 @@ fn replay_for_writer_proofs(
     let mut jitter_idx = 0usize;
 
     for step in 1..=max_target {
-        let is_target = targets.contains(&step);
-        let tree_before = if is_target { Some(tree.clone()) } else { None };
-        let cursor_in = transcript;
+        if targets.contains(&step) {
+            let tree_before = tree.clone();
+            let cursor_in = transcript;
+            let log = posme_step(&mut arena, &mut tree, &transcript, step, d);
+            transcript = log.transcript;
 
-        let log = posme_step(&mut arena, &mut tree, &transcript, step, d);
-        transcript = log.transcript;
-
-        if let Some((samples, interval)) = entangle {
-            if interval > 0
-                && (step as usize).is_multiple_of(interval)
-                && jitter_idx < samples.len()
-            {
-                transcript =
-                    posme_hash(&[ENTANGLE_DST, &transcript, &samples[jitter_idx]]);
-                jitter_idx += 1;
+            if let Some((samples, interval)) = entangle {
+                if interval > 0
+                    && (step as usize).is_multiple_of(interval)
+                    && jitter_idx < samples.len()
+                {
+                    transcript =
+                        posme_hash(&[ENTANGLE_DST, &transcript, &samples[jitter_idx]]);
+                    jitter_idx += 1;
+                }
             }
-        }
 
-        wi.record(log.write_addr, step);
-
-        if let Some(tb) = tree_before {
+            wi.record(log.write_addr, step);
             let ctx = ProofBuildCtx {
                 root_chain,
                 write_index: &wi,
                 init_tree: &init_tree,
             };
-            let sp = build_step_proof(&log, &tb, cursor_in, &ctx);
+            let sp = build_step_proof(&log, &tree_before, cursor_in, &ctx);
             results.insert(step, sp);
+        } else {
+            let res = posme_step_light(&mut arena, &mut tree, &transcript, step, d);
+            transcript = res.transcript;
+
+            if let Some((samples, interval)) = entangle {
+                if interval > 0
+                    && (step as usize).is_multiple_of(interval)
+                    && jitter_idx < samples.len()
+                {
+                    transcript =
+                        posme_hash(&[ENTANGLE_DST, &transcript, &samples[jitter_idx]]);
+                    jitter_idx += 1;
+                }
+            }
+
+            wi.record(res.write_addr, step);
         }
     }
 
     results
 }
 
-/// Attach recursive writer proofs to step proofs, iterating depth levels.
-///
-/// R=1 means writers are identified (already done). Each additional level
-/// replays execution to build StepProofs for unproved writer steps.
 fn attach_recursive_writers(
     challenged_steps: &mut [StepProof],
     seed: &[u8],
@@ -231,7 +235,6 @@ fn attach_recursive_writers(
     entangle: Option<(&[[u8; 32]], usize)>,
 ) {
     for _ in 1..params.recursion_depth {
-        // Collect all writer step IDs that still need proofs.
         let mut needed = BTreeSet::new();
         for sp in challenged_steps.iter() {
             collect_unproved_writers(sp, &mut needed);
@@ -240,16 +243,15 @@ fn attach_recursive_writers(
             break;
         }
 
-        let mut writer_proofs =
+        let writer_proofs =
             replay_for_writer_proofs(seed, params, root_chain, &needed, entangle);
 
         for sp in challenged_steps.iter_mut() {
-            attach_writer_proofs(sp, &mut writer_proofs);
+            attach_writer_proofs(sp, &writer_proofs);
         }
     }
 }
 
-/// Recursively collect writer step IDs that have proof_type=1 but no step_witness.
 fn collect_unproved_writers(sp: &StepProof, out: &mut BTreeSet<u32>) {
     for w in &sp.writers {
         if w.proof_type == 1 && w.step_witness.is_none() {
@@ -261,15 +263,14 @@ fn collect_unproved_writers(sp: &StepProof, out: &mut BTreeSet<u32>) {
     }
 }
 
-/// Recursively attach writer proofs from the map into the step proof tree.
-fn attach_writer_proofs(sp: &mut StepProof, proofs: &mut HashMap<u32, StepProof>) {
+fn attach_writer_proofs(sp: &mut StepProof, proofs: &HashMap<u32, StepProof>) {
     for w in sp.writers.iter_mut() {
         if w.proof_type == 1 && w.step_witness.is_none() {
             if let Some(wp) = proofs.get(&w.writer_step_id) {
                 w.step_witness = Some(Box::new(wp.clone()));
             }
-        }
-        if let Some(ref mut witness) = w.step_witness {
+        } else if let Some(ref mut witness) = w.step_witness {
+            // Only recurse into pre-existing witnesses; the outer loop handles depth.
             attach_writer_proofs(witness, proofs);
         }
     }
@@ -277,7 +278,6 @@ fn attach_writer_proofs(sp: &mut StepProof, proofs: &mut HashMap<u32, StepProof>
 
 const ENTANGLE_DST: &[u8] = b"PoSME-entangle-v1";
 
-/// Optional jitter entanglement configuration for `execute_inner`.
 struct EntangleCtx<'a> {
     samples: &'a [[u8; 32]],
     interval: usize,
@@ -290,7 +290,6 @@ impl<'a> EntangleCtx<'a> {
         Self { samples, interval, idx: 0, points: Vec::new() }
     }
 
-    /// Mix jitter into the transcript at injection points, recording the point.
     fn maybe_inject(&mut self, step: u32, transcript: &mut [u8; LAMBDA]) {
         if self.interval > 0
             && (step as usize).is_multiple_of(self.interval)
@@ -303,7 +302,6 @@ impl<'a> EntangleCtx<'a> {
         }
     }
 
-    /// Mix jitter into the transcript at injection points without recording.
     fn maybe_inject_silent(&mut self, step: u32, transcript: &mut [u8; LAMBDA]) {
         if self.interval > 0
             && (step as usize).is_multiple_of(self.interval)
@@ -320,7 +318,6 @@ impl<'a> EntangleCtx<'a> {
     }
 }
 
-/// Unified proof generation for both standard and entangled modes.
 fn execute_inner(
     seed: &[u8],
     params: &PosmeParams,
@@ -330,43 +327,38 @@ fn execute_inner(
     let k = params.total_steps;
     let d = params.reads_per_step;
 
-    // Phase 1: Initialize arena and snapshot the init tree.
     let (mut arena, mut tree, root_0, t_0) = initialize(seed, n);
     let init_tree = MerkleTree::build(&arena);
     let init_witnesses = generate_init_witnesses(seed, &init_tree, &arena, n);
     drop(init_tree);
 
-    // Phase 2: Execute K steps, storing only roots.
     let mut transcript = t_0;
     let root_cap = (k as usize).checked_add(1).ok_or_else(|| {
-        crate::error::PosmeError::InvalidParams("total_steps overflow in root count".into())
+        crate::error::PosmeError::invalid_params("total_steps overflow in root count")
     })?;
     let mut roots: Vec<[u8; LAMBDA]> = Vec::with_capacity(root_cap);
     roots.push(root_0);
 
     let start = Instant::now();
     for t in 1..=k {
-        let log = posme_step(&mut arena, &mut tree, &transcript, t, d);
-        transcript = log.transcript;
+        let res = posme_step_light(&mut arena, &mut tree, &transcript, t, d);
+        transcript = res.transcript;
         if let Some(ref mut ent) = entangle {
             ent.maybe_inject(t, &mut transcript);
         }
-        roots.push(log.root_after);
+        roots.push(res.root_after);
     }
     let elapsed = start.elapsed();
     let final_transcript = transcript;
     drop(arena);
     drop(tree);
 
-    // Phase 3: Build root chain commitment.
     let root_chain = RootChain::build(&roots);
     drop(roots);
     let root_chain_commitment = root_chain.root();
 
-    // Phase 4: Derive Fiat-Shamir challenges.
     let challenges = derive_challenges(&final_transcript, &root_chain_commitment, params);
 
-    // Phase 5: Replay challenged steps to build proofs.
     let mut sorted_challenges: Vec<(usize, u32)> =
         challenges.iter().enumerate().map(|(i, &s)| (i, s)).collect();
     sorted_challenges.sort_by_key(|&(_, step)| step);
@@ -381,14 +373,14 @@ fn execute_inner(
     for &(orig_idx, target_step) in &sorted_challenges {
         while current_step < target_step - 1 {
             current_step += 1;
-            let log = posme_step(
+            let res = posme_step_light(
                 &mut replay_arena, &mut replay_tree, &replay_t, current_step, d,
             );
-            replay_t = log.transcript;
+            replay_t = res.transcript;
             if let Some(ref mut re) = replay_ent {
                 re.maybe_inject_silent(current_step, &mut replay_t);
             }
-            replay_wi.record(log.write_addr, current_step);
+            replay_wi.record(res.write_addr, current_step);
         }
 
         let tree_before = replay_tree.clone();
@@ -414,12 +406,10 @@ fn execute_inner(
         step_proofs.push((orig_idx, sp));
     }
 
-    // Restore original challenge order.
     step_proofs.sort_by_key(|&(orig_idx, _)| orig_idx);
     let mut challenged_steps: Vec<StepProof> =
         step_proofs.into_iter().map(|(_, sp)| sp).collect();
 
-    // Phase 6: Recursive provenance — attach writer step proofs.
     let entangle_arg = entangle.as_ref().and_then(|e| e.as_replay_arg());
     attach_recursive_writers(&mut challenged_steps, seed, params, &root_chain, entangle_arg);
 
@@ -444,24 +434,13 @@ fn execute_inner(
     })
 }
 
-/// Execute the full PoSME computation and generate a proof.
-///
-/// Two-pass strategy:
-/// 1. Execute all K steps, storing only per-step metadata (transcript + write_addr).
-/// 2. Sort challenged steps, replay from init up to each one to get correct Merkle paths.
 pub fn execute(seed: &[u8], params: &PosmeParams) -> Result<PosmeProof> {
     params.validate()?;
     execute_inner(seed, params, None)
 }
 
-/// Execute PoSME with jitter entanglement (algorithm 31).
-///
-/// At evenly-spaced intervals during execution, a jitter sample hash is mixed
-/// into the transcript chain: `T_t = H("PoSME-entangle-v1" || T_t || jitter_hash)`.
-/// The injection points and hashes are recorded in the proof for verification.
-///
-/// `jitter_samples`: one or more 32-byte jitter hashes collected during the session.
-/// Injection occurs every `K / jitter_samples.len()` steps.
+/// Execute with jitter entanglement (algorithm 31). Jitter hashes are mixed
+/// into the transcript at evenly-spaced intervals during execution.
 pub fn execute_entangled(
     seed: &[u8],
     params: &PosmeParams,
@@ -474,7 +453,7 @@ pub fn execute_entangled(
     let k = params.total_steps;
     let interval = (k as usize) / jitter_samples.len();
     if interval == 0 {
-        return Err(crate::error::PosmeError::InvalidParams(format!(
+        return Err(crate::error::PosmeError::invalid_params(format!(
             "too many jitter samples ({}) for total_steps ({}); need at most {} samples",
             jitter_samples.len(),
             k,
@@ -593,7 +572,6 @@ mod tests {
     #[test]
     fn recursive_provenance_depth2_has_writer_witnesses() {
         let proof = execute(b"depth2-test", &test_params_depth2()).unwrap();
-        // At depth 2, at least some writers with proof_type=1 should have step_witness.
         let has_witness = proof.challenged_steps.iter().any(|sp| {
             sp.writers
                 .iter()
@@ -620,7 +598,6 @@ mod tests {
     #[test]
     fn too_many_jitter_samples_rejected() {
         let params = test_params();
-        // More samples than total_steps → interval would be 0.
         let samples: Vec<[u8; 32]> = (0..params.total_steps + 1)
             .map(|i| {
                 let mut h = [0u8; 32];

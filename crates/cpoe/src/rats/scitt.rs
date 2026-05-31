@@ -10,8 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use crate::evidence::WpBeaconAttestation;
 
-/// CPoE evidence media type used as the SCITT payload content type.
-const CPOE_CONTENT_TYPE: &str = "application/vnd.writersproof.cpoe+cbor";
+use super::C2PA_MEDIA_TYPE;
 
 /// A SCITT Signed Statement is a COSE_Sign1 payload submitted to a Transparency Service.
 /// CPoE evidence packets are natural Signed Statements.
@@ -19,7 +18,7 @@ const CPOE_CONTENT_TYPE: &str = "application/vnd.writersproof.cpoe+cbor";
 pub struct SignedStatement {
     /// The COSE_Sign1 encoded evidence packet.
     pub envelope: Vec<u8>,
-    /// Content type of the payload (application/vnd.writersproof.cpoe+cbor).
+    /// Content type of the payload (application/c2pa).
     pub content_type: String,
     /// Subject identifier (document hash or DID).
     pub subject: String,
@@ -50,7 +49,7 @@ pub fn evidence_to_signed_statement(evidence_cbor: &[u8], doc_hash: &[u8; 32]) -
 
     SignedStatement {
         envelope: evidence_cbor.to_vec(),
-        content_type: CPOE_CONTENT_TYPE.to_string(),
+        content_type: C2PA_MEDIA_TYPE.to_string(),
         subject,
     }
 }
@@ -109,7 +108,7 @@ mod tests {
         let stmt = evidence_to_signed_statement(&evidence, &doc_hash);
 
         assert_eq!(stmt.envelope, evidence);
-        assert_eq!(stmt.content_type, CPOE_CONTENT_TYPE);
+        assert_eq!(stmt.content_type, C2PA_MEDIA_TYPE);
         assert_eq!(stmt.subject.len(), 64);
         assert!(stmt.subject.chars().all(|c| c.is_ascii_hexdigit()));
         assert!(stmt.subject.starts_with("ab"));
@@ -175,7 +174,7 @@ mod tests {
         // Envelope preserves exact evidence bytes.
         assert_eq!(stmt.envelope, evidence);
         // Content type is the CPoE media type.
-        assert_eq!(stmt.content_type, "application/vnd.writersproof.cpoe+cbor");
+        assert_eq!(stmt.content_type, C2PA_MEDIA_TYPE);
         // Subject is 64-char hex of the doc hash.
         assert_eq!(stmt.subject.len(), 64);
         assert!(stmt.subject.starts_with("42"));
@@ -225,7 +224,7 @@ mod tests {
     fn test_signed_statement_serde_roundtrip() {
         let stmt = SignedStatement {
             envelope: vec![0x01, 0x02],
-            content_type: CPOE_CONTENT_TYPE.to_string(),
+            content_type: C2PA_MEDIA_TYPE.to_string(),
             subject: "abcd".to_string(),
         };
         let json = serde_json::to_string(&stmt).expect("serialize");

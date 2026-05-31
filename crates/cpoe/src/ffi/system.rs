@@ -18,7 +18,7 @@ const FFI_MAX_LOG_ENTRIES: usize = 10_000;
 /// on logout to clear it.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_set_profile_did(user_id: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
         let new_did = if user_id.is_empty() {
             None
         } else {
@@ -39,7 +39,7 @@ pub fn ffi_set_profile_did(user_id: String) -> FfiResult {
 /// Return the current WritersProof profile DID, if set.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_profile_did() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
         let guard = crate::identity::PROFILE_DID.read().unwrap_or_else(|e| {
             log::warn!("PROFILE_DID read lock poisoned; recovering");
             e.into_inner()
@@ -54,7 +54,7 @@ pub fn ffi_get_profile_did() -> FfiResult {
 /// Initialize the engine: create data directory, signing key, and event database.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_init() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
         // Initialize the oslog backend so Rust log::* calls appear in
         // macOS unified logging (Console.app / `log stream`).
         static LOGGER_INIT: std::sync::Once = std::sync::Once::new();
@@ -121,6 +121,17 @@ pub fn ffi_init() -> FfiResult {
                     "Failed to set key file permissions after rename: {e}"
                 ));
             }
+        }
+
+        // Pre-warm device model/OS version caches on a background thread so
+        // ffi_sign_attestation_challenge doesn't block a high-QoS caller.
+        if let Err(e) = std::thread::Builder::new()
+            .name("ffi-prewarm".into())
+            .spawn(|| {
+                super::attestation::prewarm_device_info();
+            })
+        {
+            log::warn!("Failed to spawn prewarm thread: {e}");
         }
 
         let db_path = data_dir.join("events.db");
@@ -201,7 +212,7 @@ pub fn ffi_get_status() -> FfiStatus {
         FfiStatus {
             initialized: true,
             data_dir: data_dir.display().to_string(),
-            tracked_file_count: files.len() as u32,
+            tracked_file_count: u32::try_from(files.len()).unwrap_or(u32::MAX),
             total_checkpoints,
             swf_iterations_per_second: swf_iters,
             error_message: None,
@@ -271,7 +282,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
 
         // Apply keystroke-to-content penalty: if the document grew significantly
         // but has very few keystrokes, the content was likely injected/pasted.
-        let total_content_added: i64 = events.iter().map(|e| e.size_delta.max(0) as i64).sum();
+        let total_content_added: i64 = events.iter().fold(0i64, |acc, e| acc.saturating_add(e.size_delta.max(0) as i64));
         let keystroke_ratio_penalty = if total_content_added > 50 && session_keystrokes < 10 {
             // Content was added but barely any keystrokes recorded
             let ratio = session_keystrokes as f64 / total_content_added as f64;
@@ -481,9 +492,9 @@ pub fn ffi_get_dashboard_metrics() -> FfiDashboardMetrics {
             let ninety_days_ago_ns =
                 (chrono::Utc::now() - chrono::Duration::days(90)).timestamp_nanos_safe();
             let timestamps = store
-                .get_all_event_timestamps_unverified(ninety_days_ago_ns)
+                .get_all_event_timestamps_verified(ninety_days_ago_ns)
                 .unwrap_or_else(|e| {
-                    log::warn!("store get_all_event_timestamps_unverified failed: {e}");
+                    log::warn!("store get_all_event_timestamps_verified failed: {e}");
                     Default::default()
                 });
 
@@ -492,7 +503,7 @@ pub fn ffi_get_dashboard_metrics() -> FfiDashboardMetrics {
 
             FfiDashboardMetrics {
                 success: true,
-                total_files: files.len() as u32,
+                total_files: u32::try_from(files.len()).unwrap_or(u32::MAX),
                 total_checkpoints,
                 total_words_witnessed,
                 current_streak_days: streaks.current_streak_days,
@@ -525,9 +536,9 @@ pub fn ffi_get_activity_data(days: u32) -> Vec<FfiActivityPoint> {
             (chrono::Utc::now() - chrono::Duration::days(days as i64)).timestamp_nanos_safe();
 
         let timestamps = store
-            .get_all_event_timestamps_unverified(start_ns)
+            .get_all_event_timestamps_verified(start_ns)
             .unwrap_or_else(|e| {
-                log::warn!("store get_all_event_timestamps_unverified failed: {e}");
+                log::warn!("store get_all_event_timestamps_verified failed: {e}");
                 Default::default()
             });
 
@@ -554,7 +565,7 @@ pub fn ffi_get_activity_data(days: u32) -> Vec<FfiActivityPoint> {
 /// Never log or transmit the return value.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_identity_mnemonic() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
         log::debug!("ffi_get_identity_mnemonic called");
         match crate::identity::secure_storage::SecureStorage::load_mnemonic() {
             Ok(Some(phrase)) => FfiResult::ok((*phrase).clone()),

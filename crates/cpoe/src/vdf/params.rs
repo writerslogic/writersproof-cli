@@ -206,73 +206,9 @@ pub fn swf_seed_core(prev_hash: &[u8; 32], local_nonce: &[u8; 32]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-// PoSME seed derivation (draft-condrey-cfrg-posme)
+// PoSME seed derivation — re-exported from the posme crate.
 #[cfg(feature = "posme")]
-const POSME_SEED_DST: &[u8] = b"PoP-PoSME-Seed-v1";
-
-/// Genesis PoSME seed: `H(DST || doc_ref_cbor || jitter_or_nonce || vdf_output [|| challenge])`.
-///
-/// `vdf_output` binds the PoSME proof to the VDF time anchor, forcing sequential
-/// execution: VDF must complete first, then its output seeds the PoSME computation.
-/// When a WritersProof server challenge nonce is present, it is mixed into the
-/// seed to prevent pre-computation attacks.
-#[cfg(feature = "posme")]
-pub fn posme_seed_genesis(
-    doc_ref_cbor: &[u8],
-    jitter_or_nonce: &[u8; 32],
-    vdf_output: &[u8; 32],
-    challenge_nonce: Option<&[u8; 32]>,
-) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(POSME_SEED_DST);
-    hasher.update(doc_ref_cbor);
-    hasher.update(jitter_or_nonce);
-    hasher.update(vdf_output);
-    if let Some(nonce) = challenge_nonce {
-        hasher.update(nonce);
-    }
-    hasher.finalize().into()
-}
-
-/// ENHANCED+ PoSME seed: `H(DST || prev_hash || jitter_cbor || phys_cbor || vdf_output [|| challenge])`.
-#[cfg(feature = "posme")]
-pub fn posme_seed_enhanced(
-    prev_hash: &[u8; 32],
-    jitter_intervals_cbor: &[u8],
-    physical_state_cbor: &[u8],
-    vdf_output: &[u8; 32],
-    challenge_nonce: Option<&[u8; 32]>,
-) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(POSME_SEED_DST);
-    hasher.update(prev_hash);
-    hasher.update(jitter_intervals_cbor);
-    hasher.update(physical_state_cbor);
-    hasher.update(vdf_output);
-    if let Some(nonce) = challenge_nonce {
-        hasher.update(nonce);
-    }
-    hasher.finalize().into()
-}
-
-/// CORE fallback PoSME seed: `H(DST || prev_hash || local_nonce || vdf_output [|| challenge])`.
-#[cfg(feature = "posme")]
-pub fn posme_seed_core(
-    prev_hash: &[u8; 32],
-    local_nonce: &[u8; 32],
-    vdf_output: &[u8; 32],
-    challenge_nonce: Option<&[u8; 32]>,
-) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(POSME_SEED_DST);
-    hasher.update(prev_hash);
-    hasher.update(local_nonce);
-    hasher.update(vdf_output);
-    if let Some(nonce) = challenge_nonce {
-        hasher.update(nonce);
-    }
-    hasher.finalize().into()
-}
+pub use posme::seed::{posme_seed_core, posme_seed_enhanced, posme_seed_genesis};
 
 /// Maximum number of threads the batch verifier will spawn, regardless of
 /// available parallelism, to prevent resource exhaustion on large proof sets.

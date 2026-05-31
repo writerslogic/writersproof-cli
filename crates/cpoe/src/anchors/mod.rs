@@ -200,6 +200,9 @@ impl AnchorManager {
     }
 
     /// Create a manager pre-loaded with all providers available from environment.
+    ///
+    // TODO: wire into Sentinel as an optional field; call `anchor()` during
+    // checkpoint commit and pass resulting proofs to `Builder::with_anchors()`.
     pub fn with_default_providers() -> Self {
         let mut manager = Self::new(AnchorManagerConfig::default());
         if let Ok(ots) = ots::OpenTimestampsProvider::new() {

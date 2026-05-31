@@ -8,9 +8,6 @@
 //! - **Bigram Fluency Differential**: cognitive writers type common letter pairs
 //!   much faster than rare ones (motor memory); transcribers are more uniform.
 
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-
 use serde::{Deserialize, Serialize};
 
 /// Result of cognitive temporal analysis on a keystroke timing session.
@@ -62,6 +59,27 @@ const COMMON_BIGRAMS: &[[u8; 2]] = &[
     *b"ur", *b"ve",
 ];
 
+/// Histogram bin width for IKI median estimation (5 ms in µs).
+const MEDIAN_BIN_WIDTH_US: u64 = 5_000;
+/// Number of histogram bins covering IKIs up to 5 seconds (5_000_000 / 5_000).
+const MEDIAN_NUM_BINS: usize = 1_000;
+/// Maximum sentence-initial IKIs tracked on the stack.
+const MAX_SENTENCE_STARTS: usize = 512;
+
+/// Find the approximate median value from a histogram of IKI measurements.
+/// Returns the center of the median bin in microseconds.
+fn histogram_median_value(hist: &[u32], total: u32, bin_width: u64) -> f64 {
+    let target = total / 2;
+    let mut cumulative = 0u32;
+    for (i, &count) in hist.iter().enumerate() {
+        cumulative += count;
+        if cumulative > target {
+            return (i as f64 + 0.5) * bin_width as f64;
+        }
+    }
+    (hist.len() as f64 - 0.5) * bin_width as f64
+}
+
 /// Analyze cognitive vs transcriptive writing from timed keystrokes.
 ///
 /// Requires at least 20 keystrokes and 3 sentence boundaries for meaningful results.
@@ -109,53 +127,76 @@ pub fn analyze_cognitive_temporal(keystrokes: &[TimedKeystroke]) -> Option<Cogni
 }
 
 /// Returns (mean_ratio, variance_of_ratios, sentence_count).
+///
+/// Uses a stack-allocated histogram (`[u32; MEDIAN_NUM_BINS]`, 4 KiB) for
+/// within-sentence IKI median estimation and a fixed-size array for
+/// sentence-initial IKIs, avoiding all heap allocation.
 fn compute_sentence_initiation(keystrokes: &[TimedKeystroke]) -> Option<(f64, f64, usize)> {
-    // Collect within-sentence IKIs and sentence-initial IKIs.
-    let mut within_sentence_ikis: Vec<u64> = Vec::new();
-    let mut sentence_initial_ikis: Vec<u64> = Vec::new();
+    let mut within_hist = [0u32; MEDIAN_NUM_BINS];
+    let mut within_count = 0u32;
+    let mut sentence_ikis = [0u64; MAX_SENTENCE_STARTS];
+    let mut sentence_count = 0usize;
 
     for ks in keystrokes {
         if ks.iki_us == 0 {
             continue;
         }
         if ks.after_sentence_end {
-            sentence_initial_ikis.push(ks.iki_us);
+            if sentence_count < MAX_SENTENCE_STARTS {
+                sentence_ikis[sentence_count] = ks.iki_us;
+                sentence_count += 1;
+            }
         } else {
-            within_sentence_ikis.push(ks.iki_us);
+            let bin =
+                (ks.iki_us / MEDIAN_BIN_WIDTH_US).min((MEDIAN_NUM_BINS - 1) as u64) as usize;
+            within_hist[bin] += 1;
+            within_count += 1;
         }
     }
 
-    if sentence_initial_ikis.len() < 3 || within_sentence_ikis.len() < 10 {
+    if sentence_count < 3 || within_count < 10 {
         return None;
     }
 
-    // Median within-sentence IKI (robust to outliers).
-    within_sentence_ikis.sort_unstable();
-    let median_within = within_sentence_ikis[within_sentence_ikis.len() / 2] as f64;
+    // Approximate median from histogram (5 ms resolution).
+    let median_within =
+        histogram_median_value(&within_hist, within_count, MEDIAN_BIN_WIDTH_US);
     if median_within < 1.0 {
         return None;
     }
 
-    // Compute per-sentence initiation ratios.
-    let ratios: Vec<f64> = sentence_initial_ikis
+    // Compute per-sentence initiation ratios inline (no intermediate Vec).
+    let sentence_ikis = &sentence_ikis[..sentence_count];
+    let ratio_sum: f64 = sentence_ikis
         .iter()
         .map(|&iki| iki as f64 / median_within)
-        .collect();
-
-    let mean_ratio = ratios.iter().sum::<f64>() / ratios.len() as f64;
-    let variance = if ratios.len() > 1 {
-        ratios.iter().map(|r| (r - mean_ratio).powi(2)).sum::<f64>() / (ratios.len() - 1) as f64
+        .sum();
+    let mean_ratio = ratio_sum / sentence_count as f64;
+    let variance = if sentence_count > 1 {
+        sentence_ikis
+            .iter()
+            .map(|&iki| {
+                let r = iki as f64 / median_within;
+                (r - mean_ratio).powi(2)
+            })
+            .sum::<f64>()
+            / (sentence_count - 1) as f64
     } else {
         0.0
     };
 
-    Some((mean_ratio, variance, sentence_initial_ikis.len()))
+    Some((mean_ratio, variance, sentence_count))
 }
 
 /// Returns (fluency_ratio, total_bigram_pairs).
+///
+/// Uses two stack-allocated histograms (`[u32; MEDIAN_NUM_BINS]`, 4 KiB each)
+/// to compute approximate medians without heap-sorting IKI vectors.
 fn compute_bigram_fluency(keystrokes: &[TimedKeystroke]) -> (f64, usize) {
-    let mut common_speeds: Vec<u64> = Vec::new();
-    let mut rare_speeds: Vec<u64> = Vec::new();
+    let mut common_hist = [0u32; MEDIAN_NUM_BINS];
+    let mut rare_hist = [0u32; MEDIAN_NUM_BINS];
+    let mut common_count = 0u32;
+    let mut rare_count = 0u32;
 
     for pair in keystrokes.windows(2) {
         let prev = pair[0].char_byte.to_ascii_lowercase();
@@ -169,25 +210,28 @@ fn compute_bigram_fluency(keystrokes: &[TimedKeystroke]) -> (f64, usize) {
             continue; // Skip zero or >2s gaps (not typing speed)
         }
 
+        let bin = (pair[1].iki_us / MEDIAN_BIN_WIDTH_US)
+            .min((MEDIAN_NUM_BINS - 1) as u64) as usize;
         let bigram = [prev, curr];
         if is_common_bigram(&bigram) {
-            common_speeds.push(pair[1].iki_us);
+            common_hist[bin] += 1;
+            common_count += 1;
         } else {
-            rare_speeds.push(pair[1].iki_us);
+            rare_hist[bin] += 1;
+            rare_count += 1;
         }
     }
 
-    let total = common_speeds.len() + rare_speeds.len();
-    if common_speeds.len() < 10 || rare_speeds.len() < 10 {
+    let total = (common_count + rare_count) as usize;
+    if common_count < 10 || rare_count < 10 {
         return (1.0, total); // Insufficient data, neutral ratio
     }
 
-    // Use median speed (inverse of IKI) for robustness.
-    common_speeds.sort_unstable();
-    rare_speeds.sort_unstable();
-
-    let median_common = common_speeds[common_speeds.len() / 2] as f64;
-    let median_rare = rare_speeds[rare_speeds.len() / 2] as f64;
+    // Approximate median from histogram bins.
+    let median_common =
+        histogram_median_value(&common_hist, common_count, MEDIAN_BIN_WIDTH_US);
+    let median_rare =
+        histogram_median_value(&rare_hist, rare_count, MEDIAN_BIN_WIDTH_US);
 
     if median_common < 1.0 {
         return (1.0, total);
@@ -228,31 +272,39 @@ fn bigram_fluency_to_probability(ratio: f64) -> f64 {
 ///
 /// Returns a modality score: 1.0 = clearly multi-modal (cognitive),
 /// 0.0 = unimodal (transcriptive).
+///
+/// Fully streaming: bins IKIs into a stack-allocated histogram in a single
+/// pass, computing count, sum, and sum-of-squares for the CV alongside.
+/// Zero heap allocations regardless of input size.
 pub fn compute_iki_modality(keystrokes: &[TimedKeystroke]) -> f64 {
-    let ikis: Vec<u64> = keystrokes
-        .iter()
-        .map(|k| k.iki_us)
-        .filter(|&iki| iki > 0 && iki < 5_000_000)
-        .collect();
-
-    if ikis.len() < 50 {
-        return 0.5; // Insufficient data.
-    }
-
     // Bin IKIs into 50ms buckets (0-50, 50-100, ..., up to 2000ms = 40 bins).
     const BIN_WIDTH: u64 = 50_000; // 50ms in µs
     const NUM_BINS: usize = 40;
     let mut bins = [0u32; NUM_BINS];
+    let mut count: u64 = 0;
+    let mut sum: u64 = 0;
+    let mut sum_sq: u128 = 0;
 
-    for &iki in &ikis {
+    for k in keystrokes {
+        let iki = k.iki_us;
+        if iki == 0 || iki >= 5_000_000 {
+            continue;
+        }
+        count += 1;
+        sum += iki;
+        sum_sq += (iki as u128) * (iki as u128);
         let bin = (iki / BIN_WIDTH).min(NUM_BINS as u64 - 1) as usize;
         bins[bin] += 1;
     }
 
+    if count < 50 {
+        return 0.5; // Insufficient data.
+    }
+
     // Find local maxima (peaks) in the histogram.
-    // A bin is a peak if it's higher than both neighbors by at least 5% of total.
-    let total = ikis.len() as f64;
-    let threshold = total * 0.03; // 3% of total to count as significant peak
+    // A bin is a peak if it's higher than both neighbors by at least 3% of total.
+    let total = count as f64;
+    let threshold = total * 0.03;
     let mut peaks = 0u32;
 
     for i in 1..NUM_BINS - 1 {
@@ -268,12 +320,11 @@ pub fn compute_iki_modality(keystrokes: &[TimedKeystroke]) -> f64 {
         peaks += 1;
     }
 
-    // Also compute the coefficient of variation of the distribution.
-    // High CV = spread-out distribution (cognitive). Low CV = tight (transcriptive).
-    let mean = ikis.iter().sum::<u64>() as f64 / ikis.len() as f64;
-    let variance = ikis.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>()
-        / (ikis.len() - 1) as f64;
-    let cv = variance.sqrt() / mean;
+    // Coefficient of variation from streaming sums (no intermediate Vec).
+    // Sample variance = (sum_sq - sum * mean) / (n - 1).
+    let mean = sum as f64 / count as f64;
+    let variance = (sum_sq as f64 - sum as f64 * mean) / (count - 1) as f64;
+    let cv = libm::sqrt(variance.max(0.0)) / mean;
 
     // Combine: peaks indicate modes, CV indicates spread.
     // Cognitive: 3+ peaks and CV > 0.8. Transcriptive: 1 peak and CV < 0.4.

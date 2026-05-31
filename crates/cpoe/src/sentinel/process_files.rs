@@ -438,15 +438,263 @@ fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
 // ---------------------------------------------------------------------------
 
 #[cfg(target_os = "windows")]
-fn enumerate_fds_platform(_pid: u32) -> Vec<OpenFile> {
-    // TODO: NtQuerySystemInformation + NtQueryObject
-    // Complex Win32 API; implement as a future enhancement.
-    Vec::new()
+fn enumerate_fds_platform(pid: u32) -> Vec<OpenFile> {
+    use std::ffi::c_void;
+    use windows::Win32::Foundation::{CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE};
+    use windows::Win32::Storage::FileSystem::{
+        GetFileType, GetFinalPathNameByHandleW, FILE_TYPE_DISK, VOLUME_NAME_DOS,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_DUP_HANDLE};
+
+    const SYSTEM_EXTENDED_HANDLE_INFORMATION: u32 = 0x40;
+    const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004u32 as i32;
+    const FILE_WRITE_DATA: u32 = 0x0002;
+    const MAX_HANDLES: usize = 500_000;
+    const MAX_BUF: usize = 256 * 1024 * 1024;
+
+    #[repr(C)]
+    struct HandleEntryEx {
+        _object: *mut c_void,
+        unique_process_id: usize,
+        handle_value: usize,
+        granted_access: u32,
+        _creator_back_trace_index: u16,
+        _object_type_index: u16,
+        _handle_attributes: u32,
+        _reserved: u32,
+    }
+
+    #[repr(C)]
+    struct HandleInfoEx {
+        number_of_handles: usize,
+        _reserved: usize,
+    }
+
+    #[link(name = "ntdll")]
+    extern "system" {
+        fn NtQuerySystemInformation(
+            class: u32,
+            info: *mut c_void,
+            len: u32,
+            ret_len: *mut u32,
+        ) -> i32;
+    }
+
+    let target_pid = pid as usize;
+
+    let mut buf_size: usize = 1024 * 1024;
+    let mut buffer: Vec<u8>;
+    loop {
+        buffer = vec![0u8; buf_size];
+        let mut ret_len: u32 = 0;
+        let status = unsafe {
+            NtQuerySystemInformation(
+                SYSTEM_EXTENDED_HANDLE_INFORMATION,
+                buffer.as_mut_ptr() as *mut c_void,
+                buf_size as u32,
+                &mut ret_len,
+            )
+        };
+        if status == STATUS_INFO_LENGTH_MISMATCH {
+            buf_size = buf_size.saturating_mul(2).min(MAX_BUF);
+            if buf_size >= MAX_BUF {
+                return Vec::new();
+            }
+            continue;
+        }
+        if status < 0 {
+            return Vec::new();
+        }
+        break;
+    }
+
+    if buffer.len() < std::mem::size_of::<HandleInfoEx>() {
+        return Vec::new();
+    }
+    let info = unsafe { &*(buffer.as_ptr() as *const HandleInfoEx) };
+    let entries_ptr = unsafe {
+        buffer
+            .as_ptr()
+            .add(std::mem::size_of::<HandleInfoEx>()) as *const HandleEntryEx
+    };
+
+    let max_entries = (buffer.len() - std::mem::size_of::<HandleInfoEx>())
+        / std::mem::size_of::<HandleEntryEx>();
+
+    let process_handle = unsafe {
+        match OpenProcess(PROCESS_DUP_HANDLE, false, pid) {
+            Ok(h) => h,
+            Err(_) => return Vec::new(),
+        }
+    };
+
+    let current = unsafe { GetCurrentProcess() };
+    let mut results = Vec::new();
+    let count = info.number_of_handles.min(max_entries).min(MAX_HANDLES);
+
+    for i in 0..count {
+        let entry = unsafe { &*entries_ptr.add(i) };
+        if entry.unique_process_id != target_pid {
+            continue;
+        }
+
+        let mut dup = HANDLE::default();
+        if unsafe {
+            DuplicateHandle(
+                process_handle,
+                HANDLE(entry.handle_value as *mut c_void),
+                current,
+                &mut dup,
+                0,
+                false,
+                DUPLICATE_SAME_ACCESS,
+            )
+        }
+        .is_err()
+        {
+            continue;
+        }
+
+        let file_type = unsafe { GetFileType(dup) };
+        if file_type != FILE_TYPE_DISK {
+            unsafe { let _ = CloseHandle(dup); }
+            continue;
+        }
+
+        let mut name_buf = [0u16; 1024];
+        let len = unsafe {
+            GetFinalPathNameByHandleW(dup, &mut name_buf, VOLUME_NAME_DOS)
+        };
+        unsafe { let _ = CloseHandle(dup); }
+
+        if len == 0 || len as usize >= name_buf.len() {
+            continue;
+        }
+
+        let path_str = String::from_utf16_lossy(&name_buf[..len as usize]);
+        let clean = path_str.strip_prefix("\\\\?\\").unwrap_or(&path_str);
+
+        results.push(OpenFile {
+            path: PathBuf::from(clean),
+            writable: (entry.granted_access & FILE_WRITE_DATA) != 0,
+        });
+    }
+
+    unsafe { let _ = CloseHandle(process_handle); }
+    results
 }
 
 #[cfg(target_os = "windows")]
-fn cwd_for_pid_platform(_pid: u32) -> Option<PathBuf> {
-    None
+fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
+    use std::ffi::c_void;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+    };
+
+    const PROCESS_BASIC_INFORMATION_CLASS: u32 = 0;
+
+    #[repr(C)]
+    struct ProcessBasicInformation {
+        _reserved1: *mut c_void,
+        peb_base: *mut c_void,
+        _reserved2: [*mut c_void; 2],
+        _unique_process_id: usize,
+        _reserved3: *mut c_void,
+    }
+
+    #[link(name = "ntdll")]
+    extern "system" {
+        fn NtQueryInformationProcess(
+            handle: HANDLE,
+            class: u32,
+            info: *mut c_void,
+            len: u32,
+            ret_len: *mut u32,
+        ) -> i32;
+    }
+
+    unsafe {
+        let handle = OpenProcess(
+            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+            false,
+            pid,
+        ).ok()?;
+
+        let result = (|| -> Option<PathBuf> {
+            let mut pbi = std::mem::zeroed::<ProcessBasicInformation>();
+            let status = NtQueryInformationProcess(
+                handle,
+                PROCESS_BASIC_INFORMATION_CLASS,
+                &mut pbi as *mut _ as *mut c_void,
+                std::mem::size_of::<ProcessBasicInformation>() as u32,
+                std::ptr::null_mut(),
+            );
+            if status < 0 || pbi.peb_base.is_null() {
+                return None;
+            }
+
+            // PEB offset 0x20 (x64): ProcessParameters pointer
+            let params_ptr_addr = (pbi.peb_base as usize).checked_add(0x20)?;
+            let mut params_ptr: *mut c_void = std::ptr::null_mut();
+            ReadProcessMemory(
+                handle,
+                params_ptr_addr as *const c_void,
+                &mut params_ptr as *mut _ as *mut c_void,
+                std::mem::size_of::<*mut c_void>(),
+                None,
+            ).ok()?;
+            if params_ptr.is_null() {
+                return None;
+            }
+
+            // RTL_USER_PROCESS_PARAMETERS offset 0x38 (x64): CurrentDirectory.DosPath (UNICODE_STRING)
+            // UNICODE_STRING: u16 Length, u16 MaximumLength, padding, *mut u16 Buffer
+            let cwd_us_addr = (params_ptr as usize).checked_add(0x38)?;
+            let mut length: u16 = 0;
+            ReadProcessMemory(
+                handle,
+                cwd_us_addr as *const c_void,
+                &mut length as *mut _ as *mut c_void,
+                2,
+                None,
+            ).ok()?;
+            if length == 0 || length > 2048 {
+                return None;
+            }
+
+            let buffer_ptr_addr = cwd_us_addr.checked_add(8)?; // skip Length + MaximumLength + padding
+            let mut buffer_ptr: *mut u16 = std::ptr::null_mut();
+            ReadProcessMemory(
+                handle,
+                buffer_ptr_addr as *const c_void,
+                &mut buffer_ptr as *mut _ as *mut c_void,
+                std::mem::size_of::<*mut u16>(),
+                None,
+            ).ok()?;
+            if buffer_ptr.is_null() {
+                return None;
+            }
+
+            let char_count = (length as usize) / 2;
+            let mut path_buf = vec![0u16; char_count];
+            ReadProcessMemory(
+                handle,
+                buffer_ptr as *const c_void,
+                path_buf.as_mut_ptr() as *mut c_void,
+                length as usize,
+                None,
+            ).ok()?;
+
+            let path_str = String::from_utf16_lossy(&path_buf);
+            let trimmed = path_str.trim_end_matches('\\');
+            Some(PathBuf::from(trimmed))
+        })();
+
+        let _ = CloseHandle(handle);
+        result
+    }
 }
 
 // Fallback for other platforms (should not occur in practice).
@@ -537,7 +785,7 @@ mod tests {
         // platform call returns nothing at all.
         if all_fds.is_empty() {
             drop(f);
-            eprintln!("proc_pidinfo returned no FDs; skipping (sandboxed?)");
+            log::warn!("proc_pidinfo returned no FDs; skipping (sandboxed?)");
             return;
         }
 

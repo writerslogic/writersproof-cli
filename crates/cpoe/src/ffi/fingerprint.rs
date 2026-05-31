@@ -303,7 +303,7 @@ pub fn ffi_grant_style_consent() -> FfiConsentResult {
 /// Revoke style consent — calls FingerprintManager::disable_style().
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_revoke_style_consent() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_revoke_style_consent");
     match with_manager(|mgr| {
         mgr.disable_style()
@@ -321,7 +321,7 @@ pub fn ffi_revoke_style_consent() -> FfiResult {
 /// Reset all fingerprint data (activity + style).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_reset_fingerprint() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_reset_fingerprint");
     match with_manager(|mgr| {
         mgr.reset();
@@ -343,7 +343,7 @@ pub fn ffi_reset_fingerprint() -> FfiResult {
 /// Export fingerprint as JSON for cloud upload.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_fingerprint_json() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_export_fingerprint_json");
     match with_manager(|mgr| {
         let author_fp = mgr.current_author_fingerprint();
@@ -434,7 +434,7 @@ pub fn ffi_verify_fingerprint_match(
 /// List stored fingerprint profiles as a JSON array.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_fingerprint_profiles() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     match with_manager(|mgr| {
         debug!("Listing fingerprint profiles");
         let profiles = mgr
@@ -506,7 +506,7 @@ static FINGERPRINT_CAPTURE_HANDLE: Mutex<Option<crate::fingerprint::capture::Cap
 #[cfg(target_os = "macos")]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_fingerprint_capture_start() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_fingerprint_capture_start");
     let mut guard = FINGERPRINT_CAPTURE_HANDLE.lock().unwrap_or_else(|p| {
         log::warn!("FINGERPRINT_CAPTURE_HANDLE mutex poisoned, recovering");
@@ -538,7 +538,7 @@ pub fn ffi_fingerprint_capture_start() -> FfiResult {
 #[cfg(target_os = "macos")]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_fingerprint_capture_stop() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_fingerprint_capture_stop");
     let mut guard = FINGERPRINT_CAPTURE_HANDLE.lock().unwrap_or_else(|p| {
         log::warn!("FINGERPRINT_CAPTURE_HANDLE mutex poisoned, recovering");

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult, FfiResult, FfiVcVerifyResult};
-use crate::war::ear::{EarAppraisal, EarToken, VerifierId};
+use crate::war::ear::{engine_verifier_id, EarAppraisal, EarToken};
 use crate::war::profiles::vc;
 use std::collections::BTreeMap;
 
@@ -16,7 +16,7 @@ pub fn ffi_export_vc_json(
     document_path: String,
     output_path: String,
 ) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!(
         "ffi_export_vc_json: evidence_path={} document_path={} output_path={}",
         evidence_path, document_path, output_path
@@ -70,7 +70,7 @@ pub fn ffi_export_vc_cbor(
     document_path: String,
     output_path: String,
 ) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!(
         "ffi_export_vc_cbor: evidence_path={} document_path={} output_path={}",
         evidence_path, document_path, output_path
@@ -115,7 +115,7 @@ pub fn ffi_export_vc_cbor(
 /// with the signer's public key instead.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_verify_vc(vc_path: String) -> FfiVcVerifyResult {
-    catch_ffi_panic!(FfiVcVerifyResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiVcVerifyResult, {
     let signing_key = match crate::ffi::helpers::load_signing_key() {
         Ok(k) => k,
         Err(e) => return FfiVcVerifyResult::ffi_err(format!("Cannot load signing key: {e}")),
@@ -133,7 +133,7 @@ pub fn ffi_verify_vc(vc_path: String) -> FfiVcVerifyResult {
 /// - `.vc.cbor` or `.cbor`: COSE_Sign1 envelope
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_verify_vc_with_key(vc_path: String, verifying_key_hex: String) -> FfiVcVerifyResult {
-    catch_ffi_panic!(FfiVcVerifyResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiVcVerifyResult, {
     log::debug!("ffi_verify_vc_with_key: vc_path={}", vc_path);
 
     let key_bytes = match hex::decode(&verifying_key_hex) {
@@ -193,7 +193,7 @@ pub fn ffi_verify_vc_with_key(vc_path: String, verifying_key_hex: String) -> Ffi
 /// Uses the existing WAR report pipeline (via `build_war_report_for_path`) to
 /// derive scores and trust vectors, then assembles an EAR token exactly as the
 /// report's `build_vc_json` does. Returns `(ear, author_did)`.
-fn build_ear_for_path(
+pub(crate) fn build_ear_for_path(
     evidence_path: &str,
     document_path: &str,
     signing_key: &ed25519_dalek::SigningKey,
@@ -251,9 +251,9 @@ fn build_ear_for_path(
     submods.insert("pop".to_string(), appraisal);
 
     let ear = EarToken {
-        eat_profile: crate::war::ear::POP_EAR_PROFILE.to_string(),
+        eat_profile: crate::war::ear::CPOE_EAR_PROFILE.to_string(),
         iat: chrono::Utc::now().timestamp(),
-        ear_verifier_id: VerifierId::default(),
+        ear_verifier_id: engine_verifier_id(),
         submods,
     };
 

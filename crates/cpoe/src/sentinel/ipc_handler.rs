@@ -144,7 +144,7 @@ impl SentinelIpcHandler {
         let vdf_params = packet.vdf_params;
         let chain_ok = packet.verify_self_signed(vdf_params).is_ok();
         let sig_ok = packet.verify_signature(expected_nonce.as_ref()).is_ok();
-        let nonce_valid = match (&expected_nonce, packet.get_verifier_nonce()) {
+        let nonce_valid = match (&expected_nonce, packet.verifier_nonce.as_ref()) {
             (Some(expected), Some(actual)) => *actual == *expected,
             (None, None) => true,
             _ => false,
@@ -168,7 +168,7 @@ impl SentinelIpcHandler {
             nonce_valid,
             checkpoint_count: packet.checkpoints.len() as u64,
             total_elapsed_time_secs: packet.total_elapsed_time().as_secs_f64(),
-            verifier_nonce: packet.get_verifier_nonce().map(hex::encode),
+            verifier_nonce: packet.verifier_nonce.as_ref().map(hex::encode),
             attestation_nonce: packet
                 .hardware
                 .as_ref()

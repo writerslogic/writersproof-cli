@@ -245,12 +245,100 @@ unsafe fn try_ax_string(
 
 // --- Non-macOS stub ---
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct WindowTextCapture;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 impl WindowTextCapture {
-    /// No-op on non-macOS platforms. Returns an empty list.
+    pub fn capture_visible_windows(exclude_pid: Option<u32>) -> Vec<WindowText> {
+        use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+            IsWindowVisible,
+        };
+
+        struct Context {
+            results: Vec<WindowText>,
+            exclude_pid: Option<u32>,
+        }
+
+        unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            let ctx = &mut *(lparam.0 as *mut Context);
+            if !IsWindowVisible(hwnd).as_bool() {
+                return BOOL(1);
+            }
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if let Some(excl) = ctx.exclude_pid {
+                if pid == excl {
+                    return BOOL(1);
+                }
+            }
+            let title_len = GetWindowTextLengthW(hwnd);
+            if title_len == 0 || title_len > 16384 {
+                return BOOL(1);
+            }
+            let mut title_buf = vec![0u16; (title_len + 1) as usize];
+            let actual = GetWindowTextW(hwnd, &mut title_buf);
+            if actual == 0 {
+                return BOOL(1);
+            }
+            let title = String::from_utf16_lossy(&title_buf[..actual as usize]);
+            let app_name = windows_process_name(pid).unwrap_or_default();
+            ctx.results.push(WindowText {
+                app_name,
+                window_title: title,
+                text_content: String::new(),
+                pid,
+            });
+            BOOL(1)
+        }
+
+        let mut ctx = Context {
+            results: Vec::new(),
+            exclude_pid: exclude_pid,
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(callback),
+                LPARAM(&mut ctx as *mut Context as isize),
+            );
+        }
+        ctx.results
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_process_name(pid: u32) -> Option<String> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut path = [0u16; 1024];
+        let mut size = path.len() as u32;
+        let result = QueryFullProcessImageNameW(
+            handle,
+            Default::default(),
+            windows::core::PWSTR(path.as_mut_ptr()),
+            &mut size,
+        );
+        let _ = CloseHandle(handle);
+        result.ok()?;
+        let exe_path = String::from_utf16_lossy(&path[..size as usize]);
+        std::path::Path::new(&exe_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(String::from)
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub struct WindowTextCapture;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl WindowTextCapture {
     pub fn capture_visible_windows(_exclude_pid: Option<u32>) -> Vec<WindowText> {
         Vec::new()
     }

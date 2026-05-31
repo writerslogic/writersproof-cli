@@ -139,71 +139,70 @@ pub struct VerifiedConnection {
 impl VerifiedConnection {
     /// Verify that the connected peer is an expected executable.
     ///
-    /// On Linux this resolves `/proc/<pid>/exe` and checks against `allowed_names`.
-    /// On macOS, UID-based peer credential verification (in `SecureUnixSocket::accept`)
-    /// is the primary defense; executable path resolution requires `proc_pidpath` via
-    /// unsafe FFI or the Endpoint Security entitlement, neither of which is available
-    /// yet. The `allowed_names` parameter is therefore **ignored** on macOS and a
-    /// warning is logged.
+    /// Delegates to [`verify_peer_executable`] with the connection's PID.
     pub fn verify_peer_executable(&self, allowed_names: &[&str]) -> Result<(), IpcError> {
-        #[cfg(target_os = "linux")]
+        verify_peer_executable(self.peer_pid, allowed_names)
+    }
+}
+
+/// Verify that a peer process identified by `peer_pid` is an expected executable.
+///
+/// On Linux this resolves `/proc/<pid>/exe` and checks against `allowed_names`.
+/// On macOS, executable path resolution requires `proc_pidpath` via unsafe FFI
+/// which is not yet available; only basic PID validation is performed.
+pub fn verify_peer_executable(peer_pid: i32, allowed_names: &[&str]) -> Result<(), IpcError> {
+    #[cfg(target_os = "linux")]
+    {
+        let exe_path = format!("/proc/{}/exe", peer_pid);
+        let exe = std::fs::read_link(&exe_path)?;
+
+        let exe_name = exe
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or(IpcError::InvalidPeerExecutable)?;
+
+        let exe_path_str = exe.to_string_lossy();
+
+        if !allowed_names.contains(&exe_name)
+            && !allowed_names.iter().any(|n| exe_path_str.ends_with(n))
         {
-            let exe_path = format!("/proc/{}/exe", self.peer_pid);
-            let exe = std::fs::read_link(&exe_path)?;
-
-            let exe_name = exe
-                .file_name()
-                .and_then(|n| n.to_str())
-                .ok_or(IpcError::InvalidPeerExecutable)?;
-
-            let exe_path_str = exe.to_string_lossy();
-
-            if !allowed_names.contains(&exe_name)
-                && !allowed_names.iter().any(|n| exe_path_str.ends_with(n))
-            {
-                return Err(IpcError::UnauthorizedExecutable {
-                    expected: allowed_names.iter().map(|s| s.to_string()).collect(),
-                    actual: exe_path_str.into_owned(),
-                });
-            }
+            return Err(IpcError::UnauthorizedExecutable {
+                expected: allowed_names.iter().map(|s| s.to_string()).collect(),
+                actual: exe_path_str.into_owned(),
+            });
         }
+    }
 
-        #[cfg(target_os = "macos")]
-        {
-            // On macOS, proc_pidpath from libproc can resolve a PID to its
-            // executable path, but it requires unsafe FFI. For now, perform
-            // basic PID validation without FFI. A future hardening pass can
-            // add proc_pidpath via the libproc crate for full path-based
-            // executable verification.
-            if self.peer_pid <= 0 {
-                log::warn!(
-                    "Invalid peer PID: {}, skipping executable verification",
-                    self.peer_pid
-                );
-                return Err(IpcError::InvalidPeerExecutable);
-            }
-            if self.peer_pid == 1 {
-                log::warn!("Peer PID is 1 (launchd), rejecting as likely invalid client");
-                return Err(IpcError::InvalidPeerExecutable);
-            }
-            if !allowed_names.is_empty() {
-                log::warn!(
-                    "macOS peer verification: allowed_names {:?} ignored; \
-                     executable path resolution not yet available",
-                    allowed_names
-                );
-            }
-            log::debug!(
-                "macOS peer verification: PID {} accepted (UID check only, no path check)",
-                self.peer_pid
+    #[cfg(target_os = "macos")]
+    {
+        if peer_pid <= 0 {
+            log::warn!(
+                "Invalid peer PID: {}, skipping executable verification",
+                peer_pid
+            );
+            return Err(IpcError::InvalidPeerExecutable);
+        }
+        if peer_pid == 1 {
+            log::warn!("Peer PID is 1 (launchd), rejecting as likely invalid client");
+            return Err(IpcError::InvalidPeerExecutable);
+        }
+        if !allowed_names.is_empty() {
+            log::warn!(
+                "macOS peer verification: allowed_names {:?} ignored; \
+                 executable path resolution not yet available",
+                allowed_names
             );
         }
-
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        {
-            let _ = allowed_names; // suppress unused on other platforms
-        }
-
-        Ok(())
+        log::debug!(
+            "macOS peer verification: PID {} accepted (UID check only, no path check)",
+            peer_pid
+        );
     }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = (peer_pid, allowed_names);
+    }
+
+    Ok(())
 }

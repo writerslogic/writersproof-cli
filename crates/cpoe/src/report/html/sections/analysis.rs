@@ -15,7 +15,7 @@ pub(in crate::report::html) fn write_session_timeline(
         r#"<p>The document was composed across {} session{}, totaling approximately {:.0} minutes of active writing time.</p>"#,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
-        r.total_duration_min,
+        if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
     )?;
     for s in &r.sessions {
         write!(

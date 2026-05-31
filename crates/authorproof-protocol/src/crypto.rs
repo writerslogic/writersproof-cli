@@ -134,6 +134,16 @@ pub(crate) fn cose_sign1_detached(
     protected_extra: coset::Header,
     unprotected: coset::Header,
 ) -> Result<Vec<u8>> {
+    cose_sign1_inner(payload, signer, protected_extra, unprotected, true)
+}
+
+fn cose_sign1_inner(
+    payload: &[u8],
+    signer: &dyn EvidenceSigner,
+    protected_extra: coset::Header,
+    unprotected: coset::Header,
+    detach: bool,
+) -> Result<Vec<u8>> {
     let mut protected = HeaderBuilder::new().algorithm(signer.algorithm()).build();
     protected.rest.extend(protected_extra.rest);
 
@@ -163,8 +173,10 @@ pub(crate) fn cose_sign1_detached(
         ));
     }
 
-    // Detach payload per C2PA §13.2 — claim bytes live in the claim box.
-    sign1.payload = None;
+    if detach {
+        // Detach payload per C2PA §13.2 — claim bytes live in the claim box.
+        sign1.payload = None;
+    }
 
     sign1
         .to_vec()
@@ -177,38 +189,7 @@ pub(crate) fn cose_sign1(
     protected_extra: coset::Header,
     unprotected: coset::Header,
 ) -> Result<Vec<u8>> {
-    let mut protected = HeaderBuilder::new().algorithm(signer.algorithm()).build();
-    protected.rest.extend(protected_extra.rest);
-
-    let mut builder = CoseSign1Builder::new()
-        .protected(protected)
-        .unprotected(unprotected)
-        .payload(payload.to_vec());
-
-    let mut sign_error: Option<Error> = None;
-    builder = builder.create_signature(&[], |sig_data| match signer.sign(sig_data) {
-        Ok(sig) => sig,
-        Err(e) => {
-            sign_error = Some(e);
-            Vec::new()
-        }
-    });
-
-    if let Some(e) = sign_error {
-        return Err(e);
-    }
-
-    let sign1 = builder.build();
-
-    if sign1.signature.is_empty() {
-        return Err(Error::Crypto(
-            "COSE signing produced empty signature".to_string(),
-        ));
-    }
-
-    sign1
-        .to_vec()
-        .map_err(|e| Error::Crypto(format!("COSE encoding error: {}", e)))
+    cose_sign1_inner(payload, signer, protected_extra, unprotected, false)
 }
 
 /// Maximum COSE_Sign1 input size (1 MiB) to prevent OOM on oversized payloads.

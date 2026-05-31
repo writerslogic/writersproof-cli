@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{get_db_path, open_store};
-use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult};
+use crate::ffi::types::{catch_ffi_panic, try_ffi};
 
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -38,7 +38,7 @@ crate::ffi::types::impl_ffi_err!(FfiArchiveListResult);
 /// If `age_days` is 0, defaults to 90 days.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_archive_old_events(age_days: u32) -> FfiArchiveResult {
-    catch_ffi_panic!(FfiArchiveResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiArchiveResult, {
     log::debug!("ffi_archive_old_events: age_days={}", age_days);
     let db_path = try_ffi!(get_db_path().ok_or("Database path not found"), FfiArchiveResult);
     let mut store = try_ffi!(open_store(), FfiArchiveResult);
@@ -68,7 +68,7 @@ pub fn ffi_archive_old_events(age_days: u32) -> FfiArchiveResult {
 /// List all archive files and report active DB status.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_archives() -> FfiArchiveListResult {
-    catch_ffi_panic!(FfiArchiveListResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiArchiveListResult, {
     log::debug!("ffi_list_archives");
     let db_path = try_ffi!(
         get_db_path().ok_or("Database path not found"),
@@ -109,7 +109,7 @@ pub fn ffi_list_archives() -> FfiArchiveListResult {
 /// Returns events within the given nanosecond timestamp range.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_query_events_spanning(path: String, start_ns: i64, end_ns: i64) -> FfiSpanningQueryResult {
-    catch_ffi_panic!(FfiSpanningQueryResult::ffi_err("engine internal error"), {
+    catch_ffi_panic!(@err FfiSpanningQueryResult, {
     log::debug!("ffi_query_events_spanning: path={}, start_ns={}, end_ns={}", path, start_ns, end_ns);
     let db_path = try_ffi!(
         get_db_path().ok_or("Database path not found"),

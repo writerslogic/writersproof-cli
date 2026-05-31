@@ -20,7 +20,7 @@ use authorproof_protocol::rfc::wire_types::enums::{AttestationTier, ContentTier,
 use authorproof_protocol::rfc::wire_types::hash::HashValue;
 use authorproof_protocol::rfc::wire_types::packet::EvidencePacketWire;
 
-const PROFILE_URI: &str = "urn:ietf:params:rats:eat:profile:pop:1.0";
+use crate::war::ear::CPOE_EVIDENCE_PROFILE;
 
 /// Minimum jitter quantization per draft-condrey-rats-pop §11.4 (privacy).
 const JITTER_QUANTIZATION_MS: u64 = 5;
@@ -108,7 +108,7 @@ pub fn chain_to_wire_with_signatures(
 
     Ok(EvidencePacketWire {
         version: 1,
-        profile_uri: PROFILE_URI.to_string(),
+        profile_uri: CPOE_EVIDENCE_PROFILE.to_string(),
         packet_id: {
             let mut h = Sha256::new();
             h.update(PACKET_ID_DST);

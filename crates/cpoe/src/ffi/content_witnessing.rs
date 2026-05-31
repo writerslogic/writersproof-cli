@@ -96,7 +96,7 @@ pub fn ffi_get_witnessing_config() -> FfiWitnessingConfig {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_set_witnessing_mode(mode: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_set_witnessing_mode: mode={}", mode);
     let parsed = match mode.parse::<WitnessingMode>() {
         Ok(m) => m,
@@ -122,7 +122,7 @@ pub fn ffi_set_witnessing_mode(mode: String) -> FfiResult {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_set_content_granularity(granularity: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_set_content_granularity: granularity={}", granularity);
     let parsed = match granularity.parse::<ContentGranularity>() {
         Ok(g) => g,

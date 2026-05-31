@@ -10,16 +10,18 @@ use super::jumbf::{
 };
 use super::types::{
     Action, ActionParameters, ActionsAssertion, AiDisclosureAssertion, AssertionMetadata,
-    AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo, DataSource, ExclusionRange,
-    ExternalReferenceAssertion, ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri,
-    C2paIngredient, LocalTimestampAssertion, MetadataAssertion, ProcessAssertion, SoftwareAgent,
-    VcReferenceAssertion,
+    AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo, CognitiveMarkersAssertion,
+    DataSource, EvidenceChainAssertion, ExclusionRange, ExternalReferenceAssertion,
+    ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri, C2paIngredient,
+    KeystrokeCadenceAssertion, LocalTimestampAssertion, MetadataAssertion,
+    ProcessProofAssertion, SoftwareAgent, VcReferenceAssertion,
 };
 use super::{
     ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_AI_DISCLOSURE, ASSERTION_LABEL_CAWG_IDENTITY,
-    ASSERTION_LABEL_CAWG_TDM, ASSERTION_LABEL_CPOE, ASSERTION_LABEL_EXTERNAL_REF,
-    ASSERTION_LABEL_HASH_DATA, ASSERTION_LABEL_INGREDIENT, ASSERTION_LABEL_METADATA,
-    ASSERTION_LABEL_VC_REFERENCE,
+    ASSERTION_LABEL_CAWG_TDM, ASSERTION_LABEL_COGNITIVE_MARKERS,
+    ASSERTION_LABEL_EVIDENCE_CHAIN, ASSERTION_LABEL_EXTERNAL_REF, ASSERTION_LABEL_HASH_DATA,
+    ASSERTION_LABEL_INGREDIENT, ASSERTION_LABEL_KEYSTROKE_CADENCE, ASSERTION_LABEL_METADATA,
+    ASSERTION_LABEL_PROCESS_PROOF, ASSERTION_LABEL_VC_EMBEDDED, ASSERTION_LABEL_VC_REFERENCE,
 };
 
 /// C2PA 2.4 spec version for claim_generator_info.
@@ -48,6 +50,10 @@ pub struct C2paManifestBuilder {
     cawg_identity: Option<serde_json::Value>,
     cawg_tdm: Option<serde_json::Value>,
     vc_reference: Option<VcReferenceAssertion>,
+    keystroke_cadence: Option<KeystrokeCadenceAssertion>,
+    cognitive_markers: Option<CognitiveMarkersAssertion>,
+    evidence_chain: Option<EvidenceChainAssertion>,
+    vc_embedded_json: Option<String>,
 }
 
 impl C2paManifestBuilder {
@@ -78,6 +84,10 @@ impl C2paManifestBuilder {
             cawg_identity: None,
             cawg_tdm: None,
             vc_reference: None,
+            keystroke_cadence: None,
+            cognitive_markers: None,
+            evidence_chain: None,
+            vc_embedded_json: None,
         }
     }
 
@@ -139,7 +149,7 @@ impl C2paManifestBuilder {
         self
     }
 
-    /// Set the URL where the .cpoe evidence packet is hosted for external reference.
+    /// Set the URL where the evidence packet is hosted for external reference.
     pub fn evidence_url(mut self, url: impl Into<String>) -> Self {
         self.evidence_url = Some(url.into());
         self
@@ -192,17 +202,43 @@ impl C2paManifestBuilder {
         });
         self
     }
+
+    /// Set the keystroke cadence assertion.
+    pub fn keystroke_cadence(mut self, cadence: KeystrokeCadenceAssertion) -> Self {
+        self.keystroke_cadence = Some(cadence);
+        self
+    }
+
+    /// Set the cognitive markers assertion.
+    pub fn cognitive_markers(mut self, markers: CognitiveMarkersAssertion) -> Self {
+        self.cognitive_markers = Some(markers);
+        self
+    }
+
+    /// Set the evidence chain assertion. If not set, one is built automatically
+    /// from the evidence packet's checkpoints.
+    pub fn evidence_chain(mut self, chain: EvidenceChainAssertion) -> Self {
+        self.evidence_chain = Some(chain);
+        self
+    }
+
+    /// Embed a signed W3C Verifiable Credential (JSON) directly in the manifest.
+    pub fn vc_embedded(mut self, vc_json: String) -> Self {
+        self.vc_embedded_json = Some(vc_json);
+        self
+    }
+
     pub fn build_jumbf(self, signer: &dyn EvidenceSigner) -> Result<Vec<u8>> {
         let manifest = self.build_manifest(signer)?;
         encode_jumbf(&manifest)
     }
 
     pub fn build_manifest(self, signer: &dyn EvidenceSigner) -> Result<C2paManifest> {
-        let mut cpoe_assertion =
-            ProcessAssertion::from_evidence(&self.evidence_packet, &self.evidence_bytes);
-        cpoe_assertion.forensic_signals = self.forensic_signals;
-        cpoe_assertion.composition_mode = self.composition_mode;
-        cpoe_assertion.writing_mode = self.writing_mode;
+        let mut process_proof =
+            ProcessProofAssertion::from_evidence(&self.evidence_packet, &self.evidence_bytes);
+        process_proof.signal_scores = self.forensic_signals;
+        process_proof.composition_mode = self.composition_mode;
+        process_proof.writing_mode = self.writing_mode;
 
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -211,13 +247,13 @@ impl C2paManifestBuilder {
                 action: "c2pa.created".to_string(),
                 when: Some(now),
                 software_agent: Some(SoftwareAgent::Info(ClaimGeneratorInfo {
-                    name: "CPoE".to_string(),
+                    name: "WritersProof".to_string(),
                     version: Some(env!("CARGO_PKG_VERSION").to_string()),
                     spec_version: None,
                 })),
                 parameters: Some(ActionParameters {
                     description: Some(
-                        "Document authored with CPoE Proof-of-Process witnessing".to_string(),
+                        "Document authored with WritersProof Proof-of-Process witnessing".to_string(),
                     ),
                 }),
             }],
@@ -233,22 +269,29 @@ impl C2paManifestBuilder {
             pad: Vec::new(),
         };
 
+        // Build the evidence chain from checkpoints (auto-generate if not set).
+        let evidence_chain = self.evidence_chain
+            .unwrap_or_else(|| EvidenceChainAssertion::from_evidence(&self.evidence_packet));
+
         // Built once; same bytes are hashed for the claim and embedded in JUMBF.
         let hash_data_box =
             build_assertion_jumbf_cbor(ASSERTION_LABEL_HASH_DATA, &hash_data_assertion)?;
         let actions_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_ACTIONS, &actions_assertion)?;
-        let cpoe_box = build_assertion_jumbf_json(ASSERTION_LABEL_CPOE, &cpoe_assertion)?;
+        let process_proof_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_PROCESS_PROOF, &process_proof)?;
+        let evidence_chain_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_EVIDENCE_CHAIN, &evidence_chain)?;
 
         let manifest_label = &self.manifest_label;
 
         let mut assertion_boxes = Vec::new();
         let mut created_assertions = Vec::new();
 
-        // §8.4.2.3: hash superbox contents, skipping 8-byte jumb header
+        // §8.4.2.3: hash superbox contents, skipping 8-byte jumb header.
+        // Core assertions always included.
         for (box_bytes, label) in [
             (hash_data_box, ASSERTION_LABEL_HASH_DATA),
             (actions_box, ASSERTION_LABEL_ACTIONS),
-            (cpoe_box, ASSERTION_LABEL_CPOE),
+            (process_proof_box, ASSERTION_LABEL_PROCESS_PROOF),
+            (evidence_chain_box, ASSERTION_LABEL_EVIDENCE_CHAIN),
         ] {
             push_hashed_assertion(
                 &mut assertion_boxes,
@@ -256,6 +299,35 @@ impl C2paManifestBuilder {
                 box_bytes,
                 manifest_label,
                 label,
+            );
+        }
+
+        // Keystroke cadence assertion (optional, Pro tier).
+        if let Some(ref cadence) = self.keystroke_cadence {
+            let cadence_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_KEYSTROKE_CADENCE, cadence)?;
+            push_hashed_assertion(
+                &mut assertion_boxes, &mut created_assertions,
+                cadence_box, manifest_label, ASSERTION_LABEL_KEYSTROKE_CADENCE,
+            );
+        }
+
+        // Cognitive markers assertion (optional, Pro tier).
+        if let Some(ref markers) = self.cognitive_markers {
+            let markers_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_COGNITIVE_MARKERS, markers)?;
+            push_hashed_assertion(
+                &mut assertion_boxes, &mut created_assertions,
+                markers_box, manifest_label, ASSERTION_LABEL_COGNITIVE_MARKERS,
+            );
+        }
+
+        // Embedded W3C Verifiable Credential (JSON, always included when available).
+        if let Some(ref vc_json) = self.vc_embedded_json {
+            let vc_value: serde_json::Value = serde_json::from_str(vc_json)
+                .map_err(|e| Error::Serialization(format!("VC JSON parse: {e}")))?;
+            let vc_box = build_assertion_jumbf_json(ASSERTION_LABEL_VC_EMBEDDED, &vc_value)?;
+            push_hashed_assertion(
+                &mut assertion_boxes, &mut created_assertions,
+                vc_box, manifest_label, ASSERTION_LABEL_VC_EMBEDDED,
             );
         }
 
@@ -275,9 +347,9 @@ impl C2paManifestBuilder {
             );
         }
 
-        // c2pa.external-reference assertion (hashed link to .cpoe evidence packet)
+        // c2pa.external-reference assertion (hashed link to evidence packet)
         if let Some(ref url) = self.evidence_url {
-            // The external reference declares format application/vnd.writersproof.cpoe+cbor,
+            // The external reference declares format application/c2pa,
             // so the hash must be over CBOR-tagged bytes (tag 0x43504F45). Re-encode from
             // the packet if the caller passed untagged bytes.
             let tagged_evidence = if is_cpoe_tagged(&self.evidence_bytes) {
@@ -306,7 +378,7 @@ impl C2paManifestBuilder {
                     url: url.clone(),
                     alg: "sha256".to_string(),
                     hash: evidence_hash.to_vec(),
-                    format: Some("application/vnd.writersproof.cpoe+cbor".to_string()),
+                    format: Some("application/c2pa".to_string()),
                     data_types: Some(vec![AssetType {
                         type_id: "c2pa.types.audit-log".to_string(),
                     }]),
@@ -457,6 +529,9 @@ fn push_hashed_assertion(
     manifest_label: &str,
     label: &str,
 ) {
+    if box_bytes.len() < 8 {
+        return;
+    }
     let hash = Sha256::digest(&box_bytes[8..]);
     created_assertions.push(HashedUri {
         url: format!("self#jumbf=/c2pa/{manifest_label}/c2pa.assertions/{label}"),

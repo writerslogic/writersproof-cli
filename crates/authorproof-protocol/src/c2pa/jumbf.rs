@@ -183,6 +183,171 @@ pub fn encode_jumbf(manifest: &C2paManifest) -> Result<Vec<u8>> {
     Ok(w.finish())
 }
 
+/// Decode a JUMBF manifest store into a `C2paManifest`.
+///
+/// Parses the box hierarchy produced by `encode_jumbf`, extracting the claim
+/// CBOR, assertion boxes, signature, and manifest label.
+pub fn decode_jumbf(data: &[u8]) -> Result<C2paManifest> {
+    use super::types::C2paClaim;
+
+    fn read_box(data: &[u8], offset: usize) -> Result<(usize, &[u8], &[u8])> {
+        if offset + 8 > data.len() {
+            return Err(Error::Validation("Truncated JUMBF box header".into()));
+        }
+        let compact = u32::from_be_bytes([
+            data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+        ]);
+        let (box_len, hdr) = if compact == 1 {
+            if offset + 16 > data.len() {
+                return Err(Error::Validation("Truncated extended-size box".into()));
+            }
+            let ext = u64::from_be_bytes([
+                data[offset + 8], data[offset + 9], data[offset + 10], data[offset + 11],
+                data[offset + 12], data[offset + 13], data[offset + 14], data[offset + 15],
+            ]) as usize;
+            (ext, 16)
+        } else {
+            (compact as usize, 8)
+        };
+        if box_len < hdr || offset + box_len > data.len() {
+            return Err(Error::Validation(format!(
+                "Invalid box length {box_len} at offset {offset}"
+            )));
+        }
+        let box_type = &data[offset + 4..offset + 8];
+        let body = &data[offset + hdr..offset + box_len];
+        Ok((box_len, box_type, body))
+    }
+
+    fn extract_uuid_from_jumd(body: &[u8]) -> Result<[u8; 16]> {
+        if body.len() < 17 {
+            return Err(Error::Validation("jumd box too short for UUID".into()));
+        }
+        let mut uuid = [0u8; 16];
+        uuid.copy_from_slice(&body[..16]);
+        Ok(uuid)
+    }
+
+    fn extract_label_from_jumd(body: &[u8]) -> Option<String> {
+        if body.len() <= 17 {
+            return None;
+        }
+        let label_start = 17; // 16 UUID + 1 toggles
+        let label_bytes = &body[label_start..];
+        let end = label_bytes.iter().position(|&b| b == 0).unwrap_or(label_bytes.len());
+        if end == 0 {
+            return None;
+        }
+        String::from_utf8(label_bytes[..end].to_vec()).ok()
+    }
+
+    fn find_content_in_superbox<'a>(body: &'a [u8], content_type: &[u8; 4]) -> Option<&'a [u8]> {
+        let mut off = 0;
+        while off + 8 <= body.len() {
+            let len = u32::from_be_bytes([body[off], body[off + 1], body[off + 2], body[off + 3]]) as usize;
+            if len < 8 || off + len > body.len() {
+                break;
+            }
+            let btype = &body[off + 4..off + 8];
+            if btype == content_type {
+                return Some(&body[off + 8..off + len]);
+            }
+            off += len;
+        }
+        None
+    }
+
+    // Parse outer store superbox.
+    let (_store_len, store_type, _) = read_box(data, 0)?;
+    if store_type != b"jumb" {
+        return Err(Error::Validation("Expected JUMBF superbox at start".into()));
+    }
+
+    // Iterate children of the store to find the manifest superbox.
+    let mut pos = 8; // skip store box header
+    // Skip store's jumd description.
+    let (jumd_len, jumd_type, _) = read_box(data, pos)?;
+    if jumd_type != b"jumd" {
+        return Err(Error::Validation("Store missing description box".into()));
+    }
+    pos += jumd_len;
+
+    // The next jumb child is the manifest superbox.
+    let (manifest_len, manifest_type, _) = read_box(data, pos)?;
+    if manifest_type != b"jumb" {
+        return Err(Error::Validation("Expected manifest superbox".into()));
+    }
+    let manifest_end = pos + manifest_len;
+
+    // Parse manifest children: jumd (label), then claim/assertion-store/signature superboxes.
+    let mut mpos = pos + 8; // skip manifest box header
+
+    // Manifest jumd.
+    let (mjumd_len, mjumd_type, mjumd_body) = read_box(data, mpos)?;
+    if mjumd_type != b"jumd" {
+        return Err(Error::Validation("Manifest missing description box".into()));
+    }
+    let manifest_label = extract_label_from_jumd(mjumd_body)
+        .unwrap_or_else(|| "self#jumbf=c2pa/urn:uuid:unknown".to_string());
+    mpos += mjumd_len;
+
+    let mut claim_cbor: Option<Vec<u8>> = None;
+    let mut assertion_boxes: Vec<Vec<u8>> = Vec::new();
+    let mut signature: Option<Vec<u8>> = None;
+
+    while mpos + 8 <= manifest_end {
+        let (child_len, child_type, child_body) = read_box(data, mpos)?;
+        if child_type == b"jumb" {
+            // Identify by jumd UUID.
+            if child_body.len() >= 8 {
+                let (jumd_l, jumd_t, jumd_b) = read_box(data, mpos + 8)?;
+                if jumd_t == b"jumd" {
+                    if let Ok(uuid) = extract_uuid_from_jumd(jumd_b) {
+                        if uuid == C2PA_CLAIM_UUID {
+                            if let Some(content) = find_content_in_superbox(child_body, b"cbor") {
+                                claim_cbor = Some(content.to_vec());
+                            }
+                        } else if uuid == C2PA_ASSERTION_STORE_UUID {
+                            // Extract individual assertion superboxes after jumd.
+                            let mut apos = jumd_l;
+                            while apos + 8 <= child_body.len() {
+                                let alen = u32::from_be_bytes([
+                                    child_body[apos], child_body[apos + 1],
+                                    child_body[apos + 2], child_body[apos + 3],
+                                ]) as usize;
+                                if alen < 8 || apos + alen > child_body.len() {
+                                    break;
+                                }
+                                assertion_boxes.push(child_body[apos..apos + alen].to_vec());
+                                apos += alen;
+                            }
+                        } else if uuid == C2PA_SIGNATURE_UUID {
+                            if let Some(content) = find_content_in_superbox(child_body, b"cbor") {
+                                signature = Some(content.to_vec());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        mpos += child_len;
+    }
+
+    let claim_cbor = claim_cbor.ok_or_else(|| Error::Validation("Missing claim box".into()))?;
+    let signature = signature.ok_or_else(|| Error::Validation("Missing signature box".into()))?;
+
+    let claim: C2paClaim = ciborium::from_reader(claim_cbor.as_slice())
+        .map_err(|e| Error::Serialization(format!("Failed to decode claim CBOR: {e}")))?;
+
+    Ok(C2paManifest {
+        claim,
+        claim_cbor,
+        manifest_label,
+        assertion_boxes,
+        signature,
+    })
+}
+
 pub fn verify_jumbf_structure(data: &[u8]) -> Result<JumbfInfo> {
     if data.len() < 8 {
         return Err(Error::Validation("JUMBF data too short".to_string()));

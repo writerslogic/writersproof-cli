@@ -14,8 +14,8 @@ use crate::error::{Error, Result};
 use crate::evidence::Packet;
 use crate::trust_policy::AppraisalPolicy;
 use crate::war::ear::{
-    Ar4siStatus, EarAppraisal, EarToken, SealClaims, TrustworthinessVector, VerifierId,
-    POP_EAR_PROFILE,
+    engine_verifier_id, Ar4siStatus, EarAppraisal, EarToken, SealClaims, TrustworthinessVector,
+    CPOE_EAR_PROFILE,
 };
 use crate::war::verification::{
     compute_seal, verify_declaration, verify_hash_chain, verify_vdf_proofs,
@@ -259,9 +259,9 @@ pub fn appraise(packet: &Packet, policy: &AppraisalPolicy) -> Result<EarToken> {
     submods.insert("pop".to_string(), appraisal);
 
     Ok(EarToken {
-        eat_profile: POP_EAR_PROFILE.to_string(),
+        eat_profile: CPOE_EAR_PROFILE.to_string(),
         iat: packet.exported_at.timestamp(),
-        ear_verifier_id: VerifierId::default(),
+        ear_verifier_id: engine_verifier_id(),
         submods,
     })
 }

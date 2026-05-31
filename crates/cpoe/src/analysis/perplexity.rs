@@ -8,7 +8,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,48 +24,27 @@ const ALPHABET_SIZE: f64 = 256.0;
 // ── Error type ───────────────────────────────────────────────────────────────
 
 /// Errors from perplexity computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum PerplexityError {
     /// Model has not been trained with enough data.
+    #[error("model undertrained: {sample_count} samples < {required} required")]
     Undertrained {
         sample_count: usize,
         required: usize,
     },
     /// Input text is too short for the n-gram order.
+    #[error("input too short: {input_len} chars <= n-gram order {ngram_order}")]
     InputTooShort {
         input_len: usize,
         ngram_order: usize,
     },
     /// No valid n-grams were evaluated (degenerate input).
+    #[error("no valid n-grams evaluated")]
     NoValidNgrams,
     /// Perplexity computation produced NaN or infinity.
+    #[error("perplexity computation produced non-finite result")]
     ComputationFailed,
 }
-
-impl fmt::Display for PerplexityError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Undertrained {
-                sample_count,
-                required,
-            } => write!(
-                f,
-                "model undertrained: {sample_count} samples < {required} required"
-            ),
-            Self::InputTooShort {
-                input_len,
-                ngram_order,
-            } => write!(
-                f,
-                "input too short: {input_len} chars <= n-gram order {ngram_order}"
-            ),
-            Self::NoValidNgrams => write!(f, "no valid n-grams evaluated"),
-            Self::ComputationFailed => write!(f, "perplexity computation produced non-finite result"),
-        }
-    }
-}
-
-impl std::error::Error for PerplexityError {}
 
 // ── Model ────────────────────────────────────────────────────────────────────
 
@@ -105,10 +83,11 @@ impl PerplexityModel {
             let context = &text[start_byte..end_byte];
             let next_char = char_indices[i + self.n].1;
 
-            *self.totals.entry(context.to_owned()).or_default() += 1;
+            let ctx = context.to_owned();
+            *self.totals.entry(ctx.clone()).or_default() += 1;
             *self
                 .counts
-                .entry(context.to_owned())
+                .entry(ctx)
                 .or_default()
                 .entry(next_char)
                 .or_default() += 1;

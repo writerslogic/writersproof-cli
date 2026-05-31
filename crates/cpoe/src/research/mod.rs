@@ -34,6 +34,3 @@ pub use types::{
     MIN_SESSIONS_FOR_UPLOAD, RESEARCH_UPLOAD_URL,
 };
 pub use uploader::ResearchUploader;
-
-#[cfg(feature = "cpoe_jitter")]
-pub use helpers::compute_anonymized_statistics_hybrid;

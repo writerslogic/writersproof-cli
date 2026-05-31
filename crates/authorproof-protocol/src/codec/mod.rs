@@ -34,8 +34,6 @@ pub enum Format {
     /// CBOR encoding for evidence packets (RFC 8949 deterministic)
     #[default]
     Cbor,
-    /// CBOR encoding for attestation results (CWAR)
-    CborWar,
     /// JSON encoding (legacy, for human readability)
     Json,
 }
@@ -44,8 +42,7 @@ impl Format {
     /// Return the MIME type for this format.
     pub fn mime_type(&self) -> &'static str {
         match self {
-            Format::Cbor => "application/vnd.writersproof.cpoe+cbor",
-            Format::CborWar => "application/vnd.writersproof.cwar+cbor",
+            Format::Cbor => "application/c2pa",
             Format::Json => "application/json",
         }
     }
@@ -53,8 +50,7 @@ impl Format {
     /// Return the file extension for this format.
     pub fn extension(&self) -> &'static str {
         match self {
-            Format::Cbor => "cpoe",
-            Format::CborWar => "cwar",
+            Format::Cbor => "c2pa",
             Format::Json => "json",
         }
     }
@@ -116,7 +112,6 @@ pub type Result<T> = std::result::Result<T, CodecError>;
 pub fn encode<T: Serialize>(value: &T, format: Format) -> Result<Vec<u8>> {
     match format {
         Format::Cbor => cbor::encode(value),
-        Format::CborWar => cbor::encode_cwar(value),
         Format::Json => json::encode(value),
     }
 }
@@ -125,7 +120,6 @@ pub fn encode<T: Serialize>(value: &T, format: Format) -> Result<Vec<u8>> {
 pub fn decode<T: DeserializeOwned>(data: &[u8], format: Format) -> Result<T> {
     match format {
         Format::Cbor => cbor::decode(data),
-        Format::CborWar => cbor::decode_cwar(data),
         Format::Json => json::decode(data),
     }
 }
@@ -138,13 +132,9 @@ pub fn decode_auto<T: DeserializeOwned>(data: &[u8]) -> Result<T> {
 }
 
 /// Serialize a value into a writer in the specified format.
-pub fn encode_to<T: Serialize, W: Write>(value: &T, mut writer: W, format: Format) -> Result<()> {
+pub fn encode_to<T: Serialize, W: Write>(value: &T, writer: W, format: Format) -> Result<()> {
     match format {
         Format::Cbor => cbor::encode_to(value, writer),
-        Format::CborWar => {
-            let bytes = cbor::encode_cwar(value)?;
-            writer.write_all(&bytes).map_err(CodecError::Io)
-        }
         Format::Json => json::encode_to(value, writer),
     }
 }
@@ -152,7 +142,7 @@ pub fn encode_to<T: Serialize, W: Write>(value: &T, mut writer: W, format: Forma
 /// Deserialize a value from a reader in the specified format.
 pub fn decode_from<T: DeserializeOwned, R: Read>(reader: R, format: Format) -> Result<T> {
     match format {
-        Format::Cbor | Format::CborWar => cbor::decode_from(reader),
+        Format::Cbor => cbor::decode_from(reader),
         Format::Json => json::decode_from(reader),
     }
 }
@@ -255,15 +245,13 @@ mod tests {
 
     #[test]
     fn test_format_mime_type() {
-        assert_eq!(Format::Cbor.mime_type(), "application/vnd.writersproof.cpoe+cbor");
-        assert_eq!(Format::CborWar.mime_type(), "application/vnd.writersproof.cwar+cbor");
+        assert_eq!(Format::Cbor.mime_type(), "application/c2pa");
         assert_eq!(Format::Json.mime_type(), "application/json");
     }
 
     #[test]
     fn test_format_extension() {
-        assert_eq!(Format::Cbor.extension(), "cpoe");
-        assert_eq!(Format::CborWar.extension(), "cwar");
+        assert_eq!(Format::Cbor.extension(), "c2pa");
         assert_eq!(Format::Json.extension(), "json");
     }
 

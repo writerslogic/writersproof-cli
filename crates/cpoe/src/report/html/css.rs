@@ -160,7 +160,7 @@ pub(super) fn write_head(html: &mut String, r: &WarReport) -> fmt::Result {
 <meta name="cpoe-checkpoints" content="{cp_count}">
 <meta name="cpoe-report-version" content="1.0">
 <meta name="cpoe-protocol-version" content="cpoe-v1">
-<meta name="cpoe-media-type" content="application/vnd.writerslogic.cpoe+cbor">
+<meta name="cpoe-media-type" content="application/c2pa">
 
 <!-- W3C PROV-O + CPoE domain ontology (canonical machine-readable provenance) -->
 <script type="application/ld+json">

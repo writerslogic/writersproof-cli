@@ -5,15 +5,14 @@
 use crate::block::LAMBDA;
 use crate::params::PosmeParams;
 
-// Domain separation tags from the IETF draft.
-pub const DST_INIT: &[u8] = b"PoSME-init-v1";
-pub const DST_CAUSAL: &[u8] = b"PoSME-causal-v1";
-pub const DST_TRANSCRIPT: &[u8] = b"PoSME-transcript-v1";
-pub const DST_ADDR: &[u8] = b"PoSME-addr-v1";
-pub const DST_FIAT_SHAMIR: &[u8] = b"PoSME-challenge-v1";
+pub(crate) const DST_INIT: &[u8] = b"PoSME-init-v1";
+pub(crate) const DST_CAUSAL: &[u8] = b"PoSME-causal-v1";
+pub(crate) const DST_TRANSCRIPT: &[u8] = b"PoSME-transcript-v1";
+pub(crate) const DST_ADDR: &[u8] = b"PoSME-addr-v1";
+pub(crate) const DST_FIAT_SHAMIR: &[u8] = b"PoSME-challenge-v1";
 
-/// Compute BLAKE3(input_0 || input_1 || ... || input_n) -> 32 bytes.
-pub fn posme_hash(inputs: &[&[u8]]) -> [u8; LAMBDA] {
+/// BLAKE3(input_0 || ... || input_n) -> 32 bytes.
+pub(crate) fn posme_hash(inputs: &[&[u8]]) -> [u8; LAMBDA] {
     let mut hasher = blake3::Hasher::new();
     for input in inputs {
         hasher.update(input);
@@ -21,68 +20,54 @@ pub fn posme_hash(inputs: &[&[u8]]) -> [u8; LAMBDA] {
     *hasher.finalize().as_bytes()
 }
 
-/// Integer-to-Octet-String Primitive: encode u32 as 4 big-endian bytes.
-pub fn i2osp(x: u32) -> [u8; 4] {
+/// I2OSP: u32 -> 4 big-endian bytes.
+pub(crate) fn i2osp(x: u32) -> [u8; 4] {
     x.to_be_bytes()
 }
 
-/// XOF-based address derivation: BLAKE3 XOF at (DST_ADDR || cursor || I2OSP(index)),
-/// producing 4 bytes interpreted as big-endian u32, masked to n-1.
-///
-/// Requires n to be a power of two (enforced by `PosmeParams::validate()`).
-/// Uses bitwise AND instead of modulo for branchless, constant-time reduction.
-pub fn addr_from(cursor: &[u8; LAMBDA], index: u32, n: u32) -> u32 {
-    debug_assert!(n.is_power_of_two(), "addr_from requires n to be a power of 2");
+/// Address derivation via BLAKE3, masked to n-1 (n must be power of 2).
+pub(crate) fn addr_from(cursor: &[u8; LAMBDA], index: u32, n: u32) -> u32 {
+    debug_assert!(n.is_power_of_two());
     let h = posme_hash(&[DST_ADDR, cursor, &i2osp(index)]);
     u32::from_be_bytes([h[0], h[1], h[2], h[3]]) & (n - 1)
 }
 
-/// Derive Q unique Fiat-Shamir challenge step indices from (T_K, C_roots, params).
-///
-/// The params are bound into sigma so that a proof generated at one difficulty
-/// tier cannot be replayed as a proof for a different tier.
-pub fn derive_challenges(
+/// Derive Q unique Fiat-Shamir challenge indices via BLAKE3 XOF with rejection
+/// sampling. Params are bound into sigma to prevent cross-tier proof replay.
+pub(crate) fn derive_challenges(
     final_transcript: &[u8; LAMBDA],
     root_chain_commitment: &[u8; LAMBDA],
     params: &PosmeParams,
 ) -> Vec<u32> {
     let param_bytes = params.to_challenge_bytes();
-    let sigma = posme_hash(&[
-        DST_FIAT_SHAMIR,
-        final_transcript,
-        root_chain_commitment,
-        &param_bytes,
-    ]);
-    let q = params.challenges;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(DST_FIAT_SHAMIR);
+    hasher.update(final_transcript);
+    hasher.update(root_chain_commitment);
+    hasher.update(&param_bytes);
+    let mut reader = hasher.finalize_xof();
+
+    let q = params.challenges as usize;
     let k = params.total_steps;
+    // Reject raw < (2^32 mod k) to eliminate modulo bias. Zero when k is power-of-2.
+    let reject_below = (u32::MAX - k + 1) % k;
+
     let mut seen = std::collections::BTreeSet::new();
-    let mut challenges = Vec::with_capacity(q as usize);
-    let mut counter = 0u32;
-    let max_iters = (q as u32).saturating_mul(10).max(1000);
-    while challenges.len() < q as usize {
-        if counter >= max_iters {
-            break;
+    let mut challenges = Vec::with_capacity(q);
+    let mut buf = [0u8; 4];
+
+    while challenges.len() < q {
+        reader.fill(&mut buf);
+        let raw = u32::from_be_bytes(buf);
+        if raw < reject_below {
+            continue;
         }
-        let h = posme_hash(&[&sigma, &i2osp(counter)]);
-        let val = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) % k;
-        let step = val + 1;
+        let step = (raw % k) + 1;
         if seen.insert(step) {
             challenges.push(step);
         }
-        counter += 1;
     }
-    if challenges.len() != q as usize {
-        // If the hash space is too small relative to total_steps, we may not
-        // be able to derive Q unique indices.  Return what we have rather than
-        // silently accepting an incomplete challenge set — the verifier MUST
-        // reject proofs with fewer challenges than expected.
-        log::warn!(
-            "challenge derivation incomplete: got {} of {} in {} iterations",
-            challenges.len(),
-            q,
-            max_iters
-        );
-    }
+
     challenges
 }
 
@@ -117,17 +102,43 @@ mod tests {
     #[test]
     fn addr_deterministic() {
         let cursor = posme_hash(&[b"cursor"]);
-        let a = addr_from(&cursor, 0, 1024);
-        let b = addr_from(&cursor, 0, 1024);
-        assert_eq!(a, b);
+        assert_eq!(addr_from(&cursor, 0, 1024), addr_from(&cursor, 0, 1024));
     }
 
     #[test]
     fn addr_varies_with_index() {
         let cursor = posme_hash(&[b"cursor"]);
-        let a = addr_from(&cursor, 0, 1 << 24);
-        let b = addr_from(&cursor, 1, 1 << 24);
-        // With 2^24 possible values, collision probability is negligible.
-        assert_ne!(a, b);
+        assert_ne!(addr_from(&cursor, 0, 1 << 24), addr_from(&cursor, 1, 1 << 24));
+    }
+
+    #[test]
+    fn derive_challenges_deterministic() {
+        let t = posme_hash(&[b"transcript"]);
+        let r = posme_hash(&[b"roots"]);
+        let params = PosmeParams::test();
+        assert_eq!(derive_challenges(&t, &r, &params), derive_challenges(&t, &r, &params));
+    }
+
+    #[test]
+    fn derive_challenges_unique() {
+        let t = posme_hash(&[b"transcript"]);
+        let r = posme_hash(&[b"roots"]);
+        let params = PosmeParams::test();
+        let c = derive_challenges(&t, &r, &params);
+        assert_eq!(c.len(), params.challenges as usize);
+        let mut deduped = c.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(c.len(), deduped.len());
+    }
+
+    #[test]
+    fn derive_challenges_in_range() {
+        let t = posme_hash(&[b"transcript"]);
+        let r = posme_hash(&[b"roots"]);
+        let params = PosmeParams::test();
+        for &step in &derive_challenges(&t, &r, &params) {
+            assert!(step >= 1 && step <= params.total_steps);
+        }
     }
 }

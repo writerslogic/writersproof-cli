@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 /// Export stored events as a human-readable JSON evidence packet.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_export_evidence_json: path={} tier={} output={}", path, tier, output);
     let output_path = match crate::sentinel::helpers::validate_path(&output) {
         Ok(p) => p,
@@ -41,7 +41,7 @@ pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> F
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiResult {
     log::debug!("ffi_export_evidence: path={} tier={} output={}", path, tier, output);
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
         super::types::run_on_stack(move || export_evidence_inner(path, tier, output, None, None))
     })
 }
@@ -57,7 +57,7 @@ pub fn ffi_export_evidence_range(
     end_ns: i64,
 ) -> FfiResult {
     log::debug!("ffi_export_evidence_range: path={} tier={} output={} start_ns={} end_ns={}", path, tier, output, start_ns, end_ns);
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
         super::types::run_on_stack(move || export_evidence_inner(path, tier, output, Some(start_ns), Some(end_ns)))
     })
 }
@@ -65,7 +65,7 @@ pub fn ffi_export_evidence_range(
 /// Build an [`EvidencePacketWire`] from stored events, encode to CBOR, and sign.
 ///
 /// Returns `(packet, signed_bytes, is_signed)` on success, or an error string.
-fn build_wire_packet(
+pub(crate) fn build_wire_packet(
     path: String,
     tier: String,
     start_ns: Option<i64>,
@@ -408,7 +408,7 @@ fn export_evidence_inner(
     start_ns: Option<i64>,
     end_ns: Option<i64>,
 ) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     let output_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&output)
             .map_err(|e| format!("Invalid output path: {e}")),
@@ -524,7 +524,7 @@ fn collect_repair_history(data_dir: &std::path::Path) -> Vec<String> {
 /// Returns an FfiResult with the certificate fingerprint on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_provision_ca_cert() -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_provision_ca_cert");
     use crate::ffi::types::try_ffi;
 
@@ -985,12 +985,35 @@ pub fn ffi_get_compact_ref(path: String) -> String {
 
     let last_event = &events[events.len() - 1];
     let hash_hex = hex::encode(last_event.event_hash);
+    let hash_prefix = &hash_hex[..hash_hex.len().min(12)];
+    let count = events.len();
 
-    format!(
-        "cpoe-ref:writerslogic:{}:{}",
-        &hash_hex[..hash_hex.len().min(12)],
-        events.len()
-    )
+    // Sign the compact ref with the device key for verifiable VC binding.
+    let (author_did, vc_sig) = match crate::ffi::helpers::load_signing_key() {
+        Ok(sk) => {
+            let did = crate::identity::did_key_from_public(
+                sk.verifying_key().as_bytes(),
+            )
+            .unwrap_or_default();
+            let payload = format!("cpoe-ref:writerslogic:{hash_prefix}:{count}:{did}");
+            let sig = {
+                use ed25519_dalek::Signer;
+                sk.sign(payload.as_bytes())
+            };
+            (did, format!("f{}", hex::encode(sig.to_bytes())))
+        }
+        Err(_) => (String::new(), String::new()),
+    };
+
+    if author_did.is_empty() {
+        format!("cpoe-ref:writerslogic:{hash_prefix}:{count}")
+    } else {
+        format!(
+            "cpoe-ref:writerslogic:{hash_prefix}:{count}\n\
+             did:{author_did}\n\
+             sig:{vc_sig}"
+        )
+    }
     })
 }
 
@@ -998,7 +1021,7 @@ pub fn ffi_get_compact_ref(path: String) -> String {
 /// Returns an FfiResult with the output path on success.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult {
-    catch_ffi_panic!(FfiResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiResult, {
     log::debug!("ffi_extract_document: cpoe_path={} output_path={}", cpoe_path, output_path);
     let cpoe_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&cpoe_path)

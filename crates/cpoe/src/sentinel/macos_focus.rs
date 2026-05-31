@@ -567,6 +567,12 @@ struct AXObserverRefcon {
     /// ("[Modified]", loading progress) — skip the expensive re-identification
     /// probe when the title hasn't actually changed.
     last_title: std::cell::RefCell<String>,
+    /// The focused text element (retained) for `kAXValueChangedNotification`.
+    watched_element: std::cell::Cell<*mut std::ffi::c_void>,
+    /// Baseline character count for computing deltas on value changes.
+    prev_char_count: std::cell::Cell<i64>,
+    /// Timestamp of the last value change, for 50ms debounce.
+    last_value_change: std::cell::Cell<Option<std::time::Instant>>,
 }
 
 extern "C" fn ax_observer_callback(
@@ -619,9 +625,18 @@ extern "C" fn ax_observer_callback(
             title_str.as_concrete_TypeRef() as *const _,
         ) != 0
     };
+    let is_value_change = !is_focus_change && !is_title_change && unsafe {
+        use core_foundation::base::TCFType;
+        use core_foundation::string::CFString;
+        let value_str = CFString::from_static_string("AXValueChanged");
+        core_foundation_sys::base::CFEqual(
+            notification as *const _,
+            value_str.as_concrete_TypeRef() as *const _,
+        ) != 0
+    };
 
-    // When the focused window changes, re-register AXTitleChanged on the
-    // new window so intra-window tab switches are detected.
+    // When the focused window changes, re-register AXTitleChanged and
+    // kAXValueChanged on the new window/element.
     if is_focus_change {
         update_watched_window(ctx);
     }
@@ -640,6 +655,50 @@ extern "C" fn ax_observer_callback(
             return;
         }
         *last = current;
+    }
+
+    // Handle kAXValueChanged: debounce, compute char delta, and emit.
+    if is_value_change {
+        let now = std::time::Instant::now();
+        if let Some(last) = ctx.last_value_change.get() {
+            if now.duration_since(last) < std::time::Duration::from_millis(50) {
+                return; // <50ms since last — debounce
+            }
+        }
+        ctx.last_value_change.set(Some(now));
+
+        let el = ctx.watched_element.get();
+        if el.is_null() {
+            return;
+        }
+        let new_count = unsafe { ax_read_string(el, "AXNumberOfCharacters") }
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(-1);
+        if new_count < 0 {
+            return;
+        }
+        let prev = ctx.prev_char_count.get();
+        let delta = new_count - prev;
+        ctx.prev_char_count.set(new_count);
+        if delta == 0 {
+            return; // spurious notification
+        }
+
+        if let Some(info) = ctx.provider.get_active_window() {
+            let event = FocusEvent {
+                event_type: FocusEventType::ValueChanged,
+                path: info.path.clone().unwrap_or_default(),
+                shadow_id: String::new(),
+                app_bundle_id: info.application.clone(),
+                app_name: info.application.clone(),
+                window_title: info.title.clone(),
+                timestamp: SystemTime::now(),
+                window_id: info.window_number,
+                char_count_delta: Some(delta),
+            };
+            let _ = ctx.tx.send(event);
+        }
+        return;
     }
 
     if let Some(info) = ctx.provider.get_active_window() {
@@ -667,6 +726,7 @@ extern "C" fn ax_observer_callback(
             window_title: info.title.clone(),
             timestamp: SystemTime::now(),
             window_id: info.window_number,
+            char_count_delta: None,
         };
         let _ = ctx.tx.send(event);
     }
@@ -712,6 +772,49 @@ fn update_watched_window(ctx: &AXObserverRefcon) {
             );
         }
         ctx.watched_window.set(win);
+    }
+
+    // --- Element-level kAXValueChanged registration ---
+    let value_changed_str = CFString::from_static_string("AXValueChanged");
+
+    // Unregister from old element.
+    let old_el = ctx.watched_element.get();
+    if !old_el.is_null() {
+        unsafe {
+            let _ = AXObserverRemoveNotification(
+                observer,
+                old_el,
+                value_changed_str.as_concrete_TypeRef(),
+            );
+            ax_release(old_el);
+        }
+        ctx.watched_element.set(std::ptr::null_mut());
+        ctx.prev_char_count.set(0);
+    }
+
+    // Query the focused UI element and register if it's a text element.
+    let new_el = unsafe { ax_child(app_el, "AXFocusedUIElement") };
+    if let Some(el) = new_el {
+        let role = unsafe { ax_read_string(el, "AXRole") }.unwrap_or_default();
+        if role == "AXTextArea" || role == "AXTextField" || role == "AXWebArea" {
+            unsafe {
+                AXObserverAddNotification(
+                    observer,
+                    el,
+                    value_changed_str.as_concrete_TypeRef(),
+                    ctx as *const AXObserverRefcon as *mut std::ffi::c_void,
+                );
+            }
+            // Read baseline char count.
+            let count = unsafe { ax_read_string(el, "AXNumberOfCharacters") }
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            ctx.prev_char_count.set(count);
+            ctx.watched_element.set(el);
+        } else {
+            // Not a text element; release immediately.
+            unsafe { ax_release(el); }
+        }
     }
 }
 
@@ -838,6 +941,21 @@ fn ax_observer_run_loop(
                 }
                 unsafe { (**refcon).watched_window.set(std::ptr::null_mut()); }
             }
+            // Release the watched element's kAXValueChanged registration.
+            let watched_el = unsafe { (**refcon).watched_element.get() };
+            if !watched_el.is_null() && !observer.is_null() {
+                unsafe {
+                    let kax_value_changed =
+                        CFString::from_static_string("AXValueChanged");
+                    let _ = AXObserverRemoveNotification(
+                        *observer,
+                        watched_el,
+                        kax_value_changed.as_concrete_TypeRef(),
+                    );
+                    ax_release(watched_el);
+                }
+                unsafe { (**refcon).watched_element.set(std::ptr::null_mut()); }
+            }
         }
         if !observer.is_null() && !app_el.is_null() {
             unsafe {
@@ -892,6 +1010,9 @@ fn ax_observer_run_loop(
                 app_element: std::cell::Cell::new(std::ptr::null_mut()),
                 watched_window: std::cell::Cell::new(std::ptr::null_mut()),
                 last_title: std::cell::RefCell::new(String::new()),
+                watched_element: std::cell::Cell::new(std::ptr::null_mut()),
+                prev_char_count: std::cell::Cell::new(0),
+                last_value_change: std::cell::Cell::new(None),
             });
             current_refcon = Box::into_raw(refcon_box);
 

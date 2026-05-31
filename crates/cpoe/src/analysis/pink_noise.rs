@@ -17,7 +17,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
-use std::fmt;
 
 const MIN_SPECTRAL_SAMPLES: usize = 32;
 const MIN_POWER_THRESHOLD: f64 = 1e-20;
@@ -32,34 +31,17 @@ const SLOPE_BROWN_MAX: f64 = 2.2;
 const PEAK_DETECTION_MULTIPLIER: f64 = 3.0;
 
 /// Comprehensive error type for Pink Noise analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PinkNoiseError {
+    #[error("Insufficient data for spectral analysis: found {found}, minimum {required} required")]
     InsufficientDataPoints { found: usize, required: usize },
+    #[error("Insufficient valid frequency bins for analysis: found {found}, minimum {required} required")]
     InsufficientFrequencyBins { found: usize, required: usize },
+    #[error("PSD regression failed: {0}")]
     RegressionFailed(String),
+    #[error("PSD regression produced NaN/Inf")]
     RegressionProducedNaN,
 }
-
-impl fmt::Display for PinkNoiseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientDataPoints { found, required } => write!(
-                f,
-                "Insufficient data for spectral analysis: found {}, minimum {} required",
-                found, required
-            ),
-            Self::InsufficientFrequencyBins { found, required } => write!(
-                f,
-                "Insufficient valid frequency bins for analysis: found {}, minimum {} required",
-                found, required
-            ),
-            Self::RegressionFailed(msg) => write!(f, "PSD regression failed: {}", msg),
-            Self::RegressionProducedNaN => write!(f, "PSD regression produced NaN/Inf"),
-        }
-    }
-}
-
-impl std::error::Error for PinkNoiseError {}
 
 /// Result of spectral slope analysis on a time series.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,10 +115,9 @@ pub fn analyze_pink_noise(
     let psd = compute_psd(data)?;
 
     let freq_step = sample_rate / n as f64;
-    let mut log_freq = Vec::new();
-    let mut log_power = Vec::new();
-
     let nyquist_idx = n / 2;
+    let mut log_freq = Vec::with_capacity(nyquist_idx);
+    let mut log_power = Vec::with_capacity(nyquist_idx);
     for (i, &power) in psd.iter().enumerate().take(nyquist_idx).skip(1) {
         let freq = i as f64 * freq_step;
 

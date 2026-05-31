@@ -205,7 +205,7 @@ pub fn ffi_text_fragment_store(
     keystroke_context: String,
     confidence: f64,
 ) -> FfiTextFragmentStoreResult {
-    catch_ffi_panic!(FfiTextFragmentStoreResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiTextFragmentStoreResult, {
     log::debug!("ffi_text_fragment_store: session_id={}, app_bundle_id={}", session_id, app_bundle_id);
     if text_content.is_empty() {
         return FfiTextFragmentStoreResult::err("Text content is empty");
@@ -367,7 +367,7 @@ pub fn ffi_sentinel_record_paste(
     window_title: String,
     detection_confidence: f64,
 ) -> FfiPasteRecordResult {
-    catch_ffi_panic!(FfiPasteRecordResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiPasteRecordResult, {
     super::types::run_on_stack(move || {
     use crate::RwLockRecover as _;
     log::debug!("ffi_sentinel_record_paste: char_count={}, app_bundle_id={}", char_count, app_bundle_id);
@@ -456,7 +456,12 @@ pub fn ffi_sentinel_record_paste(
             };
 
             if let Err(e) = store.insert_text_fragment(&fragment) {
-                log::warn!("Failed to store paste fragment: {e}");
+                let msg = e.to_string();
+                if msg.contains("UNIQUE constraint") {
+                    log::debug!("Paste fragment already stored (duplicate hash)");
+                } else {
+                    log::warn!("Failed to store paste fragment: {e}");
+                }
             }
 
             let source = crate::sentinel::helpers::classify_paste_source(
@@ -496,7 +501,7 @@ pub fn ffi_attest_text(
     app_bundle_id: String,
     window_title: String,
 ) -> FfiAttestTextResult {
-    catch_ffi_panic!(FfiAttestTextResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiAttestTextResult, {
     log::debug!("ffi_attest_text: app_bundle_id={}, text_len={}", app_bundle_id, text_content.len());
     const MAX_ATTEST_TEXT_SIZE: usize = 10 * 1024 * 1024;
     if text_content.len() > MAX_ATTEST_TEXT_SIZE {
@@ -553,6 +558,20 @@ pub fn ffi_attest_text(
     );
 
     let signature = sign_fragment(&signing_key, &session_id, &fragment_hash, timestamp, &nonce);
+
+    // Build compact VC signature over the attestation claim.
+    // Includes nonce for replay resistance.
+    let nonce_hex = hex::encode(&nonce);
+    let author_did = crate::identity::did_key_from_public(
+        signing_key.verifying_key().as_bytes(),
+    )
+    .unwrap_or_default();
+    let vc_payload = format!("{tier}:{fragment_hash_hex}:{timestamp_iso}:{nonce_hex}:{author_did}");
+    let vc_sig = {
+        use ed25519_dalek::Signer;
+        let sig = signing_key.sign(vc_payload.as_bytes());
+        hex::encode(sig.to_bytes())
+    };
     drop(signing_key);
 
     let fragment = TextFragment {
@@ -582,6 +601,7 @@ pub fn ffi_attest_text(
     let attestation_text = format!(
         "WritersProof {tier_label} | ID: {writersproof_id} | {timestamp_iso}\n\
          {tier_description}\n\
+         VC-Sig: f{vc_sig}\n\
          verify.writersproof.com"
     );
 
@@ -590,6 +610,120 @@ pub fn ffi_attest_text(
         fragment_hash_hex,
         writersproof_id,
         attestation_text,
+    )
+    })
+}
+
+/// Embed a C2PA manifest into text content using invisible Unicode Variation
+/// Selectors per the C2PA "Embedding Manifests into Unstructured Text" spec.
+///
+/// Builds an evidence packet + C2PA manifest + VC for the text, then encodes
+/// the JUMBF as a `C2PATextManifestWrapper` appended to the text. The wrapper
+/// is visually invisible but carries full provenance.
+///
+/// Returns the text with the embedded wrapper appended, or an error.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_embed_text_manifest(
+    text_content: String,
+    app_bundle_id: String,
+    window_title: String,
+) -> FfiAttestTextResult {
+    catch_ffi_panic!(@err FfiAttestTextResult, {
+    log::debug!(
+        "ffi_embed_text_manifest: app_bundle_id={}, text_len={}",
+        app_bundle_id,
+        text_content.len()
+    );
+
+    const MAX_TEXT_SIZE: usize = 10 * 1024 * 1024;
+    if text_content.len() > MAX_TEXT_SIZE {
+        return FfiAttestTextResult::err(format!(
+            "Text too large: {} bytes (max {MAX_TEXT_SIZE})",
+            text_content.len()
+        ));
+    }
+
+    // First, run the standard attestation to get tier, hash, signature.
+    let attest_result = ffi_attest_text(
+        text_content.clone(),
+        app_bundle_id,
+        window_title,
+    );
+    if !attest_result.success {
+        return attest_result;
+    }
+
+    // Build a minimal C2PA JUMBF manifest for the text content.
+    let signing_key = match load_signing_key() {
+        Ok(sk) => sk,
+        Err(e) => return FfiAttestTextResult::err(format!("Signing key unavailable: {e}")),
+    };
+
+    // NFC-normalize the text before hashing (per C2PA spec).
+    let normalized: String = text_content.nfc().collect();
+    let text_hash: [u8; 32] = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(normalized.as_bytes());
+        hasher.finalize().into()
+    };
+
+    // Build a minimal evidence packet for the text.
+    let evidence_packet = authorproof_protocol::rfc::EvidencePacket {
+        version: 1,
+        profile_uri: crate::war::ear::CPOE_EVIDENCE_PROFILE.to_string(),
+        packet_id: attest_result.fragment_hash_hex.as_bytes().iter().copied().take(16).collect(),
+        created: current_timestamp_ms() as u64,
+        document: authorproof_protocol::rfc::DocumentRef {
+            content_hash: authorproof_protocol::rfc::HashValue {
+                algorithm: authorproof_protocol::rfc::HashAlgorithm::Sha256,
+                digest: text_hash.to_vec(),
+            },
+            filename: None,
+            byte_length: normalized.len() as u64,
+            char_count: normalized.chars().count() as u64,
+        },
+        checkpoints: Vec::new(),
+        attestation_tier: match attest_result.tier.as_str() {
+            "verified" => Some(authorproof_protocol::rfc::AttestationTier::HardwareBound),
+            "corroborated" => Some(authorproof_protocol::rfc::AttestationTier::AttestedSoftware),
+            _ => Some(authorproof_protocol::rfc::AttestationTier::SoftwareOnly),
+        },
+        baseline_verification: None,
+    };
+
+    let evidence_cbor = {
+        let mut buf = Vec::new();
+        match ciborium::ser::into_writer(&evidence_packet, &mut buf) {
+            Ok(()) => buf,
+            Err(e) => return FfiAttestTextResult::err(format!("CBOR encoding failed: {e}")),
+        }
+    };
+
+    let mut builder = authorproof_protocol::c2pa::C2paManifestBuilder::new(
+        evidence_packet,
+        evidence_cbor,
+        text_hash,
+    );
+
+    if let Ok(cert_der) = crate::ffi::helpers::load_or_generate_cert(&signing_key) {
+        builder = builder.cert_der(cert_der);
+    }
+
+    let jumbf = match builder.build_jumbf(&signing_key) {
+        Ok(j) => j,
+        Err(e) => return FfiAttestTextResult::err(format!("Failed to build C2PA manifest: {e}")),
+    };
+
+    // Encode the JUMBF as invisible variation selectors appended to the text.
+    let (wrapper, _exclusion_len) = authorproof_protocol::c2pa::text_embed::encode_text_manifest(&jumbf);
+    let embedded_text = format!("{text_content}{wrapper}");
+
+    FfiAttestTextResult::ok(
+        attest_result.tier,
+        attest_result.fragment_hash_hex,
+        attest_result.writersproof_id,
+        embedded_text,
     )
     })
 }
@@ -662,7 +796,7 @@ crate::ffi::types::impl_ffi_err!(FfiSyncResult);
 /// Mark a fragment as pending sync to CloudKit.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_mark_fragment_for_sync(fragment_id: i64) -> FfiSyncResult {
-    catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiSyncResult, {
     log::debug!("ffi_mark_fragment_for_sync: fragment_id={}", fragment_id);
     let store = try_ffi!(open_store(), FfiSyncResult);
 
@@ -680,7 +814,7 @@ pub fn ffi_update_fragment_sync_state(
     state: String,
     cloudkit_record_id: Option<String>,
 ) -> FfiSyncResult {
-    catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiSyncResult, {
     log::debug!("ffi_update_fragment_sync_state: fragment_id={}, state={}", fragment_id, state);
     let store = try_ffi!(open_store(), FfiSyncResult);
 
@@ -738,7 +872,7 @@ pub fn ffi_apply_remote_fragment(
     keystroke_confidence: Option<f64>,
     cloudkit_record_id: Option<String>,
 ) -> FfiTextFragmentStoreResult {
-    catch_ffi_panic!(FfiTextFragmentStoreResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiTextFragmentStoreResult, {
     log::debug!("ffi_apply_remote_fragment: session_id={}, fragment_hash_hex={}", session_id, fragment_hash_hex);
     if timestamp_ms <= 0 {
         return FfiTextFragmentStoreResult::err("timestamp_ms must be positive");
@@ -841,7 +975,7 @@ pub fn ffi_resolve_sync_conflict(
     remote_timestamp_ms: Option<i64>,
     remote_cloudkit_record_id: Option<String>,
 ) -> FfiSyncResult {
-    catch_ffi_panic!(FfiSyncResult::err("engine internal error"), {
+    catch_ffi_panic!(@err FfiSyncResult, {
     log::debug!("ffi_resolve_sync_conflict: fragment_id={}, strategy={}", fragment_id, strategy);
     use crate::store::text_fragments::SyncResolutionStrategy;
 

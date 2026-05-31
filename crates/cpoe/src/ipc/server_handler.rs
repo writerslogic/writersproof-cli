@@ -8,7 +8,7 @@ use super::crypto::{
     SECURE_JSON_PROTOCOL_MAGIC,
 };
 use super::messages::{IpcErrorCode, IpcMessage, IpcMessageHandler, MAX_MESSAGE_SIZE};
-use super::rbac::{check_authorization, required_role, IpcRole};
+use super::rbac::{required_role, IpcRole};
 use super::server::len_to_u32;
 use crate::store::access_log::{new_access_entry, AccessAction, AccessLog, AccessResult};
 use crate::MutexRecover;
@@ -239,7 +239,7 @@ pub(super) async fn handle_connection_inner<
                 }
 
                 let msg_required_role = required_role(&msg);
-                if !check_authorization(client_role, msg_required_role) {
+                if client_role < msg_required_role {
                     log::warn!(
                         "IPC: unauthorized message for role {:?} on {} (requires {:?})",
                         client_role,

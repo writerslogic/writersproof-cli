@@ -391,38 +391,10 @@ impl SecureStore {
         rows.map(|r| r.map_err(anyhow::Error::from)).collect()
     }
 
-    /// Return (timestamp, 1) pairs for all events after `start_ts`.
-    pub fn get_global_activity(&self, start_ts: i64) -> anyhow::Result<Vec<(i64, i64)>> {
-        Ok(self
-            .get_all_event_timestamps_unverified(start_ts)?
-            .into_iter()
-            .map(|ts| (ts, 1i64))
-            .collect())
-    }
-
-    /// Return all event timestamps after `start_ts`, ascending.
-    ///
-    /// **HMAC note**: This query returns raw column values without HMAC verification.
-    /// Callers must treat timestamps as untrusted for forensic purposes; use
-    /// `get_all_event_timestamps_verified` or `get_all_events_grouped` for
-    /// integrity-sensitive paths.
-    pub(crate) fn get_all_event_timestamps_unverified(
-        &self,
-        start_ts: i64,
-    ) -> anyhow::Result<Vec<i64>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT timestamp_ns FROM secure_events WHERE timestamp_ns >= ? ORDER BY timestamp_ns ASC"
-        )?;
-
-        let rows = stmt.query_map([start_ts], |row| row.get(0))?;
-        rows.map(|r| r.map_err(anyhow::Error::from)).collect()
-    }
-
     /// Return all HMAC-verified event timestamps after `start_ts`, ascending.
     ///
     /// Each row's HMAC is verified before including its timestamp in the result.
     /// Returns an error if any event fails HMAC verification (possible tampering).
-    #[allow(dead_code)]
     pub(crate) fn get_all_event_timestamps_verified(
         &self,
         start_ts: i64,

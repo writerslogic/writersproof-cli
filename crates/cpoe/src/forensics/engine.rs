@@ -4,10 +4,7 @@
 
 use statrs::distribution::{ContinuousCDF, Normal};
 
-use crate::jitter::SimpleJitterSample;
 use crate::PhysicalContext;
-
-use super::cadence::is_retyped_content;
 
 /// Physical-context forensic analysis result.
 #[derive(Debug, Clone)]
@@ -32,14 +29,6 @@ pub struct SignalAnalysis {
 pub struct ForensicEngine;
 
 impl ForensicEngine {
-    /// Detect retyped content via cognitive cadence analysis.
-    ///
-    /// Original composition shows "cognitive bursts" (fast typing + long pauses).
-    /// Retyped/transcribed content has unnaturally stable rhythm.
-    pub fn evaluate_cadence(samples: &[SimpleJitterSample]) -> bool {
-        is_retyped_content(samples)
-    }
-
     /// Full forensic authorship analysis from `SecureEvent` sequence.
     pub fn evaluate_authorship(
         _file_path: &str,

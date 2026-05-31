@@ -218,11 +218,12 @@ pub fn handle_focus_event_sync(
                             // Fallback: if there's exactly one title:// session for this
                             // app, upgrade it (covers apps that report window_id=None).
                             let app_prefix = format!("title://{}/", event.app_bundle_id);
-                            let matches: Vec<_> = sessions_map.keys()
-                                .filter(|k| k.starts_with(&app_prefix))
-                                .cloned()
-                                .collect();
-                            if matches.len() == 1 { Some(matches[0].clone()) } else { None }
+                            let mut it = sessions_map.keys()
+                                .filter(|k| k.starts_with(&app_prefix));
+                            match (it.next(), it.next()) {
+                                (Some(only), None) => Some(only.clone()),
+                                _ => None,
+                            }
                         });
                     if let Some(old_key) = old_key {
                         if let Some(mut session) = sessions_map.remove(&old_key) {
@@ -1216,6 +1217,13 @@ pub fn create_document_hash_payload(hash: &str, size: i64) -> Result<Vec<u8>, St
 /// canonicalizes the parent directory and appends the file name.
 pub fn validate_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
     let path = path.as_ref();
+
+    // Virtual paths (title://, shadow://) are sentinel-internal and not
+    // filesystem paths — return as-is without canonicalization.
+    let path_str = path.to_string_lossy();
+    if path_str.starts_with("title://") || path_str.starts_with("shadow://") {
+        return Ok(path.to_path_buf());
+    }
 
     if path.exists() {
         let canonical = crate::utils::fs::canonicalize_validated(path)

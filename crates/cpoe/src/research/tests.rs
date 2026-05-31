@@ -68,7 +68,7 @@ fn test_research_collector_disabled() {
     };
 
     let mut collector = ResearchCollector::new(config);
-    assert!(!collector.is_enabled());
+    assert!(!collector.config.contribute_to_research);
 
     let evidence = Evidence {
         session_id: "test".to_string(),
@@ -81,7 +81,7 @@ fn test_research_collector_disabled() {
     };
 
     collector.add_session(&evidence);
-    assert_eq!(collector.session_count(), 0);
+    assert_eq!(collector.sessions.len(), 0);
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn test_collector_enabled_with_sufficient_samples() {
     };
 
     let mut collector = ResearchCollector::new(config);
-    assert!(collector.is_enabled());
+    assert!(collector.config.contribute_to_research);
 
     let now = Utc::now();
     let samples: Vec<Sample> = (0..5)
@@ -160,7 +160,7 @@ fn test_collector_enabled_with_sufficient_samples() {
     };
 
     collector.add_session(&evidence);
-    assert_eq!(collector.session_count(), 1);
+    assert_eq!(collector.sessions.len(), 1);
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn test_collector_rejects_insufficient_samples() {
     };
 
     collector.add_session(&evidence);
-    assert_eq!(collector.session_count(), 0);
+    assert_eq!(collector.sessions.len(), 0);
 }
 
 #[test]
@@ -227,7 +227,7 @@ fn test_collector_max_sessions_eviction() {
         collector.add_session(&evidence);
     }
 
-    assert_eq!(collector.session_count(), 3);
+    assert_eq!(collector.sessions.len(), 3);
 }
 
 #[test]
@@ -376,7 +376,7 @@ fn test_anonymized_statistics_computation() {
         chain_valid: true,
     };
 
-    let anon = helpers::compute_anonymized_statistics(&stats, &samples);
+    let anon = helpers::compute_anonymized_statistics(&stats, &samples, None);
     assert_eq!(anon.total_samples, 3);
     assert_eq!(anon.duration_bucket, "5-15min");
     assert_eq!(anon.typing_rate_bucket, "moderate");
@@ -399,7 +399,7 @@ fn test_anonymized_statistics_empty_samples() {
     use crate::jitter::Statistics;
 
     let stats = Statistics::default();
-    let anon = helpers::compute_anonymized_statistics(&stats, &[]);
+    let anon = helpers::compute_anonymized_statistics(&stats, &[], None);
 
     assert_eq!(anon.total_samples, 0);
     assert_eq!(anon.mean_jitter_micros, 0.0);
@@ -445,10 +445,10 @@ fn test_collector_save_and_load() {
     };
 
     collector.add_session(&evidence);
-    assert_eq!(collector.session_count(), 1);
+    assert_eq!(collector.sessions.len(), 1);
     collector.save().expect("save should succeed");
 
     let mut loader = ResearchCollector::new(config);
     loader.load().expect("load should succeed");
-    assert_eq!(loader.session_count(), 1);
+    assert_eq!(loader.sessions.len(), 1);
 }
