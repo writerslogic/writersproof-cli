@@ -9,14 +9,14 @@ use chrono::{DateTime, Utc};
 use sha2::Digest;
 
 use cpoe::authorproof_protocol::crypto::EvidenceSigner;
-use cpoe::authorproof_protocol::rfc::{CBOR_TAG_ATTESTATION_RESULT, CBOR_TAG_EVIDENCE_PACKET};
+use cpoe::authorproof_protocol::rfc::CBOR_TAG_EVIDENCE_PACKET;
 use cpoe::evidence;
 use cpoe::report::{self, WarReport};
 use cpoe::war;
 
 use crate::output::OutputMode;
 
-use super::packet::build_wire_packet_from_events;
+
 
 /// Parameters for evidence output.
 pub(super) struct EvidenceOutputContext<'a> {
@@ -81,65 +81,6 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
     let verbose = !out.quiet && !out.json;
 
     match *format_lower {
-        "cpoe" | "cbor" => {
-            let wire_packet = build_wire_packet_from_events(
-                events,
-                file_path,
-                vdf_params,
-                spec_profile_uri,
-                *spec_content_tier,
-                *spec_attestation_tier,
-            )?;
-            let cbor_data = wire_packet
-                .encode_cbor()
-                .map_err(|e| anyhow!("CBOR encode failed: {}", e))?;
-
-            // Append CRC32 integrity footer: [CBOR][CRC32-BE 4 bytes][magic "CPOE" 4 bytes]
-            let crc = crc32fast::hash(&cbor_data);
-            let mut package = Vec::with_capacity(cbor_data.len() + 8);
-            package.extend_from_slice(&cbor_data);
-            package.extend_from_slice(&crc.to_be_bytes());
-            package.extend_from_slice(b"CPOE");
-
-            write_atomic(out_path, &package)?;
-
-            if verbose {
-                println!();
-                println!("CPoE evidence exported to: {}", out_path.display());
-                println!("  Format: CBOR (CDDL-conformant, tagged)");
-                println!("  CBOR tag: {}", CBOR_TAG_EVIDENCE_PACKET);
-                println!("  Checkpoints: {}", events.len());
-                println!("  Size: {} bytes (CBOR {} + CRC32 footer 8)", package.len(), cbor_data.len());
-                println!("  CRC32: {:08x}", crc);
-            }
-        }
-        "cwar" | "war" => {
-            let evidence_packet: evidence::Packet =
-                serde_json::from_value(ctx.packet.clone()).context("create evidence packet")?;
-
-            let war_block = war::Block::from_packet_signed(&evidence_packet, ctx.signer)
-                .map_err(|e| anyhow!("create WAR block: {}", e))?;
-
-            let data = war_block.encode_ascii();
-            write_atomic(out_path, data.as_bytes())?;
-
-            if verbose {
-                println!();
-                println!("WAR block exported to: {}", out_path.display());
-                println!("  Version: {}", war_block.version.as_str());
-                println!("  Author: {}", war_block.author);
-                println!("  Signed: {}", if war_block.signed { "yes" } else { "no" });
-                println!("  Checkpoints: {}", events.len());
-                println!("  Total VDF time: {:?}", total_vdf_time);
-                println!("  Tier: {} (content-tier: {})", tier, spec_content_tier);
-                println!("  Profile: {}", spec_profile_uri);
-                println!("  Attestation tier: T{}", spec_attestation_tier);
-                println!(
-                    "  CBOR tags: evidence={}, war={}",
-                    CBOR_TAG_EVIDENCE_PACKET, CBOR_TAG_ATTESTATION_RESULT
-                );
-            }
-        }
         "html" | "report" => {
             let pub_key = signer.public_key();
             let key_fp = if pub_key.len() >= 8 {
@@ -374,13 +315,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
             );
             builder = cpoe::ffi::evidence_derivative::enrich_c2pa_builder(builder, &metrics);
 
-            let jumbf_bytes = builder
-                .build_jumbf(ctx.signer)
-                .map_err(|e| anyhow!("C2PA JUMBF build failed: {}", e))?;
-
-            write_atomic(out_path, &jumbf_bytes)?;
-
-            let json_path = out_path.with_extension("c2pa.json");
+            // Build signed VC and embed in manifest (matches FFI path).
             let evidence_packet_engine: evidence::Packet =
                 serde_json::from_value(ctx.packet.clone())
                     .context("create evidence packet for assertion")?;
@@ -391,28 +326,34 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 &policy,
             ) {
                 if let Some(ear) = block.ear.as_ref() {
-                    if let Ok(mut assertion) =
-                        war::profiles::c2pa::to_c2pa_assertion(ear)
+                    let provider = cpoe::tpm::detect_provider();
+                    if let Some(did_suffix) =
+                        cpoe::identity::did_key_from_public(
+                            &ctx.signer.public_key(),
+                        )
                     {
-                        let writing_mode = metrics
-                            .writing_mode
-                            .as_ref()
-                            .map(|wm| wm.mode.to_string());
-                        let comp_mode = metrics
-                            .composition_mode
-                            .as_ref()
-                            .and_then(|c| c.dominant_mode)
-                            .map(|m| m.to_string());
-                        let signals = build_c2pa_forensic_signals(&metrics);
-                        assertion.enrich_forensic_signals(
-                            writing_mode, comp_mode, signals,
-                        );
-                        let json_data =
-                            serde_json::to_string_pretty(&assertion)?;
-                        write_atomic(&json_path, json_data.as_bytes())?;
+                        let author_did =
+                            format!("did:key:{}", did_suffix);
+                        if let Ok(vc) =
+                            war::profiles::vc::to_signed_verifiable_credential(
+                                ear, &author_did, &*provider,
+                            )
+                        {
+                            if let Ok(vc_json) =
+                                serde_json::to_string(&vc)
+                            {
+                                builder = builder.vc_embedded(vc_json);
+                            }
+                        }
                     }
                 }
             }
+
+            let jumbf_bytes = builder
+                .build_jumbf(ctx.signer)
+                .map_err(|e| anyhow!("C2PA JUMBF build failed: {}", e))?;
+
+            write_atomic(out_path, &jumbf_bytes)?;
 
             if verbose {
                 println!();
@@ -425,12 +366,6 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 println!("  Checkpoints: {}", events.len());
                 println!("  Manifest size: {} bytes", jumbf_bytes.len());
                 println!("  Evidence CBOR: {} bytes", evidence_cbor.len());
-                if json_path.exists() {
-                    println!(
-                        "  Assertion JSON: {}",
-                        json_path.display()
-                    );
-                }
             }
         }
         "md" | "markdown" => {
@@ -820,6 +755,7 @@ fn enrich_report_vc(
     report.verifiable_credential_json = serde_json::to_string_pretty(&vc).ok();
 }
 
+#[allow(dead_code)] // Wired once C2PA manifest embedding is complete
 fn build_c2pa_forensic_signals(
     metrics: &cpoe::forensics::ForensicMetrics,
 ) -> Option<war::profiles::c2pa::C2paForensicSignals> {

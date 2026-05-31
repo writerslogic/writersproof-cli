@@ -10,7 +10,7 @@ use super::jitter::{
     analyze_browser_jitter, compute_jitter_stats, JITTER_REFILL_PER_MS, JITTER_TOKEN_COST,
     JITTER_TOKEN_MAX, MAX_BATCH_SIZE,
 };
-use super::protocol::{is_domain_allowed, now_nanos, validate_content_hash};
+use super::protocol::{is_url_acceptable, now_nanos, validate_content_hash};
 use super::session_index;
 use super::types::{session, Response, Session};
 
@@ -42,14 +42,10 @@ pub(crate) fn handle_start_session(
         .take(MAX_TITLE_LEN)
         .collect();
 
-    if !is_domain_allowed(&document_url) {
-        let host = url::Url::parse(&document_url)
-            .ok()
-            .and_then(|u| u.host_str().map(String::from))
-            .unwrap_or_else(|| "(invalid URL)".to_string());
+    if !is_url_acceptable(&document_url) {
         return Response::Error {
-            message: format!("Unsupported domain: {}", host),
-            code: "DOMAIN_NOT_ALLOWED".into(),
+            message: "Only http and https URLs are accepted".into(),
+            code: "INVALID_URL_SCHEME".into(),
         };
     }
 
@@ -906,10 +902,10 @@ pub(crate) fn handle_snapshot_save(
             code: "URL_TOO_LONG".into(),
         };
     }
-    if !is_domain_allowed(&document_url) {
+    if !is_url_acceptable(&document_url) {
         return Response::Error {
-            message: "Unsupported domain".into(),
-            code: "DOMAIN_NOT_ALLOWED".into(),
+            message: "Only http and https URLs are accepted".into(),
+            code: "INVALID_URL_SCHEME".into(),
         };
     }
     if let Err(e) = validate_content_hash(&content_hash) {

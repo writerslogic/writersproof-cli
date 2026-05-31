@@ -47,8 +47,8 @@ The duration between a key press and its corresponding release. A secondary biom
 ### Ed25519
 A modern, high-performance Edwards-curve digital signature algorithm (EdDSA) used by CPoE for all identity and checkpoint signatures. Specified in RFC 8032.
 
-### Evidence Packet (`.cpoe`)
-The serialized output of a cpoe session containing all process evidence: checkpoints, VDF proofs, behavioral metrics, and optional hardware attestations. Encoded in CBOR following the PoP wire format.
+### Evidence Packet (`.c2pa`)
+The serialized output of a CPoE session containing all process evidence: checkpoints, VDF proofs, behavioral metrics, and optional hardware attestations. Encoded as a C2PA manifest following the PoP wire format.
 
 ### Evidence Tier
 The level of assurance provided by an evidence packet:

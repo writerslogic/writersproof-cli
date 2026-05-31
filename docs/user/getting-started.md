@@ -1,23 +1,12 @@
 # Getting Started with CPoE
 
-CPoE is a cryptographic authorship witnessing system that creates tamper-evident records of your creative process. This guide will help you install and configure CPoE for first use.
-
-## Table of Contents
-
-- [System Requirements](#system-requirements)
-- [Installation](#installation)
-- [Initial Setup](#initial-setup)
-- [Your First Checkpoint](#your-first-checkpoint)
-- [Exporting Evidence](#exporting-evidence)
-- [Next Steps](#next-steps)
+CPoE is a cryptographic authorship witnessing system that creates tamper-evident records of your creative process.
 
 ## System Requirements
 
-### Minimum Requirements
-
 | Component | Requirement |
-|-----------|------------|
-| Operating System | macOS 13.0+ or Linux (kernel 5.0+) |
+|-----------|-------------|
+| Operating System | macOS 13.0+, Windows 10+, or Linux (kernel 5.0+) |
 | CPU | 64-bit processor (x86_64 or ARM64) |
 | RAM | 512 MB available |
 | Storage | 100 MB for installation, plus space for evidence data |
@@ -25,69 +14,50 @@ CPoE is a cryptographic authorship witnessing system that creates tamper-evident
 
 ### Optional Hardware
 
-- **TPM 2.0**: Enables hardware-backed attestation (Tier 3 evidence)
-- **Secure Enclave**: On Apple Silicon Macs, provides enhanced device binding
+- **TPM 2.0** (Windows/Linux) — Enables hardware-backed attestation (Tier 3+ evidence)
+- **Secure Enclave** (Apple Silicon Macs) — Provides enhanced device binding
 
 ## Installation
 
-### macOS (Recommended)
+### macOS App (Recommended)
 
-#### Using Homebrew
+1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/writerslogic/releases)
+2. Drag **WritersProof** to Applications
+3. Launch and follow the onboarding prompts
+
+The app includes menu bar integration, automatic keystroke tracking, visual checkpoint history, and one-click evidence export.
+
+### macOS CLI (Homebrew)
 
 ```bash
 brew tap writerslogic/cpoe
 brew install writerslogic
 ```
 
-#### Using the macOS App
-
-1. Download `CPoE.dmg` from the [releases page](https://github.com/writerslogic/cpoe/releases)
-2. Open the DMG file
-3. Drag **CPoE** to your Applications folder
-4. Launch the app from Applications or Spotlight
-
-The macOS app includes:
-- Menu bar integration for quick access
-- Automatic keystroke tracking
-- Visual checkpoint history
-- One-click evidence export
-
-### Linux
-
-#### Using the Install Script
+### Linux CLI
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/writerslogic/cpoe/main/install.sh | bash
+curl -fsSL https://writerslogic.com/install.sh | bash
 ```
 
-#### Building from Source
+### Building from Source
 
 ```bash
-git clone https://github.com/writerslogic/cpoe.git
+git clone https://github.com/writerslogic/writerslogic.git
 cd writerslogic
-make build
-sudo make install
+cargo build --release -p cpoe_cli
+# Binary at target/release/cpoe
 ```
 
-### Verifying Installation
+### Verify Installation
 
 ```bash
-CPoE version
-```
-
-Expected output:
-```
-CPoE v1.0.0
-  Build:    2026-01-15T10:00:00Z
-  Commit:   abc1234
-  Platform: darwin/arm64
+cpoe --help
 ```
 
 ## Initial Setup
 
-### Initialize CPoE
-
-Before creating checkpoints, you must initialize CPoE:
+### Initialize
 
 ```bash
 cpoe init
@@ -96,71 +66,41 @@ cpoe init
 This creates:
 - `~/.writersproof/` directory structure
 - Ed25519 signing key pair (your cryptographic identity)
-- Master identity from device PUF (hardware binding)
+- Master identity derived from device hardware (PUF binding)
 - Secure SQLite database for events
-- Default configuration
-
-Sample output:
-```
-Generating Ed25519 signing key...
-  Public key: a1b2c3d4...
-Initializing master identity from PUF...
-  Master Identity: 5f8e2a9c
-  Device ID: device-mac-m1-001
-Creating secure event database...
-  Database: events.db (tamper-evident)
-
-cpoe initialized!
-
-Next steps:
-  1. Run 'cpoe calibrate' to calibrate VDF for your machine
-  2. Create checkpoints with 'cpoe commit <file> -m "message"'
-  3. Export evidence with 'cpoe export <file>'
-```
+- Default `config.toml` configuration
 
 ### Calibrate VDF
 
-The Verifiable Delay Function (VDF) provides timing proofs. Calibration measures your CPU speed:
+The Verifiable Delay Function provides timing proofs. Calibration measures your CPU speed:
 
 ```bash
 cpoe calibrate
 ```
 
-This takes about 30 seconds and only needs to be done once per machine.
+Takes ~30 seconds. Only needs to be done once per machine.
 
 ### Configuration (Optional)
 
-Edit `~/.writersproof/config.json` to customize behavior:
+Edit `~/.writersproof/config.toml`:
 
-```json
-{
-  "version": 4,
-  "storage": {
-    "type": "sqlite",
-    "path": "events.db",
-    "secure": true
-  },
-  "vdf": {
-    "iterations_per_second": 15000000,
-    "min_iterations": 100000,
-    "max_iterations": 3600000000,
-    "calibrated": true
-  },
-  "sentinel": {
-    "auto_start": false,
-    "heartbeat_seconds": 60,
-    "checkpoint_seconds": 60
-  }
-}
+```toml
+[vdf]
+iterations_per_second = 15000000   # Set by calibrate
+min_iterations = 100000
+max_iterations = 3600000000
+
+[sentinel]
+auto_start = false
+heartbeat_interval_secs = 60
+checkpoint_interval_secs = 60
 ```
 
-See [Configuration Guide](configuration.md) for detailed options.
+See [Configuration Guide](configuration.md) for all options.
 
 ## Your First Checkpoint
 
 ### Basic Checkpoint
-
-Create a checkpoint for any file:
 
 ```bash
 # Create or edit a document
@@ -170,31 +110,10 @@ echo "My first witnessed document" > mydoc.txt
 cpoe commit mydoc.txt -m "Initial version"
 ```
 
-Output:
-```
-Computing checkpoint... done (1.2s)
-
-Checkpoint #1 created
-  File: /Users/you/mydoc.txt
-  Hash: 8f14e45f...
-  VDF:  1500000 iterations
-  Time: 2026-01-15T10:30:00Z
-```
-
 ### View Checkpoint History
 
 ```bash
 cpoe log mydoc.txt
-```
-
-Output:
-```
-Checkpoint History for mydoc.txt
-
-#  Time                  Size     Message
-1  2026-01-15 10:30:00  28 B     Initial version
-2  2026-01-15 10:45:00  156 B    Added introduction
-3  2026-01-15 11:00:00  892 B    Completed first draft
 ```
 
 ### Enhanced Workflow with Keystroke Tracking
@@ -208,9 +127,6 @@ cpoe track start mydoc.txt
 # ... write your document ...
 # The system counts keystrokes (not content!) in the background
 
-# Check progress
-cpoe track status
-
 # Create checkpoint with keystroke evidence
 cpoe commit mydoc.txt -m "Draft with tracked keystrokes"
 
@@ -220,75 +136,48 @@ cpoe track stop
 
 ## Exporting Evidence
 
-### Export Evidence Packet
-
 When you need to prove authorship:
 
 ```bash
-cpoe export mydoc.txt
+cpoe export mydoc.txt -o mydoc.c2pa
 ```
 
-This creates `mydoc.cpoe` containing:
+This creates a self-contained evidence packet containing:
 - Complete checkpoint chain with VDF proofs
 - Key hierarchy with session certificates
 - Signed declaration of creative process
-- Verification instructions
+- Forensic metrics (if keystroke tracking was active)
 
-### Verify Evidence
-
-Anyone can verify the evidence:
+### Export Formats
 
 ```bash
-cpoe verify mydoc.cpoe
+cpoe export mydoc.txt -f json     # Human-readable JSON
+cpoe export mydoc.txt -f html     # Self-contained HTML report
+cpoe export mydoc.txt -f pdf      # Signed PDF with anti-forgery features
+cpoe export mydoc.txt -f c2pa     # C2PA Content Credentials manifest with embedded VC
 ```
 
-Output:
-```
-Evidence Packet Verification
-
-Document: mydoc.txt
-Author Identity: 5f8e2a9c
-Checkpoints: 15
-Time Span: 2026-01-15 10:30:00 to 2026-01-15 18:45:00
-
-Verification Results:
-  [PASS] Checkpoint chain integrity
-  [PASS] VDF timing proofs (minimum 8 hours proven)
-  [PASS] Key hierarchy valid
-  [PASS] Session certificate authentic
-  [PASS] Signatures valid
-
-Evidence Class: Tier 2 (Software-Attested)
-Overall: VERIFIED
-```
-
-## Sharing and Verifying Evidence
+## Verifying Evidence
 
 ### For Authors: Sharing Your Evidence
 
-When you need to prove authorship to an editor, publisher, or legal counterpart:
-
 ```bash
-# Export the evidence packet
-cpoe export mydoc.txt -o mydoc.cpoe
-
-# Share mydoc.cpoe with the recipient
+cpoe export mydoc.txt -o mydoc.c2pa
+# Share mydoc.c2pa with the recipient
 ```
 
-The `.cpoe` file is self-contained — the recipient does not need access to your machine, your database, or your private key.
+The `.c2pa` file is self-contained. The recipient does not need access to your machine, database, or private key.
 
-### For Recipients: Verifying a .cpoe File
+### For Recipients: Verifying a .c2pa File
 
-Anyone can verify a `.cpoe` evidence packet. No account, registration, or special software is required.
+**Option 1 -- Web (no install needed):**
 
-**Option 1 — Web (no install needed):**
+Upload at [writerslogic.com/verify](https://writerslogic.com/verify). Verification runs entirely client-side; the file is never uploaded to a server.
 
-Upload the file at [writerslogic.com/verify](https://writerslogic.com/verify). Verification runs entirely client-side; the file is never uploaded to a server.
-
-**Option 2 — CLI:**
+**Option 2 -- CLI:**
 
 ```bash
-cpoe verify mydoc.cpoe
+cpoe verify mydoc.c2pa
 ```
 
 Verification checks:
@@ -298,22 +187,15 @@ Verification checks:
 - Key hierarchy and session certificate authenticity
 - Behavioral consistency (keystroke metrics, if present)
 
-The output shows a per-check pass/fail summary and an overall verdict.
-
 ## Next Steps
 
-1. **Read the [CLI Reference](cli-reference.md)** for all available commands
-2. **Configure [automatic tracking](configuration.md#sentinel)** with the sentinel daemon
-3. **Try the [macOS app](gui-guide.md)** for a visual interface
-4. **Understand [evidence tiers](../protocol/evidence-format.md#evidence-tiers)** for stronger proofs
-5. **Review [privacy considerations](../security/privacy-analysis.md)** to understand data handling
+1. [CLI Reference](cli-reference.md) — All available commands
+2. [Configuration](configuration.md) — Customize sentinel, VDF, and beacon settings
+3. [GUI Guide](gui-guide.md) — WritersProof macOS app walkthrough
+4. [FAQ](faq.md) — Privacy, security, and legal questions
+5. [Troubleshooting](troubleshooting.md) — Common issues and solutions
 
 ## Getting Help
 
-- **Documentation**: https://docs.writerslogic.com
-- **Issues**: https://github.com/writerslogic/cpoe/issues
+- **Issues**: https://github.com/writerslogic/writerslogic/issues
 - **Website**: https://writerslogic.com
-
----
-
-*Patent Pending: USPTO Application No. 19/460,364*

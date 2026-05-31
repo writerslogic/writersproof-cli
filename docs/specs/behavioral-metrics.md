@@ -1,8 +1,8 @@
 # Behavioral Forensic Metrics Specification
 
-**Version:** 1.0.0
+**Version:** 2.0.0
 **Status:** Draft
-**Last Updated:** 2026-01-25
+**Last Updated:** 2026-05-27
 
 ## Overview
 
@@ -291,18 +291,93 @@ privacy impact:
 
 See [PRIVACY.md](../PRIVACY.md) for full privacy policy.
 
-## Future Work
+## Advanced Forensic Signals (v2.0)
 
-1. **Baseline Learning:** Establish per-user baselines for personalized
-   anomaly detection.
+The following analysis modules extend the core metrics for deeper authorship assessment:
 
-2. **Content-Type Adaptation:** Adjust thresholds based on file type
-   (code vs. prose vs. data).
+### Transcription Detection
 
-3. **Multi-File Correlation:** Detect patterns across related files in
-   a project.
+Detects retyping of pre-existing content (dictation replay, transcription from AI output):
 
-4. **Confidence Intervals:** Provide statistical confidence for assessments.
+| Metric | Threshold | Meaning |
+|--------|-----------|---------|
+| `burst_speed_cv` | < 0.15 | Coefficient of variation within bursts; low = scripted |
+| `zero_variance_windows` | > 3 | 500ms windows with < 5ms std dev |
+| `focus_reference_pattern` | CV < 0.3 | Regular-interval app switching |
+
+### Cross-Modal Consistency
+
+Five checks comparing keystroke evidence against other signals:
+
+1. **Timing vs. Content**: Do pause patterns match cognitive difficulty?
+2. **Focus vs. Progress**: Does app-switching correlate with research phases?
+3. **Mouse vs. Editing**: Do cursor movements match edit positions?
+4. **Jitter vs. Fatigue**: Does timing entropy decrease over session duration?
+5. **VDF vs. Velocity**: Does proven time match observed writing speed?
+
+Cross-modal failures reduce verdict confidence by one tier.
+
+### Forgery Cost Estimation
+
+Eight-component model estimating the computational cost to forge equivalent evidence:
+
+1. VDF recomputation cost
+2. Jitter simulation complexity
+3. Behavioral consistency difficulty
+4. Cross-modal coherence cost
+5. Checkpoint chain length factor
+6. Hardware attestation bypass cost
+7. Temporal beacon retroaction cost
+8. Labyrinth entanglement reversal cost
+
+Output: estimated USD cost to forge, factored into final verdict confidence.
+
+### ForensicSummary Wire Fields (CBOR key 25)
+
+Session-level metrics included in evidence packets:
+
+| Field | Key | Description |
+|-------|-----|-------------|
+| `words_per_minute` | 1 | Average WPM during session |
+| `mean_iki_ms` | 2 | Mean inter-key interval |
+| `correction_ratio` | 3 | Deletions / total keystrokes |
+| `writing_mode` | 5 | Detected mode (compose/edit/transcribe) |
+| `hurst_exponent` | 7 | Long-range dependency measure |
+| `keystroke_count` | 8 | Total keystrokes in session |
+| `editing_ratio` | 9 | Edits / total operations |
+| `checkpoint_count` | 10 | Checkpoints in session |
+| `assessment_score` | 11 | Composite authorship score (0-1) |
+| `coefficient_of_variation` | 12 | IKI variation |
+| `biological_cadence_score` | 13 | 1/f noise conformance |
+| `timing_entropy` | 14 | Shannon entropy of timing |
+| `pause_entropy` | 15 | Shannon entropy of pauses |
+| `cognitive_load_score` | 16 | Estimated cognitive effort |
+| `revision_topology_score` | 17 | Non-linear editing patterns |
+| `error_ecology_score` | 18 | Natural error/correction patterns |
+| `likelihood_p_cognitive` | 19 | Bayesian P(human) |
+| `forgery_difficulty` | 20 | Estimated forgery cost |
+| `cross_modal_score` | 21 | Cross-modal consistency |
+| `snr_db` | 22 | Signal-to-noise ratio |
+| `lyapunov_exponent` | 23 | Chaotic dynamics measure |
+| `transcription_suspicious` | 24 | Transcription detection flag |
+| `active_probes_score` | 26 | Active challenge responses |
+| `spectral_slope` | 28 | Power spectrum slope |
+| `spectral_noise_type` | 29 | Noise color (pink/white/brown) |
+| `baseline_deviation` | 30 | Deviation from user's baseline |
+| `ai_fluency_flag` | 31 | AI-like fluency detected |
+
+### Verdict Enum
+
+The forensic analysis produces one of six verdicts:
+
+| Verdict | Code | Meaning |
+|---------|------|---------|
+| V1VerifiedHuman | 1 | High entropy, valid causality, non-linear composition |
+| V2LikelyHuman | 2 | Valid timing with minor causality drift |
+| V3Suspicious | 3 | Low entropy or high linearity; potential transcription |
+| V4LikelySynthetic | 4 | Perfect timing uniformity; histogram attack or bot |
+| V5ConfirmedForgery | 5 | HMAC causality lock broken; confirmed tampering |
+| V6InsufficientData | 6 | Not enough data to make a determination |
 
 ## References
 

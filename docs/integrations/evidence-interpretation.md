@@ -6,11 +6,11 @@
 
 ## Overview
 
-This guide provides vendors and verifiers with criteria for interpreting CPoE evidence packets (`.cpoe`), identifying tampering, and differentiating legitimate creative actions from adversarial forgery.
+This guide provides vendors and verifiers with criteria for interpreting CPoE evidence packets (`.c2pa`), identifying tampering, and differentiating legitimate creative actions from adversarial forgery.
 
 ## 1. Online Verification Portal (`writerslogic.com/verify`)
 
-The most common way to verify a `.cpoe` evidence packet is through our web-based portal.
+The most common way to verify a `.c2pa` evidence packet is through our web-based portal.
 
 *   **Privacy-Preserving:** The portal performs verification **locally in your browser**. Your evidence files and document contents are never uploaded to our servers.
 *   **WASM Engine:** The same Rust cryptographic engine used in the desktop apps is compiled to WebAssembly to power the portal, ensuring parity in verification results.

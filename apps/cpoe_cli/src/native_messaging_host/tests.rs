@@ -15,7 +15,7 @@ mod tests {
         handlers::{compute_commitment, handle_text_attestation},
         jitter::{compute_jitter_stats, MAX_BATCH_SIZE, MAX_JITTER_BATCHES_PER_WINDOW},
         protocol::{
-            is_domain_allowed, read_message_from, validate_content_hash, write_message_to,
+            is_url_acceptable, read_message_from, validate_content_hash, write_message_to,
             MAX_MESSAGE_LENGTH,
         },
         types::{Request, Response},
@@ -371,80 +371,39 @@ mod tests {
         );
     }
 
-    // === is_domain_allowed tests ===
+    // === is_url_acceptable tests ===
 
     #[test]
-    fn test_nmh_domain_google_docs_allowed() {
+    fn test_nmh_url_https_accepted() {
         assert!(
-            is_domain_allowed("https://docs.google.com/document/d/abc123"),
-            "docs.google.com should be allowed"
+            is_url_acceptable("https://docs.google.com/document/d/abc123"),
+            "https URL should be accepted"
         );
     }
 
     #[test]
-    fn test_nmh_domain_overleaf_allowed() {
+    fn test_nmh_url_http_accepted() {
         assert!(
-            is_domain_allowed("https://www.overleaf.com/project/12345"),
-            "www.overleaf.com should be allowed"
+            is_url_acceptable("http://example.com/page"),
+            "http URL should be accepted"
         );
     }
 
     #[test]
-    fn test_nmh_domain_medium_allowed() {
+    fn test_nmh_url_any_domain_accepted() {
         assert!(
-            is_domain_allowed("https://medium.com/@user/article"),
-            "medium.com should be allowed"
+            is_url_acceptable("https://any-website.example.org/doc"),
+            "any domain over https should be accepted"
         );
     }
 
     #[test]
-    fn test_nmh_domain_notion_allowed() {
+    fn test_nmh_url_invalid_rejected() {
         assert!(
-            is_domain_allowed("https://notion.so/workspace/page"),
-            "notion.so should be allowed"
-        );
-        assert!(
-            is_domain_allowed("https://www.notion.so/workspace"),
-            "www.notion.so should be allowed"
-        );
-    }
-
-    #[test]
-    fn test_nmh_domain_unknown_rejected() {
-        assert!(
-            !is_domain_allowed("https://evil.com/phishing"),
-            "unknown domains should be rejected"
-        );
-        assert!(
-            !is_domain_allowed("https://example.com"),
-            "example.com should be rejected"
-        );
-    }
-
-    #[test]
-    fn test_nmh_domain_invalid_url_rejected() {
-        assert!(
-            !is_domain_allowed("not a url at all"),
+            !is_url_acceptable("not a url at all"),
             "invalid URL should be rejected"
         );
-        assert!(!is_domain_allowed(""), "empty URL should be rejected");
-    }
-
-    #[test]
-    fn test_nmh_domain_subdomain_of_allowed_accepted() {
-        assert!(
-            is_domain_allowed("https://sub.docs.google.com/document"),
-            "subdomain of allowed domain should be accepted"
-        );
-    }
-
-    #[test]
-    fn test_nmh_domain_suffix_attack_rejected() {
-        // "evilnotion.so" should not match "notion.so"
-        assert!(
-            !is_domain_allowed("https://evilnotion.so/page"),
-            "domain with allowed domain as suffix but not subdomain should be rejected"
-        );
+        assert!(!is_url_acceptable(""), "empty URL should be rejected");
     }
 
     // === validate_content_hash tests ===
@@ -679,67 +638,45 @@ mod tests {
 
     // === Additional edge case tests ===
 
-    // --- Domain validation edge cases ---
+    // --- URL scheme validation edge cases ---
 
     #[test]
-    fn test_nmh_domain_partial_suffix_not_matching() {
-        // "notnotion.so" should NOT match "notion.so"
+    fn test_nmh_url_file_protocol_rejected() {
         assert!(
-            !is_domain_allowed("https://notnotion.so/page"),
-            "partial suffix should not match allowed domain"
-        );
-        assert!(
-            !is_domain_allowed("https://evilmedium.com/article"),
-            "evilmedium.com should not match medium.com"
-        );
-    }
-
-    #[test]
-    fn test_nmh_domain_file_protocol_rejected() {
-        assert!(
-            !is_domain_allowed("file:///etc/passwd"),
+            !is_url_acceptable("file:///etc/passwd"),
             "file:// protocol should be rejected"
         );
     }
 
     #[test]
-    fn test_nmh_domain_javascript_protocol_rejected() {
+    fn test_nmh_url_javascript_protocol_rejected() {
         assert!(
-            !is_domain_allowed("javascript:alert(1)"),
+            !is_url_acceptable("javascript:alert(1)"),
             "javascript: protocol should be rejected"
         );
     }
 
     #[test]
-    fn test_nmh_domain_data_protocol_rejected() {
+    fn test_nmh_url_data_protocol_rejected() {
         assert!(
-            !is_domain_allowed("data:text/html,<h1>hi</h1>"),
+            !is_url_acceptable("data:text/html,<h1>hi</h1>"),
             "data: protocol should be rejected"
         );
     }
 
     #[test]
-    fn test_nmh_domain_http_vs_https_both_allowed() {
-        // HTTP should also work (domain check is protocol-agnostic)
+    fn test_nmh_url_with_port_number() {
         assert!(
-            is_domain_allowed("http://docs.google.com/document/d/123"),
-            "http:// should be allowed (domain check is protocol-agnostic)"
+            is_url_acceptable("https://docs.google.com:443/document"),
+            "port number should not break URL acceptance"
         );
     }
 
     #[test]
-    fn test_nmh_domain_with_port_number() {
+    fn test_nmh_url_with_query_and_fragment() {
         assert!(
-            is_domain_allowed("https://docs.google.com:443/document"),
-            "port number should not break domain matching"
-        );
-    }
-
-    #[test]
-    fn test_nmh_domain_with_query_and_fragment() {
-        assert!(
-            is_domain_allowed("https://docs.google.com/doc?key=val#section"),
-            "query params and fragments should not break domain matching"
+            is_url_acceptable("https://docs.google.com/doc?key=val#section"),
+            "query params and fragments should not break URL acceptance"
         );
     }
 

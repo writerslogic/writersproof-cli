@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for Clio",
+  "tagline": "Prove your legal documents were drafted by a human attorney",
+  "description": "WritersProof for Clio adds cryptographic authorship attestation to legal document drafting within Clio Manage and Clio Draft. As attorneys compose briefs, contracts, memoranda, and client correspondence, WritersProof captures tamper-evident proof of the drafting process without storing document content — only SHA-256 hashes. Law firms facing increasing scrutiny over AI-generated legal filings can demonstrate verifiable human authorship to courts, clients, and bar associations. Each attested document carries a cryptographic evidence chain that proves the attributed author genuinely composed the content.",
+  "category": "Legal",
+  "features": [
+    "Evidence capture during document drafting in Clio Draft and document management",
+    "Per-document attestation linked to the drafting attorney's identity",
+    "Matter-level attestation dashboard showing coverage across all documents",
+    "Court-ready attestation certificates exportable as PDF with verification links",
+    "Client-facing attestation reports demonstrating human-authored work product",
+    "Ethical wall compliance with per-matter evidence isolation",
+    "Integration with Clio's activity timeline for billing-correlated attestation"
+  ],
+  "requirements": {
+    "platform": "Clio Manage and/or Clio Draft",
+    "integration_type": "Clio API (OAuth 2.0) with webhook subscriptions",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/clio",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

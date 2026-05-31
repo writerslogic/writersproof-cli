@@ -51,6 +51,14 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                 config.sentinel.checkpoint_interval_secs
             );
             println!("  idle_timeout_secs: {}", config.sentinel.idle_timeout_secs);
+            println!(
+                "  default_witnessing_mode: {}",
+                config.sentinel.default_witnessing_mode.as_str()
+            );
+            println!(
+                "  default_content_granularity: {}",
+                config.sentinel.default_content_granularity.as_str()
+            );
             println!();
             println!("[Fingerprint]");
             println!(
@@ -181,6 +189,20 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                 ["privacy", "obfuscate_titles"] => {
                     config.privacy.obfuscate_titles =
                         parse_bool_lenient(&value).map_err(|e| anyhow!("{}", e))?;
+                }
+                ["sentinel", "default_witnessing_mode"] => {
+                    config.sentinel.default_witnessing_mode = value
+                        .parse()
+                        .map_err(|()| anyhow!(
+                            "Invalid witnessing mode: {value}. Valid: auto, file_level, content_level, hybrid"
+                        ))?;
+                }
+                ["sentinel", "default_content_granularity"] => {
+                    config.sentinel.default_content_granularity = value
+                        .parse()
+                        .map_err(|()| anyhow!(
+                            "Invalid granularity: {value}. Valid: paragraph, sentence, block"
+                        ))?;
                 }
                 _ => {
                     return Err(anyhow!(
@@ -400,6 +422,7 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
                 probe_confidence: probe.confidence,
                 default_debounce_ms: None,
                 title_parser: Default::default(),
+                witnessing_mode: Default::default(),
             };
             let mut registry = AppRegistry::load(data_dir);
             registry.add_user_app(app)?;

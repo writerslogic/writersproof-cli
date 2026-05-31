@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for Linear",
+  "tagline": "Attest authorship of issues, specs, and project documents in Linear",
+  "description": "WritersProof for Linear brings cryptographic authorship attestation to your project management workflow. Every issue description, comment, and project document you write in Linear is backed by tamper-evident proof of human authorship. WritersProof captures behavioral evidence during content creation without storing actual content — only SHA-256 hashes. Teams working in regulated environments or high-trust contexts can verify that specifications, requirements, and project documentation were genuinely composed by the attributed author.",
+  "category": "Productivity",
+  "features": [
+    "Real-time evidence capture as you compose issues and comments in Linear",
+    "Per-issue attestation status visible in issue metadata",
+    "Project document authorship verification for specs and PRDs",
+    "Team-level attestation analytics and coverage reporting",
+    "OAuth 2.0 integration with Linear workspace permissions",
+    "Webhook-driven verification triggered on issue create and update events",
+    "Export attestation reports for compliance and audit workflows"
+  ],
+  "requirements": {
+    "platform": "Linear (cloud)",
+    "integration_type": "OAuth 2.0 application with webhook subscriptions",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/linear",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

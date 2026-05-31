@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0
 **Status:** Stable
-**Last Updated:** 2026-02-23
+**Last Updated:** 2026-05-27
 
 ## Overview
 
@@ -59,7 +59,7 @@ If you are a vendor building a web-based editor (e.g., Google Docs, Notion):
 
 ### Don't:
 - **Don't store keys yourself:** Let the CPoE engine handle the Tier 0-2 key hierarchy and hardware binding.
-- **Don't modify the data directory:** All integrity checks rely on the engine's ownership of `~/.writerslogic`.
+- **Don't modify the data directory:** All integrity checks rely on the engine's ownership of `~/.writersproof`.
 
 ## 5. Security & Privacy Disclosure
 

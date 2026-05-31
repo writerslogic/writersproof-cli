@@ -42,7 +42,7 @@ Alias:
 .BR prove .
 .TP
 .BI "verify " file " [-k " key "] [--output-war " path ]
-Verify an evidence packet (.json, .cpoe, .cwar) or database (.db).
+Verify an evidence packet (.json, .c2pa) or database (.db).
 Alias:
 .BR check .
 .TP
@@ -123,12 +123,6 @@ VDF proof only (offline)
 .B json
 Machine-readable evidence packet
 .TP
-.B cpoe
-CBOR binary wire format (.cpop)
-.TP
-.B cwar
-COSE-signed attestation result
-.TP
 .B html
 Self-contained HTML report
 .TP
@@ -136,7 +130,7 @@ Self-contained HTML report
 Signed PDF with anti-forgery security features
 .TP
 .B c2pa
-C2PA assertion JSON (embed via c2patool)
+C2PA Content Credentials manifest with embedded VC
 .SH BASIC WORKFLOW
 .IP 1. 4
 .B cpoe essay.txt

@@ -49,9 +49,9 @@ cpoe status
 ## Evidence Commands
 
 ### `export`
-Export a `.cpoe` evidence packet containing the full chain of authorship proof.
+Export a `.c2pa` evidence packet containing the full chain of authorship proof.
 ```bash
-cpoe export <file> [-o output.cpoe]
+cpoe export <file> [-o output.c2pa]
 ```
 
 ### `verify`

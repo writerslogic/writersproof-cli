@@ -169,7 +169,7 @@ async fn cmd_track_start(
     let mut db = open_secure_store()?;
     let device_id = get_device_id()?;
     let machine_id = get_machine_id();
-    let mut checkpoint_counts: HashMap<PathBuf, u32> = HashMap::new();
+    let mut checkpoint_counts: HashMap<PathBuf, u32> = HashMap::with_capacity(initial_files.len());
 
     let mut up_to_date = 0u32;
     let mut empty_files = 0u32;

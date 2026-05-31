@@ -1,0 +1,51 @@
+name: Integration Apps CI
+
+on:
+  push:
+    paths: ['apps/cpoe_*/**', 'apps/packages/**']
+  pull_request:
+    paths: ['apps/cpoe_*/**', 'apps/packages/**']
+
+jobs:
+  build-node:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [ghost, github, linear, blackboard, canvas, clio, docusign, ironclad, webflow, notion]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: apps/cpoe_${{ matrix.app }}/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/cpoe_${{ matrix.app }}
+        run: npm ci
+      - name: Typecheck
+        working-directory: apps/cpoe_${{ matrix.app }}
+        run: npx tsc --noEmit
+      - name: Build
+        working-directory: apps/cpoe_${{ matrix.app }}
+        run: npm run build
+      - name: Test
+        working-directory: apps/cpoe_${{ matrix.app }}
+        run: npm test --if-present
+      - name: Docker build
+        working-directory: apps/cpoe_${{ matrix.app }}
+        run: docker build -t cpoe-${{ matrix.app }}:test .
+
+  build-php:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [wordpress, moodle]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: phpcs, phpstan
+      - name: PHP syntax check
+        working-directory: apps/cpoe_${{ matrix.app }}
+        run: find . -name "*.php" -exec php -l {} \;

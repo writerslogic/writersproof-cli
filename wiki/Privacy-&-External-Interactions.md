@@ -22,7 +22,7 @@ While core functionality is offline, CPoE interacts with **WritersProof** and **
 ### 1. Online Verification (`writerslogic.com/verify`)
 The desktop applications generate links and QR codes that point to our verification portal.
 *   **How it works:** When you open an evidence packet in this portal, the verification logic runs **locally in your browser** using WebAssembly.
-*   **Privacy:** Your evidence packet (`.cpoe`) and document content are **never uploaded** to our servers. The portal acts as a "dumb" host for the verification scripts.
+*   **Privacy:** Your evidence packet (`.c2pa`) and document content are **never uploaded** to our servers. The portal acts as a "dumb" host for the verification scripts.
 
 ### 2. Cloud Attestation API (`writerslogic.com/api`)
 For high-stakes evidence (Tiers 3 and 4), CPoE can leverage a cloud trust anchor.

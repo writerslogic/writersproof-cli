@@ -160,14 +160,14 @@ When you need to prove authorship:
 cpoe export mydoc.txt
 ```
 
-This creates `mydoc.cpoe` containing your evidence.
+This creates `mydoc.c2pa` containing your evidence.
 
 ### Verify Evidence
 
 Anyone can verify the evidence:
 
 ```bash
-cpoe verify mydoc.cpoe
+cpoe verify mydoc.c2pa
 ```
 
 ---

@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for Blackboard",
+  "tagline": "Verify student work is authentically human-authored at submission time",
+  "description": "WritersProof for Blackboard gives educators cryptographic proof that student submissions were genuinely composed by the submitting student. Integrated via LTI 1.3, WritersProof captures tamper-evident behavioral evidence during the writing process without storing actual content — only SHA-256 hashes. When students write essays, reports, or exam responses in Blackboard, the integration silently records proof-of-process evidence that instructors can review alongside the submission. Unlike AI detection tools that guess, WritersProof provides positive proof of human authorship grounded in cryptographic evidence chains.",
+  "category": "Education / Assessment",
+  "features": [
+    "LTI 1.3 integration with Blackboard Learn Ultra and Original experiences",
+    "Per-assignment attestation status visible in the Gradebook",
+    "Student-facing attestation indicator showing evidence capture is active",
+    "Instructor dashboard with class-wide attestation coverage analytics",
+    "Evidence timeline showing writing session duration, pauses, and revision patterns",
+    "Institutional admin console for deployment across courses and terms",
+    "FERPA-compliant design storing only cryptographic hashes, never student content"
+  ],
+  "requirements": {
+    "platform": "Blackboard Learn Ultra or Blackboard Learn 9.1 Q2 2019+",
+    "integration_type": "LTI 1.3 Advantage (Deep Linking + Assignment and Grade Services)",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/blackboard",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

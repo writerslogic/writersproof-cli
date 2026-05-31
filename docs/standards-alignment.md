@@ -134,7 +134,7 @@ or when the same content has been exported across applications.
 - **ciborium** crate for CBOR encoding (deterministic, RFC 8949 Section 4.2.1)
 - **coset** crate for COSE signatures
 - Custom CBOR tags: 0x43504F50 (evidence), 0x43574152 (attestation)
-- Media types: `application/vnd.writersproof.cpoe+cbor`, `application/vnd.writersproof.cwar+cbor`
+- Media type: `application/c2pa`
 - Ed25519 signatures via ed25519-dalek with zeroize
 
 ### Gap: None identified

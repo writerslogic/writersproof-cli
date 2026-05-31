@@ -1,0 +1,82 @@
+{{!
+    @template local_writersproof/evidence_panel
+
+    WritersProof authorship evidence panel.
+
+    Context variables:
+      - sessionid      {string}       Remote session ID (may be empty)
+      - status         {string}       Session status key (active|finalized|verified|failed|none)
+      - status_label   {string}       Translated status string
+      - score          {string|null}  Evidence score formatted as percentage, or null
+      - checkpoints    {number}       Checkpoint count
+      - wordcount      {number}       Last known word count
+      - has_session    {boolean}      Whether a session record exists
+      - is_verified    {boolean}      Whether status === 'verified'
+      - is_failed      {boolean}      Whether status === 'failed'
+
+    Example context (json):
+    {
+        "sessionid": "abc123",
+        "status": "verified",
+        "status_label": "Verified",
+        "score": "94%",
+        "checkpoints": 12,
+        "wordcount": 847,
+        "has_session": true,
+        "is_verified": true,
+        "is_failed": false
+    }
+}}
+<div class="writersproof-evidence-panel card mb-3" role="region" aria-label="{{#str}}evidence_panel_title, local_writersproof{{/str}}">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <h5 class="mb-0">
+            <span class="fa fa-shield fa-fw" aria-hidden="true"></span>
+            {{#str}}evidence_panel_title, local_writersproof{{/str}}
+        </h5>
+        {{#has_session}}
+        <span class="badge
+            {{#is_verified}}badge-success{{/is_verified}}
+            {{#is_failed}}badge-danger{{/is_failed}}
+            {{^is_verified}}{{^is_failed}}badge-secondary{{/is_failed}}{{/is_verified}}
+        ">
+            {{{status_label}}}
+        </span>
+        {{/has_session}}
+    </div>
+
+    <div class="card-body">
+        {{^has_session}}
+        <p class="text-muted mb-0">{{#str}}no_session, local_writersproof{{/str}}</p>
+        {{/has_session}}
+
+        {{#has_session}}
+        <dl class="row mb-0">
+            <dt class="col-sm-4">{{#str}}status_label, local_writersproof{{/str}}</dt>
+            <dd class="col-sm-8">{{{status_label}}}</dd>
+
+            <dt class="col-sm-4">{{#str}}score_label, local_writersproof{{/str}}</dt>
+            <dd class="col-sm-8">
+                {{#score}}
+                <strong>{{{score}}}</strong>
+                {{/score}}
+                {{^score}}
+                <span class="text-muted">{{#str}}score_not_available, local_writersproof{{/str}}</span>
+                {{/score}}
+            </dd>
+
+            <dt class="col-sm-4">{{#str}}checkpoints_label, local_writersproof{{/str}}</dt>
+            <dd class="col-sm-8">{{checkpoints}}</dd>
+
+            <dt class="col-sm-4">{{#str}}wordcount_label, local_writersproof{{/str}}</dt>
+            <dd class="col-sm-8">{{wordcount}}</dd>
+
+            {{#sessionid}}
+            <dt class="col-sm-4">{{#str}}session_id_label, local_writersproof{{/str}}</dt>
+            <dd class="col-sm-8">
+                <code class="small text-muted">{{sessionid}}</code>
+            </dd>
+            {{/sessionid}}
+        </dl>
+        {{/has_session}}
+    </div>
+</div>

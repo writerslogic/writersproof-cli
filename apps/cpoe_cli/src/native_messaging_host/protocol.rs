@@ -9,46 +9,6 @@ pub(crate) const MAX_MESSAGE_LENGTH: usize = 1_048_576;
 
 pub(crate) const PROTOCOL_VERSION: u32 = 1;
 
-/// Allowed domains for browser extension sessions.
-/// Must match the host_permissions in the browser extension manifest.
-pub(crate) const ALLOWED_DOMAINS: &[&str] = &[
-    // Editors
-    "docs.google.com",
-    "www.overleaf.com",
-    "medium.com",
-    "notion.so",
-    "www.notion.so",
-    "www.craft.do",
-    "coda.io",
-    "app.clickup.com",
-    "app.nuclino.com",
-    "stackedit.io",
-    "hackmd.io",
-    // Publishing
-    "substack.com",
-    "wordpress.com",
-    "ghost.io",
-    "write.as",
-    "www.wattpad.com",
-    "archiveofourown.org",
-    "www.scribophile.com",
-    // Writing tools
-    "hemingwayapp.com",
-    "quillbot.com",
-    "prowritingaid.com",
-    "app.grammarly.com",
-    "languagetool.org",
-    "www.deepl.com",
-    "www.writefull.com",
-    // Office
-    "docs.google.com",
-    "www.office.com",
-    "onedrive.live.com",
-    "www.icloud.com",
-    "www.dropbox.com",
-    // Collaboration
-    "pad.riseup.net",
-];
 
 /// Return request type name without PII (document URLs/titles).
 pub(crate) fn request_type_name(req: &Request) -> &'static str {
@@ -132,19 +92,12 @@ pub(crate) fn write_message(response: &Response) -> io::Result<()> {
     write_message_to(&mut io::stdout().lock(), response)
 }
 
-/// Check whether a document URL is from an allowed domain.
-/// Exact matches and proper subdomains are accepted; suffix attacks are not.
-/// For example, `sub.docs.google.com` matches `docs.google.com`, but
-/// `evilnotion.so` does NOT match `notion.so`.
-pub(crate) fn is_domain_allowed(document_url: &str) -> bool {
+/// Check whether a document URL uses a safe scheme (http or https).
+/// Domain filtering is handled by the browser extension; the NMH accepts
+/// any domain the extension forwards.
+pub(crate) fn is_url_acceptable(document_url: &str) -> bool {
     if let Ok(url) = url::Url::parse(document_url) {
-        if let Some(host) = url.host_str() {
-            ALLOWED_DOMAINS
-                .iter()
-                .any(|d| host == *d || host.ends_with(&format!(".{}", d)))
-        } else {
-            false
-        }
+        matches!(url.scheme(), "http" | "https")
     } else {
         false
     }

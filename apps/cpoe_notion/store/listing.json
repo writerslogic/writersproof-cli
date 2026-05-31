@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for Notion",
+  "tagline": "Cryptographic authorship attestation for every page, doc, and wiki entry",
+  "description": "WritersProof for Notion adds cryptographic authorship attestation to your team's knowledge base. As you compose pages, documents, wiki entries, and database records in Notion, WritersProof captures tamper-evident proof of human authorship without storing content — only SHA-256 hashes. Teams using Notion as their source of truth for documentation, proposals, and decision records can prove that critical content was genuinely human-authored. Each attested page carries a verifiable evidence chain that any stakeholder can independently verify through the WritersProof verification portal.",
+  "category": "Productivity",
+  "features": [
+    "Real-time evidence capture during page and document composition in Notion",
+    "Per-page attestation status accessible via Notion integration panel",
+    "Workspace-wide attestation analytics showing coverage across teamspaces",
+    "Database property integration displaying attestation status per record",
+    "Multi-author attribution with individual attestation per contributor",
+    "Notion API webhook integration for automated verification on page update",
+    "Export attestation summaries for compliance, audit, and procurement workflows"
+  ],
+  "requirements": {
+    "platform": "Notion (Business or Enterprise plan for integration capabilities)",
+    "integration_type": "Notion API (OAuth 2.0) with internal integration support",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/notion",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

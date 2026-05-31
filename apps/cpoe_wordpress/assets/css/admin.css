@@ -1,0 +1,218 @@
+/*
+ * WritersProof admin styles.
+ *
+ * Covers: settings page, post meta box, sidebar panel badge, and the
+ * status indicator badge injected into the block editor header.
+ *
+ * @package WritersProof
+ */
+
+/* ==========================================================================
+   Settings page
+   ========================================================================== */
+
+.writersproof-settings-wrap h1 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.writersproof-logo-inline {
+	font-size: 1.2em;
+	line-height: 1;
+}
+
+.writersproof-test-result {
+	display: inline-block;
+	margin-left: 10px;
+	padding: 4px 10px;
+	border-radius: 3px;
+	font-size: 13px;
+	vertical-align: middle;
+}
+
+/* ==========================================================================
+   Status classes (shared between badge, test result, meta box)
+   ========================================================================== */
+
+.writersproof-status-green {
+	background-color: #d7f5e3;
+	color: #1a6b3c;
+	border: 1px solid #a8dfc0;
+}
+
+.writersproof-status-gray {
+	background-color: #f0f0f1;
+	color: #50575e;
+	border: 1px solid #c3c4c7;
+}
+
+.writersproof-status-red {
+	background-color: #fcebea;
+	color: #8a1f1f;
+	border: 1px solid #f5b8b6;
+}
+
+/* ==========================================================================
+   Post meta box
+   ========================================================================== */
+
+.writersproof-meta-box {
+	font-size: 13px;
+}
+
+.writersproof-notice {
+	padding: 8px 10px;
+	border-radius: 3px;
+	margin-bottom: 8px;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.writersproof-notice-warning {
+	background-color: #fff8e5;
+	border-left: 4px solid #dba617;
+	color: #4d3900;
+}
+
+.writersproof-meta-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 10px;
+}
+
+.writersproof-meta-table th,
+.writersproof-meta-table td {
+	padding: 4px 6px;
+	vertical-align: middle;
+	text-align: left;
+}
+
+.writersproof-meta-table th {
+	color: #50575e;
+	font-weight: 600;
+	width: 40%;
+	white-space: nowrap;
+}
+
+.writersproof-status-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 10px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+
+.writersproof-session-id {
+	font-size: 11px;
+	word-break: break-all;
+}
+
+.writersproof-score {
+	font-weight: 600;
+	color: #1a6b3c;
+}
+
+.writersproof-meta-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.writersproof-meta-actions .button {
+	flex: 1 1 auto;
+	text-align: center;
+	justify-content: center;
+}
+
+.writersproof-meta-message {
+	margin-top: 8px;
+	padding: 6px 10px;
+	border-radius: 3px;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.writersproof-msg-ok {
+	background-color: #d7f5e3;
+	color: #1a6b3c;
+	border: 1px solid #a8dfc0;
+}
+
+.writersproof-msg-error {
+	background-color: #fcebea;
+	color: #8a1f1f;
+	border: 1px solid #f5b8b6;
+}
+
+/* ==========================================================================
+   Editor indicator badge (injected into Gutenberg toolbar)
+   ========================================================================== */
+
+#writersproof-indicator {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 10px;
+	height: 36px;
+	border-radius: 2px;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	cursor: default;
+	white-space: nowrap;
+	user-select: none;
+	transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.writersproof-badge--none,
+.writersproof-badge--stopped {
+	background-color: #f0f0f1;
+	color: #50575e;
+}
+
+.writersproof-badge--active {
+	background-color: #d7f5e3;
+	color: #1a6b3c;
+}
+
+.writersproof-badge--finalized {
+	background-color: #e8f0fe;
+	color: #1a4480;
+}
+
+/* ==========================================================================
+   Gutenberg sidebar panel
+   ========================================================================== */
+
+.writersproof-sidebar-panel .writersproof-panel-status {
+	margin-bottom: 12px;
+}
+
+.writersproof-sidebar-panel .writersproof-panel-btn {
+	width: 100%;
+	justify-content: center;
+	margin-bottom: 8px;
+}
+
+.writersproof-sidebar-panel .writersproof-panel-msg {
+	font-size: 12px;
+	color: #8a1f1f;
+	margin-top: 4px;
+}
+
+/* ==========================================================================
+   Responsive: narrow meta box sidebar
+   ========================================================================== */
+
+@media screen and (max-width: 782px) {
+	.writersproof-meta-actions {
+		flex-direction: column;
+	}
+
+	.writersproof-meta-actions .button {
+		width: 100%;
+	}
+}

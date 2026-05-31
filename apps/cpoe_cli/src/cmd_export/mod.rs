@@ -63,8 +63,6 @@ fn default_output_path(file_path: &Path, format_lower: &str) -> PathBuf {
         .to_string_lossy()
         .into_owned();
     let raw = match format_lower {
-        "cwar" | "war" => format!("{}.cwar", name),
-        "cpoe" | "cbor" => format!("{}.cpoe", name),
         "html" | "report" => format!("{}.report.html", name),
         "pdf" => format!("{}.report.pdf", name),
         "c2pa" => format!("{}.c2pa", name),

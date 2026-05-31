@@ -82,11 +82,11 @@ cpoe commit essay.md -m "first draft complete"
 # View history
 cpoe log essay.md
 
-# Export cryptographic evidence (.cpoe)
+# Export cryptographic evidence (.c2pa)
 cpoe export essay.md -t 2
 
 # Verify evidence
-cpoe verify essay.cpoe
+cpoe verify essay.c2pa
 ```
 
 Run `cpoe` with no arguments for an interactive menu, or `cpoe --help` for full command reference.
@@ -168,10 +168,10 @@ cargo audit && cargo deny check  # Security audit
 
 ## Verifying Evidence
 
-Anyone can verify `.cpoe` evidence packets — no account or software required:
+Anyone can verify `.c2pa` evidence packets — no account or software required:
 
 - **Web**: Upload at [writerslogic.com/verify](https://writerslogic.com/verify)
-- **CLI**: `cpoe verify proof.cpoe`
+- **CLI**: `cpoe verify proof.c2pa`
 
 Verification checks the checkpoint chain, Ed25519 signatures, VDF timing proofs, and behavioral consistency. It runs entirely client-side — your evidence is never uploaded to our servers.
 
@@ -186,7 +186,7 @@ CPoE is designed with a strictly **offline-first and privacy-preserving** archit
 
 The applications interact with the following external domains for specific enhanced features:
 
-*   **Verification Portal (`writerslogic.com/verify`):** Browser-based tool for verifying `.cpoe` evidence packets. Runs client-side; evidence data is never uploaded.
+*   **Verification Portal (`writerslogic.com/verify`):** Browser-based tool for verifying `.c2pa` evidence packets. Runs client-side; evidence data is never uploaded.
 *   **Attestation API (`writerslogic.com/api`):** Used for Tier 3 and Tier 4 evidence to request anti-replay nonces and receive cloud-signed attestation certificates.
 *   **Schema Registry (`protocol.writerslogic.com`):** Hosts JSON schemas and DID resolution data for protocol compliance.
 

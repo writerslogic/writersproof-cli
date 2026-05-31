@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for DocuSign",
+  "tagline": "Attest who actually drafted the document before it goes out for signature",
+  "description": "WritersProof for DocuSign extends the trust chain backward from signature to drafting. While DocuSign proves who signed a document, WritersProof proves who wrote it. As preparers compose and edit documents before sending them through DocuSign, WritersProof captures tamper-evident proof of the authoring process without storing document content — only SHA-256 hashes. Organizations in regulated industries can demonstrate that contracts, agreements, and compliance documents were genuinely human-authored, closing the gap between document preparation and execution.",
+  "category": "Legal / Compliance",
+  "features": [
+    "Evidence capture during document preparation before envelope creation",
+    "Per-envelope attestation metadata linking drafting proof to signed documents",
+    "Template authorship attestation for reusable document templates",
+    "Audit trail integration correlating authorship evidence with DocuSign Certificate of Completion",
+    "Multi-preparer support with individual attestation per document contributor",
+    "Compliance dashboard showing attestation coverage across envelopes and templates",
+    "Connect webhook integration for automated attestation verification on send"
+  ],
+  "requirements": {
+    "platform": "DocuSign eSignature",
+    "integration_type": "DocuSign Connect (webhooks) + eSignature REST API (OAuth 2.0)",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/docusign",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

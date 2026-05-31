@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for Canvas",
+  "tagline": "Positive proof of student authorship for every assignment submission",
+  "description": "WritersProof for Canvas provides cryptographic authorship attestation for student work submitted through Instructure Canvas. Deployed as an LTI 1.3 tool, WritersProof captures tamper-evident behavioral evidence while students write, without storing actual content — only SHA-256 hashes. Instructors see attestation status alongside submissions in SpeedGrader, giving them verifiable proof of human authorship rather than probabilistic AI detection guesses. Institutions gain a privacy-preserving, FERPA-compliant layer of academic integrity that complements existing honor code policies.",
+  "category": "Education / Assessment",
+  "features": [
+    "LTI 1.3 Advantage integration with Canvas Assignment and SpeedGrader",
+    "Attestation status column in SpeedGrader for at-a-glance review",
+    "Student-visible evidence capture indicator during assignment composition",
+    "Course-level and institution-level attestation analytics dashboards",
+    "Evidence session timeline with writing cadence and revision depth metrics",
+    "Canvas Rich Content Editor support for essay and long-form assignments",
+    "FERPA-compliant architecture with zero content storage, only cryptographic hashes"
+  ],
+  "requirements": {
+    "platform": "Instructure Canvas (cloud or self-hosted)",
+    "integration_type": "LTI 1.3 Advantage (Deep Linking + Assignment and Grade Services)",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/canvas",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

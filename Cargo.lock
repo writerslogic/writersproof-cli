@@ -1599,6 +1599,7 @@ dependencies = [
  "x509-cert",
  "zbus 4.4.0",
  "zeroize",
+ "zip",
  "zstd",
 ]
 
@@ -4487,7 +4488,9 @@ dependencies = [
  "blake3",
  "log",
  "serde",
+ "sha2 0.10.9",
  "subtle 2.6.1",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

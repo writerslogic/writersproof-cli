@@ -22,7 +22,7 @@ While Git tracks changes, it doesn't prove *when* those changes happened (timest
 All data stays on your machine. CPoE is "offline-first." Nothing is sent to any server unless you choose to export and share an evidence packet. For a detailed breakdown of external interactions, see **[[Privacy & External Interactions]]**.
 
 ### What is in an evidence packet?
-A `.cpoe` file contains content hashes, timing proofs, keystroke statistics, and your public cryptographic identity. It does NOT contain your document's text unless you explicitly choose to include it.
+A `.c2pa` file contains content hashes, timing proofs, keystroke statistics, and your public cryptographic identity. It does NOT contain your document's text unless you explicitly choose to include it.
 
 ---
 

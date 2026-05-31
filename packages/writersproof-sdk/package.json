@@ -1,0 +1,12 @@
+{
+  "name": "@writersproof/sdk",
+  "version": "1.0.0",
+  "description": "WritersProof API client SDK for platform integrations",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
+  "scripts": { "build": "tsc", "typecheck": "tsc --noEmit" },
+  "license": "AGPL-3.0-only",
+  "devDependencies": { "typescript": "^5.3.0", "@types/express": "^4.17.21", "@types/node": "^20.14.0" }
+}

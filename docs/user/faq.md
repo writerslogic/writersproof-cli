@@ -1,20 +1,10 @@
 # Frequently Asked Questions
 
-## Table of Contents
-
-- [General Questions](#general-questions)
-- [Privacy and Security](#privacy-and-security)
-- [Technical Questions](#technical-questions)
-- [Legal Questions](#legal-questions)
-- [Practical Usage](#practical-usage)
-
----
-
-## General Questions
+## General
 
 ### What is CPoE?
 
-CPoE is a cryptographic authorship witnessing system that creates tamper-evident records proving you created a document over time. It captures:
+CPoE (Cryptographic Proof of Effort) is an authorship witnessing system that creates tamper-evident records proving you created a document over time. It captures:
 - **What**: Content hashes at each checkpoint
 - **When**: VDF-based timing proofs that cannot be backdated
 - **How**: Optional keystroke metrics showing real writing activity
@@ -22,7 +12,6 @@ CPoE is a cryptographic authorship witnessing system that creates tamper-evident
 
 ### Why would I need this?
 
-Common use cases include:
 - **Writers**: Prove original authorship of manuscripts, articles, or scripts
 - **Researchers**: Document the development of ideas and discoveries
 - **Developers**: Track code evolution with cryptographic evidence
@@ -32,8 +21,8 @@ Common use cases include:
 ### How is this different from version control?
 
 | Feature | CPoE | Git |
-|---------|----------|-----|
-| Time proofs | VDF - cannot be backdated | Timestamps can be faked |
+|---------|------|-----|
+| Time proofs | VDF, cannot be backdated | Timestamps can be faked |
 | Author binding | Hardware-tied identity | Email-based (spoofable) |
 | Keystroke evidence | Yes (proves real typing) | No |
 | Forward secrecy | Ratcheting keys | No |
@@ -41,8 +30,14 @@ Common use cases include:
 
 ### Is CPoE open source?
 
-Yes! CPoE is released under the Apache License 2.0. The source code is available at:
-https://github.com/writerslogic/cpoe
+The project uses a multi-license structure:
+- **cpoe engine**: SSPL-1.0 (Server Side Public License)
+- **authorproof-protocol**: Apache-2.0 (wire format, wasm-ready)
+- **cpoe-jitter**: Apache-2.0 (timing entropy, no_std)
+- **CLI**: AGPL-3.0-only
+- **macOS/Windows apps**: Proprietary
+
+Source: https://github.com/writerslogic/writerslogic
 
 ---
 
@@ -50,12 +45,12 @@ https://github.com/writerslogic/cpoe
 
 ### Does CPoE record what I type?
 
-**No.** CPoE explicitly does NOT capture:
+**No.** CPoE does NOT capture:
 - Which keys you press
 - Keyboard content or characters
 - Screen content
 - Clipboard data
-- Any actual text you write
+- Document text
 
 It only records:
 - **Count** of keystroke events
@@ -66,13 +61,13 @@ It only records:
 
 All data is stored locally on your machine:
 - **CLI**: `~/.writersproof/`
-- **macOS App**: `~/Library/Application Support/CPoE/`
+- **macOS App**: `~/Library/Application Support/WritersProof/`
 
 No data is sent to any server unless you explicitly export and share it.
 
 ### What data is in an evidence packet?
 
-An exported evidence packet (.cpoe) contains:
+An exported `.c2pa` file contains:
 - File content hashes (not content itself)
 - Checkpoint timestamps and VDF proofs
 - Keystroke counts and timing statistics
@@ -83,162 +78,81 @@ An exported evidence packet (.cpoe) contains:
 
 ### Can someone track my identity across documents?
 
-Your master identity (public key fingerprint) is consistent across all documents. This is intentional for:
-- Proving the same author created multiple works
-- Building reputation and trust
+Your master identity (public key fingerprint) is consistent across all documents. This is intentional for proving the same author created multiple works.
 
-If you need unlinkability, you can:
-- Generate a separate identity for different projects
-- Use the CLI with a different `--config` directory
+For unlinkability, generate a separate identity with a different `--config` directory.
 
 ### Is my signing key secure?
 
-Your private signing key is stored with 0600 permissions (owner read/write only). The key:
+Your private key is stored with 0600 permissions. It:
 - Never leaves your device
-- Is derived from your device's PUF
-- Uses Ed25519 (state-of-the-art security)
-
-Best practices:
-- Keep a secure backup of `~/.writersproof/signing_key`
-- Never share your private key
-- Use full disk encryption
+- Is derived from your device's PUF (hardware binding)
+- Uses Ed25519 (state-of-the-art)
+- Is zeroized from memory after use
 
 ---
 
-## Technical Questions
+## Technical
 
 ### What is a VDF?
 
-A Verifiable Delay Function (VDF) is a cryptographic function that:
+A Verifiable Delay Function is a cryptographic function that:
 - Takes a predictable amount of time to compute
 - Cannot be parallelized or sped up
 - Produces a proof that can be quickly verified
 
-CPoE uses VDFs to prove that real time elapsed between checkpoints. You cannot backdate a checkpoint because you cannot compute the VDF faster than real time.
-
-### What is the key hierarchy?
-
-CPoE uses a three-tier key hierarchy:
-
-1. **Tier 0 (Identity)**: Master key derived from your device's PUF
-   - Persistent author identity
-   - Never used directly for signing
-
-2. **Tier 1 (Session)**: Per-session keys certified by master
-   - Isolates sessions from each other
-   - Includes session certificate
-
-3. **Tier 2 (Ratchet)**: Per-checkpoint keys with forward secrecy
-   - Each checkpoint gets unique key
-   - Previous keys are securely deleted
-   - Cannot forge past checkpoints
-
-### What is a PUF?
-
-A Physical Unclonable Function (PUF) produces a unique response based on physical characteristics of your device. On:
-- **Apple Silicon Macs**: Secure Enclave provides hardware PUF
-- **Other systems**: Software PUF using hardware identifiers
-
-This binds your identity to your specific device.
+CPoE uses VDFs to prove that real time elapsed between checkpoints.
 
 ### What are the evidence tiers?
 
 | Tier | Name | Requirements |
-|------|------|--------------|
-| 1 | Core | Checkpoints + VDF proofs + keystroke evidence |
-| 2 | Enhanced | + TPM/hardware attestation |
-| 3 | Maximum | + Behavioral analysis + external anchors |
-
-Higher tiers provide stronger evidence but require more hardware support. Tier names follow the draft-condrey-rats-pop CDDL schema: `content-tier = core(1) / enhanced(2) / maximum(3)`.
-
-### How much storage does CPoE use?
-
-Typical usage:
-- **Per checkpoint**: ~500 bytes in database
-- **Per hour of writing**: ~10 KB (with keystroke tracking)
-- **Evidence packet**: 5-50 KB depending on checkpoints
-
-Database grows slowly - thousands of checkpoints fit in a few megabytes.
-
-### Can I use CPoE offline?
-
-Yes! CPoE works entirely offline. The only network-optional features are:
-- External anchoring (e.g., Bitcoin timestamping)
-- Temporal beacon attestation (drand + NIST beacon values via WritersProof)
-- WritersProof certificate enrollment and verification
-
-All core functionality (VDF proofs, keystroke capture, checkpoint chains) works without internet. Disabling beacons caps the maximum security level at T2 (Standard).
+|------|------|-------------|
+| T1 | Basic | VDF proof only (offline) |
+| T2 | Standard | + keystrokes + timing (recommended) |
+| T3 | Enhanced | + behavioral analysis + hardware attestation |
+| T4 | Maximum | + all external anchors + full attestation |
 
 ### What are the security levels?
 
-CPoE assigns a security level (T1–T4) to each evidence export based on which temporal witnesses were successfully embedded:
+Security levels (T1-T4) are assigned based on which temporal witnesses were embedded:
 
-| Level | Name | What's Included | Guarantee |
-|-------|------|-----------------|-----------|
-| T1 | Basic | VDF proof only | Minimum elapsed computation time. No absolute time claim. |
-| T2 | Standard | + keystrokes + timing (+ Roughtime if available) | Absolute time ±30s via independent time servers. |
-| T3 | Enhanced | + behavioral analysis + hardware + WritersProof beacon | Creation time anchored to publicly auditable drand/NIST randomness beacons. |
-| T4 | Maximum | + all external anchors + full attestation | Four independent time witnesses. Highest assurance. |
-
-The system always reaches the highest level achievable. It never claims a level it cannot prove.
+| Level | Guarantee |
+|-------|-----------|
+| T1 | Minimum elapsed computation time. No absolute time claim. |
+| T2 | Absolute time via Roughtime servers. |
+| T3 | Creation anchored to drand/NIST randomness beacons. |
+| T4 | Four independent time witnesses. Highest assurance. |
 
 ### What are temporal beacons?
 
-Temporal beacons are cryptographic randomness values published by independent public sources:
-
+Cryptographic randomness values published by independent public sources:
 - **drand** (League of Entropy): BLS-signed random value every 30 seconds
 - **NIST Randomness Beacon**: RSA-signed 512-bit value every 60 seconds
 
-When beacons are enabled (default), CPoE fetches these values through WritersProof at each checkpoint. Including a beacon value in a checkpoint proves it was created *after* that value was published — regardless of what the author's system clock says.
+Including a beacon value in a checkpoint proves it was created *after* that value was published, regardless of the author's system clock.
 
-### How do I disable beacons?
+### Can I use CPoE offline?
 
-Beacons are enabled by default. To disable:
+Yes. Core functionality (VDF proofs, keystroke capture, checkpoint chains) works without internet. Network-optional features:
+- Temporal beacon attestation (drand + NIST)
+- WritersProof certificate enrollment
+- Transparency log anchoring
 
-```bash
-# Single export:
-cpoe export --no-beacons manuscript.txt
+Disabling beacons caps evidence at T2.
 
-# Via environment variable:
-export CPoE_BEACONS_ENABLED=false
+### How much storage does CPoE use?
 
-# Via configuration file (~/.writersproof/writersproof.json):
-{
-  "beacons": {
-    "enabled": false
-  }
-}
-```
-
-Disabling beacons caps the maximum security level at T2.
+- Per checkpoint: ~500 bytes in database
+- Per hour of writing: ~10 KB (with keystroke tracking)
+- Evidence packet: 5-50 KB depending on checkpoints
 
 ---
 
-## Legal Questions
+## Legal
 
 ### Does this provide legal proof of authorship?
 
-CPoE creates strong cryptographic evidence of authorship, but legal acceptance depends on:
-- Jurisdiction
-- Type of proceeding
-- Expert testimony to explain the evidence
-- Other corroborating evidence
-
-The evidence is designed to be admissible under FRE 902(13) for self-authentication of electronic records.
-
-### What is FRE 902(13)?
-
-Federal Rules of Evidence 902(13) allows electronic records to be self-authenticating if certified by a qualified person. CPoE evidence packets include:
-- Cryptographic verification of integrity
-- Chain of custody through signatures
-- Declarations of authenticity
-
-### Should I use CPoE for legal disputes?
-
-CPoE provides technical evidence. For legal matters:
-- Consult an attorney
-- Expert testimony may be needed to explain evidence
-- Combine with other documentation (emails, drafts, etc.)
+CPoE creates strong cryptographic evidence. Legal acceptance depends on jurisdiction, type of proceeding, and expert testimony. Evidence is designed to be admissible under FRE 902(13) for self-authentication of electronic records.
 
 ### Does CPoE guarantee I created the content?
 
@@ -247,133 +161,43 @@ CPoE proves:
 - Real typing activity occurred
 - The same device/identity signed all checkpoints
 
-It cannot prove you didn't copy content from elsewhere. However:
-- Keystroke evidence shows real typing occurred
-- VDF timing proves work happened over real time
-- Consistent identity ties all evidence together
+It cannot prove you didn't copy from elsewhere, but keystroke evidence, VDF timing, and consistent identity together create strong provenance.
 
 ---
 
 ## Practical Usage
 
-### I received a .cpoe file. What do I do with it?
+### I received a .c2pa file. What do I do with it?
 
-A `.cpoe` file is a self-contained cryptographic evidence packet that someone has shared with you to prove authorship of a document. You can verify it without creating an account or installing anything:
+**Web (easiest):** Go to [writerslogic.com/verify](https://writerslogic.com/verify) and upload the file. Verification runs in your browser; nothing is sent to a server.
 
-1. **Web (easiest):** Go to [writerslogic.com/verify](https://writerslogic.com/verify) and upload the file. Verification runs entirely in your browser — the file is never sent to a server.
-
-2. **CLI:** If you have `cpoe` installed, run:
-   ```bash
-   cpoe verify proof.cpoe
-   ```
-
-Verification checks the checkpoint chain, Ed25519 signatures, VDF timing proofs, and behavioral consistency. The output tells you whether the evidence is intact and what it proves: the document's content hashes, the time span over which writing occurred, and the author's cryptographic identity.
+**CLI:** `cpoe verify proof.c2pa`
 
 ### How often should I create checkpoints?
 
-Recommendations by use case:
-
-| Use Case | Interval | Reason |
-|----------|----------|--------|
-| Casual writing | Every session | Minimal overhead |
-| Important documents | Every 15-30 minutes | Balance proof strength with workflow |
-| Legal/compliance | Every 5-10 minutes | Maximum provability |
-| Automatic (sentinel) | Every 1-5 minutes | Hands-off, continuous |
-
-### Should I enable keystroke tracking?
-
-**Pros:**
-- Stronger evidence of authentic authorship
-- Proves real typing occurred
-- Jitter patterns are unique to the author
-
-**Cons:**
-- Requires accessibility permissions (macOS)
-- Minor battery impact on laptops
-
-For important documents or legal needs, enable tracking. For casual use, basic checkpoints are sufficient.
-
-### Can I checkpoint the same file from multiple devices?
-
-Yes, but each device will have:
-- Different master identity
-- Separate checkpoint chains
-- Independent evidence
-
-To maintain one chain, work on one device or use sync with caution (checkpoint before sync, verify after).
-
-### What happens if I edit an old checkpoint?
-
-Checkpoints are immutable. If you:
-1. Revert a file to an old version
-2. Create a new checkpoint
-
-The new checkpoint will:
-- Show the old content hash
-- Link to the previous (newer) checkpoint
-- Clearly show the reversion in history
-
-This is transparent and doesn't corrupt the chain.
-
-### Can I use CPoE with cloud documents?
-
-Yes, with caveats:
-- Checkpoint local copies of the file
-- Google Docs/Notion/etc. can be exported and checkpointed
-- The local file must match what you're working on
-
-For best results, work on local files and sync to cloud as backup.
-
-### How do I share evidence with someone?
-
-1. Export the evidence packet:
-   ```bash
-   cpoe export document.md -o evidence.cpoe
-   ```
-
-2. Share the `.cpoe` file
-
-3. Recipient verifies:
-   ```bash
-   cpoe verify evidence.cpoe
-   ```
-
-No account or registration needed - verification is self-contained.
+| Use Case | Interval |
+|----------|----------|
+| Casual writing | Every session |
+| Important documents | Every 15-30 minutes |
+| Legal/compliance | Every 5-10 minutes |
+| Automatic (sentinel) | Every 1-5 minutes |
 
 ### Can I export a PDF report?
 
-Yes! PDF reports include anti-forgery security features (guilloché patterns, microtext) derived from your cryptographic seal:
-
+Yes:
 ```bash
 cpoe export manuscript.txt -f pdf
 ```
 
-The PDF includes:
-- Security level badge (T1–T4)
-- Verdict and forensic score
-- Writing flow visualization
-- Process evidence metrics
-- Verification instructions (offline and online)
-- Embedded WAR block for independent verification
-
-PDF reports are designed to be difficult to forge — the visual security features are cryptographically bound to the specific evidence packet.
+PDF reports include anti-forgery security features (guilloche patterns, microtext) cryptographically bound to the evidence packet, plus verdict, forensic score, writing flow visualization, and an embedded WAR block for independent verification.
 
 ### Can I verify evidence without CPoE installed?
 
-The evidence packet includes verification instructions. Third-party verification requires:
-- Understanding the cryptographic primitives (Ed25519, SHA-256, VDF)
-- Implementing or using verification code
-
-You can also verify online at https://writerslogic.com/verify
+Upload to [writerslogic.com/verify](https://writerslogic.com/verify) for browser-based verification (WASM engine, nothing uploaded).
 
 ---
 
 ## More Questions?
 
-- **Documentation**: https://docs.writerslogic.com
-- **GitHub Issues**: https://github.com/writerslogic/cpoe/issues
+- **Issues**: https://github.com/writerslogic/writerslogic/issues
 - **Website**: https://writerslogic.com
-
----
-
-*Patent Pending: USPTO Application No. 19/460,364*

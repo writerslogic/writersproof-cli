@@ -1,0 +1,38 @@
+{
+  "name": "WritersProof for Moodle",
+  "tagline": "Cryptographic authorship attestation for student submissions",
+  "description": "WritersProof captures tamper-evident proof of the writing process within Moodle. As students compose assignments, essays, and forum posts, behavioral evidence is cryptographically witnessed without capturing actual content. Instructors can verify that submitted work was authored by the student through independent evidence verification, complementing existing plagiarism detection tools.",
+  "category": "Assessment",
+  "frankenstyle": "local_writersproof",
+  "moodle_versions": ["4.1+"],
+  "features": [
+    "Automatic session tracking for assignment submissions",
+    "Real-time keystroke behavioral entropy capture via editor hooks",
+    "Cryptographic checkpoints with VDF time proofs",
+    "Zero-content-capture privacy model (SHA-256 hashes only)",
+    "Per-submission evidence export for instructor review",
+    "GDPR-compliant privacy provider implementation",
+    "Independent verification via WritersProof portal"
+  ],
+  "requirements": {
+    "moodle_version": "4.1 or later",
+    "php_version": "8.0+",
+    "writersproof_api_key": true
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/moodle",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "screenshots": [],
+  "version": "1.0.0"
+}

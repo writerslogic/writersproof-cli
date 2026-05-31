@@ -1,400 +1,170 @@
-# macOS App User Guide
+# WritersProof macOS App Guide
 
-The CPoE macOS app provides a graphical interface for cryptographic authorship witnessing. This guide covers all features of the menu bar application.
+The WritersProof macOS app provides a graphical interface for cryptographic authorship witnessing. It runs as a menu bar application with an optional detachable popover dashboard.
 
-## Table of Contents
-
-- [Installation](#installation)
-- [First Launch](#first-launch)
-- [Menu Bar Interface](#menu-bar-interface)
-- [Tracking Documents](#tracking-documents)
-- [Creating Checkpoints](#creating-checkpoints)
-- [Viewing History](#viewing-history)
-- [Exporting Evidence](#exporting-evidence)
-- [Settings](#settings)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
-- [Permissions](#permissions)
-
-## Installation
-
-### Requirements
+## Requirements
 
 - macOS 13.0 (Ventura) or later
 - Apple Silicon or Intel processor
 - 50 MB disk space
 
-### Install from DMG
+## Installation
 
-1. Download `CPoE.dmg` from the [releases page](https://github.com/writerslogic/cpoe/releases)
-2. Open the DMG file
-3. Drag **CPoE** to your **Applications** folder
-4. Eject the DMG
-
-### Launch
-
-- Open from **Applications** folder, or
-- Search "CPoE" in **Spotlight** (Cmd+Space)
-
-The app runs as a menu bar application - look for the eye icon in your menu bar.
+1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/writerslogic/releases)
+2. Open the DMG and drag **WritersProof** to Applications
+3. Launch from Applications or Spotlight
 
 ## First Launch
 
 ### Onboarding
 
-On first launch, you'll see the onboarding screen:
+On first launch:
+1. **Welcome** — Overview of features
+2. **Permissions** — Grant Accessibility and Input Monitoring permissions
+3. **Initialize** — Creates your cryptographic identity and signing keys
+4. **Calibrate** — Measures VDF performance for your Mac
 
-1. **Welcome**: Overview of CPoE features
-2. **Permissions**: Grant accessibility permissions (required for keystroke counting)
-3. **Initialize**: Creates your cryptographic identity
-4. **Calibrate**: Measures VDF performance for your Mac
+### Required Permissions
 
-### Accessibility Permissions
+WritersProof requires these macOS permissions:
 
-CPoE requires accessibility permissions to count keystrokes (not capture content):
+| Permission | Purpose |
+|------------|---------|
+| Accessibility | Count keystroke events (not content) |
+| Input Monitoring | Capture timing jitter from hardware input |
+| Notifications | Show tracking and checkpoint alerts |
 
-1. Click **Open System Settings** when prompted
-2. Navigate to **Privacy & Security > Accessibility**
-3. Enable the toggle next to **CPoE**
-4. Return to the app
+To grant: **System Settings > Privacy & Security > Accessibility** (and Input Monitoring). Enable WritersProof.
 
-**Privacy Note:** CPoE only counts keystroke events - it does NOT record which keys you press.
-
-### Initialization
-
-The app automatically initializes on first launch:
-- Creates Ed25519 signing key pair
-- Derives master identity from device
-- Sets up secure database
-- Calibrates VDF timing
+**Privacy:** WritersProof only counts keystroke events. It does NOT record which keys you press.
 
 ## Menu Bar Interface
 
 ### Status Icon
 
-The menu bar icon indicates current state:
+| State | Meaning |
+|-------|---------|
+| Green (filled) | Actively witnessing |
+| Gray | Ready (not witnessing) |
+| Light gray (slash) | Not initialized |
 
-| Icon | Color | Meaning |
-|------|-------|---------|
-| Eye circle (filled) | Green | Tracking active |
-| Eye circle | Gray | Ready (not tracking) |
-| Eye slash | Light gray | Not initialized |
+### Dashboard Popover
 
-### Quick Menu
+Click the menu bar icon to open the bento-grid dashboard showing:
 
-Click the menu bar icon to open the quick menu:
+- **Hero gauge** — Real-time authorship score (0-100%)
+- **Session stats** — Keys, WPM, edits, evidence count
+- **Typing rhythm** — Live cadence visualization
+- **Checkpoint count** — Total checkpoints this session
+- **Timer** — Active session duration
 
-**When not tracking:**
-```
-○ Ready to Track
-──────────────────
-▶ Start Global Tracking    ⌘G
-  Start Tracking Document…
-──────────────────
-  View Details…
-  Settings…                ⌘,
-──────────────────
-  Quit CPoE           ⌘Q
-```
+The popover can be torn off into a floating window and snapped back to the menu bar.
 
-**When tracking:**
-```
-● Tracking: manuscript.md (1,234 keystrokes)
-──────────────────
-  Stop Tracking
-  Create Checkpoint Now
-──────────────────
-  View Details…
-  Settings…                ⌘,
-──────────────────
-  Quit CPoE           ⌘Q
-```
+## Witnessing
 
-## Tracking Documents
+### Automatic Detection
 
-### Global Tracking
+WritersProof automatically detects when you open supported writing applications (TextEdit, Pages, Word, Scrivener, VS Code, and 25+ others). Witnessing begins automatically when the app is running.
 
-Start tracking all keystrokes without specifying a document:
-
-1. Click the menu bar icon
-2. Select **Start Global Tracking**
-
-This creates a session file in `~/Library/Application Support/CPoE/sessions/` named with the current date.
-
-### Document-Specific Tracking
-
-Track keystrokes for a specific document:
-
-1. Click the menu bar icon
-2. Select **Start Tracking Document...**
-3. Choose the file you're working on
-4. Click **Start Tracking**
-
-### What Gets Tracked
+### What Gets Captured
 
 | Data | Description |
 |------|-------------|
-| Keystroke count | Total number of key presses |
+| Keystroke count | Total key presses (not which keys) |
 | Timing jitter | Nanosecond-precision timing variations |
+| Focus events | App switches and document changes |
+| Mouse dynamics | Movement patterns and click timing |
+| Edit operations | Insertions, deletions, pastes |
 | Session duration | Start and end times |
-| File associations | Which document the session is for |
 
-**Not tracked:** Actual keys pressed, clipboard content, screen content, or any identifying information about your writing.
+**Not captured:** Key content, clipboard text, screen content, or document text.
 
-### Stopping Tracking
+### Creating Checkpoints
 
-1. Click the menu bar icon
-2. Select **Stop Tracking**
+Checkpoints are created automatically at configured intervals. You can also trigger one manually from the dashboard or menu.
 
-This automatically:
-- Creates a final checkpoint
-- Saves the session to the database
-- Shows a confirmation notification
-
-## Creating Checkpoints
-
-### Manual Checkpoint
-
-Create a checkpoint at any time:
-
-1. Click the menu bar icon
-2. Select **Create Checkpoint Now**
-
-The checkpoint includes:
-- Current file content hash
+Each checkpoint includes:
+- Content hash of the tracked document
 - VDF timing proof
-- Keystroke count (if tracking)
-- Jitter samples (if tracking)
+- Keystroke count and jitter samples
+- Forensic score snapshot
 
-### Auto-Checkpoints
+### Exporting Evidence
 
-Enable automatic checkpoints in Settings:
-
-1. Open **Settings** > **General**
-2. Enable **Auto-create checkpoints**
-3. Set the interval (5 min to 2 hours)
-
-Checkpoints are created automatically at the specified interval while tracking is active.
-
-## Viewing History
-
-### Details Popover
-
-Click **View Details...** to see:
-
-- Current tracking status
-- Total keystrokes in session
-- Recent checkpoints
-- Quick actions
-
-### Checkpoint History
-
-The popover shows recent checkpoints:
-
-```
-Recent Checkpoints
-
-#15  Today 2:30 PM      +1.2 KB  Chapter complete
-#14  Today 1:15 PM      +856 B   Added section
-#13  Today 11:00 AM     +2.1 KB  Morning writing
-```
-
-Click any checkpoint to see details:
-- Full content hash
-- VDF iterations
-- Associated keystroke count
-- Size delta
-
-## Exporting Evidence
-
-### Export from Details
-
-1. Click **View Details...**
-2. Select a document
+1. Open the dashboard
+2. Select a document session
 3. Click **Export Evidence**
-4. Choose save location
-
-### Export Options
-
-| Option | Description |
-|--------|-------------|
-| Format | JSON (readable) or CBOR (compact) |
-| Tier | Evidence tier level |
-| Include Content | Embed file content in packet |
-
-### Evidence Tiers
-
-| Tier | Name | Description |
-|------|------|-------------|
-| 1 | Core | Checkpoint chain + VDF proofs + keystroke evidence |
-| 2 | Enhanced | + TPM/hardware attestation |
-| 3 | Maximum | + Behavioral analysis + external anchors |
+4. Choose format (HTML report, PDF, JSON, CBOR) and save location
 
 ## Settings
 
-Access settings via menu bar > **Settings...** or **Cmd+,**
+Access via menu bar > **Settings** or **Cmd+,**.
 
-### General Tab
+### General
+- **Open at Login** — Auto-start on login
+- **Auto-checkpoint interval** — Time between automatic checkpoints
+- **Debounce interval** — Wait after last keystroke (100-2000ms)
 
-| Setting | Description |
-|---------|-------------|
-| Open at Login | Auto-start CPoE on login |
-| Auto-create checkpoints | Enable automatic checkpoints |
-| Checkpoint Interval | Time between auto-checkpoints |
-| Debounce Interval | Wait after last keystroke (100-2000ms) |
+### Monitored Apps
+- Configure which applications trigger witnessing
+- Add/remove from the allowed/blocked lists
 
-### Watch Paths Tab
+### File Patterns
+- Filter which file types to track
+- Presets: Text, Documents, Code
 
-Configure directories for automatic tracking:
+### Security
+- View signing key fingerprint
+- Recalibrate VDF timing
+- Toggle hardware attestation (Secure Enclave)
 
-1. Click **Add Directory...**
-2. Select a folder to watch
-3. Toggle paths on/off as needed
+### Notifications
+- Enable/disable checkpoint and session notifications
 
-When you edit files in watched directories, CPoE can automatically start tracking.
+### Advanced
+- Data location: `~/Library/Application Support/WritersProof/`
+- Default export format and tier
+- Reset (deletes all data and keys)
 
-### Patterns Tab
+## Data Storage
 
-Filter which files to track:
+All data is stored locally:
 
-- **File Extensions**: Only track files matching patterns (e.g., `.md`, `.txt`)
-- **Presets**: Quick-add common patterns:
-  - Text Files: `.txt`, `.md`, `.rtf`
-  - Documents: `.doc`, `.docx`, `.odt`, `.pdf`
-  - Code: `.swift`, `.go`, `.py`, `.js`, `.ts`
-
-### Security Tab
-
-| Setting | Description |
-|---------|-------------|
-| Signing Key | Path to custom Ed25519 key |
-| TPM Attestation | Enable hardware attestation (if available) |
-| VDF Calibration | Recalibrate timing proofs |
-
-**VDF Status:**
-- Green checkmark: Calibrated
-- Yellow warning: Not calibrated (click **Recalibrate VDF**)
-
-### Notifications Tab
-
-| Setting | Description |
-|---------|-------------|
-| Show notifications | Enable/disable all notifications |
-
-Notification types:
-- Tracking started/stopped
-- Checkpoint created
-- Auto-checkpoint created
-
-### Advanced Tab
-
-| Setting | Description |
-|---------|-------------|
-| Data Location | Path to evidence storage |
-| Default Export Format | JSON or CBOR |
-| Default Export Tier | Tier for new exports |
-
-**Reveal**: Opens the data folder in Finder
-
-**Reset CPoE**: Deletes all data and keys (irreversible!)
+```
+~/Library/Application Support/WritersProof/
+  config.toml          # Configuration
+  events.db            # Checkpoint database (tamper-evident)
+  signing_key          # Private key (protected, mode 0600)
+  signing_key.pub      # Public key
+  sentinel/            # Sentinel daemon state
+  fingerprints/        # Behavioral typing profiles
+```
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| ⌘G | Start global tracking |
-| ⌘, | Open Settings |
-| ⌘Q | Quit CPoE |
-
-## Permissions
-
-### Required Permissions
-
-| Permission | Purpose |
-|------------|---------|
-| Accessibility | Count keystroke events (not content) |
-| Notifications | Show tracking and checkpoint alerts |
-
-### Granting Permissions
-
-**Accessibility:**
-1. System Settings > Privacy & Security > Accessibility
-2. Enable CPoE
-
-**Notifications:**
-1. System Settings > Notifications
-2. Find CPoE
-3. Enable notifications
-
-### Revoking Permissions
-
-If you revoke accessibility permissions:
-- Keystroke counting will be disabled
-- Basic checkpointing still works
-- Evidence will be Tier 1 instead of Tier 2
-
-## Data Storage
-
-All data is stored in:
-```
-~/Library/Application Support/CPoE/
-```
-
-Contents:
-```
-CPoE/
-├── config.json        # Configuration
-├── events.db          # Checkpoint database
-├── identity.json      # Public identity info
-├── puf_seed           # Device binding seed
-├── signing_key        # Private key (protected)
-├── signing_key.pub    # Public key
-├── sessions/          # Global tracking sessions
-├── chains/            # Checkpoint chains
-└── tracking/          # WAL files
-```
-
-### Backup
-
-To backup your evidence:
-1. Quit CPoE
-2. Copy the entire `CPoE` folder
-3. Store backup securely
-
-**Important:** The `signing_key` file is your cryptographic identity. Keep backups secure!
+| Cmd+, | Open Settings |
+| Cmd+Q | Quit WritersProof |
 
 ## Troubleshooting
 
 ### Menu Bar Icon Missing
-
 1. Check if app is running in Activity Monitor
-2. Try quitting and relaunching
-3. Check menu bar overflow (click >> in menu bar)
+2. Check menu bar overflow (click `>>` on right side)
+3. Restart the app
 
 ### Keystroke Counting Not Working
-
-1. Verify accessibility permissions are granted
-2. Try toggling the permission off and on
-3. Restart the app after granting permission
+1. Verify Accessibility AND Input Monitoring permissions are granted
+2. Toggle permissions off and on
+3. Restart the app after granting permissions
 
 ### VDF Not Calibrated
-
-1. Open Settings > Security
-2. Click **Recalibrate VDF**
-3. Wait for calibration to complete (~30 seconds)
+Open Settings > Security > click **Recalibrate VDF** (~30 seconds).
 
 ### High CPU Usage
+Brief spikes during VDF computation are normal. If sustained:
+- Reduce checkpoint frequency in Settings
+- Increase debounce interval
 
-Normal CPU usage during:
-- VDF computation (brief spike during checkpoint)
-- Calibration (sustained ~30 seconds)
-
-If CPU stays high:
-1. Check sentinel status
-2. Reduce checkpoint frequency
-3. Increase debounce interval
-
-See also: [Troubleshooting Guide](troubleshooting.md)
-
----
-
-*For command-line usage, see [CLI Reference](cli-reference.md)*
+See also: [Troubleshooting Guide](troubleshooting.md) | [CLI Reference](cli-reference.md)

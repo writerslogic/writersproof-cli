@@ -1,0 +1,10 @@
+The Role of Cryptographic Attestation in Modern Publishing
+
+In an era where AI-generated text is indistinguishable from human writing,
+publishers face a fundamental challenge: how do you verify that a submitted
+manuscript was actually written by the claimed author?
+
+WritersProof takes the opposite approach: instead of analyzing the finished
+text, it records the act of creation. Every keystroke interval, every
+revision cycle, every pause pattern is captured and sealed into a
+cryptographic evidence chain during the writing process itself.

@@ -71,11 +71,11 @@ cpoe commit essay.md -m "first draft complete"
 # View checkpoint history
 cpoe log essay.md
 
-# Export cryptographic evidence (.cpoe)
+# Export cryptographic evidence (.c2pa)
 cpoe export essay.md -t 2
 
 # Verify evidence
-cpoe verify essay.cpoe
+cpoe verify essay.c2pa
 ```
 
 Run `cpoe` with no arguments for an interactive menu, or `cpoe --help` for the full command reference.
@@ -87,7 +87,7 @@ Run `cpoe` with no arguments for an interactive menu, or `cpoe --help` for the f
 | `cpoe <path>` | | Start tracking a file or directory |
 | `cpoe commit` | `checkpoint` | Create a checkpoint with VDF time proof |
 | `cpoe log` | `history`, `ls` | View history or list all tracked documents |
-| `cpoe export` | `prove` | Export evidence packet (.cpoe or .cwar) |
+| `cpoe export` | `prove` | Export evidence packet (.c2pa) |
 | `cpoe verify` | `check` | Verify evidence packet |
 | `cpoe status` | | Show system status |
 | `cpoe track` | | Session management (start/stop/status/list/show/export) |
@@ -112,16 +112,15 @@ Per [draft-condrey-rats-pop](https://datatracker.ietf.org/doc/draft-condrey-rats
 
 | Format | Extension | Description |
 |:-------|:----------|:------------|
-| CPoE | `.cpoe` | CBOR-encoded evidence packet (primary format) |
-| CWAR | `.cwar` | CBOR-encoded attestation result (verification report) |
+| C2PA | `.c2pa` | C2PA Content Credentials manifest (primary format) |
 | JSON | `.json` | Human-readable evidence export |
 
 ## Verifying Evidence
 
-Anyone can verify `.cpoe` evidence packets — no account or software required:
+Anyone can verify `.c2pa` evidence packets — no account or software required:
 
 - **Web**: Upload at [writerslogic.com/verify](https://writerslogic.com/verify)
-- **CLI**: `cpoe verify proof.cpoe`
+- **CLI**: `cpoe verify proof.c2pa`
 
 Verification checks the checkpoint chain, Ed25519 signatures, VDF timing proofs, and behavioral consistency. It runs entirely client-side — your evidence is never uploaded to our servers.
 

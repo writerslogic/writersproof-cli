@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for Ironclad",
+  "tagline": "Cryptographic proof of human authorship for every contract in your CLM",
+  "description": "WritersProof for Ironclad adds cryptographic authorship attestation to the contract lifecycle. As legal teams draft, negotiate, and revise contracts in Ironclad, WritersProof captures tamper-evident proof of human authorship without storing contract content — only SHA-256 hashes. With AI-assisted drafting becoming commonplace in CLM platforms, WritersProof lets legal departments prove which contract language was genuinely human-authored versus machine-generated. Each contract carries a verifiable evidence chain from first draft through final execution, providing an immutable record of the authoring process.",
+  "category": "Legal / Contracts",
+  "features": [
+    "Evidence capture during contract drafting and redlining in Ironclad Editor",
+    "Per-clause attestation granularity showing which sections have authorship proof",
+    "Workflow integration attaching attestation status at approval gates",
+    "Counterparty-visible attestation for negotiated contract terms",
+    "Template and playbook authorship tracking for standardized clauses",
+    "Contract repository attestation analytics across deal volume",
+    "API-driven attestation queries for integration with downstream compliance systems"
+  ],
+  "requirements": {
+    "platform": "Ironclad CLM",
+    "integration_type": "Ironclad API (OAuth 2.0) with webhook event subscriptions",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/ironclad",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

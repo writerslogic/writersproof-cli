@@ -74,7 +74,7 @@ make install PREFIX=$HOME/.local
 
 ### "Error creating directory: permission denied"
 
-**Cause:** Cannot create ~/.writerslogic directory.
+**Cause:** Cannot create ~/.writersproof directory.
 
 **Solutions:**
 
@@ -85,8 +85,8 @@ make install PREFIX=$HOME/.local
 
 2. **Create directory manually:**
    ```bash
-   mkdir -p ~/.writerslogic
-   chmod 700 ~/.writerslogic
+   mkdir -p ~/.writersproof
+   chmod 700 ~/.writersproof
    cpoe init
    ```
 
@@ -241,7 +241,7 @@ make install PREFIX=$HOME/.local
 
 2. **Check VDF settings:**
    ```bash
-   cat ~/.writersproof/config.json | grep -A5 '"vdf"'
+   cat ~/.writersproof/config.toml | grep -A5 '"vdf"'
    ```
 
 3. **Reduce max iterations if needed:**
@@ -295,7 +295,7 @@ make install PREFIX=$HOME/.local
 1. **Re-verify with current VDF parameters:**
    ```bash
    cpoe calibrate
-   cpoe verify document.cpoe
+   cpoe verify document.c2pa
    ```
 
 2. **VDF proofs are deterministic - if fails, evidence may be invalid**
@@ -308,7 +308,7 @@ make install PREFIX=$HOME/.local
 
 1. **Check certificate chain:**
    ```bash
-   cpoe verify document.cpoe --verbose 2>&1 | grep -i cert
+   cpoe verify document.c2pa --verbose 2>&1 | grep -i cert
    ```
 
 2. **Verify master identity matches:**
@@ -405,12 +405,12 @@ make install PREFIX=$HOME/.local
 
 1. **Check Console for crash logs:**
    - Open Console.app
-   - Filter for "CPoE"
+   - Filter for "WritersProof"
 
 2. **Reset app state:**
    ```bash
-   rm -rf ~/Library/Application\ Support/CPoE/
-   open /Applications/CPoE.app
+   rm -rf ~/Library/Application\ Support/WritersProof/
+   open /Applications/WritersProof.app
    ```
 
 3. **Check macOS version compatibility**
@@ -420,7 +420,7 @@ make install PREFIX=$HOME/.local
 **Solutions:**
 
 1. **Check notification permissions:**
-   - System Settings > Notifications > CPoE
+   - System Settings > Notifications > WritersProof
 
 2. **Check Focus mode** isn't blocking notifications
 
@@ -486,7 +486,7 @@ Before complete reset:
 ```bash
 # Export all evidence packets
 for file in $(cpoe log --all --files); do
-  cpoe export "$file" -o "backup_${file}.cpoe"
+  cpoe export "$file" -o "backup_${file}.c2pa"
 done
 ```
 
@@ -502,7 +502,7 @@ uname -a
 CPoE version
 
 # Configuration
-cat ~/.writersproof/config.json
+cat ~/.writersproof/config.toml
 
 # Status
 cpoe status

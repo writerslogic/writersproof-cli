@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for GitHub",
+  "tagline": "Cryptographic proof that your code and docs were human-authored",
+  "description": "WritersProof for GitHub adds cryptographic authorship attestation to commits, pull requests, issues, and documentation. Install as a GitHub App to automatically verify that contributed content carries valid proof-of-process evidence. WritersProof captures tamper-evident proof of the content creation process without storing actual content — only SHA-256 hashes. Maintainers gain confidence that contributions were genuinely human-authored, while contributors build a verifiable track record of original work across repositories.",
+  "category": "Developer Tools",
+  "features": [
+    "GitHub App with webhook-driven attestation verification on push and PR events",
+    "Commit-level authorship attestation linked to WritersProof evidence chains",
+    "Pull request status checks showing attestation coverage per changed file",
+    "Issue and discussion comment attestation for policy-sensitive repositories",
+    "Repository-level attestation dashboard with per-contributor breakdowns",
+    "Branch protection rule integration requiring attestation on merge",
+    "API access for CI/CD pipelines to query attestation status programmatically"
+  ],
+  "requirements": {
+    "platform": "GitHub.com or GitHub Enterprise Server 3.8+",
+    "integration_type": "GitHub App with webhook subscriptions",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/github",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

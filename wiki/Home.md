@@ -41,7 +41,7 @@ If you're new to CPoE, start here:
 For developers and researchers interested in the underlying protocol:
 
 - **[[Technical Specifications Index]]**
-- **[[Evidence Format]]**: Structure of the `.cpoe` evidence packets.
+- **[[Evidence Format]]**: Structure of the `.c2pa` evidence packets.
 - **[[Process Declaration]]**: How creative intent is cryptographically declared.
 - **[[Ratchet Key Hierarchy]]**: Our forward-secure key management system.
 - **[[Behavioral Metrics]]**: How we use keystroke dynamics for attestation.

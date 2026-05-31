@@ -6,7 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use cpoe::authorproof_protocol::forensics::ForensicVerdict;
-use cpoe::authorproof_protocol::rfc::{CBOR_TAG_ATTESTATION_RESULT, CBOR_TAG_EVIDENCE_PACKET};
+use cpoe::authorproof_protocol::rfc::CBOR_TAG_EVIDENCE_PACKET;
 use cpoe::evidence;
 use cpoe::verify::{self, FullVerificationResult, VerifyOptions};
 use cpoe::war;
@@ -28,15 +28,13 @@ pub(crate) fn cmd_verify(
 
     if ext == "json" {
         verify_json(file_path, output_war, out)
-    } else if ext == "cpoe" || ext == "cbor" {
-        verify_cpop(file_path, out)
-    } else if ext == "cwar" || ext == "war" {
-        verify_cwar(file_path, out)
+    } else if ext == "c2pa" {
+        verify_c2pa(file_path, out)
     } else if matches!(ext, "db" | "sqlite") {
         verify_db(file_path, key, out)
     } else {
         Err(anyhow!(
-            "Unknown file format '{}'. Expected .json, .cpoe, .cwar, or .db",
+            "Unknown file format '{}'. Expected .json, .c2pa, or .db",
             ext
         ))
     }
@@ -407,189 +405,59 @@ fn write_war_appraisal(packet: &evidence::Packet, war_path: &PathBuf) -> Result<
     }
 }
 
-fn verify_cpop(file_path: &PathBuf, out: &OutputMode) -> Result<()> {
-    let data = fs::read(file_path).context("read CPoE file")?;
+fn verify_c2pa(file_path: &PathBuf, out: &OutputMode) -> Result<()> {
+    use cpoe::authorproof_protocol::c2pa::verify_manifest_signature;
 
-    // Strip and verify CRC32 footer if present: [CBOR][CRC32-BE 4 bytes][magic "CPOE" 4 bytes]
-    let data = if data.len() > 8 && &data[data.len() - 4..] == b"CPOE" {
-        let crc_offset = data.len() - 8;
-        let stored_crc = u32::from_be_bytes([
-            data[crc_offset],
-            data[crc_offset + 1],
-            data[crc_offset + 2],
-            data[crc_offset + 3],
-        ]);
-        let cbor_data = &data[..crc_offset];
-        let computed_crc = crc32fast::hash(cbor_data);
-        if stored_crc != computed_crc {
-            anyhow::bail!(
-                "CRC32 integrity check failed: stored {:08x}, computed {:08x}",
-                stored_crc,
-                computed_crc,
-            );
-        }
-        if !out.quiet && !out.json {
-            println!("  CRC32: {:08x} (verified)", computed_crc);
-        }
-        cbor_data.to_vec()
-    } else {
-        data
-    };
-
-    // Evidence files may be COSE_Sign1 envelopes (signed) or raw CBOR (unsigned).
-    let cbor_payload = cpoe::ffi::helpers::unwrap_cose_or_raw(&data);
-    match cpoe::authorproof_protocol::rfc::wire_types::packet::EvidencePacketWire::decode_cbor(
-        &cbor_payload,
-    ) {
-        Ok(packet) => {
-            let validation_result = packet.validate();
-            let validation_ok = validation_result.is_ok();
-            let validation_err = validation_result.err().map(|e| e.to_string());
-
-            if out.json {
-                let mut obj = serde_json::json!({
-                    "valid": validation_ok,
-                    "file": file_path.to_string_lossy(),
-                    "version": packet.version,
-                    "profile": packet.profile_uri,
-                    "checkpoints": packet.checkpoints.len(),
-                });
-                if let Some(tier) = &packet.attestation_tier {
-                    obj["attestation_tier"] = serde_json::json!(format!("{:?}", tier));
-                }
-                if let Some(ct) = &packet.content_tier {
-                    obj["content_tier"] = serde_json::json!(format!("{:?}", ct));
-                }
-                if let Some(err) = &validation_err {
-                    obj["validation_error"] = serde_json::json!(err);
-                }
-                println!("{}", obj);
-                return Ok(());
-            }
-
-            if !out.quiet {
-                if validation_ok {
-                    println!("[OK] CPoE evidence packet Verified");
-                } else if let Some(err) = &validation_err {
-                    println!("[WARN] CPoE decoded but validation failed: {}", err);
-                }
-                println!("  Version: {}", packet.version);
-                println!("  Profile: {}", packet.profile_uri);
-                println!("  Checkpoints: {}", packet.checkpoints.len());
-                if let Some(tier) = &packet.attestation_tier {
-                    println!("  Attestation tier: {:?}", tier);
-                }
-                if let Some(ct) = &packet.content_tier {
-                    println!("  Content tier: {:?}", ct);
-                }
-            }
-            Ok(())
-        }
-        Err(e) => {
-            if out.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "valid": false,
-                        "file": file_path.to_string_lossy(),
-                        "error": e.to_string(),
-                    })
-                );
-            } else {
-                println!("[FAILED] CPoE evidence packet INVALID: {}", e);
-            }
-            Err(anyhow!("Verification failed"))
-        }
-    }
-}
-
-fn verify_cwar(file_path: &PathBuf, out: &OutputMode) -> Result<()> {
-    const MAX_CWAR_SIZE: u64 = 10_000_000; // 10 MB
-    let meta = fs::metadata(file_path).context("stat WAR file")?;
-    if meta.len() > MAX_CWAR_SIZE {
+    const MAX_C2PA_SIZE: u64 = 100_000_000; // 100 MB
+    let meta = fs::metadata(file_path).context("stat C2PA file")?;
+    if meta.len() > MAX_C2PA_SIZE {
         return Err(anyhow!(
-            "WAR file too large ({} bytes, max {})",
+            "C2PA file too large ({} bytes, max {})",
             meta.len(),
-            MAX_CWAR_SIZE
+            MAX_C2PA_SIZE
         ));
     }
-    let data = fs::read_to_string(file_path).context("read WAR file")?;
-    let war_block =
-        war::Block::decode_ascii(&data).map_err(|e| anyhow!("parse WAR block: {}", e))?;
-    let report = war_block.verify(None);
+    let data = fs::read(file_path).context("read C2PA file")?;
+
+    // Parse the JUMBF manifest store and extract the C2PA manifest.
+    let manifest = cpoe::authorproof_protocol::c2pa::decode_jumbf(&data)
+        .map_err(|e| anyhow!("Failed to parse C2PA manifest: {e}"))?;
+
+    let sig_valid = verify_manifest_signature(&manifest)
+        .map_err(|e| anyhow!("Signature verification error: {e}"))?;
+
+    let assertion_count = manifest.claim.created_assertions.len();
+    let generator = &manifest.claim.claim_generator_info.name;
 
     if out.json {
-        let checks: Vec<serde_json::Value> = report
-            .checks
-            .iter()
-            .map(|c| {
-                serde_json::json!({
-                    "name": c.name,
-                    "passed": c.passed,
-                    "message": c.message,
-                })
-            })
-            .collect();
         println!(
             "{}",
             serde_json::json!({
-                "valid": report.valid,
+                "valid": sig_valid,
                 "file": file_path.to_string_lossy(),
-                "version": report.details.version,
-                "author": report.details.author,
-                "document_id": report.details.document_id,
-                "timestamp": report.details.timestamp,
-                "checks": checks,
-                "summary": report.summary,
+                "format": "c2pa",
+                "assertions": assertion_count,
+                "claim_generator": generator,
             })
         );
-        if !report.valid {
+        if !sig_valid {
             return Err(anyhow!("Verification failed"));
         }
         return Ok(());
     }
 
     if !out.quiet {
-        if report.valid {
-            println!("[OK] WAR block Verified");
+        if sig_valid {
+            println!("[OK] C2PA manifest Verified");
         } else {
-            println!("[FAILED] WAR block INVALID");
+            println!("[FAILED] C2PA manifest INVALID");
         }
-        println!("  Version: {}", report.details.version);
-        println!("  Author: {}", report.details.author);
-        // Truncate document_id to first 16 chars for display; if shorter, show full ID.
-        println!(
-            "  Document: {}",
-            report
-                .details
-                .document_id
-                .get(..16)
-                .unwrap_or(&report.details.document_id)
-        );
-        println!("  Timestamp: {}", report.details.timestamp);
-        println!();
-        println!("Verification checks:");
-        for check in &report.checks {
-            let status = if check.passed { "[OK]" } else { "[FAIL]" };
-            println!("  {} {}: {}", status, check.name, check.message);
-        }
-        println!();
-        println!("  Spec reference (draft-condrey-rats-pop):");
-        println!(
-            "    WAR CBOR tag: {} (attestation-result)",
-            CBOR_TAG_ATTESTATION_RESULT
-        );
-        println!(
-            "    Evidence CBOR tag: {} (evidence-packet)",
-            CBOR_TAG_EVIDENCE_PACKET
-        );
+        println!("  Assertions: {}", assertion_count);
+        println!("  Claim generator: {}", generator);
+        println!("  Signature size: {} bytes", manifest.signature.len());
     }
 
-    if !report.valid {
-        if !out.quiet {
-            println!();
-            println!("Summary: {}", report.summary);
-        }
+    if !sig_valid {
         return Err(anyhow!("Verification failed"));
     }
     Ok(())

@@ -1,11 +1,11 @@
 # Evidence Packet Format Specification
 
 **Version:** 1.1.0  
-**Format:** `.cpoe` (CBOR/JSON)
+**Format:** `.c2pa` (CBOR/JSON)
 
 ## Overview
 
-A CPoE **Evidence Packet** (`.cpoe`) is a self-contained, portable proof of documented authorship. It bundles cryptographic proofs, process declarations, and sequential attestations into a single format compliant with the [[Glossary#RATS|IETF RATS (Remote ATtestation ProcedureS)]] framework and the **[[Glossary#PoP|Proof-of-Process (PoP)]]** protocol.
+A CPoE **Evidence Packet** (`.c2pa`) is a self-contained, portable proof of documented authorship. It bundles cryptographic proofs, process declarations, and sequential attestations into a single format compliant with the [[Glossary#RATS|IETF RATS (Remote ATtestation ProcedureS)]] framework and the **[[Glossary#PoP|Proof-of-Process (PoP)]]** protocol.
 
 ## Design Goals
 

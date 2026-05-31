@@ -144,8 +144,7 @@ pub(crate) async fn cmd_commit(
     let elapsed = start.elapsed();
 
     // Phase 2: DB write (blocking)
-    let message_clone = message.clone();
-    let abs_path_str_clone = abs_path_str.clone();
+    let message_for_closure = message.clone();
     let (event_hash, count) = tokio::task::spawn_blocking(move || -> Result<_> {
         let mut event = SecureEvent {
             id: None,
@@ -163,14 +162,14 @@ pub(crate) async fn cmd_commit(
                     ts
                 }
             },
-            file_path: abs_path_str_clone.clone(),
+            file_path: abs_path_str,
             content_hash,
             file_size,
             size_delta,
             previous_hash: [0u8; 32],
             event_hash: [0u8; 32],
             context_type: Some("manual".to_string()),
-            context_note: message_clone,
+            context_note: message_for_closure,
             vdf_input: Some(vdf_input),
             vdf_output: Some(vdf_proof.output),
             vdf_iterations: vdf_proof.iterations,
@@ -193,7 +192,7 @@ pub(crate) async fn cmd_commit(
         };
 
         db.add_secure_event(&mut event).context("save checkpoint")?;
-        let events = db.get_events_for_file(&abs_path_str_clone)?;
+        let events = db.get_events_for_file(&event.file_path)?;
         Ok((event.event_hash, events.len()))
     })
     .await

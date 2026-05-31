@@ -1,0 +1,35 @@
+{
+  "name": "WritersProof for Webflow",
+  "tagline": "Prove your website copy and blog content are genuinely human-crafted",
+  "description": "WritersProof for Webflow brings cryptographic authorship attestation to website content creation. As designers and content creators write page copy, blog posts, and CMS collection items in the Webflow Designer and Editor, WritersProof captures tamper-evident proof of human authorship without storing content — only SHA-256 hashes. Agencies can demonstrate to clients that deliverables are original human work. Brands publishing thought leadership can prove authenticity to readers. Each piece of content carries a verifiable evidence chain accessible through an embedded verification badge or direct link.",
+  "category": "Design / Publishing",
+  "features": [
+    "Evidence capture during content editing in Webflow Designer and Editor",
+    "CMS collection item attestation for blog posts, case studies, and portfolios",
+    "Embeddable verification badge component for published pages",
+    "Per-page and per-collection attestation status in the Webflow dashboard",
+    "Multi-collaborator support with individual attestation per content author",
+    "Site-wide attestation coverage report for agency client deliverables",
+    "Webflow App integration with Designer extension panel"
+  ],
+  "requirements": {
+    "platform": "Webflow (Workspace plan or higher for Apps)",
+    "integration_type": "Webflow App (Designer Extension + Data API v2)",
+    "browser": "Chrome, Firefox, Edge, or Safari with WritersProof browser extension"
+  },
+  "pricing": {
+    "model": "freemium",
+    "free_tier": "Core evidence (VDF proofs + hash chain)",
+    "pro_tier": "Enhanced evidence (behavioral entropy + forensic analysis)"
+  },
+  "support": {
+    "email": "support@writerslogic.com",
+    "docs": "https://docs.writerslogic.com/integrations/webflow",
+    "website": "https://writerslogic.com"
+  },
+  "publisher": {
+    "name": "Writers Logic LLC",
+    "website": "https://writerslogic.com"
+  },
+  "version": "1.0.0"
+}

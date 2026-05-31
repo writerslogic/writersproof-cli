@@ -86,11 +86,9 @@ pub enum Commands {
             maximum   T4 — + all external anchors + full attestation\n\n\
             FORMATS:\n  \
             json  Machine-readable evidence packet\n  \
-            cpoe  CBOR binary wire format\n  \
-            cwar  COSE-signed attestation result\n  \
             html  Self-contained HTML report (open in browser)\n  \
             pdf   Signed PDF with anti-forgery security features\n  \
-            c2pa  C2PA assertion JSON (embed via c2patool)\n\n\
+            c2pa  C2PA Content Credentials manifest with embedded VC\n\n\
             BEACONS:\n  \
             Temporal beacons (drand + NIST) are enabled by default via WritersProof.\n  \
             Use --no-beacons to disable (caps security level at T2)."
@@ -104,7 +102,7 @@ pub enum Commands {
         /// Output file path (defaults to stdout for JSON)
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
-        /// Output format (json, cpoe, cwar, html, pdf, c2pa)
+        /// Output format (json, html, pdf, c2pa)
         #[arg(short = 'f', long, default_value = "json")]
         format: String,
         /// Disable temporal beacon attestation (caps security level at T2)

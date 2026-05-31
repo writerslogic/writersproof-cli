@@ -1,453 +1,270 @@
 # Configuration Guide
 
-CPoE can be configured through configuration files, environment variables, and command-line flags. This guide covers all available options.
-
-## Table of Contents
-
-- [Configuration File Location](#configuration-file-location)
-- [Configuration File Format](#configuration-file-format)
-- [Core Settings](#core-settings)
-- [Storage Settings](#storage-settings)
-- [VDF Settings](#vdf-settings)
-- [Key Hierarchy Settings](#key-hierarchy-settings)
-- [Presence Settings](#presence-settings)
-- [Sentinel Settings](#sentinel-settings)
-- [Beacon Settings](#beacon-settings)
-- [Environment Variables](#environment-variables)
-- [macOS App Settings](#macos-app-settings)
-- [Configuration Examples](#configuration-examples)
+CPoE can be configured through a TOML configuration file, environment variables, and command-line flags.
 
 ## Configuration File Location
 
-### Default Locations
-
 | Platform | Path |
 |----------|------|
-| macOS/Linux | `~/.writersproof/config.json` |
-| macOS App | `~/Library/Application Support/CPoE/config.json` |
+| CLI (all platforms) | `~/.writersproof/config.toml` |
+| macOS App | `~/Library/Application Support/WritersProof/config.toml` |
 
-### Custom Location
-
-Use the `--config` flag or `CPoE_CONFIG` environment variable:
-
+Override with:
 ```bash
-CPoE --config /path/to/config.json status
+CPOE_DATA_DIR=/custom/path cpoe status
 ```
 
 ## Configuration File Format
 
-CPoE uses JSON configuration with the following structure:
-
-```json
-{
-  "version": 4,
-  "storage": { ... },
-  "vdf": { ... },
-  "key_hierarchy": { ... },
-  "presence": { ... },
-  "sentinel": { ... },
-  "beacons": { ... }
-}
-```
-
-### TOML Alternative
-
-For the legacy daemon mode, TOML configuration is also supported at `~/.writersproof/config.toml`:
+CPoE uses TOML configuration:
 
 ```toml
-watch_paths = ["~/Documents"]
-interval = 5
-database_path = "~/.writersproof/mmr.db"
-log_path = "~/.writersproof/cpoe.log"
-signing_key_path = "~/.writersproof/signing_key"
-signatures_path = "~/.writersproof/signatures.sigs"
-event_store_path = "~/.writersproof/events.db"
+data_dir = "~/.writersproof"
+watch_dirs = ["~/Documents"]
+retention_days = 30
+
+[vdf]
+iterations_per_second = 1000000
+min_iterations = 100000
+max_iterations = 3600000000
+
+[sentinel]
+auto_start = false
+heartbeat_interval_secs = 60
+checkpoint_interval_secs = 60
+idle_timeout_secs = 1800
+
+[beacons]
+enabled = true
+timeout_secs = 5
+retries = 2
+
+[presence]
+challenge_interval_secs = 600
+response_window_secs = 60
+
+[fingerprint]
+activity_enabled = true
+style_enabled = false
+retention_days = 365
+min_samples = 100
+bootstrap_sessions = 5
+
+[privacy]
+detect_sensitive_fields = true
+hash_urls = true
+obfuscate_titles = true
+
+[writersproof]
+enabled = false
+auto_attest = false
+offline_queue = true
+
+[trust_bundle]
+max_cache_age_secs = 86400
+fetch_timeout_secs = 10
 ```
-
-## Core Settings
-
-### version
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `version` | integer | `4` | Configuration schema version |
-
-## Storage Settings
-
-Configure how CPoE stores evidence data.
-
-```json
-{
-  "storage": {
-    "type": "sqlite",
-    "path": "events.db",
-    "secure": true
-  }
-}
-```
-
-### Options
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `type` | string | `"sqlite"` | Storage backend: `sqlite` or `memory` |
-| `path` | string | `"events.db"` | Database file path (relative to data directory) |
-| `secure` | boolean | `true` | Enable HMAC integrity checking on all records |
-
-### Secure Mode
-
-When `secure` is enabled:
-- All database records include HMAC-SHA256 integrity tags
-- Tampering is detected on read
-- Slight performance overhead (~5%)
 
 ## VDF Settings
 
-Configure the Verifiable Delay Function for timing proofs.
+The Verifiable Delay Function provides timing proofs that cannot be backdated.
 
-```json
-{
-  "vdf": {
-    "iterations_per_second": 15000000,
-    "min_iterations": 100000,
-    "max_iterations": 3600000000,
-    "calibrated": true
-  }
-}
-```
+| Key | Default | Description |
+|-----|---------|-------------|
+| `iterations_per_second` | `1000000` | Calibrated speed (run `cpoe calibrate`) |
+| `min_iterations` | `100000` | Minimum iterations per checkpoint (~0.1s) |
+| `max_iterations` | `3600000000` | Maximum iterations (~1 hour at 1M/s) |
 
-### Options
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `iterations_per_second` | integer | `1000000` | Calibrated VDF speed for this machine |
-| `min_iterations` | integer | `100000` | Minimum iterations per checkpoint |
-| `max_iterations` | integer | `3600000000` | Maximum iterations (caps proof time) |
-| `calibrated` | boolean | `false` | Whether VDF has been calibrated |
-
-### Calibration
-
-Run calibration to measure your CPU's VDF performance:
-
-```bash
-cpoe calibrate
-```
-
-This updates `iterations_per_second` to reflect actual performance, ensuring accurate timing proofs.
-
-### Timing Implications
-
-| Iterations | Approximate Time | Use Case |
-|------------|-----------------|----------|
-| 100,000 | ~10ms | Minimum checkpoint delay |
-| 15,000,000 | ~1 second | Default checkpoint |
-| 900,000,000 | ~1 minute | Extended proof |
-| 3,600,000,000 | ~4 minutes | Maximum single proof |
-
-## Key Hierarchy Settings
-
-Configure the three-tier key hierarchy for identity and forward secrecy.
-
-```json
-{
-  "key_hierarchy": {
-    "enabled": true,
-    "version": 1
-  }
-}
-```
-
-### Options
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable ratcheting key hierarchy |
-| `version` | integer | `1` | Key hierarchy protocol version |
-
-### Key Hierarchy Tiers
-
-1. **Tier 0 (Identity)**: Master key derived from device PUF
-2. **Tier 1 (Session)**: Per-session keys certified by master
-3. **Tier 2 (Ratchet)**: Forward-secret keys per checkpoint
-
-See [Key Management](../security/key-management.md) for details.
-
-## Presence Settings
-
-Configure presence verification for real-time author presence proofs.
-
-```json
-{
-  "presence": {
-    "challenge_interval_seconds": 600,
-    "response_window_seconds": 60
-  }
-}
-```
-
-### Options
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `challenge_interval_seconds` | integer | `600` | Time between presence challenges |
-| `response_window_seconds` | integer | `60` | Time allowed to respond to challenge |
-
-### Presence Verification
-
-Presence sessions create additional proof that the author was actively present:
-
-```bash
-# Start a presence session
-cpoe presence start
-
-# Respond to challenges when prompted
-# ...
-
-# End session
-cpoe presence stop
-```
+Run `cpoe calibrate` after installation to measure your CPU's actual VDF speed. This takes ~30 seconds and only needs to be done once.
 
 ## Sentinel Settings
 
-Configure the background sentinel daemon for automatic document tracking.
+The sentinel daemon monitors writing activity and creates automatic checkpoints.
 
-```json
-{
-  "sentinel": {
-    "auto_start": false,
-    "heartbeat_seconds": 60,
-    "checkpoint_seconds": 60,
-    "wal_enabled": true
-  }
-}
-```
+| Key | Default | Description |
+|-----|---------|-------------|
+| `auto_start` | `false` | Start sentinel on init |
+| `heartbeat_interval_secs` | `60` | Heartbeat frequency |
+| `checkpoint_interval_secs` | `60` | Auto-checkpoint interval |
+| `idle_timeout_secs` | `1800` | Stop session after 30min idle |
+| `idle_check_interval_secs` | `60` | How often to check for idle |
+| `focus_debounce_ms` | `150` | Suppress transient focus bounces |
+| `hash_on_focus` | `true` | Hash document on focus change |
+| `hash_on_save` | `true` | Hash document on save |
+| `recursive_watch` | `true` | Watch subdirectories |
+| `track_unknown_apps` | `true` | Track apps not in allowed_apps |
+| `snapshots_enabled` | `false` | Save document snapshots |
+| `require_hardware_attestation` | `false` | Require TPM/SE for sessions |
 
-### Options
+### App Filtering
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `auto_start` | boolean | `false` | Start sentinel automatically on init |
-| `heartbeat_seconds` | integer | `60` | Frequency of sentinel heartbeat |
-| `checkpoint_seconds` | integer | `60` | Auto-checkpoint interval when tracking |
-| `wal_enabled` | boolean | `true` | Enable write-ahead log for crash recovery |
+```toml
+[sentinel]
+# Only track these apps (empty = track all unless blocked)
+allowed_apps = []
 
-### Managing Sentinel
+# Never track these apps
+blocked_apps = ["Finder", "Explorer", "Spotlight", "Notification Center"]
 
-```bash
-# Start sentinel daemon
-CPoE sentinel start
+# Only track files with these extensions
+allowed_extensions = ["txt", "md", "docx", "rtf", "scriv", "tex", "org"]
 
-# Check status
-CPoE sentinel status
-
-# Stop sentinel
-CPoE sentinel stop
+# Never track files in these paths
+excluded_paths = ["/tmp", "/var", "node_modules", ".git", "build", "dist"]
 ```
 
 ## Beacon Settings
 
-Temporal beacons anchor evidence to publicly verifiable timestamps via the WritersProof API. Beacons are enabled by default.
+Temporal beacons anchor evidence to publicly verifiable time sources (drand, NIST, Roughtime).
 
-```json
-{
-  "beacons": {
-    "enabled": true,
-    "timeout_secs": 5,
-    "retries": 2
-  }
-}
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable beacon attestation |
+| `timeout_secs` | `5` | Fetch timeout (1-300) |
+| `retries` | `2` | Retry attempts (0-10) |
+
+```toml
+[beacons.roughtime]
+enabled = true
+tolerance_secs = 0    # 0 = auto-calibrate
+servers = []          # empty = use built-in defaults
 ```
 
-### Options
+Disabling beacons caps evidence security level at T2.
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `beacons.enabled` | boolean | `true` | Enable temporal beacon attestation. When false, security level is capped at T2. |
-| `beacons.timeout_secs` | integer | `5` | Timeout per beacon fetch in seconds (1–300). |
-| `beacons.retries` | integer | `2` | Retry attempts before marking source unavailable (0–10). |
+## Fingerprint Settings
 
-### Environment Variables
+Behavioral typing fingerprints provide author identity verification.
 
-| Variable | Description |
-|----------|-------------|
-| `CPoE_BEACONS_ENABLED` | Override beacon enabled setting (`true`/`false`) |
-| `CPoE_BEACONS_TIMEOUT_SECS` | Override beacon timeout |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `activity_enabled` | `true` | Collect keystroke dynamics |
+| `style_enabled` | `false` | Collect writing style metrics |
+| `retention_days` | `365` | How long to keep fingerprint data |
+| `min_samples` | `100` | Minimum keystrokes before fingerprint is usable |
+| `bootstrap_sessions` | `5` | Sessions before anomaly detection activates |
+| `advisory_sessions` | `10` | Sessions before anomalies block |
 
-### CLI Flags
+## Privacy Settings
 
-| Flag | Description |
-|------|-------------|
-| `--no-beacons` | Disable beacons for this export (caps at T2) |
-| `--beacon-timeout <SECS>` | Override beacon fetch timeout |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `detect_sensitive_fields` | `true` | Detect and exclude sensitive content |
+| `hash_urls` | `true` | Hash URLs in metadata |
+| `obfuscate_titles` | `true` | Obfuscate window titles in evidence |
+| `excluded_apps` | `["1Password", "Keychain Access", "Terminal"]` | Never monitor these |
+
+## WritersProof API Settings
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable WritersProof API integration |
+| `auto_attest` | `false` | Auto-submit attestation on export |
+| `offline_queue` | `true` | Queue attestations when offline |
+
+## Trust Bundle Settings
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_cache_age_secs` | `86400` | Cache CA bundle for 24 hours |
+| `fetch_timeout_secs` | `10` | Bundle fetch timeout (1-60) |
+
+## Presence Settings
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `challenge_interval_secs` | `600` | Time between presence challenges |
+| `response_window_secs` | `60` | Time to respond to challenge |
 
 ## Environment Variables
 
-Override configuration with environment variables:
-
 | Variable | Description |
 |----------|-------------|
-| `CPoE_DATA_DIR` | Override data directory path |
-| `CPoE_CONFIG` | Path to configuration file |
-| `CPoE_LOG_LEVEL` | Logging verbosity: `debug`, `info`, `warn`, `error` |
-| `CPoE_NO_COLOR` | Disable colored output |
+| `CPOE_DATA_DIR` | Override data directory (~/.writersproof) |
+| `CPOE_BEACONS_ENABLED` | Override beacon setting (true/false) |
+| `EDITOR` | Editor for `cpoe config edit` |
 
-### Example
+## CLI Configuration Commands
 
 ```bash
-export CPoE_DATA_DIR=/custom/path
-export CPoE_LOG_LEVEL=debug
-cpoe status
+# Show current configuration
+cpoe config show
+
+# Edit configuration in $EDITOR
+cpoe config edit
+
+# Set a specific value
+cpoe config set sentinel.checkpoint_interval_secs 120
+
+# Reset to defaults
+cpoe config reset --force
+
+# Show config file path
+cpoe config path
+
+# Manage monitored apps
+cpoe config app add "Scrivener"
+cpoe config app list
+cpoe config app remove "TextEdit"
 ```
-
-## macOS App Settings
-
-The macOS app provides a graphical settings interface with additional options:
-
-### General Tab
-
-| Setting | Description |
-|---------|-------------|
-| Open at Login | Launch CPoE when you log in |
-| Auto-create checkpoints | Automatically save checkpoints at intervals |
-| Checkpoint Interval | Time between auto-checkpoints (5min to 2hr) |
-| Debounce Interval | Wait time after last keystroke (100-2000ms) |
-
-### Watch Paths Tab
-
-Configure directories for automatic file tracking:
-- Add/remove watched directories
-- Enable/disable individual paths
-- Paths are monitored for document changes
-
-### Patterns Tab
-
-Filter which files are tracked:
-- Include patterns: `.md`, `.txt`, `.rtf`, etc.
-- Presets for common use cases (Text Files, Documents, Code)
-
-### Security Tab
-
-| Setting | Description |
-|---------|-------------|
-| Signing Key | Path to Ed25519 private key |
-| TPM Attestation | Enable hardware attestation (if available) |
-| VDF Calibration | Recalibrate timing proofs |
-
-### Notifications Tab
-
-Configure notification preferences:
-- Enable/disable notifications
-- Notifications for tracking start/stop
-- Notifications for checkpoint creation
-
-### Advanced Tab
-
-| Setting | Description |
-|---------|-------------|
-| Data Location | Path to evidence storage |
-| Default Export Format | JSON or CBOR |
-| Default Export Tier | Evidence tier for exports |
-| Reset | Delete all data and start fresh |
 
 ## Configuration Examples
 
-### Minimal Configuration
+### Writer (automatic, low-friction)
 
-```json
-{
-  "version": 4,
-  "storage": {
-    "type": "sqlite",
-    "path": "events.db"
-  }
-}
+```toml
+[sentinel]
+auto_start = true
+checkpoint_interval_secs = 300
+idle_timeout_secs = 3600
+allowed_extensions = ["md", "txt", "rtf", "docx", "scriv", "tex"]
+
+[beacons]
+enabled = true
+
+[fingerprint]
+activity_enabled = true
 ```
 
-### Writer Configuration
+### High-Security (legal/compliance)
 
-Optimized for creative writing with automatic tracking:
+```toml
+[vdf]
+min_iterations = 1000000
 
-```json
-{
-  "version": 4,
-  "storage": {
-    "type": "sqlite",
-    "path": "events.db",
-    "secure": true
-  },
-  "vdf": {
-    "iterations_per_second": 15000000,
-    "min_iterations": 500000,
-    "calibrated": true
-  },
-  "sentinel": {
-    "auto_start": true,
-    "checkpoint_seconds": 300,
-    "wal_enabled": true
-  }
-}
+[sentinel]
+auto_start = true
+heartbeat_interval_secs = 30
+checkpoint_interval_secs = 60
+require_hardware_attestation = true
+
+[presence]
+challenge_interval_secs = 300
+response_window_secs = 30
+
+[beacons]
+enabled = true
+timeout_secs = 10
+retries = 3
+
+[writersproof]
+enabled = true
+auto_attest = true
 ```
 
-### High-Security Configuration
+### Development/Testing
 
-Maximum evidence strength for legal/compliance use:
+```toml
+[vdf]
+min_iterations = 1000
+max_iterations = 10000
 
-```json
-{
-  "version": 4,
-  "storage": {
-    "type": "sqlite",
-    "path": "events.db",
-    "secure": true
-  },
-  "vdf": {
-    "iterations_per_second": 15000000,
-    "min_iterations": 1000000,
-    "calibrated": true
-  },
-  "key_hierarchy": {
-    "enabled": true,
-    "version": 1
-  },
-  "presence": {
-    "challenge_interval_seconds": 300,
-    "response_window_seconds": 30
-  },
-  "beacons": {
-    "enabled": true,
-    "timeout_secs": 10,
-    "retries": 3
-  },
-  "writersproof": {
-    "enabled": true,
-    "auto_attest": true
-  },
-  "sentinel": {
-    "auto_start": true,
-    "heartbeat_seconds": 30,
-    "checkpoint_seconds": 60,
-    "wal_enabled": true
-  }
-}
-```
+[sentinel]
+checkpoint_interval_secs = 10
+idle_timeout_secs = 300
 
-### Development Configuration
-
-For testing and development:
-
-```json
-{
-  "version": 4,
-  "storage": {
-    "type": "memory",
-    "secure": false
-  },
-  "vdf": {
-    "min_iterations": 1000,
-    "max_iterations": 10000,
-    "calibrated": true
-  }
-}
+[beacons]
+enabled = false
 ```
 
 ---

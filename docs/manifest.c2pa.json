@@ -1,0 +1,252 @@
+{
+  "assertions" : [
+    {
+      "data" : {
+        "exclusions" : [
+          "manifest.c2pa.json",
+          ".DS_Store"
+        ],
+        "files" : [
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "8f95626aa42c8ef8dff86cebb9173add2b8d8e9744b5788e22a4d284e2cb134f",
+            "path" : "EULA.md",
+            "size" : 15371
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "f42c7366c6d69028a078ec0df1cf399a220a5ab975e65c1923d894dec588feb2",
+            "path" : "README.md",
+            "size" : 4597
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "5c0302087606fe49e367ab893aa854969ffb3916b5b4c048a965231badfad845",
+            "path" : "ca_rotation.md",
+            "size" : 6483
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "4d6bf11fbfae21ad7a720ec5e11e20cd06f2e0b9c8b00332b4fa2888551755ff",
+            "path" : "demo-script-macos.md",
+            "size" : 5874
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "13b489f669a750f0abeeb46416043a9fa7c267f26b66c9717f82f9bd295165fe",
+            "path" : "demo-script.md",
+            "size" : 6589
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "76fb26dfb9eaf03a9d50c0b92f5a126c219c634e8120435a547f2837592e88f9",
+            "path" : "integrations\/evidence-interpretation.md",
+            "size" : 4565
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "1fe6402d25194c035a86d61c120df40d7d9319a2fa4ec7f4745d1da2e8126a58",
+            "path" : "integrations\/integration-guide.md",
+            "size" : 3799
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "3ade09e8a79d893df7fe466f06321c009da89680c17f343344bd723a188e535d",
+            "path" : "macos-haiku-resolution.md",
+            "size" : 18930
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "9c7415871862c40a1a1a6900ad0213b9bba56d74ae913803c8a0841544f571d1",
+            "path" : "man\/cpoe.1",
+            "size" : 6000
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "95a41603e2bf3182f9e380303ad0639429f23e1b76809f2eef39b5161587954c",
+            "path" : "philosophy\/adversarial-ai.md",
+            "size" : 2107
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "5ff2bc23c4ca2203c6b5c8b36430419cd8f237990180fd2bcc67e1ac6cfe6b5b",
+            "path" : "philosophy\/authorship-ethics.md",
+            "size" : 2069
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "7117c3ecdeb6482815bf9eb67f3de7fe7a997d062c3dbc4234d03dff07f0bfcf",
+            "path" : "presentations\/toip-egwg-2026-05-28-script.md",
+            "size" : 7057
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "06db5c11800f6ad29af4de451b2349b6555f07470b1c54ec8b97e084d9391236",
+            "path" : "presentations\/toip-egwg-2026-05-28.md",
+            "size" : 13875
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "cdfe32af1f9c42d87e58460d375302d08e234eb70f44821d184cf1703d4c077c",
+            "path" : "remaining-work-prompts.md",
+            "size" : 53678
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "6a9e350bbf564101f15cc323bd6f96fb5ea32bc677aae9d08361e0b92c3bd6af",
+            "path" : "resolution-prompts.md",
+            "size" : 31642
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "487aa95a68d22179750bbbc5b1ebe607a8978491b6bee74772fde83290688633",
+            "path" : "schemas\/README.md",
+            "size" : 456
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "2736f90bc4b1ab508598138082dbca474500e067cee5c587fd7ff171a6b613e6",
+            "path" : "schemas\/declaration-v1.json",
+            "size" : 8874
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "d794ffc872a5b60599addfac98ac31ccc3393b896bbd0afb083f8ed3b134566f",
+            "path" : "schemas\/evidence-v1.json",
+            "size" : 5111
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "4614141efe95b2f85876e5648640204fccd69dea19e419367ae918598c3835c5",
+            "path" : "schemas\/war-block-v1.json",
+            "size" : 5313
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "76eb05d1431b72a2a14595bb4ab4b432948a97238ebcf37a752f9177d8c13bd9",
+            "path" : "session-prompts\/dedup-forensic-breakdown-builder.md",
+            "size" : 5196
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "b66fd6b91060e1159e26e63a5aedb8809c63416722c6173c1c15e135c8b6a04c",
+            "path" : "session-prompts\/toip-demo-script.md",
+            "size" : 5798
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "e8c3c3f01a0b5d0d0e8b471b80ca909bda819eb9a9fa1938e91ac9b08cd029eb",
+            "path" : "specs\/README.md",
+            "size" : 950
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "29871d0b47510c9557a618c7d63766e09c77750432ae88ac8019b0e10bf116dd",
+            "path" : "specs\/architectural-hardening.md",
+            "size" : 4201
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "75291948802e0d507af857a46971fd49b103c29fe7841b8ee77e3fe0be0eb805",
+            "path" : "specs\/behavioral-metrics.md",
+            "size" : 11435
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "e61a67598142afdee3a625667c698baece6829f38fb5a86897d14c906beee126",
+            "path" : "specs\/evidence-format.md",
+            "size" : 6084
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "8b5daa88bab7451aea2d44d0a4f97aace31f8bdc6317052429b168ef233ff6b3",
+            "path" : "specs\/persistence-fault-tolerance.md",
+            "size" : 25832
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "141aafb585acfc382f00a641c71246d09a30bf6fa30a951f1a34e9c2fc0079ff",
+            "path" : "specs\/process-declaration.md",
+            "size" : 22168
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "c422418c842d48f0a688d0b3219f400279b89658d6da2bcb1360ce2e14bb9b55",
+            "path" : "specs\/ratchet-key-hierarchy.md",
+            "size" : 20173
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "e30cf46d0bebcdb87eb92d655765507bbca47d61b53ae839611adaf570d76c3f",
+            "path" : "standards-alignment.md",
+            "size" : 25741
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "61e3c8bf755856fcef94019bac821dabca4c0a4dec87ffd5deea7403599f656b",
+            "path" : "user\/README.md",
+            "size" : 840
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "49c2df06463060604d0b4eaf755ae070a3b36f2b9c8bd19891b4c3af1a0c9c14",
+            "path" : "user\/cli-reference.md",
+            "size" : 13464
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "776ef3bc8c64732670591a3cab0652c797f01e288df1a6c67802caf896fd358d",
+            "path" : "user\/configuration.md",
+            "size" : 10640
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "ac189dafdee0d956c4d84173d68c9237d8d0776a2ffdba9514ec8c26f813fff9",
+            "path" : "user\/faq.md",
+            "size" : 12798
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "ef511d36bcb5d67f5a75ff8d36fc89ae98da798ba34f87ff2da634526bf6f831",
+            "path" : "user\/getting-started.md",
+            "size" : 7335
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "3be0cb918ce3e10cfe314ed6d6d77abbe0b1f33073cb718c1755a13c9c0b22a5",
+            "path" : "user\/gui-guide.md",
+            "size" : 9945
+          },
+          {
+            "algorithm" : "SHA-256",
+            "hash" : "410f2125a2682fe0f60b339a5758e44f93ec9d0e7fe8177f4c05e89df8a82936",
+            "path" : "user\/troubleshooting.md",
+            "size" : 10062
+          }
+        ],
+        "hash_method" : "SHA-256"
+      },
+      "label" : "c2pa.hash.data"
+    },
+    {
+      "data" : {
+        "name" : "WritersProof Documentation Suite",
+        "value" : "com.writerslogic.writersproof.docs"
+      },
+      "label" : "stds.schema-org.CreativeWork"
+    }
+  ],
+  "c2pa.manifest.version" : "2.0",
+  "claim_generator" : "WritersProof\/sign-docs",
+  "claim_generator_version" : "1.0.0",
+  "format" : "application\/x-documentation-bundle",
+  "instance_id" : "d44af786-9d84-46f5-8184-c48831377fe0",
+  "public_key" : "8ac7ad3f8b188c92de85a128294c983015bed58bbf8d2c7c69d2c5d79dc0cf99",
+  "signature" : "f87b9d5b839b8564730a81508170d692fdefe388f61c14dc01d854c927ff5108fbc1123f012658900f9a24fadf4967e45086d1b04dad30c3187fc796d335ea02",
+  "signature_info" : {
+    "algorithm" : "Ed25519",
+    "issuer" : "WritersLogic, Inc.",
+    "time" : "2026-05-23T22:50:11Z"
+  },
+  "title" : "WritersProof Documentation Suite"
+}

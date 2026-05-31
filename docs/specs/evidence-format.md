@@ -1,13 +1,13 @@
 # Evidence Packet Format Specification
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Draft
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-05-27
 **Standard:** draft-condrey-rats-pop
 
 ## Overview
 
-A CPoE **Evidence Packet** (`.cpoe`) is a self-contained, portable proof of documented authorship. It bundles cryptographic proofs, process declarations, and sequential attestations into a single format compliant with the IETF RATS (Remote ATtestation ProcedureS) framework and the **Proof-of-Process (PoP)** protocol.
+A CPoE **Evidence Packet** (`.c2pa`) is a self-contained, portable proof of documented authorship. It bundles cryptographic proofs, process declarations, and sequential attestations into a single format compliant with the IETF RATS (Remote ATtestation ProcedureS) framework and the **Proof-of-Process (PoP)** protocol.
 
 This specification aligns with the CDDL schema defined in `draft-condrey-rats-pop`.
 
@@ -29,16 +29,28 @@ The format supports tiered evidence per the `content-tier` specification:
 | JSON Key | CDDL Key | Type | Description |
 |:---------|:---------|:-----|:------------|
 | `version` | 1 | uint | Protocol version (MUST be 1) |
-| `profile_uri` | 2 | uri | PoP profile URI (`urn:ietf:params:pop:profile:1.0`) |
-| `packet_id` | 3 | uuid | Unique identifier for this evidence packet |
-| `created_at` | 4 | timestamp | Packet generation time (UTC) |
+| `profile_uri` | 2 | uri | PoP profile URI (`urn:ietf:params:rats:eat:profile:pop:1.0`) |
+| `packet_id` | 3 | uuid | Unique identifier (16 bytes, min 4 nonzero) |
+| `created_at` | 4 | timestamp | Packet generation time (epoch ms, UTC) |
 | `document` | 5 | object | Reference to the witnessed document ([DocumentRef](#documentref)) |
-| `checkpoints` | 6 | array | Ordered chain of document states ([Checkpoint](#checkpoint)) |
+| `checkpoints` | 6 | array | Ordered chain of document states (min 3, max 10000) |
 | `attestation_tier` | 7 | enum | Device assurance level (T1-T4) |
 | `limitations` | 8 | strings | Disclosures about the environment or collection process |
 | `profile` | 9 | object | Profile-specific metadata and feature flags |
+| `presence_challenges` | 10 | array | Presence verification challenge-responses |
+| `channel_binding` | 11 | object | IPC channel binding proof |
+| `signing_public_key` | 12 | bytes | Ed25519 public key (32 bytes) |
 | `content_tier` | 13 | enum | Evidence depth (1=Core, 2=Enhanced, 3=Maximum) |
+| `previous_packet_ref` | 14 | HashValue | Hash of previous packet in a multi-packet chain |
+| `packet_sequence` | 15 | uint | 1-based sequence in multi-packet chains |
 | `physical_liveness` | 18 | object | Thermal and entropy markers for liveness |
+| `baseline_verification` | 19 | object | Baseline verification data |
+| `author_did` | 20 | string | did:webvh Decentralized Identifier (optional) |
+| `document_content` | 21 | bytes | Embedded document content (optional, max 100MB) |
+| `document_filename` | 22 | string | Original filename for content extraction |
+| `project_files` | 23 | array | Multi-file project references (max 1000) |
+| `session_counter` | 24 | uint | Monotonic hardware counter |
+| `forensic_summary` | 25 | object | Session-level forensic metrics summary |
 
 ### DocumentRef
 
