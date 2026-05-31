@@ -1,6 +1,0 @@
-[submodule "apps/cpop_macos"]
-	path = apps/cpop_macos
-	url = https://github.com/writerslogic/cpop-macos.git
-[submodule "apps/cpop_windows"]
-	path = apps/cpop_windows
-	url = https://github.com/writerslogic/cpop-windows.git

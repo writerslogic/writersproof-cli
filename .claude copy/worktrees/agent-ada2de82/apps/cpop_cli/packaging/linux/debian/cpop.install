@@ -1,3 +1,0 @@
-# Files to install for cpop package
-bin/cpop usr/bin
-bin/witnessctl usr/bin

@@ -1,9 +1,0 @@
-{
-  "name": "com.writerslogic.witnessd",
-  "description": "CPOP Native Messaging Host — Cryptographic proof-of-process evidence for browser-based writing",
-  "path": "/usr/local/bin/writerslogic-native-messaging-host",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://EXTENSION_ID_HERE/"
-  ]
-}
