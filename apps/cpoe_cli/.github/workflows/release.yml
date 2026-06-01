@@ -56,10 +56,10 @@ jobs:
           echo "Tag format valid: $TAG"
 
       - name: Run tests
-        run: cargo test -p cpoe_cli --all-features
+        run: cargo test -p cpoe_cli
 
       - name: Run clippy
-        run: cargo clippy -p cpoe_cli --all-features -- -D warnings
+        run: cargo clippy -p cpoe_cli -- -D warnings
 
   build:
     name: Build (${{ matrix.target }})
