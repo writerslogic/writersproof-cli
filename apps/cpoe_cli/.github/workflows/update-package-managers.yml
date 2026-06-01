@@ -33,10 +33,10 @@ jobs:
         id: hashes
         run: |
           TAG="${{ steps.release.outputs.tag }}"
-          BASE="https://github.com/writerslogic/cpoe/releases/download/${TAG}"
+          BASE="https://github.com/writerslogic/writersproof-cli/releases/download/${TAG}"
 
-          curl -sSfL -o arm64.tar.gz "${BASE}/writerslogic-${TAG}-aarch64-apple-darwin.tar.gz"
-          curl -sSfL -o x86_64.tar.gz "${BASE}/writerslogic-${TAG}-x86_64-apple-darwin.tar.gz"
+          curl -sSfL -o arm64.tar.gz "${BASE}/writersproof-cli-${TAG}-aarch64-apple-darwin.tar.gz"
+          curl -sSfL -o x86_64.tar.gz "${BASE}/writersproof-cli-${TAG}-x86_64-apple-darwin.tar.gz"
 
           echo "sha_arm=$(sha256sum arm64.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
           echo "sha_x86=$(sha256sum x86_64.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
@@ -75,7 +75,7 @@ jobs:
         id: hash
         run: |
           TAG="${{ steps.release.outputs.tag }}"
-          URL="https://github.com/writerslogic/cpoe/releases/download/${TAG}/writerslogic-${TAG}-x86_64-pc-windows-msvc.zip"
+          URL="https://github.com/writerslogic/writersproof-cli/releases/download/${TAG}/writersproof-cli-${TAG}-x86_64-pc-windows-msvc.zip"
           curl -sSfL -o windows.zip "$URL"
           SHA256=$(sha256sum windows.zip | awk '{print $1}')
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
@@ -110,19 +110,18 @@ jobs:
                   }
               },
               "bin": [
-                  "cpoe.exe",
-                  ["cpoe.exe", "writerslogic"]
+                  "writersproof-cli.exe"
               ],
               "checkver": {
-                  "github": "https://github.com/writerslogic/cpoe"
+                  "github": "https://github.com/writerslogic/writersproof-cli"
               },
               "autoupdate": {
                   "architecture": {
                       "64bit": {
-                          "url": "https://github.com/writerslogic/cpoe/releases/download/v\$version/writerslogic-v\$version-x86_64-pc-windows-msvc.zip",
+                          "url": "https://github.com/writerslogic/writersproof-cli/releases/download/v\$version/writersproof-cli-v\$version-x86_64-pc-windows-msvc.zip",
                           "hash": {
-                              "url": "https://github.com/writerslogic/cpoe/releases/download/v\$version/writerslogic-v\$version-x86_64-pc-windows-msvc.zip.sha256",
-                              "regex": "([a-f0-9]{64})\\s+writerslogic-v\\$version-x86_64-pc-windows-msvc\\.zip"
+                              "url": "https://github.com/writerslogic/writersproof-cli/releases/download/v\$version/writersproof-cli-v\$version-x86_64-pc-windows-msvc.zip.sha256",
+                              "regex": "([a-f0-9]{64})\\s+writersproof-cli-v\\$version-x86_64-pc-windows-msvc\\.zip"
                           }
                       }
                   }

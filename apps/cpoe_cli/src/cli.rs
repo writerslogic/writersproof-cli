@@ -5,30 +5,30 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
-    name = "cpoe",
-    bin_name = "cpoe",
+    name = "writersproof-cli",
+    bin_name = "writersproof-cli",
     author,
     version,
-    about = "CPoE — cryptographic proof-of-process authorship witnessing",
-    long_about = "CPoE captures behavioral evidence during document creation and packages \
+    about = "WritersProof — cryptographic proof-of-process authorship witnessing",
+    long_about = "WritersProof captures behavioral evidence during document creation and packages \
 it into cryptographically signed packets that prove a human authored content over \
 time. This provides an offline-verifiable alternative to AI detection by proving \
 how something was written, not just what was written."
 )]
 #[command(after_help = "\
 EXAMPLES:\n  \
-    cpoe essay.txt                       Start tracking a file\n  \
-    cpoe commit essay.txt -m \"Draft 1\"    Create a checkpoint\n  \
-    cpoe export essay.txt -t standard     Export evidence (JSON)\n  \
-    cpoe export essay.txt -f pdf          Export signed PDF report\n  \
-    cpoe export essay.txt --no-beacons    Export without beacon attestation\n  \
-    cpoe link essay.txt essay.pdf         Link derivative to source\n  \
-    cpoe verify essay.evidence.json       Verify a proof packet\n\n\
+    writersproof-cli essay.txt                       Start tracking a file\n  \
+    writersproof-cli commit essay.txt -m \"Draft 1\"    Create a checkpoint\n  \
+    writersproof-cli export essay.txt -t standard     Export evidence (JSON)\n  \
+    writersproof-cli export essay.txt -f pdf          Export signed PDF report\n  \
+    writersproof-cli export essay.txt --no-beacons    Export without beacon attestation\n  \
+    writersproof-cli link essay.txt essay.pdf         Link derivative to source\n  \
+    writersproof-cli verify essay.evidence.json       Verify a proof packet\n\n\
 ENVIRONMENT:\n  \
     CPOE_DATA_DIR           Override default data directory (~/.writersproof)\n  \
     CPOE_BEACONS_ENABLED    Enable/disable temporal beacons (true/false)\n  \
-    EDITOR                  Editor for 'cpoe config edit'\n\n\
-Use 'cpoe <command> --help' for details on specific commands.")]
+    EDITOR                  Editor for 'writersproof-cli config edit'\n\n\
+Use 'writersproof-cli <command> --help' for details on specific commands.")]
 #[command(args_conflicts_with_subcommands = true)]
 pub struct Cli {
     #[command(subcommand)]

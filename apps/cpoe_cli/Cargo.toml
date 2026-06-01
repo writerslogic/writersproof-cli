@@ -11,12 +11,12 @@ readme = "README.md"
 keywords = ["cli", "authorship", "witnessing", "attestation", "proof-of-process"]
 categories = ["command-line-utilities"]
 rust-version = "1.75.0"
-homepage = "https://github.com/writerslogic/cpoe"
-documentation = "https://github.com/writerslogic/cpoe/tree/main/apps/cpoe_cli"
+homepage = "https://github.com/writerslogic/writersproof-cli"
+documentation = "https://github.com/writerslogic/writersproof-cli"
 exclude = ["tests/"]
 
 [[bin]]
-name = "cpoe"
+name = "writersproof-cli"
 path = "src/main.rs"
 
 [[bin]]

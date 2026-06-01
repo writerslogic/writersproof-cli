@@ -111,10 +111,10 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           VERSION="${{ needs.validate.outputs.tag }}"
-          ARCHIVE="cpop_${VERSION}_${{ matrix.target }}.tar.gz"
+          ARCHIVE="writersproof-cli-${VERSION}-${{ matrix.target }}.tar.gz"
           tar -czvf "$ARCHIVE" \
             -C target/${{ matrix.target }}/release \
-            cpoe${{ matrix.ext }}
+            writersproof-cli${{ matrix.ext }}
           echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
 
       - name: Create archive (Windows)
@@ -122,8 +122,8 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = "${{ needs.validate.outputs.tag }}"
-          $ARCHIVE = "cpop_${VERSION}_${{ matrix.target }}.zip"
-          Compress-Archive -Path "target/${{ matrix.target }}/release/cpoe${{ matrix.ext }}" -DestinationPath $ARCHIVE
+          $ARCHIVE = "writersproof-cli-${VERSION}-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/writersproof-cli${{ matrix.ext }}" -DestinationPath $ARCHIVE
           echo "ARCHIVE=$ARCHIVE" >> $env:GITHUB_ENV
 
       - name: Generate hash
@@ -274,10 +274,10 @@ jobs:
 
             | Platform | Architecture | Download |
             |----------|--------------|----------|
-            | Linux | x86_64 | [tar.gz](https://github.com/writerslogic/cpoe/releases/download/${{ needs.validate.outputs.tag }}/cpop_${{ needs.validate.outputs.tag }}_x86_64-unknown-linux-gnu.tar.gz) |
-            | macOS | x86_64 | [tar.gz](https://github.com/writerslogic/cpoe/releases/download/${{ needs.validate.outputs.tag }}/cpop_${{ needs.validate.outputs.tag }}_x86_64-apple-darwin.tar.gz) |
-            | macOS | aarch64 (Apple Silicon) | [tar.gz](https://github.com/writerslogic/cpoe/releases/download/${{ needs.validate.outputs.tag }}/cpop_${{ needs.validate.outputs.tag }}_aarch64-apple-darwin.tar.gz) |
-            | Windows | x86_64 | [zip](https://github.com/writerslogic/cpoe/releases/download/${{ needs.validate.outputs.tag }}/cpop_${{ needs.validate.outputs.tag }}_x86_64-pc-windows-msvc.zip) |
+            | Linux | x86_64 | [tar.gz](https://github.com/writerslogic/writersproof-cli/releases/download/${{ needs.validate.outputs.tag }}/writersproof-cli-${{ needs.validate.outputs.tag }}-x86_64-unknown-linux-gnu.tar.gz) |
+            | macOS | x86_64 | [tar.gz](https://github.com/writerslogic/writersproof-cli/releases/download/${{ needs.validate.outputs.tag }}/writersproof-cli-${{ needs.validate.outputs.tag }}-x86_64-apple-darwin.tar.gz) |
+            | macOS | aarch64 (Apple Silicon) | [tar.gz](https://github.com/writerslogic/writersproof-cli/releases/download/${{ needs.validate.outputs.tag }}/writersproof-cli-${{ needs.validate.outputs.tag }}-aarch64-apple-darwin.tar.gz) |
+            | Windows | x86_64 | [zip](https://github.com/writerslogic/writersproof-cli/releases/download/${{ needs.validate.outputs.tag }}/writersproof-cli-${{ needs.validate.outputs.tag }}-x86_64-pc-windows-msvc.zip) |
 
             ### Verification
 
@@ -291,13 +291,13 @@ jobs:
             sha256sum -c checksums.txt
 
             # Verify SLSA provenance
-            slsa-verifier verify-artifact cpop_${{ needs.validate.outputs.tag }}_x86_64-unknown-linux-gnu.tar.gz \
+            slsa-verifier verify-artifact writersproof-cli-${{ needs.validate.outputs.tag }}-x86_64-unknown-linux-gnu.tar.gz \
               --provenance-path multiple.intoto.jsonl \
-              --source-uri github.com/writerslogic/cpoe
+              --source-uri github.com/writerslogic/writersproof-cli
             ```
 
             ### Changelog
             ${{ steps.changelog.outputs.changelog }}
 
             ---
-            **Full Changelog**: https://github.com/writerslogic/cpoe/compare/${{ steps.prev_tag.outputs.prev_tag }}...${{ needs.validate.outputs.tag }}
+            **Full Changelog**: https://github.com/writerslogic/writersproof-cli/compare/${{ steps.prev_tag.outputs.prev_tag }}...${{ needs.validate.outputs.tag }}
