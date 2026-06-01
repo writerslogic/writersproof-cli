@@ -26,7 +26,7 @@ env:
 jobs:
   validate:
     name: Pre-Release Validation
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     outputs:
       tag: ${{ steps.get_tag.outputs.tag }}
     steps:
@@ -38,11 +38,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libtss2-dev libsqlite3-dev libxcb1-dev
 
       - name: Get and validate tag
         id: get_tag
