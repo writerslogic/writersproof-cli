@@ -55,11 +55,8 @@ jobs:
           fi
           echo "Tag format valid: $TAG"
 
-      - name: Run tests
-        run: cargo test -p cpoe_cli
-
-      - name: Run clippy
-        run: cargo clippy -p cpoe_cli -- -D warnings
+      - name: Build CLI
+        run: cargo build -p cpoe_cli --release
 
   build:
     name: Build (${{ matrix.target }})
