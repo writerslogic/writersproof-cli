@@ -140,6 +140,8 @@ impl LinuxMouseCapture {
                                     is_idle: is_micro,
                                     is_hardware: is_physical,
                                     device_id: device_id.clone(),
+                                    scroll_delta_h: None,
+                                    scroll_delta_v: None,
                                 };
 
                                 if is_micro {

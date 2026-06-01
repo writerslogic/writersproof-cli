@@ -26,6 +26,7 @@ pub mod report_dimensions;
 pub mod report_types;
 pub mod sentinel;
 pub mod sentinel_config;
+#[cfg(target_os = "macos")]
 pub mod sentinel_es;
 pub mod sentinel_inject;
 pub mod sentinel_witnessing;
