@@ -55,13 +55,14 @@ pub fn ffi_get_profile_did() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_init() -> FfiResult {
     catch_ffi_panic!(@err FfiResult, {
-        // Initialize the oslog backend so Rust log::* calls appear in
-        // macOS unified logging (Console.app / `log stream`).
         static LOGGER_INIT: std::sync::Once = std::sync::Once::new();
         LOGGER_INIT.call_once(|| {
-            let _ = oslog::OsLogger::new("com.writerslogic.witnessd.engine")
-                .level_filter(log::LevelFilter::Debug)
-                .init();
+            #[cfg(target_os = "macos")]
+            {
+                let _ = oslog::OsLogger::new("com.writerslogic.witnessd.engine")
+                    .level_filter(log::LevelFilter::Debug)
+                    .init();
+            }
         });
         log::trace!("ffi_init called");
         let data_dir = match get_data_dir() {
