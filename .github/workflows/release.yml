@@ -178,13 +178,13 @@ jobs:
         with:
           name: build-${{ matrix.target }}
           path: |
-            writerslogic-*.${{ matrix.archive }}
-            writerslogic-*.${{ matrix.archive }}.sha256
+            writersproof-cli-*.${{ matrix.archive }}
+            writersproof-cli-*.${{ matrix.archive }}.sha256
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: writerslogic-*.${{ matrix.archive }}
+          subject-path: writersproof-cli-*.${{ matrix.archive }}
 
   sbom:
     name: Generate SBOM
@@ -198,18 +198,18 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Generate SPDX SBOM
-        run: syft dir:. -o spdx-json=writerslogic-core-sbom.spdx.json
+        run: syft dir:. -o spdx-json=writersproof-cli-sbom.spdx.json
 
       - name: Generate CycloneDX SBOM
-        run: syft dir:. -o cyclonedx-json=writerslogic-core-sbom.cdx.json
+        run: syft dir:. -o cyclonedx-json=writersproof-cli-sbom.cdx.json
 
       - name: Upload SBOMs
         uses: actions/upload-artifact@v4
         with:
           name: sbom
           path: |
-            writerslogic-core-sbom.spdx.json
-            writerslogic-core-sbom.cdx.json
+            writersproof-cli-sbom.spdx.json
+            writersproof-cli-sbom.cdx.json
 
   release:
     name: Create Release
@@ -251,11 +251,11 @@ jobs:
           draft: false
           prerelease: ${{ contains(needs.validate.outputs.tag, '-') }}
           files: |
-            artifacts/writerslogic-*.tar.gz
-            artifacts/writerslogic-*.zip
-            artifacts/writerslogic-*.sha256
-            artifacts/writerslogic-core-sbom.spdx.json
-            artifacts/writerslogic-core-sbom.cdx.json
+            artifacts/writersproof-cli-*.tar.gz
+            artifacts/writersproof-cli-*.zip
+            artifacts/writersproof-cli-*.sha256
+            artifacts/writersproof-cli-sbom.spdx.json
+            artifacts/writersproof-cli-sbom.cdx.json
           body: |
             ## CPoE ${{ needs.validate.outputs.tag }}
 
