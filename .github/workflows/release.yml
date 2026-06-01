@@ -64,18 +64,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: tar.gz
           - target: x86_64-apple-darwin
             os: macos-latest
             archive: tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            archive: zip
     steps:
       - uses: actions/checkout@v4
 
@@ -83,12 +77,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libtss2-dev libsqlite3-dev libxcb1-dev
 
       - name: Build release binaries
         run: cargo build --release --target ${{ matrix.target }} -p cpoe_cli
@@ -156,18 +144,6 @@ jobs:
           cp target/${{ matrix.target }}/release/writerslogic-native-messaging-host staging/ 2>/dev/null || true
           tar -czf "$ARCHIVE" -C staging .
           echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
-
-      - name: Package (Windows)
-        if: matrix.archive == 'zip'
-        shell: pwsh
-        run: |
-          $TAG = "${{ needs.validate.outputs.tag }}"
-          $ARCHIVE = "writersproof-cli-${TAG}-${{ matrix.target }}.zip"
-          New-Item -ItemType Directory -Force -Path staging
-          Copy-Item "target/${{ matrix.target }}/release/writersproof-cli.exe" staging/
-          Copy-Item "target/${{ matrix.target }}/release/writerslogic-native-messaging-host.exe" staging/ -ErrorAction SilentlyContinue
-          Compress-Archive -Path staging/* -DestinationPath $ARCHIVE
-          echo "ARCHIVE=$ARCHIVE" >> $env:GITHUB_ENV
 
       - name: Generate SHA-256 checksum
         shell: bash
@@ -247,17 +223,16 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: CPoE ${{ needs.validate.outputs.tag }}
+          name: WritersProof CLI ${{ needs.validate.outputs.tag }}
           draft: false
           prerelease: ${{ contains(needs.validate.outputs.tag, '-') }}
           files: |
             artifacts/writersproof-cli-*.tar.gz
-            artifacts/writersproof-cli-*.zip
             artifacts/writersproof-cli-*.sha256
             artifacts/writersproof-cli-sbom.spdx.json
             artifacts/writersproof-cli-sbom.cdx.json
           body: |
-            ## CPoE ${{ needs.validate.outputs.tag }}
+            ## WritersProof CLI ${{ needs.validate.outputs.tag }}
 
             Cryptographic authorship witnessing CLI.
 
@@ -265,17 +240,8 @@ jobs:
 
             **macOS (Homebrew):**
             ```
-            brew install writerslogic/tap/writerslogic
+            brew install writerslogic/tap/writersproof-cli
             ```
-
-            **Windows (Scoop):**
-            ```
-            scoop bucket add writerslogic https://github.com/writerslogic/scoop-bucket
-            scoop install writerslogic
-            ```
-
-            **Linux / manual:**
-            Download the archive for your platform below.
 
             ### Changelog
             ${{ steps.changelog.outputs.changelog }}
@@ -319,32 +285,3 @@ jobs:
               "sha256_x86": "${{ steps.hashes.outputs.sha_x86 }}"
             }
 
-  update-scoop:
-    name: Update Scoop Bucket
-    runs-on: ubuntu-latest
-    needs: [validate, release]
-    if: "!contains(needs.validate.outputs.tag, '-')"
-    steps:
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-x86_64-pc-windows-msvc
-          path: artifacts
-      - name: Compute SHA-256 hash
-        id: hash
-        run: |
-          TAG=${{ needs.validate.outputs.tag }}
-          SHA_WIN=$(sha256sum artifacts/writersproof-cli-${TAG}-x86_64-pc-windows-msvc.zip | awk '{print $1}')
-          echo "sha_win=$SHA_WIN" >> $GITHUB_OUTPUT
-      - name: Update Scoop manifest
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-          repository: writerslogic/scoop-bucket
-          event-type: update-manifest
-          client-payload: |
-            {
-              "tag": "${{ needs.validate.outputs.tag }}",
-              "version": "${{ needs.validate.outputs.version }}",
-              "sha256_win": "${{ steps.hash.outputs.sha_win }}"
-            }
