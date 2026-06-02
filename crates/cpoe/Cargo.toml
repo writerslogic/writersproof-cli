@@ -76,7 +76,7 @@ ciborium = "0.2"
 coset = "0.4"  # COSE signatures for hardware attestation
 
 # Async & System
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full"] }
 tokio-util = "0.7"
 sysinfo = { version = "0.33.1", default-features = false, features = ["apple-app-store", "system"] }
 libc = "0.2"

@@ -30,7 +30,7 @@ sha2 = "0.10.8"
 hmac = "0.12.1"
 ed25519-dalek = "2.1.1"
 chrono = { version = "0.4.39", features = ["serde"] }
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full"] }
 anyhow = "1.0.95"
 thiserror = "2.0.11"
 hex = "0.4.3"
