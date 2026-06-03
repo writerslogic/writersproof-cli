@@ -602,7 +602,7 @@ fn detect_mime_type(ext: &str) -> String {
 ///
 /// Returns an error if any hash field fails to decode; never silently
 /// substitutes zero-filled hashes, which would produce a corrupt manifest.
-fn decode_evidence_for_c2pa(
+pub(crate) fn decode_evidence_for_c2pa(
     data: &[u8],
 ) -> std::result::Result<authorproof_protocol::rfc::EvidencePacket, String> {
     let cbor_payload = crate::ffi::helpers::unwrap_cose_or_raw(data);

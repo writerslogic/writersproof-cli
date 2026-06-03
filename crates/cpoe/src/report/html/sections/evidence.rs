@@ -485,7 +485,7 @@ fn write_evidence_swf(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
     if let Some(hrs) = p.swf_backdating_hours.filter(|v| v.is_finite()) {
         write!(
             html,
-            r#"<div class="note">Each checkpoint contains a VDF proof that required real wall-clock time to compute. \
+            r#"<div class="note">Each checkpoint contains a PoSME timing proof that required real wall-clock time to compute. \
             Fabricating this evidence chain after the fact would require approximately {:.0} hours of sequential computation, \
             making backdating computationally infeasible for practical purposes.</div>"#,
             hrs
@@ -493,8 +493,8 @@ fn write_evidence_swf(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
     } else {
         write!(
             html,
-            r#"<div class="note">VDF checkpoints provide cryptographic proof that writing occurred over real elapsed time. \
-            The sequential nature of VDF computation prevents after-the-fact fabrication.</div>"#
+            r#"<div class="note">PoSME checkpoints provide cryptographic proof that writing occurred over real elapsed time. \
+            The sequential nature of PoSME computation prevents after-the-fact fabrication.</div>"#
         )?;
     }
     write!(html, "</div>")

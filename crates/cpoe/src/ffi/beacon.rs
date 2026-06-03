@@ -270,7 +270,7 @@ pub fn ffi_submit_beacon(document_path: String, timeout_secs: u64) -> FfiBeaconR
                         success: anchor_id.is_some(),
                         verification_url: anchor_id
                             .as_ref()
-                            .map(|id| format!("https://writerslogic.com/verify/{id}")),
+                            .map(|id| format!("https://verify.writersproof.com/{id}")),
                         anchor_id,
                         timestamp_epoch_ms: ts_ms,
                         drand_round: Some(beacon.drand_round),

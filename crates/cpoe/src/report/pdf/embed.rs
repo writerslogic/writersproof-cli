@@ -48,7 +48,7 @@ pub fn draw_evidence_page(
     y -= 3.5;
     text(
         layer,
-        "packet for this report. Decode and verify with: cpoe verify --from-b64 <payload>",
+        "packet for this report. Decode and verify with: writersproof-cli verify --from-b64 <payload>",
         5.5,
         MARGIN_LEFT,
         y,

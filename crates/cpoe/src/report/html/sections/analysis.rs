@@ -140,7 +140,7 @@ invalidates all subsequent entries, making undetected alteration computationally
     )?;
     write!(
         html,
-        r#"<table class="data"><thead><tr><th>#</th><th>Timestamp</th><th>Content Hash (SHA-256)</th><th>Size</th><th>VDF Iterations</th><th>Elapsed</th></tr></thead><tbody>"#
+        r#"<table class="data"><thead><tr><th>#</th><th>Timestamp</th><th>Content Hash (SHA-256)</th><th>Size</th><th>PoSME Iterations</th><th>Elapsed</th></tr></thead><tbody>"#
     )?;
     for cp in &r.checkpoints {
         let hash_short = if cp.content_hash.len() > 16 {

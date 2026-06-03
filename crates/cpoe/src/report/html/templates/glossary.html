@@ -6,10 +6,10 @@
 <dd>A measure of how stable the timing patterns are between specific pairs of consecutive keystrokes (e.g., "th", "er"). Higher values indicate the author has a consistent, practiced typing style.</dd></div>
 
 <div class="glossary-entry"><dt>Checkpoint</dt>
-<dd>A timestamped record of the document's state at a point during composition. Each checkpoint contains a SHA-256 hash of the document content, an HMAC binding to the previous checkpoint, and a VDF proof. The sequence of checkpoints forms a tamper-evident chain; altering any checkpoint invalidates all subsequent entries.</dd></div>
+<dd>A timestamped record of the document's state at a point during composition. Each checkpoint contains a SHA-256 hash of the document content, an HMAC binding to the previous checkpoint, and a PoSME timing proof. The sequence of checkpoints forms a tamper-evident chain; altering any checkpoint invalidates all subsequent entries.</dd></div>
 
-<div class="glossary-entry"><dt>CPoE (Cryptographic Proof-of-Process)</dt>
-<dd>The protocol used to capture and cryptographically bind behavioral evidence during document creation. Specified in Internet-Draft draft-condrey-cpoe-protocol-00.</dd></div>
+<div class="glossary-entry"><dt>CPoE (Cryptographic Proof of Effort)</dt>
+<dd>The protocol used to capture and cryptographically bind behavioral evidence during document creation. Specified in Internet-Draft draft-condrey-rats-pop.</dd></div>
 
 <div class="glossary-entry"><dt>ENFSI Verbal Equivalence Scale</dt>
 <dd>A standardized scale for expressing the strength of forensic evidence, published by the European Network of Forensic Science Institutes (2015). Maps likelihood ratios to verbal descriptors: Against (LR &lt; 1), Weak (1&#8211;10), Moderate (10&#8211;100), Moderately Strong (100&#8211;1,000), Strong (1,000&#8211;10,000), Very Strong (&ge; 10,000). The scale describes evidential weight, not certainty.</dd></div>
@@ -32,6 +32,6 @@
 <div class="glossary-entry"><dt>SHA-256</dt>
 <dd>A cryptographic hash function (NIST FIPS 180-4) producing a 256-bit (32-byte) digest. Any change to the input, even a single bit, produces a completely different hash. Used throughout CPoE for document fingerprinting, checkpoint chaining, and integrity verification.</dd></div>
 
-<div class="glossary-entry"><dt>VDF (Verifiable Delay Function)</dt>
-<dd>A cryptographic function that requires a specified amount of sequential computation to evaluate, but whose output can be quickly verified by any party. Sequential means the computation cannot be parallelized or accelerated with additional hardware. Used in CPoE to prove that checkpoints were created at real wall-clock intervals, preventing after-the-fact fabrication of evidence.</dd></div>
+<div class="glossary-entry"><dt>PoSME (Proof of Sequential Memory-bound Effort)</dt>
+<dd>A memory-hard sequential computation that proves a minimum amount of real wall-clock time elapsed between checkpoints. Unlike VDFs, PoSME binds each step to a large memory buffer, making it resistant to GPU/ASIC acceleration. Used in CPoE to prevent after-the-fact fabrication of evidence chains.</dd></div>
 </dl>

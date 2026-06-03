@@ -1003,6 +1003,114 @@ pub fn ffi_render_war_html(path: String) -> FfiHtmlResult {
     })
 }
 
+/// Build a WAR report, render as PDF, and embed a C2PA manifest with VC.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_render_war_pdf(path: String) -> FfiPdfResult {
+    catch_ffi_panic!(FfiPdfResult {
+        success: false,
+        pdf_bytes: None,
+        error_message: Some("engine internal error".to_string()),
+    }, {
+    super::types::run_on_stack(move || {
+    log::debug!("ffi_render_war_pdf: path={}", path);
+    match build_war_report_for_path(&path) {
+        Ok((report, guilloche_seed_hex)) => {
+            let seed: Option<[u8; 64]> = hex::decode(&guilloche_seed_hex)
+                .ok()
+                .and_then(|b| <[u8; 64]>::try_from(b).ok());
+            let pdf_bytes = match crate::report::pdf::render_pdf(&report, seed.as_ref()) {
+                Ok(b) => b,
+                Err(e) => return FfiPdfResult {
+                    success: false,
+                    pdf_bytes: None,
+                    error_message: Some(format!("PDF rendering failed: {e}")),
+                },
+            };
+
+            // Embed C2PA manifest in the PDF. Best-effort: if it fails,
+            // return the unsigned PDF rather than failing the entire export.
+            let final_pdf = embed_c2pa_in_report_pdf(&path, &pdf_bytes, &report)
+                .unwrap_or_else(|e| {
+                    log::warn!("C2PA embedding in PDF failed (returning unsigned PDF): {e}");
+                    pdf_bytes
+                });
+
+            FfiPdfResult {
+                success: true,
+                pdf_bytes: Some(final_pdf),
+                error_message: None,
+            }
+        }
+        Err(e) => FfiPdfResult {
+            success: false,
+            pdf_bytes: None,
+            error_message: Some(e),
+        },
+    }
+    })
+    })
+}
+
+/// Embed a C2PA JUMBF manifest directly into PDF bytes.
+fn embed_c2pa_in_report_pdf(
+    path: &str,
+    pdf_bytes: &[u8],
+    report: &WarReport,
+) -> Result<Vec<u8>, String> {
+    use authorproof_protocol::c2pa::C2paManifestBuilder;
+
+    // Build an evidence packet for the document.
+    let (_wire_packet, evidence_bytes, _) =
+        crate::ffi::evidence_export::build_wire_packet(path.to_string(), "standard".into(), None, None)?;
+
+    let evidence_packet = crate::ffi::evidence_derivative::decode_evidence_for_c2pa(&evidence_bytes)?;
+
+    let doc_hash: [u8; 32] = {
+        let mut hasher = Sha256::new();
+        hasher.update(pdf_bytes);
+        hasher.finalize().into()
+    };
+
+    let mut builder = C2paManifestBuilder::new(evidence_packet, evidence_bytes, doc_hash);
+    builder = builder
+        .document_filename(&format!("{}-forensic.pdf", report.report_id))
+        .format("application/pdf");
+
+    // Load signing key and cert.
+    let signing_key = crate::ffi::helpers::load_signing_key()
+        .map_err(|e| format!("Failed to load signing key: {e}"))?;
+    if let Ok(cert_der) = crate::ffi::helpers::load_or_generate_cert(&signing_key) {
+        builder = builder.cert_der(cert_der);
+    }
+
+    // Enrich with forensic signals from stored events.
+    let stored_events = crate::ffi::helpers::open_store()
+        .and_then(|s| s.get_events_for_file(path).map_err(|e| format!("{e}")))
+        .unwrap_or_default();
+    if !stored_events.is_empty() {
+        let (metrics, _) = crate::ffi::helpers::run_full_forensics(&stored_events);
+        builder = crate::ffi::evidence_derivative::enrich_c2pa_builder(builder, &metrics);
+    }
+
+    // Build signed VC and embed in manifest.
+    if let Ok((ear, author_did)) =
+        crate::ffi::vc_export::build_ear_for_path(path, path, &signing_key)
+    {
+        let provider = crate::tpm::detect_provider();
+        if let Ok(vc) = crate::war::profiles::vc::to_signed_verifiable_credential(
+            &ear, &author_did, &*provider,
+        ) {
+            if let Ok(embed) = serde_json::to_string(&vc) {
+                builder = builder.vc_embedded(embed);
+            }
+        }
+    }
+
+    // Embed JUMBF manifest directly in the PDF.
+    authorproof_protocol::c2pa::embed_manifest_in_pdf(pdf_bytes, builder, &signing_key)
+        .map_err(|e| format!("C2PA PDF embedding failed: {e}"))
+}
+
 fn convert_war_report(r: &WarReport, guilloche_seed_hex: &str) -> FfiWarReport {
     FfiWarReport {
         report_id: r.report_id.clone(),

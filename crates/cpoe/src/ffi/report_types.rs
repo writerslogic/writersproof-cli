@@ -262,3 +262,11 @@ pub struct FfiHtmlResult {
     pub html: Option<String>,
     pub error_message: Option<String>,
 }
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiPdfResult {
+    pub success: bool,
+    pub pdf_bytes: Option<Vec<u8>>,
+    pub error_message: Option<String>,
+}

@@ -133,7 +133,7 @@ pub fn draw_page3(layer: &PdfLayerReference, r: &WarReport, fonts: &PdfFonts, fo
     );
     text(
         layer,
-        "Run: cpoe verify <file.pdf>",
+        "Run: writersproof-cli verify <file.pdf>",
         6.0,
         MARGIN_LEFT + 5.0,
         y - 17.0,
