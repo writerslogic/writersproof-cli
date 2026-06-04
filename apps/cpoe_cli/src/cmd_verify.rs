@@ -58,6 +58,7 @@ fn verify_json(file_path: &PathBuf, output_war: Option<PathBuf>, out: &OutputMod
         expected_nonce: None,
         run_forensics: true,
         trusted_public_key: None,
+        verify_anchors: true,
     };
 
     let result = verify::full_verify(&packet, &opts);

@@ -2,19 +2,22 @@
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Volumes/A/writerslogic"]
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Volumes/A/writerslogic"
+      ]
     },
     "rust-docs": {
       "command": "rust-docs-mcp",
       "args": []
     },
-    "apple-docs": {
-      "command": "npx",
-      "args": ["-y", "@kimsungwhee/apple-docs-mcp@latest"]
-    },
     "swift-package-index": {
       "command": "npx",
-      "args": ["-y", "swift-package-readme-mcp-server"]
+      "args": [
+        "-y",
+        "swift-package-readme-mcp-server"
+      ]
     }
   }
 }

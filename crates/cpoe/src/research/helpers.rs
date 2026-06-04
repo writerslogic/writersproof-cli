@@ -214,17 +214,7 @@ pub(super) fn compute_anonymized_statistics(
 
     let jitter_values: Vec<f64> = samples.iter().map(|s| s.jitter_micros as f64).collect();
 
-    let (mean, std_dev) = if jitter_values.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let mean = crate::utils::mean(&jitter_values);
-        let variance = jitter_values
-            .iter()
-            .map(|v| (v - mean).powi(2))
-            .sum::<f64>()
-            / jitter_values.len() as f64;
-        (mean, variance.sqrt())
-    };
+    let (mean, std_dev) = crate::utils::mean_and_std_dev(&jitter_values);
 
     let min_jitter = samples.iter().map(|s| s.jitter_micros).min().unwrap_or(0);
     let max_jitter = samples.iter().map(|s| s.jitter_micros).max().unwrap_or(0);

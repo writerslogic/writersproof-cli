@@ -175,6 +175,8 @@ pub struct Sentinel {
     /// Content fingerprints for active sessions, used for cross-app linking.
     content_fingerprints:
         Arc<Mutex<Vec<(String, String, super::content_fingerprint::ContentFingerprint)>>>,
+    /// Anchor manager for OTS/RFC 3161/notary timestamping after checkpoint commits.
+    pub(crate) anchor_manager: Option<Arc<crate::anchors::AnchorManager>>,
 }
 
 impl Sentinel {
@@ -258,8 +260,14 @@ impl Sentinel {
             bundle_change_tx: Arc::new(Mutex::new(None)),
             document_watcher: Arc::new(Mutex::new(None)),
             content_fingerprints: Arc::new(Mutex::new(Vec::new())),
+            anchor_manager: None,
         };
         Ok(sentinel)
+    }
+
+    /// Enable external timestamping anchors for checkpoint commits.
+    pub fn set_anchor_manager(&mut self, manager: crate::anchors::AnchorManager) {
+        self.anchor_manager = Some(Arc::new(manager));
     }
 
     /// Return the session nonce, generating one if not yet set.
@@ -530,6 +538,7 @@ impl Sentinel {
         let bundle_change_tx_for_loop = Arc::clone(&self.bundle_change_tx);
         let document_watcher_for_loop = Arc::clone(&self.document_watcher);
         let content_fingerprints_for_loop = Arc::clone(&self.content_fingerprints);
+        let anchor_manager_for_loop = self.anchor_manager.clone();
 
         let event_loop_handle_ref = Arc::clone(&self.event_loop_handle);
         let handle = tokio::spawn(async move {
@@ -568,6 +577,7 @@ impl Sentinel {
                 bundle_change_tx: bundle_change_tx_for_loop,
                 document_watcher: document_watcher_for_loop,
                 content_fingerprints: content_fingerprints_for_loop,
+                anchor_manager: anchor_manager_for_loop,
                 last_keystroke_time: std::time::Instant::now(),
                 last_keydown_ts_ns: 0,
                 last_mouse_ts_ns: 0,
@@ -736,6 +746,7 @@ impl Sentinel {
             let stop_flag = Arc::clone(&self.stopping);
             let semaphore = Arc::new(tokio::sync::Semaphore::new(4));
             let mut checkpoint_tasks = tokio::task::JoinSet::new();
+            let anchor_mgr = self.anchor_manager.clone();
             for path in candidates {
                 let sk_c = Arc::clone(&sk);
                 let dir_c = dir.clone();
@@ -743,6 +754,7 @@ impl Sentinel {
                 let p = path.clone();
                 let sem = semantic_map.get(&path).cloned().flatten();
                 let permit = Arc::clone(&semaphore);
+                let am_c = anchor_mgr.clone();
                 checkpoint_tasks.spawn(async move {
                     let _permit = permit.acquire().await;
                     tokio::task::spawn_blocking(move || {
@@ -754,6 +766,7 @@ impl Sentinel {
                             &None,
                             &stop_c,
                             sem,
+                            &am_c,
                         )
                     })
                     .await

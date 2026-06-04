@@ -857,32 +857,7 @@ impl ProfileDeclarationWire {
 
 /// Streaming statistics per CDDL `streaming-stats`.
 ///
-/// ```cddl
-/// streaming-stats = {
-///     1 => uint,     ; count
-///     2 => float32,  ; mean
-///     3 => float32,  ; m2 (Welford's)
-///     4 => float32,  ; min
-///     5 => float32,  ; max
-/// }
-/// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StreamingStats {
-    #[serde(rename = "1")]
-    pub count: u64,
-
-    #[serde(rename = "2")]
-    pub mean: f64,
-
-    #[serde(rename = "3")]
-    pub m2: f64,
-
-    #[serde(rename = "4")]
-    pub min: f64,
-
-    #[serde(rename = "5")]
-    pub max: f64,
-}
+pub use crate::baseline::StreamingStats;
 
 /// Aggregate baseline digest per CDDL `baseline-digest`.
 ///
@@ -1002,4 +977,21 @@ pub struct BaselineVerification {
         with = "serde_bytes_opt"
     )]
     pub digest_signature: Option<Vec<u8>>,
+}
+
+/// Wire-format anchor proof from an external timestamping provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnchorProofWire {
+    /// Provider identifier (e.g. "ots", "rfc3161", "notary").
+    #[serde(rename = "1")]
+    pub provider: String,
+    /// Raw proof bytes (OTS file, RFC 3161 token, etc.).
+    #[serde(rename = "2", with = "serde_bytes_opt", default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<Vec<u8>>,
+    /// Submission timestamp (RFC 3339).
+    #[serde(rename = "3")]
+    pub timestamp: String,
+    /// Proof status: "pending" or "confirmed".
+    #[serde(rename = "4")]
+    pub status: String,
 }

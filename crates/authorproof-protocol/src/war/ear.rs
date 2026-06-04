@@ -24,6 +24,10 @@ pub const CPOE_EVIDENCE_PROFILE: &str = "urn:ietf:params:cpoe:profile:1.0";
 /// when verifying old evidence packets.
 pub const POP_EAR_PROFILE: &str = "urn:ietf:params:rats:eat:profile:pop:1.0";
 
+/// Legacy evidence packet profile URI (draft-condrey-rats-pop). Kept for backward
+/// compatibility when verifying old evidence packets that use the `pop:` namespace.
+pub const LEGACY_POP_EVIDENCE_PROFILE: &str = "urn:ietf:params:pop:profile:1.0";
+
 pub const CWT_KEY_IAT: i64 = 6;
 pub const CWT_KEY_EAT_PROFILE: i64 = 265;
 pub const CWT_KEY_SUBMODS: i64 = 266;

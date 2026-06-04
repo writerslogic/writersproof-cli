@@ -29,6 +29,52 @@ fn millis_i64(v: u128) -> i64 {
 /// cadence analysis at typical typing speeds.
 const LIVE_CADENCE_WINDOW_NS: i64 = 30_000_000_000;
 
+/// Downsample raw jitter samples into ~`target` normalized IKI values (0.0-1.0).
+/// Returns an empty vec if fewer than `min_samples` keystrokes are available.
+fn downsample_iki_sparkline(
+    samples: &[crate::jitter::SimpleJitterSample],
+    target: usize,
+    min_samples: usize,
+) -> Vec<f64> {
+    if samples.len() < min_samples {
+        return Vec::new();
+    }
+    // Extract IKI in milliseconds, clamping outliers.
+    let ikis: Vec<f64> = samples
+        .windows(2)
+        .filter_map(|w| {
+            w[1].timestamp_ns
+                .checked_sub(w[0].timestamp_ns)
+                .map(|d| d as f64 / 1_000_000.0)
+        })
+        .filter(|&d| d > 0.0 && d < 5000.0) // Cap at 5s to exclude session gaps
+        .collect();
+    if ikis.len() < min_samples {
+        return Vec::new();
+    }
+    // Downsample via bucket averaging.
+    let bucket_size = (ikis.len() as f64 / target as f64).max(1.0);
+    let mut result = Vec::with_capacity(target);
+    let mut i = 0.0;
+    while (i as usize) < ikis.len() && result.len() < target {
+        let start = i as usize;
+        let end = ((i + bucket_size) as usize).min(ikis.len());
+        if start < end {
+            let sum: f64 = ikis[start..end].iter().sum();
+            result.push(sum / (end - start) as f64);
+        }
+        i += bucket_size;
+    }
+    // Normalize to 0.0-1.0 range.
+    let max = result.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    if max > 0.0 && max.is_finite() {
+        for v in &mut result {
+            *v = (*v / max).clamp(0.0, 1.0);
+        }
+    }
+    result
+}
+
 /// Return the suffix of `samples` whose timestamps fall within
 /// `window_ns` nanoseconds of the newest sample. Samples are
 /// append-ordered by timestamp, so a reverse linear scan suffices.
@@ -1319,6 +1365,9 @@ pub struct FfiLiveScores {
     pub confidence_reason: Option<String>,
     /// Whether transcription suspicion is flagged for this session.
     pub transcription_suspicious: bool,
+    /// Downsampled IKI sparkline (~60 points, normalized 0.0-1.0).
+    /// Empty if fewer than 10 keystrokes in the session.
+    pub iki_sparkline: Vec<f64>,
     pub error_message: Option<String>,
 }
 
@@ -1340,6 +1389,7 @@ fn live_scores_err(msg: &str) -> FfiLiveScores {
         evidence_confidence: "heuristic".into(),
         confidence_reason: None,
         transcription_suspicious: false,
+        iki_sparkline: Vec::new(),
         error_message: Some(msg.to_string()),
     }
 }
@@ -1516,6 +1566,7 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         evidence_confidence: session.evidence_confidence.to_string(),
         confidence_reason: session.confidence_reason.clone(),
         transcription_suspicious: session.transcription_suspicion.is_suspicious,
+        iki_sparkline: downsample_iki_sparkline(&session.jitter_samples, 60, 10),
         error_message: None,
     }
     })

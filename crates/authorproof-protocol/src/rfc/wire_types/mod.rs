@@ -51,11 +51,11 @@ pub use attestation::{
 };
 pub use checkpoint::CheckpointWire;
 pub use components::{
-    ActiveProbe, BaselineDigest, BaselineVerification, BeaconAnchor, ChannelBinding, DocumentRef,
-    EditDelta, HatProof, InertialSample, JitterBindingWire, MerkleProof, PhysicalLiveness,
-    PhysicalState, PresenceChallenge, ProcessProof, ProfileDeclarationWire, ProofParams, Receipt,
-    SelfReceipt, SessionBehavioralSummary, StreamingStats, ToolReceipt, SWF_MAX_DURATION_FACTOR,
-    SWF_MIN_DURATION_FACTOR,
+    ActiveProbe, AnchorProofWire, BaselineDigest, BaselineVerification, BeaconAnchor,
+    ChannelBinding, DocumentRef, EditDelta, HatProof, InertialSample, JitterBindingWire,
+    MerkleProof, PhysicalLiveness, PhysicalState, PresenceChallenge, ProcessProof,
+    ProfileDeclarationWire, ProofParams, Receipt, SelfReceipt, SessionBehavioralSummary,
+    StreamingStats, ToolReceipt, SWF_MAX_DURATION_FACTOR, SWF_MIN_DURATION_FACTOR,
 };
 pub use enums::{
     AbsenceType, AttestationTier, BindingType, ConfidenceTier, ContentTier, CostUnit, FeatureId,

@@ -63,6 +63,7 @@ fn test_checkpoint_wire_cbor_roundtrip() {
         lamport_signature: None,
         lamport_pubkey_fingerprint: None,
         posme_proof: None,
+        anchors: None,
     };
 
     let encoded = codec::cbor::encode(&checkpoint).expect("encode checkpoint");
@@ -130,6 +131,7 @@ fn create_test_evidence_packet() -> EvidencePacketWire {
         lamport_signature: None,
         lamport_pubkey_fingerprint: None,
         posme_proof: None,
+        anchors: None,
     };
 
     let mut checkpoints = vec![checkpoint.clone()];

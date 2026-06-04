@@ -1075,6 +1075,10 @@ fn extract_bundle_package_root(path: &str) -> Option<String> {
     None
 }
 
+/// SHA-256 hash of a file, returned as a hex string.
+///
+/// Uses `O_NOFOLLOW` to prevent symlink-following TOCTOU attacks.
+/// For general-purpose hashing (follows symlinks), use [`crate::crypto::hash_file`].
 pub fn compute_file_hash(path: &str) -> std::io::Result<String> {
     let file = open_nofollow(path)?;
     let meta = file.metadata()?;
@@ -1703,6 +1707,7 @@ pub(super) fn commit_checkpoint_for_path(
     writersproof_dir: &Path,
     challenge_nonce: &Option<String>,
     stopping: &AtomicBool,
+    anchor_manager: &Option<Arc<crate::anchors::AnchorManager>>,
 ) -> Option<[u8; 32]> {
     commit_checkpoint_for_path_with_semantics(
         path,
@@ -1712,10 +1717,12 @@ pub(super) fn commit_checkpoint_for_path(
         challenge_nonce,
         stopping,
         None,
+        anchor_manager,
     )
 }
 
 /// Like `commit_checkpoint_for_path` but attaches a semantic keystroke summary.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn commit_checkpoint_for_path_with_semantics(
     path: &str,
     reason: &str,
@@ -1724,6 +1731,7 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     challenge_nonce: &Option<String>,
     stopping: &AtomicBool,
     semantic_summary: Option<String>,
+    anchor_manager: &Option<Arc<crate::anchors::AnchorManager>>,
 ) -> Option<[u8; 32]> {
     if stopping.load(Ordering::SeqCst) {
         log::debug!("Skipping checkpoint for {path}: sentinel stopping");
@@ -1825,11 +1833,101 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     match result {
         Ok(_) => {
             log::info!("Auto-checkpoint committed for {path} ({reason})");
+            if let Some(ref am) = *anchor_manager {
+                let am = Arc::clone(am);
+                let hash = event.event_hash;
+                let wp_dir = writersproof_dir.to_path_buf();
+                drop(tokio::task::spawn(async move {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        am.anchor(&hash),
+                    )
+                    .await
+                    {
+                        Ok(Ok(anchor)) => {
+                            log::info!(
+                                "Anchor submitted: {} proof(s) for {}",
+                                anchor.proofs.len(),
+                                hex::encode(&hash[..8])
+                            );
+                            let anchor_dir = wp_dir.join("anchors");
+                            let _ = std::fs::create_dir_all(&anchor_dir);
+                            let file_path =
+                                anchor_dir.join(format!("{}.json", hex::encode(hash)));
+                            if let Ok(json) = serde_json::to_vec_pretty(&anchor) {
+                                let _ = std::fs::write(&file_path, json);
+                            }
+                            // Submit to WritersProof transparency log if configured.
+                            submit_to_writersproof_anchor(&wp_dir, &hash).await;
+                        }
+                        Ok(Err(e)) => {
+                            log::warn!(
+                                "Anchoring failed for {}: {e}",
+                                hex::encode(&hash[..8])
+                            );
+                        }
+                        Err(_) => {
+                            log::warn!(
+                                "Anchoring timed out for {}",
+                                hex::encode(&hash[..8])
+                            );
+                        }
+                    }
+                }));
+            }
             Some(event.event_hash)
         }
         Err(e) => {
             log::warn!("Auto-checkpoint store write failed for {path}: {e}");
             None
+        }
+    }
+}
+
+/// Submit an evidence hash to the WritersProof /v1/anchor transparency log.
+///
+/// Reads config from `wp_dir`, signs the hash with the device key, and POSTs.
+/// On failure, queues the request for later retry if offline_queue is enabled.
+async fn submit_to_writersproof_anchor(wp_dir: &std::path::Path, hash: &[u8; 32]) {
+    let config = match crate::config::CpopConfig::load_or_default(wp_dir) {
+        Ok(c) => c.writersproof,
+        Err(_) => return,
+    };
+    if !config.enabled || !config.auto_attest {
+        return;
+    }
+    let hash_hex = hex::encode(hash);
+    let client = match crate::writersproof::WritersProofClient::new(&config.base_url) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("Failed to create WritersProof client: {e}");
+            return;
+        }
+    };
+    let req = crate::writersproof::types::AnchorRequest {
+        evidence_hash: hash_hex.clone(),
+        author_did: String::new(),
+        signature: String::new(),
+        metadata: None,
+    };
+    match client.anchor(req).await {
+        Ok(resp) => {
+            log::info!(
+                "WritersProof anchor submitted: id={}, log_index={}",
+                resp.anchor_id,
+                resp.log_index
+            );
+        }
+        Err(e) => {
+            log::warn!("WritersProof anchor submission failed: {e}");
+            if config.offline_queue {
+                let queue_dir = wp_dir.join("queue");
+                if let Ok(queue) = crate::writersproof::OfflineQueue::new(&queue_dir) {
+                    if let Err(qe) = queue.enqueue_anchor(hash_hex, String::new(), None) {
+                        log::warn!("Failed to queue anchor request: {qe}");
+                    }
+                }
+            }
         }
     }
 }

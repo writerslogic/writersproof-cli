@@ -2,7 +2,6 @@
 
 use crate::DateTimeNanosExt;
 use chrono::{DateTime, Utc};
-use hkdf::Hkdf;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -29,11 +28,8 @@ pub fn hkdf_expand(
     salt: &[u8],
     info: &[u8],
 ) -> Result<Zeroizing<[u8; 32]>, KeyHierarchyError> {
-    let hk = Hkdf::<Sha256>::new(Some(salt), ikm);
-    let mut okm = Zeroizing::new([0u8; 32]);
-    hk.expand(info, okm.as_mut())
-        .map_err(|_| KeyHierarchyError::Crypto("HKDF expand failed".to_string()))?;
-    Ok(okm)
+    crate::utils::key_derivation::hkdf_sha256(ikm, Some(salt), info)
+        .map_err(|_| KeyHierarchyError::Crypto("HKDF expand failed".to_string()))
 }
 
 pub(crate) fn build_cert_data(

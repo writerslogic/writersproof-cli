@@ -10,7 +10,7 @@ use cpoe::authorproof_protocol::crypto::EvidenceSigner;
 use cpoe::tpm;
 
 use crate::output::OutputMode;
-use crate::spec::{attestation_tier_value, content_tier_from_cli, profile_uri_from_cli};
+use crate::spec::{attestation_tier_value, content_tier_from_cli, profile_uri};
 use crate::util::{
     ensure_dirs, load_signing_key, load_vdf_params, open_secure_store, retry_on_busy,
 };
@@ -182,7 +182,7 @@ pub(crate) async fn cmd_export(
     .unwrap_or(Duration::ZERO);
 
     let spec_content_tier = content_tier_from_cli(&tier_lower);
-    let spec_profile_uri = profile_uri_from_cli(&tier_lower);
+    let spec_profile_uri = profile_uri();
     let spec_attestation_tier =
         attestation_tier_value(caps.supports_attestation, caps.hardware_backed);
 

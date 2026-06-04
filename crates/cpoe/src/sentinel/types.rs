@@ -226,14 +226,21 @@ impl AiToolCategory {
             // Tier 1: Direct AI tools (strong signal)
             "com.openai.chat"
             | "com.openai.chatgpt"
+            | "com.openai.chatgpt.macos"
             | "com.anthropic.claude"
+            | "com.anthropic.claudefordesktop"
+            | "com.google.gemini"
+            | "com.google.bard"
             | "com.ollama.ollama"
             | "ai.lmstudio.app"
             | "io.typingmind.app" => Some((Self::DirectGenerative, ObservationBasis::Observed)),
 
             "com.github.copilot"
+            | "com.microsoft.copilot"
             | "dev.cursor.app"
             | "com.todesktop.230313mzl4w4u92"
+            | "com.codeium.windsurf"
+            | "com.sourcegraph.cody"
             | "com.replit.desktop" => Some((Self::AssistantCopilot, ObservationBasis::Observed)),
 
             // Tier 2: AI-capable environments (weak signal, needs correlation)

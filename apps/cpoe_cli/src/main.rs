@@ -126,7 +126,7 @@ async fn run() -> Result<()> {
                 cmd_track::cmd_track_smart(None, Some(resolved), &out).await?;
             } else {
                 cmd_status::show_quick_status(&out)?;
-                if !out.json && !out.quiet && std::io::stdout().is_terminal() {
+                if out.verbose() && std::io::stdout().is_terminal() {
                     interactive_menu(&out).await?;
                 }
             }

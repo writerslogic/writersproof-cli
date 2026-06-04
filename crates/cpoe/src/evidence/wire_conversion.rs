@@ -391,6 +391,7 @@ fn checkpoint_to_wire(
         lamport_signature: lamport.and_then(|s| s.lamport_signature.clone()),
         lamport_pubkey_fingerprint: lamport.and_then(|s| s.lamport_pubkey_fingerprint.clone()),
         posme_proof: cp.posme_swf.clone(),
+        anchors: None,
     };
     // SHA-256(CBOR(checkpoint \ {8})) per spec
     wire.checkpoint_hash = wire.compute_hash().map_err(Error::crypto)?;

@@ -147,12 +147,6 @@ pub fn decode_from<T: DeserializeOwned, R: Read>(reader: R, format: Format) -> R
     }
 }
 
-// Backward-compatible convenience functions from v0.1
-/// Alias for engine-era constant names.
-pub const CBOR_TAG_EVIDENCE_PACKET: u64 = CBOR_TAG_CPOE;
-/// Alias for engine-era constant names.
-pub const CBOR_TAG_ATTESTATION_RESULT: u64 = CBOR_TAG_CWAR;
-
 /// Serialize an EvidencePacket to CBOR with the registered tag.
 pub fn encode_evidence(packet: &crate::rfc::EvidencePacket) -> crate::error::Result<Vec<u8>> {
     cbor::encode_cpoe(packet)

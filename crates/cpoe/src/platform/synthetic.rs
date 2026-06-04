@@ -196,7 +196,8 @@ impl StatisticalAnomalyDetector {
         if self.iki_window.is_empty() {
             None
         } else {
-            Some(self.iki_window.iter().sum::<f64>() / self.iki_window.len() as f64)
+            let sum: f64 = self.iki_window.iter().sum();
+            Some(sum / self.iki_window.len() as f64)
         }
     }
 }
@@ -401,7 +402,7 @@ impl TypingRhythmAnalyzer {
             return None;
         }
 
-        let mean_iki_ms = self.session_ikis.iter().sum::<f64>() / self.session_ikis.len() as f64;
+        let mean_iki_ms = crate::utils::mean(&self.session_ikis);
         if mean_iki_ms <= 0.0 {
             return None;
         }

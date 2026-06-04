@@ -743,7 +743,7 @@ pub(crate) async fn cmd_track_smart(
 
             if !daemon_sessions.is_empty() {
                 has_output = true;
-                if !out.json && !out.quiet {
+                if out.verbose() {
                     println!("Active daemon sessions:");
                     for session in &daemon_sessions {
                         let id = session

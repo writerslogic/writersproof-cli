@@ -179,7 +179,15 @@ pub(crate) mod hex_bytes_vec_opt {
                         write!(f, "a hex-encoded byte string")
                     }
                     fn visit_str<E: de::Error>(self, v: &str) -> Result<Vec<u8>, E> {
-                        hex::decode(v).map_err(E::custom)
+                        let bytes = hex::decode(v).map_err(E::custom)?;
+                        if bytes.len() > super::hex_bytes_vec::MAX_HEX_BYTES {
+                            return Err(E::custom(format!(
+                                "hex_bytes_vec_opt length {} exceeds maximum {}",
+                                bytes.len(),
+                                super::hex_bytes_vec::MAX_HEX_BYTES
+                            )));
+                        }
+                        Ok(bytes)
                     }
                 }
                 d.deserialize_str(InnerVisitor).map(Some)

@@ -65,6 +65,7 @@ pub(super) struct EventLoopCtx {
     pub(super) document_watcher: Arc<Mutex<Option<super::document_watcher::DocumentDirectoryWatcher>>>,
     pub(super) content_fingerprints:
         Arc<Mutex<Vec<(String, String, super::content_fingerprint::ContentFingerprint)>>>,
+    pub(super) anchor_manager: Option<Arc<crate::anchors::AnchorManager>>,
     // Per-loop mutable timing state
     pub(super) last_keystroke_time: std::time::Instant,
     pub(super) last_keydown_ts_ns: i64,
@@ -815,6 +816,7 @@ impl EventLoopCtx {
         let cp_key = Arc::clone(&self.signing_key_for_cp);
         let cp_dir = self.writersproof_dir.clone();
         let cp_stop = Arc::clone(&self.stopping_flag);
+        let cp_anchor = self.anchor_manager.clone();
         if let Err(e) = tokio::task::spawn_blocking(move || {
             commit_checkpoint_for_path(
                 &cp_path,
@@ -823,6 +825,7 @@ impl EventLoopCtx {
                 &cp_dir,
                 &None,
                 &cp_stop,
+                &cp_anchor,
             )
         })
         .await
@@ -1040,6 +1043,7 @@ impl EventLoopCtx {
         let cp_dir = self.writersproof_dir.clone();
         let nonce_for_closure = challenge_nonce.clone();
         let cp_stop = Arc::clone(&self.stopping_flag);
+        let cp_anchor = self.anchor_manager.clone();
         let (semantic_json, checkpoint_reason) = {
             let map = self.sessions.read_recover();
             let sem = map.get(path).and_then(|s| {
@@ -1085,6 +1089,7 @@ impl EventLoopCtx {
                 &nonce_for_closure,
                 &cp_stop,
                 semantic_json,
+                &cp_anchor,
             )
         })
         .await

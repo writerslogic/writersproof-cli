@@ -60,10 +60,59 @@ pub fn format_duration_human(seconds: f64) -> String {
     }
 }
 
-/// SHA-256 hash of a byte slice, returned as a fixed 32-byte array.
-pub fn hash_bytes(data: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(data).into()
+/// Format a duration in seconds as compact "Xh Xm Xs" text.
+pub fn format_duration_compact(total_secs: i64) -> String {
+    if total_secs < 0 {
+        return "0s".to_string();
+    }
+    if total_secs >= 3600 {
+        format!(
+            "{}h {}m {}s",
+            total_secs / 3600,
+            (total_secs % 3600) / 60,
+            total_secs % 60
+        )
+    } else if total_secs >= 60 {
+        format!("{}m {}s", total_secs / 60, total_secs % 60)
+    } else {
+        format!("{}s", total_secs)
+    }
+}
+
+/// Format a duration in seconds as verbose English ("X days, Y hours").
+pub fn format_duration_verbose(total_secs: i64) -> String {
+    if total_secs <= 0 {
+        return "0 seconds".to_string();
+    }
+
+    let days = total_secs / 86400;
+    let hours = (total_secs % 86400) / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let seconds = total_secs % 60;
+
+    if days > 0 {
+        if days == 1 {
+            format!("{} day, {} hours", days, hours)
+        } else {
+            format!("{} days, {} hours", days, hours)
+        }
+    } else if hours > 0 {
+        if hours == 1 {
+            format!("{} hour, {} minutes", hours, minutes)
+        } else {
+            format!("{} hours, {} minutes", hours, minutes)
+        }
+    } else if minutes > 0 {
+        if minutes == 1 {
+            format!("{} minute, {} seconds", minutes, seconds)
+        } else {
+            format!("{} minutes, {} seconds", minutes, seconds)
+        }
+    } else if seconds == 1 {
+        format!("{} second", seconds)
+    } else {
+        format!("{} seconds", seconds)
+    }
 }
 
 #[cfg(test)]
@@ -137,17 +186,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn hash_bytes_deterministic() {
-        let h1 = hash_bytes(b"hello");
-        let h2 = hash_bytes(b"hello");
-        assert_eq!(h1, h2);
-    }
-
-    #[test]
-    fn hash_bytes_different_inputs() {
-        let h1 = hash_bytes(b"hello");
-        let h2 = hash_bytes(b"world");
-        assert_ne!(h1, h2);
-    }
 }

@@ -11,7 +11,6 @@ impl OutputMode {
         Self { json, quiet }
     }
 
-    #[allow(dead_code)]
     pub fn verbose(&self) -> bool {
         !self.json && !self.quiet
     }

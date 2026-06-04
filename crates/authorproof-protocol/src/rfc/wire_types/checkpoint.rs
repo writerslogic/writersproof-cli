@@ -5,8 +5,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::components::{
-    ActiveProbe, BeaconAnchor, EditDelta, HatProof, JitterBindingWire, PhysicalState, ProcessProof,
-    Receipt,
+    ActiveProbe, AnchorProofWire, BeaconAnchor, EditDelta, HatProof, JitterBindingWire,
+    PhysicalState, ProcessProof, Receipt,
 };
 use super::hash::HashValue;
 use super::serde_helpers::{fixed_bytes_16, fixed_bytes_32_opt, serde_bytes_opt};
@@ -35,6 +35,7 @@ use super::serde_helpers::{fixed_bytes_16, fixed_bytes_32_opt, serde_bytes_opt};
 ///     ? 18 => bstr .size 8192, ; lamport-signature
 ///     ? 19 => bstr .size 8, ; lamport-pubkey-fingerprint
 ///     ? 20 => bstr,         ; posme-proof (draft-condrey-cfrg-posme)
+///     ? 21 => [+ anchor-proof], ; external timestamp anchors
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +132,10 @@ pub struct CheckpointWire {
         with = "serde_bytes_opt"
     )]
     pub posme_proof: Option<Vec<u8>>,
+
+    /// External timestamp anchor proofs (OTS, RFC 3161, notary).
+    #[serde(rename = "21", default, skip_serializing_if = "Option::is_none")]
+    pub anchors: Option<Vec<AnchorProofWire>>,
 }
 
 const MAX_SELF_RECEIPTS: usize = 100;

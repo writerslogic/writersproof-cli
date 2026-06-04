@@ -133,39 +133,7 @@ pub fn generate_report(profile: &AuthorshipProfile) -> String {
 
 /// Format a `ChronoDuration` as "X days, Y hours" etc.
 fn format_duration(d: ChronoDuration) -> String {
-    if d < ChronoDuration::zero() {
-        return "0 seconds".to_string();
-    }
-
-    let total_secs = d.num_seconds();
-    let days = total_secs / 86400;
-    let hours = (total_secs % 86400) / 3600;
-    let minutes = (total_secs % 3600) / 60;
-    let seconds = total_secs % 60;
-
-    if days > 0 {
-        if days == 1 {
-            format!("{} day, {} hours", days, hours)
-        } else {
-            format!("{} days, {} hours", days, hours)
-        }
-    } else if hours > 0 {
-        if hours == 1 {
-            format!("{} hour, {} minutes", hours, minutes)
-        } else {
-            format!("{} hours, {} minutes", hours, minutes)
-        }
-    } else if minutes > 0 {
-        if minutes == 1 {
-            format!("{} minute, {} seconds", minutes, seconds)
-        } else {
-            format!("{} minutes, {} seconds", minutes, seconds)
-        }
-    } else if seconds == 1 {
-        format!("{} second", seconds)
-    } else {
-        format!("{} seconds", seconds)
-    }
+    crate::utils::format_duration_verbose(d.num_seconds())
 }
 
 /// Render an ASCII bar `[####----]` for a metric value.

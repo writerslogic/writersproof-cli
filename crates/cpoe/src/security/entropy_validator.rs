@@ -115,11 +115,8 @@ impl EntropyValidator {
         }
 
         // Calculate statistics
-        let mean_iki = crate::utils::mean(&ikis_ms);
-        let variance =
-            ikis_ms.iter().map(|x| (x - mean_iki).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
-        let std_dev = variance.sqrt();
-        let cv = std_dev / mean_iki;
+        let (mean_iki, std_dev) = crate::utils::mean_and_std_dev(&ikis_ms);
+        let cv = if mean_iki.abs() > f64::EPSILON { std_dev / mean_iki } else { 0.0 };
 
         // Calculate Shannon entropy from IKI distribution
         let entropy = self.calculate_shannon_entropy(&ikis_ms);
@@ -229,10 +226,7 @@ impl EntropyValidator {
         }
 
         // Pattern 1: Monotonic timing (all IKIs nearly equal)
-        let mean = crate::utils::mean(&ikis_ms);
-        let variance =
-            ikis_ms.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
-        let std_dev = variance.sqrt();
+        let (mean, std_dev) = crate::utils::mean_and_std_dev(&ikis_ms);
 
         if std_dev < mean * 0.05 {
             // <5% standard deviation = monotonic
@@ -253,13 +247,7 @@ impl EntropyValidator {
                 .collect();
 
             if window_ikis.len() > 3 {
-                let w_mean = crate::utils::mean(&window_ikis);
-                let w_var = window_ikis
-                    .iter()
-                    .map(|x| (x - w_mean).powi(2))
-                    .sum::<f64>()
-                    / window_ikis.len() as f64;
-                let w_std = w_var.sqrt();
+                let (_w_mean, w_std) = crate::utils::mean_and_std_dev(&window_ikis);
 
                 if w_std < 5.0 {
                     // < 5ms std dev in window

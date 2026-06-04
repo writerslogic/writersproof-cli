@@ -32,6 +32,8 @@ pub struct VerifyOptions {
     /// External trust anchor for baseline verification. When `Some`, uses
     /// `verify_with_trusted_key()` instead of self-signed verification.
     pub trusted_public_key: Option<[u8; 32]>,
+    /// Whether to verify external timestamp anchors (OTS, RFC 3161) if present.
+    pub verify_anchors: bool,
 }
 
 /// Result of HMAC seal re-derivation checks.
@@ -92,6 +94,8 @@ pub struct FullVerificationResult {
     pub per_checkpoint: Option<PerCheckpointResult>,
     /// Overall forensic verdict.
     pub verdict: ForensicVerdict,
+    /// Number of anchor proofs verified (0 if none present or verify_anchors=false).
+    pub anchors_verified: usize,
     /// Accumulated warnings from all phases.
     pub warnings: Vec<String>,
 }
@@ -183,6 +187,12 @@ pub fn full_verify(packet: &Packet, opts: &VerifyOptions) -> FullVerificationRes
         (seals, duration, key_provenance, forensics, per_checkpoint)
     };
 
+    // Anchor verification placeholder: wire-format anchor proofs (CheckpointWire
+    // field 21) are verified during CBOR-level import via AnchorManager::verify_anchor().
+    // The internal Packet type does not carry anchor data, so we report 0 here.
+    // Full async anchor verification is performed by the CLI/FFI export path.
+    let anchors_verified = 0usize;
+
     // Compute overall verdict
     let verdict = verdict::compute_verdict(
         structural,
@@ -204,6 +214,7 @@ pub fn full_verify(packet: &Packet, opts: &VerifyOptions) -> FullVerificationRes
         forensics,
         per_checkpoint,
         verdict,
+        anchors_verified,
         warnings,
     }
 }

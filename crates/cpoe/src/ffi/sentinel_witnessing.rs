@@ -63,18 +63,7 @@ pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
 }
 
 fn format_duration(total_secs: i64) -> String {
-    if total_secs >= 3600 {
-        format!(
-            "{}h {}m {}s",
-            total_secs / 3600,
-            (total_secs % 3600) / 60,
-            total_secs % 60
-        )
-    } else if total_secs >= 60 {
-        format!("{}m {}s", total_secs / 60, total_secs % 60)
-    } else {
-        format!("{}s", total_secs)
-    }
+    crate::utils::format_duration_compact(total_secs)
 }
 
 /// Get current sentinel status.

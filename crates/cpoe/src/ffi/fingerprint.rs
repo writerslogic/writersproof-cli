@@ -53,11 +53,13 @@ pub(crate) fn feed_fingerprint_keystroke(
     keycode: u16,
     char_value: Option<char>,
 ) {
-    let _ = with_manager(|mgr| {
+    if let Err(e) = with_manager(|mgr| {
         mgr.record_activity_sample(sample);
         mgr.record_keystroke_for_style(keycode, char_value);
         Ok(())
-    });
+    }) {
+        log::debug!("fingerprint feed skipped: {e}");
+    }
 }
 
 /// Return fingerprint status: enabled flags and sample counts.

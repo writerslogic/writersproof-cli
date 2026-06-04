@@ -430,34 +430,6 @@ pub fn open_store_with_signing_key(
     SecureStore::open(db_path, hmac_key)
 }
 
-/// Open an [`AccessLog`] by deriving a purpose-specific HMAC key from an Ed25519
-/// signing key. The derived key is cryptographically independent from the event
-/// store key, so compromising one does not affect the other.
-///
-/// For backward compatibility: if the database already contains HMAC-tagged
-/// entries created with the legacy shared key, this function detects the
-/// mismatch and falls back to the legacy key. New (empty) databases get the
-/// purpose-specific key automatically.
-pub fn open_access_log_with_signing_key(
-    signing_key: &ed25519_dalek::SigningKey,
-    db_path: &Path,
-) -> anyhow::Result<access_log::AccessLog> {
-    let purpose_key = crate::crypto::derive_hmac_key_for_purpose(signing_key, "access-log");
-    let log = access_log::AccessLog::open(db_path, purpose_key)?;
-
-    // If the database has existing entries, verify HMACs match the new key.
-    // If they don't, re-open with the legacy key for backward compatibility.
-    if log.entry_count()? > 0 && !log.verify_access_log_integrity()? {
-        drop(log);
-        let mut legacy_bytes = signing_key.to_bytes();
-        let legacy_key = crate::crypto::derive_hmac_key(&legacy_bytes);
-        legacy_bytes.zeroize();
-        return access_log::AccessLog::open(db_path, legacy_key);
-    }
-
-    Ok(log)
-}
-
 /// Minimum free disk space (in bytes) required before starting a write-heavy
 /// operation such as export or archival. 50 MiB provides headroom for SQLite
 /// WAL checkpoint, temporary files, and the output artifact.

@@ -158,7 +158,7 @@ pub(crate) fn cmd_log_smart(file: Option<PathBuf>, out: &OutputMode) -> Result<(
     match file {
         Some(f) => cmd_log(&f, out),
         None => {
-            if !out.json && !out.quiet {
+            if out.verbose() {
                 println!("No file specified. Showing all tracked documents:");
                 println!();
             }

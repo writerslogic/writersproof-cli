@@ -957,10 +957,7 @@ impl KeystrokeMetrics {
             return None;
         }
 
-        let mean = crate::utils::mean(&intervals);
-        let variance =
-            intervals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / intervals.len() as f64;
-        let std_dev = variance.sqrt();
+        let (mean, std_dev) = crate::utils::mean_and_std_dev(&intervals);
 
         let min = intervals.iter().cloned().fold(f64::INFINITY, f64::min);
         let max = intervals.iter().cloned().fold(0.0, f64::max);

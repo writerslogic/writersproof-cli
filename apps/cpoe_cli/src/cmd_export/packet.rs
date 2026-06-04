@@ -349,6 +349,7 @@ pub(super) fn build_wire_packet_from_events(
                 lamport_signature: ev.lamport_signature.clone(),
                 lamport_pubkey_fingerprint: ev.lamport_pubkey_fingerprint.clone(),
                 posme_proof: ev.posme_proof.clone(),
+                anchors: None,
             };
             wire.checkpoint_hash = wire.compute_hash().map_err(|e| anyhow::anyhow!(e))?;
             Ok(wire)

@@ -20,6 +20,9 @@ pub use obfuscated::{Obfuscated, ObfuscatedString};
 pub type HmacSha256 = Hmac<Sha256>;
 
 /// Compute SHA-256 hash of a file via streaming chunked reader.
+///
+/// **Note**: follows symlinks. For symlink-safe hashing (O_NOFOLLOW),
+/// use [`sentinel::helpers::compute_file_hash`] instead.
 pub fn hash_file(path: &Path) -> std::io::Result<[u8; 32]> {
     let (hash, _) = hash_file_with_size(path)?;
     Ok(hash)

@@ -35,6 +35,9 @@ pub const AI_APP_PATTERNS: &[&str] = &[
     "bard",
     "gemini",
     "perplexity",
+    "windsurf",
+    "sourcegraph",
+    "cody",
 ];
 
 /// Exact macOS bundle IDs of known AI assistant applications.
@@ -42,11 +45,17 @@ pub const AI_APP_PATTERNS: &[&str] = &[
 /// Maintain alongside [`AI_APP_PATTERNS`] — additions may need both lists.
 pub const KNOWN_AI_APP_BUNDLE_IDS: &[&str] = &[
     "com.anthropic.claudefordesktop",
+    "com.anthropic.claude",
     "com.openai.chat",
+    "com.openai.chatgpt",
+    "com.openai.chatgpt.macos",
     "com.microsoft.copilot",
     "com.github.copilot",
     "com.cursor.Cursor",
+    "dev.cursor.app",
     "com.todesktop.230313mzl4w4u92", // Cursor alternative ID
+    "com.codeium.windsurf",
+    "com.sourcegraph.cody",
     "com.google.bard",
     "com.google.gemini",
     "com.perplexity.mac",

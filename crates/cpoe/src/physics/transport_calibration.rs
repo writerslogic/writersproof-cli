@@ -52,15 +52,8 @@ impl TransportCalibrator {
 
         let baseline = *samples.iter().min()?;
 
-        let mean: f64 = samples.iter().map(|&x| x as f64).sum::<f64>() / samples.len() as f64;
-        let variance: f64 = samples
-            .iter()
-            .map(|&x| {
-                let diff = x as f64 - mean;
-                diff * diff
-            })
-            .sum::<f64>()
-            / samples.len() as f64;
+        let f64_samples: Vec<f64> = samples.iter().map(|&x| x as f64).collect();
+        let (_mean, variance) = crate::utils::mean_and_variance(&f64_samples);
         let ts = chrono::Utc::now().timestamp_millis();
         if ts < 0 {
             log::warn!("Negative timestamp_millis ({ts}) in transport calibration; clamping to 0");

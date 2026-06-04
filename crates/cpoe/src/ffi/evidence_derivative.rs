@@ -2,6 +2,7 @@
 
 use crate::ffi::helpers::open_store;
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
+use crate::RwLockRecover;
 
 use super::evidence::device_identity;
 
@@ -837,6 +838,7 @@ pub fn enrich_c2pa_builder(
     builder = builder.cognitive_markers(markers);
 
     // Add AI disclosure if AI-mediated composition detected.
+    let mut ai_disclosed = false;
     if let Some(ref cm) = metrics.composition_mode {
         if cm.ai_cycle_count > 0 || cm.distribution.ai_mediated > 0.1 {
             let oversight = if cm.distribution.ai_mediated > 0.5 {
@@ -851,6 +853,34 @@ pub fn enrich_c2pa_builder(
                     human_oversight_level: oversight.to_string(),
                 }),
             });
+            ai_disclosed = true;
+        }
+    }
+
+    // Escalate to AI-assisted if ES/clipboard detected AI tools but composition
+    // mode analysis did not trigger disclosure (e.g., paste-from-AI without
+    // enough typing cycles to register in the composition model).
+    if !ai_disclosed {
+        if let Some(sentinel) = crate::ffi::sentinel::get_sentinel() {
+            let sessions = sentinel.sessions.read_recover();
+            let has_ai_tool = sessions.values().any(|s| {
+                s.ai_tools_detected.iter().any(|t| {
+                    matches!(
+                        t.category,
+                        crate::sentinel::types::AiToolCategory::DirectGenerative
+                            | crate::sentinel::types::AiToolCategory::AssistantCopilot
+                    ) && matches!(t.basis, crate::sentinel::types::ObservationBasis::Observed)
+                })
+            });
+            if has_ai_tool {
+                builder = builder.ai_disclosure(AiDisclosureAssertion {
+                    model_type: "language_model".to_string(),
+                    model_name: None,
+                    content_profile: Some(AiContentProfile {
+                        human_oversight_level: "human_validated".to_string(),
+                    }),
+                });
+            }
         }
     }
 

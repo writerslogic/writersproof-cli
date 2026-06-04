@@ -22,7 +22,10 @@ pub use crypto_helpers::{
 };
 pub use crypto_types::{Ed25519Pubkey, Ed25519Sig, HexBytes, HexHash};
 pub use error_context::{sanitize_for_user, ErrorContext};
-pub use formatting::{format_bytes, format_duration_human, format_number, hash_bytes};
+pub use formatting::{
+    format_bytes, format_duration_compact, format_duration_human, format_duration_verbose,
+    format_number,
+};
 pub(crate) use lock::{MutexRecover, RwLockRecover};
 pub use probability::Probability;
 pub use stats::{
@@ -172,39 +175,15 @@ pub fn hex_decode_8(s: &str) -> crate::error::Result<[u8; 8]> {
     hex_decode_exact::<8>(s)
 }
 
-/// Decode a hex string to a fixed 16-byte array.
-pub fn hex_decode_16(s: &str) -> crate::error::Result<[u8; 16]> {
-    hex_decode_exact::<16>(s)
-}
-
 /// Decode a hex string to a fixed 32-byte array.
 pub fn hex_decode_32(s: &str) -> crate::error::Result<[u8; 32]> {
     hex_decode_exact::<32>(s)
-}
-
-/// Decode a hex string to a fixed 64-byte array.
-pub fn hex_decode_64(s: &str) -> crate::error::Result<[u8; 64]> {
-    hex_decode_exact::<64>(s)
-}
-
-/// Convert a byte slice to a fixed 16-byte array.
-///
-/// Returns `Err` if `slice` is not exactly 16 bytes.
-pub fn to_array_16(slice: &[u8]) -> Result<[u8; 16], std::array::TryFromSliceError> {
-    slice.try_into()
 }
 
 /// Convert a byte slice to a fixed 32-byte array.
 ///
 /// Returns `Err` if `slice` is not exactly 32 bytes.
 pub fn to_array_32(slice: &[u8]) -> Result<[u8; 32], std::array::TryFromSliceError> {
-    slice.try_into()
-}
-
-/// Convert a byte slice to a fixed 64-byte array.
-///
-/// Returns `Err` if `slice` is not exactly 64 bytes.
-pub fn to_array_64(slice: &[u8]) -> Result<[u8; 64], std::array::TryFromSliceError> {
     slice.try_into()
 }
 
@@ -273,20 +252,6 @@ mod tests {
     }
 
     #[test]
-    fn to_array_16_exact_length() {
-        let v = vec![0x01u8; 16];
-        let arr = to_array_16(&v).unwrap();
-        assert_eq!(arr, [0x01u8; 16]);
-    }
-
-    #[test]
-    fn to_array_64_exact_length() {
-        let v = vec![0xffu8; 64];
-        let arr = to_array_64(&v).unwrap();
-        assert_eq!(arr, [0xffu8; 64]);
-    }
-
-    #[test]
     fn hex_decode_32_ok() {
         let hex = "ab".repeat(32);
         let arr = hex_decode_32(&hex).unwrap();
@@ -312,18 +277,6 @@ mod tests {
     #[test]
     fn hex_decode_32_empty_string() {
         assert!(hex_decode_32("").is_err());
-    }
-
-    #[test]
-    fn hex_decode_16_ok() {
-        let arr = hex_decode_16(&"ff".repeat(16)).unwrap();
-        assert_eq!(arr, [0xff; 16]);
-    }
-
-    #[test]
-    fn hex_decode_64_ok() {
-        let arr = hex_decode_64(&"01".repeat(64)).unwrap();
-        assert_eq!(arr, [0x01; 64]);
     }
 
     #[test]

@@ -1,10 +1,14 @@
 WRITERSLOGIC END USER LICENSE AGREEMENT
 
-Last Updated: March 15, 2026
+Last Updated: June 1, 2026
 
-This End User License Agreement ("Agreement") is a legally binding contract between you ("User," "you," or "your") and CPoE Inc., a California corporation ("CPoE," "we," "us," or "our"). By downloading, installing, or using the CPoE application ("App"), you agree to be bound by this Agreement. If you do not agree, do not install or use the App.
+This End User License Agreement ("Agreement") is a legally binding contract between you ("User," "you," or "your") and WritersLogic, Inc., a California corporation ("WritersLogic," "we," "us," or "our"). By downloading, installing, or using the WritersProof application ("App"), you agree to be bound by this Agreement. If you do not agree, do not install or use the App.
+
+You must be at least 18 years old, or the age of majority in your jurisdiction, whichever is greater, to use the App. By accepting this Agreement, you represent that you meet this requirement and have the legal capacity to enter into a binding agreement.
 
 This Agreement supplements the Apple Media Services Terms and Conditions. In the event of a conflict between this Agreement and Apple's terms, Apple's terms govern to the extent required by Apple's policies.
+
+Patent Pending: USPTO Application No. 19/460,364
 
 
 1. DEFINITIONS
@@ -15,16 +19,16 @@ This Agreement supplements the Apple Media Services Terms and Conditions. In the
 
 "Content Hash" means a one-way cryptographic digest (SHA-256 or equivalent) of document content that cannot be reversed to recover the original content.
 
-"WritersProof Service" means the optional cloud infrastructure operated by CPoE at writerslogic.com for transparency log anchoring, remote attestation, and steganographic watermark signing.
+"WritersProof Service" means the optional cloud infrastructure operated by WritersLogic at writerslogic.com for transparency log anchoring, remote attestation, and steganographic watermark signing.
 
 "Pro Subscription" means a paid auto-renewable subscription that unlocks enhanced features including but not limited to advanced export tiers, steganographic watermarking, and WritersProof anchoring.
 
 
 2. LICENSE GRANT
 
-2.1. Subject to your compliance with this Agreement, CPoE grants you a limited, non-exclusive, non-transferable, revocable license to install and use the App on Apple devices that you own or control, solely for your personal or internal business purposes.
+2.1. Subject to your compliance with this Agreement, WritersLogic grants you a limited, non-exclusive, non-transferable, revocable license to install and use the App on Apple devices that you own or control, solely for your personal or internal business purposes.
 
-2.2. This license does not grant you any right to use CPoE trademarks, trade names, or service marks.
+2.2. This license does not grant you any right to use WritersLogic trademarks, trade names, or service marks.
 
 2.3. You may not sublicense, lease, rent, loan, or distribute the App to any third party. You may not reverse engineer, decompile, disassemble, or attempt to derive the source code of the App, except to the extent expressly permitted by applicable law notwithstanding this limitation.
 
@@ -35,11 +39,11 @@ This Agreement supplements the Apple Media Services Terms and Conditions. In the
 
 3.2. WRITERSLOGIC MAKES NO WARRANTY, REPRESENTATION, OR GUARANTEE THAT ANY EVIDENCE PACKET WILL BE ACCEPTED, RECOGNIZED, OR GIVEN WEIGHT BY ANY COURT, TRIBUNAL, ARBITRATOR, PUBLISHER, ACADEMIC INSTITUTION, EMPLOYER, REGULATORY BODY, OR OTHER THIRD PARTY.
 
-3.3. The probative value of Evidence Packets depends on factors outside CPoE's control, including but not limited to: the User's hardware configuration, operating system integrity, usage patterns, verification by independent parties, applicable rules of evidence, and the discretion of the evaluating party.
+3.3. The probative value of Evidence Packets depends on factors outside WritersLogic's control, including but not limited to: the User's hardware configuration, operating system integrity, usage patterns, verification by independent parties, applicable rules of evidence, and the discretion of the evaluating party.
 
 3.4. Evidence Packets reflect process attestation only. They attest that a writing process occurred on a specific device over a measured period. They do not and cannot attest to the originality, quality, accuracy, or legal ownership of the resulting content.
 
-3.5. Users should not rely on CPoE as the sole means of establishing authorship for any purpose where the consequences of failure would be significant. CPoE is one component of a broader evidentiary strategy and should be used in conjunction with other forms of documentation.
+3.5. Users should not rely on WritersLogic as the sole means of establishing authorship for any purpose where the consequences of failure would be significant. WritersLogic is one component of a broader evidentiary strategy and should be used in conjunction with other forms of documentation.
 
 
 4. PRIVACY AND DATA PRACTICES
@@ -58,9 +62,9 @@ This Agreement supplements the Apple Media Services Terms and Conditions. In the
 (d) Screen captures, screenshots, or visual content
 (e) Browsing history, URLs visited (except the domain of the active editor when the Safari extension is enabled), or communication content
 
-4.3. LOCAL STORAGE: All cryptographic keys (Ed25519 signing keys, HMAC keys, session keys) are generated and stored locally on your device. Keys are protected by the macOS Keychain and, where available, the Secure Enclave. Keys are never transmitted to CPoE or any third party.
+4.3. LOCAL STORAGE: All cryptographic keys (Ed25519 signing keys, HMAC keys, session keys) are generated and stored locally on your device. Keys are protected by the macOS Keychain and, where available, the Secure Enclave. Keys are never transmitted to WritersLogic or any third party.
 
-4.4. OPTIONAL CLOUD SERVICES: If you opt into the WritersProof Service or account features, the App transmits only cryptographic hashes, digital signatures, and attestation metadata to CPoE servers. Document content is never transmitted. You may use all core features of the App without creating an account or enabling any cloud service.
+4.4. OPTIONAL CLOUD SERVICES: If you opt into the WritersProof Service or account features, the App transmits only cryptographic hashes, digital signatures, and attestation metadata to WritersLogic servers. Document content is never transmitted. You may use all core features of the App without creating an account or enabling any cloud service.
 
 4.5. SAFARI EXTENSION: When enabled, the Safari extension monitors keystroke timing on supported web-based editors (Google Docs, Overleaf, Medium, Notion). It captures only timing intervals, never page content or keystrokes. The extension communicates with the main App via macOS App Groups. It does not communicate with any external server independently.
 
@@ -79,20 +83,20 @@ This Agreement supplements the Apple Media Services Terms and Conditions. In the
 
 5.5. No refunds will be provided for any partial subscription period. Refund requests are handled by Apple in accordance with Apple's refund policies.
 
-5.6. CPoE reserves the right to change subscription pricing upon reasonable notice. Price changes will not affect the current billing period and will take effect at the next renewal.
+5.6. WritersLogic reserves the right to change subscription pricing upon reasonable notice. Price changes will not affect the current billing period and will take effect at the next renewal.
 
 5.7. If your subscription lapses, you retain access to all Evidence Packets previously generated. You lose access to Pro-tier export formats, steganographic watermarking, WritersProof anchoring, and other features designated as Pro. Evidence previously generated at higher tiers remains valid and verifiable regardless of subscription status.
 
 
 6. INTELLECTUAL PROPERTY
 
-6.1. The App software, including its source code, object code, architecture, user interface, and documentation, is the proprietary property of CPoE Inc. and is protected by copyright, trade secret, and other intellectual property laws.
+6.1. The App software, including its source code, object code, architecture, user interface, and documentation, is the proprietary property of WritersLogic Inc. and is protected by copyright, trade secret, and other intellectual property laws.
 
-6.2. The IETF draft-condrey-rats-pop protocol specification is an open standard published through the Internet Engineering Task Force. CPoE's implementation of the protocol is proprietary; the protocol itself is not.
+6.2. The IETF draft-condrey-rats-pop protocol specification is an open standard published through the Internet Engineering Task Force. WritersLogic's implementation of the protocol is proprietary; the protocol itself is not.
 
-6.3. Evidence Packets you generate are your property. CPoE claims no ownership interest in your Evidence Packets, the documents they attest to, or the content hashes contained within them.
+6.3. Evidence Packets you generate are your property. WritersLogic claims no ownership interest in your Evidence Packets, the documents they attest to, or the content hashes contained within them.
 
-6.4. The BIP-39 mnemonic recovery phrase generated during setup is your property and your responsibility. CPoE does not store, transmit, or have access to your recovery phrase. Loss of your recovery phrase may result in permanent loss of your cryptographic identity.
+6.4. The BIP-39 mnemonic recovery phrase generated during setup is your property and your responsibility. WritersLogic does not store, transmit, or have access to your recovery phrase. Loss of your recovery phrase may result in permanent loss of your cryptographic identity.
 
 
 7. USER RESPONSIBILITIES
@@ -101,18 +105,20 @@ This Agreement supplements the Apple Media Services Terms and Conditions. In the
 
 7.2. You acknowledge that the integrity of Evidence Packets depends on the integrity of your operating system and hardware. Running the App on a compromised device, with System Integrity Protection disabled, or with modified system libraries may weaken or invalidate evidence.
 
-7.3. You agree not to use the App to: (a) generate fraudulent evidence of authorship for content you did not write; (b) tamper with, modify, or forge Evidence Packets; (c) misrepresent the output of the App to any third party; or (d) circumvent the App's security or integrity mechanisms.
+7.3. You agree not to use the App to: (a) generate fraudulent evidence of authorship for content you did not write; (b) tamper with, modify, or forge Evidence Packets; (c) misrepresent the output of the App to any third party; (d) circumvent the App's security or integrity mechanisms; or (e) use the App, proprietary information, or non-public outputs of the App to develop a substantially similar competing product.
 
-7.4. Attempted forgery of Evidence Packets may be detectable through forensic analysis and could constitute fraud under applicable law. CPoE is not responsible for any legal consequences arising from misuse of the App.
+7.4. Attempted forgery of Evidence Packets may be detectable through forensic analysis and could constitute fraud under applicable law. If WritersLogic discovers or reasonably suspects misuse, it reserves the right to revoke your license, refer suspected unlawful activity to appropriate law enforcement authorities, pursue available civil remedies, and notify relevant relying parties that evidence has been flagged for integrity review.
+
+7.5. WritersLogic is not responsible for any legal consequences arising from misuse of the App.
 
 
 8. THIRD-PARTY SERVICES
 
 8.1. The App may integrate with third-party services including but not limited to Apple's Secure Enclave, macOS Keychain Services, Apple's App Store and StoreKit framework, and the WritersProof transparency log service.
 
-8.2. Third-party services are governed by their own terms and privacy policies. CPoE is not responsible for the availability, accuracy, or conduct of any third-party service.
+8.2. Third-party services are governed by their own terms and privacy policies. WritersLogic is not responsible for the availability, accuracy, or conduct of any third-party service.
 
-8.3. The WritersProof Service (writerslogic.com) is operated by CPoE and governed by separate terms of service available at https://writerslogic.com/terms.
+8.3. The WritersProof Service (writerslogic.com) is operated by WritersLogic and governed by separate terms of service available at https://writerslogic.com/terms.
 
 
 9. DISCLAIMER OF WARRANTIES
@@ -133,7 +139,7 @@ This Agreement supplements the Apple Media Services Terms and Conditions. In the
 (d) Unauthorized access to or alteration of Evidence Packets
 (e) Loss of revenue, profits, data, or business opportunities
 (f) Reliance on Evidence Packets that are subsequently challenged or rejected
-(g) Any matter beyond CPoE's reasonable control
+(g) Any matter beyond WritersLogic's reasonable control
 
 WHETHER BASED ON WARRANTY, CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY, OR ANY OTHER LEGAL THEORY, EVEN IF WRITERSLOGIC HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
@@ -144,56 +150,64 @@ WHETHER BASED ON WARRANTY, CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILI
 
 11. INDEMNIFICATION
 
-You agree to indemnify, defend, and hold harmless CPoE and its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses (including reasonable attorneys' fees) arising out of or related to: (a) your use or misuse of the App; (b) your violation of this Agreement; (c) your violation of any applicable law or regulation; or (d) any claim by a third party related to Evidence Packets you generated, distributed, or presented.
+You agree to indemnify, defend, and hold harmless WritersLogic and its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses (including reasonable attorneys' fees) arising out of or related to: (a) your use or misuse of the App; (b) your violation of this Agreement; (c) your violation of any applicable law or regulation; or (d) any claim by a third party related to Evidence Packets you generated, distributed, or presented. This indemnification does not apply to the extent that a claim arises from a defect in the App or from WritersLogic's own negligence or willful misconduct.
 
 
 12. EXPORT COMPLIANCE
 
-The App uses cryptographic technology that may be subject to export controls under the laws of the United States and other jurisdictions. You agree to comply with all applicable export and re-export control laws and regulations. The App uses only exempt cryptographic functions (hashing, digital signatures, HMAC) as declared in the App's ITSAppUsesNonExemptEncryption = false designation.
+The App uses cryptographic technology that may be subject to export controls under the laws of the United States and other jurisdictions. You represent and warrant that: (a) you are not located in a country subject to a U.S. Government embargo or designated as a "terrorist supporting" country; (b) you are not listed on any U.S. Government list of prohibited or restricted parties; and (c) you will comply with all applicable export and re-export laws and regulations. The App uses only exempt cryptographic functions (hashing, digital signatures, HMAC) as declared in the App's ITSAppUsesNonExemptEncryption = false designation.
 
 
 13. TERMINATION
 
-13.1. This Agreement is effective until terminated. CPoE may terminate this Agreement at any time if you fail to comply with any term.
+13.1. This Agreement is effective until terminated. WritersLogic may terminate this Agreement at any time if you fail to comply with any term.
 
 13.2. Upon termination, you must cease all use of the App and delete all copies.
 
 13.3. Evidence Packets previously generated remain on your device and remain independently verifiable after termination. Your cryptographic identity and signing keys remain functional. Termination of this license does not invalidate previously generated evidence.
 
-13.4. Sections 3, 6, 9, 10, 11, and 14 survive termination of this Agreement.
+13.4. If you cancel your Pro account, you retain all locally stored evidence. Cloud-synced evidence remains available for export for at least ninety (90) days after account cancellation, after which it may be deleted from our servers. In the event that WritersLogic ceases operations, we will provide at least sixty (60) days notice and make commercially reasonable efforts to allow you to export all cloud-stored evidence before the service shuts down.
+
+13.5. Sections 3, 6, 9, 10, 11, and 14 survive termination of this Agreement.
 
 
 14. DISPUTE RESOLUTION
 
-14.1. BINDING ARBITRATION: Any dispute arising out of or relating to this Agreement shall be resolved by binding arbitration administered by JAMS under its Streamlined Arbitration Rules and Procedures, except as modified by this section. The arbitration shall be conducted in San Francisco, California, in the English language.
+14.1. BINDING ARBITRATION: Any dispute arising out of or relating to this Agreement shall be resolved by binding arbitration administered by JAMS under its Streamlined Arbitration Rules and Procedures, except as modified by this section. The arbitration shall be conducted in San Diego County, California, in the English language. WritersLogic will pay all arbitration fees and costs beyond the initial filing fee.
 
-14.2. CLASS ACTION WAIVER: YOU AND WRITERSLOGIC AGREE THAT EACH MAY BRING CLAIMS AGAINST THE OTHER ONLY IN YOUR OR ITS INDIVIDUAL CAPACITY, AND NOT AS A PLAINTIFF OR CLASS MEMBER IN ANY PURPORTED CLASS, CONSOLIDATED, OR REPRESENTATIVE PROCEEDING.
+14.2. OPT-OUT: You may opt out of this arbitration agreement by sending written notice to legal@writerslogic.com within thirty (30) days of first accepting this Agreement. Your notice must include your name, address, and a clear statement that you wish to opt out of arbitration. If you opt out, disputes will be resolved in the state or federal courts in San Diego County, California.
 
-14.3. SMALL CLAIMS EXCEPTION: Notwithstanding the foregoing, either party may bring an individual action in small claims court for disputes within the jurisdiction of such court.
+14.3. CLASS ACTION WAIVER: YOU AND WRITERSLOGIC AGREE THAT EACH MAY BRING CLAIMS AGAINST THE OTHER ONLY IN YOUR OR ITS INDIVIDUAL CAPACITY, AND NOT AS A PLAINTIFF OR CLASS MEMBER IN ANY PURPORTED CLASS, CONSOLIDATED, OR REPRESENTATIVE PROCEEDING.
 
-14.4. INJUNCTIVE RELIEF: Nothing in this section prevents either party from seeking injunctive or other equitable relief in any court of competent jurisdiction to prevent the actual or threatened infringement, misappropriation, or violation of intellectual property rights.
+14.4. SMALL CLAIMS EXCEPTION: Notwithstanding the foregoing, either party may bring an individual action in small claims court for disputes within the jurisdiction of such court.
+
+14.5. INJUNCTIVE RELIEF: Nothing in this section prevents either party from seeking injunctive or other equitable relief in any court of competent jurisdiction to prevent the actual or threatened infringement, misappropriation, or violation of intellectual property rights.
 
 
 15. GENERAL PROVISIONS
 
 15.1. GOVERNING LAW: This Agreement is governed by the laws of the State of California, United States, without regard to conflict of law principles.
 
-15.2. ENTIRE AGREEMENT: This Agreement, together with the Apple Media Services Terms and Conditions and CPoE's Privacy Policy, constitutes the entire agreement between you and CPoE regarding the App.
+15.2. ENTIRE AGREEMENT: This Agreement, together with the Apple Media Services Terms and Conditions and WritersLogic's Privacy Policy, constitutes the entire agreement between you and WritersLogic regarding the App.
 
 15.3. SEVERABILITY: If any provision of this Agreement is held to be unenforceable, the remaining provisions shall continue in full force and effect.
 
-15.4. WAIVER: The failure of CPoE to enforce any right or provision of this Agreement shall not constitute a waiver of such right or provision.
+15.4. WAIVER: The failure of WritersLogic to enforce any right or provision of this Agreement shall not constitute a waiver of such right or provision.
 
-15.5. ASSIGNMENT: You may not assign or transfer this Agreement without CPoE's prior written consent. CPoE may assign this Agreement without restriction.
+15.5. ASSIGNMENT: You may not assign or transfer this Agreement without WritersLogic's prior written consent. WritersLogic may assign this Agreement without restriction.
 
-15.6. AMENDMENTS: CPoE may update this Agreement from time to time. Material changes will be communicated through the App or via email. Continued use of the App after changes constitutes acceptance of the modified Agreement.
+15.6. AMENDMENTS: WritersLogic may update this Agreement from time to time. Material changes will be communicated through the App or via email. Continued use of the App after changes constitutes acceptance of the modified Agreement.
 
-15.7. NOTICES: Notices to CPoE should be sent to legal@writerslogic.com or to CPoE Inc., San Francisco, CA, United States.
+15.7. NOTICES: WritersLogic may deliver notices to you through the App, through its website, or via the email address associated with your account. Notices are effective upon delivery. Notices to WritersLogic should be sent to legal@writerslogic.com or to WritersLogic, Inc., San Diego, CA, United States.
+
+15.8. FORCE MAJEURE: WritersLogic is not liable for any failure or delay in performance resulting from causes beyond its reasonable control, including but not limited to acts of God, natural disasters, war, terrorism, labor disputes, government actions, internet or infrastructure failures, or pandemic.
+
+15.9. TIME LIMIT ON CLAIMS: To the extent permitted by applicable law, any claim arising from or related to this Agreement must be filed within two (2) years after you knew or reasonably should have known of the event giving rise to the claim.
 
 
 16. CONTACT INFORMATION
 
-CPoE Inc.
+WritersLogic Inc.
 Email: support@writerslogic.com
 Legal: legal@writerslogic.com
 Web: https://writerslogic.com
@@ -201,4 +215,5 @@ Privacy: https://writerslogic.com/privacy
 Terms: https://writerslogic.com/legal
 
 
-Copyright 2026 CPoE Inc. All rights reserved.
+Copyright 2024-2026 WritersLogic, Inc. All rights reserved.
+Patent Pending: USPTO Application No. 19/460,364

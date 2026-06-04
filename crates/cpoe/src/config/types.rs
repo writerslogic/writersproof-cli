@@ -23,6 +23,7 @@ pub struct CpopConfig {
     pub privacy: PrivacyConfig,
     pub writersproof: WritersProofConfig,
     pub beacons: BeaconConfig,
+    pub anchors: AnchorConfig,
     pub trust_bundle: TrustBundleConfig,
 }
 
@@ -40,6 +41,7 @@ impl Default for CpopConfig {
             privacy: PrivacyConfig::default(),
             writersproof: WritersProofConfig::default(),
             beacons: BeaconConfig::default(),
+            anchors: AnchorConfig::default(),
             trust_bundle: TrustBundleConfig::default(),
         }
     }
@@ -64,6 +66,47 @@ impl Default for WritersProofConfig {
             base_url: crate::writersproof::client::DEFAULT_API_URL.to_string(),
             auto_attest: false,
             offline_queue: true,
+        }
+    }
+}
+
+/// External timestamping anchor configuration (OTS, RFC 3161, notary).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnchorConfig {
+    pub enabled: bool,
+    pub timeout_secs: u64,
+    /// Automatically submit anchors after each checkpoint commit.
+    pub auto_submit: bool,
+    pub providers: AnchorProviders,
+}
+
+impl Default for AnchorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timeout_secs: 10,
+            auto_submit: true,
+            providers: AnchorProviders::default(),
+        }
+    }
+}
+
+/// Which anchor providers are enabled.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AnchorProviders {
+    pub ots: bool,
+    pub rfc3161: bool,
+    pub notary: bool,
+}
+
+impl Default for AnchorProviders {
+    fn default() -> Self {
+        Self {
+            ots: true,
+            rfc3161: true,
+            notary: true,
         }
     }
 }

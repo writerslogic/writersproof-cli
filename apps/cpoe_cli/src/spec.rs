@@ -1,19 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
-pub const PROFILE_URI: &str = "urn:ietf:params:pop:profile:1.0";
-pub const EAT_PROFILE_URI: &str = "urn:ietf:params:rats:eat:profile:pop:1.0";
+pub const PROFILE_URI: &str = cpoe::authorproof_protocol::war::ear::LEGACY_POP_EVIDENCE_PROFILE;
+pub const EAT_PROFILE_URI: &str = cpoe::authorproof_protocol::war::ear::POP_EAR_PROFILE;
 pub const MIN_CHECKPOINTS_PER_PACKET: usize = 3;
-
-/// WritersProof Root CA public key (Ed25519, hex-encoded).
-/// kid: e58a2aacaad69b37 | Valid: 2026-03-19 to 2036-03-18
-/// Verify at: https://api.writerslogic.com/v1/ca/root
-#[allow(dead_code)]
-pub const WRITERSPROOF_ROOT_CA_PUBKEY: &str =
-    "b48f36054b9160dff06ac4329898523f441914442958a01e84b719ac539ca053";
-
-/// WritersProof Root CA key identifier.
-#[allow(dead_code)]
-pub const WRITERSPROOF_ROOT_CA_KID: &str = "e58a2aacaad69b37";
 
 /// Map CLI tier name to CDDL content-tier: basic/standard=1, enhanced=2, maximum=3.
 ///
@@ -34,7 +23,7 @@ pub fn content_tier_from_cli(tier: &str) -> u8 {
     }
 }
 
-pub fn profile_uri_from_cli(_tier: &str) -> &'static str {
+pub fn profile_uri() -> &'static str {
     PROFILE_URI
 }
 
@@ -188,24 +177,14 @@ mod tests {
         );
     }
 
-    // --- profile_uri_from_cli ---
+    // --- profile_uri ---
 
     #[test]
-    fn test_profile_uri_returns_constant_for_all_tiers() {
+    fn test_profile_uri_returns_constant() {
         assert_eq!(
-            profile_uri_from_cli("basic"),
+            profile_uri(),
             PROFILE_URI,
             "profile URI should match PROFILE_URI constant"
-        );
-        assert_eq!(
-            profile_uri_from_cli("enhanced"),
-            PROFILE_URI,
-            "profile URI should be the same for all tiers"
-        );
-        assert_eq!(
-            profile_uri_from_cli("maximum"),
-            PROFILE_URI,
-            "profile URI should be the same for all tiers"
         );
     }
 
@@ -237,33 +216,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_writersproof_root_ca_pubkey_is_valid_hex() {
-        assert_eq!(
-            WRITERSPROOF_ROOT_CA_PUBKEY.len(),
-            64,
-            "Ed25519 public key should be 64 hex chars (32 bytes)"
-        );
-        assert!(
-            WRITERSPROOF_ROOT_CA_PUBKEY
-                .chars()
-                .all(|c| c.is_ascii_hexdigit()),
-            "CA public key must be valid hex"
-        );
-    }
-
-    #[test]
-    fn test_writersproof_root_ca_kid_is_valid_hex() {
-        assert_eq!(
-            WRITERSPROOF_ROOT_CA_KID.len(),
-            16,
-            "CA key identifier should be 16 hex chars (8 bytes)"
-        );
-        assert!(
-            WRITERSPROOF_ROOT_CA_KID
-                .chars()
-                .all(|c| c.is_ascii_hexdigit()),
-            "CA key identifier must be valid hex"
-        );
-    }
 }

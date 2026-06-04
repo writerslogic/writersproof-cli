@@ -281,11 +281,7 @@ impl TamperingDetector {
             return false;
         }
 
-        let mean = crate::utils::mean(&ikis_ms);
-        let variance =
-            ikis_ms.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / ikis_ms.len() as f64;
-        let std_dev = variance.sqrt();
-        let cv = std_dev / mean;
+        let cv = crate::utils::coefficient_of_variation(&ikis_ms);
 
         cv < self.timing_variance_min_cv
     }

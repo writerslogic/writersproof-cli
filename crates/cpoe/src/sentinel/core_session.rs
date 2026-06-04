@@ -11,6 +11,7 @@ use crate::RwLockRecover;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::Digest;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zeroize::Zeroize;
 
@@ -423,6 +424,48 @@ impl Sentinel {
                             );
                         }
                     }
+                }
+
+                // Phase 3: non-blocking anchor submission (OTS / RFC 3161).
+                if let Some(ref am) = self.anchor_manager {
+                    let am = Arc::clone(am);
+                    let hash = ev_event_hash;
+                    let wp_dir = self.config.writersproof_dir.clone();
+                    drop(tokio::task::spawn(async move {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(10),
+                            am.anchor(&hash),
+                        )
+                        .await
+                        {
+                            Ok(Ok(anchor)) => {
+                                log::info!(
+                                    "Anchor submitted: {} proof(s) for {}",
+                                    anchor.proofs.len(),
+                                    hex::encode(&hash[..8])
+                                );
+                                let anchor_dir = wp_dir.join("anchors");
+                                let _ = std::fs::create_dir_all(&anchor_dir);
+                                let file_path =
+                                    anchor_dir.join(format!("{}.json", hex::encode(hash)));
+                                if let Ok(json) = serde_json::to_vec_pretty(&anchor) {
+                                    let _ = std::fs::write(&file_path, json);
+                                }
+                            }
+                            Ok(Err(e)) => {
+                                log::warn!(
+                                    "Anchoring failed for {}: {e}",
+                                    hex::encode(&hash[..8])
+                                );
+                            }
+                            Err(_) => {
+                                log::warn!(
+                                    "Anchoring timed out for {}",
+                                    hex::encode(&hash[..8])
+                                );
+                            }
+                        }
+                    }));
                 }
 
                 true

@@ -170,17 +170,9 @@ pub fn load_did(dir: &Path) -> Result<String> {
 
 /// Encode an Ed25519 public key as a `did:key` identifier per the
 /// [did:key Method Specification](https://w3c-ccg.github.io/did-key-spec/).
-///
-/// Format: `did:key:z{base58btc(multicodec_prefix ++ raw_pubkey)}`
-/// where multicodec prefix for Ed25519 public key is `0xed01`.
 pub fn ed25519_pubkey_to_did_key(pubkey: &[u8]) -> String {
-    // Multicodec prefix for Ed25519 public key: 0xed 0x01 (varint-encoded)
-    let mut prefixed = Vec::with_capacity(2 + pubkey.len());
-    prefixed.push(0xed);
-    prefixed.push(0x01);
-    prefixed.extend_from_slice(pubkey);
-    // 'z' prefix = base58btc encoding per multibase spec
-    format!("did:key:z{}", bs58::encode(&prefixed).into_string())
+    cpoe::identity::did_key_from_public(pubkey)
+        .unwrap_or_else(|| format!("did:key:invalid-{}", hex::encode(pubkey)))
 }
 
 pub fn write_restrictive(path: &Path, data: &[u8]) -> Result<()> {

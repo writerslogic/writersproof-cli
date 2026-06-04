@@ -218,6 +218,7 @@ pub(crate) fn build_wire_packet(
                 lamport_signature: ev.lamport_signature.clone(),
                 lamport_pubkey_fingerprint: ev.lamport_pubkey_fingerprint.clone(),
                 posme_proof: ev.posme_proof.clone(),
+                anchors: None,
             })
         })
         .collect::<Result<Vec<_>, String>>()
@@ -247,6 +248,34 @@ pub(crate) fn build_wire_packet(
                         "Beacon randomness decode failed for round {}; skipping beacon anchor",
                         beacon.drand_round
                     );
+                }
+            }
+        }
+    }
+
+    // Attach saved anchor proofs to the last checkpoint.
+    if let Some(last_cp) = checkpoints.last_mut() {
+        let anchor_path = data_dir
+            .join("anchors")
+            .join(format!("{}.json", hex::encode(latest.event_hash)));
+        if anchor_path.exists() {
+            if let Ok(data) = std::fs::read(&anchor_path) {
+                if let Ok(anchor) = serde_json::from_slice::<crate::anchors::Anchor>(&data) {
+                    let wire_anchors: Vec<_> = anchor
+                        .proofs
+                        .iter()
+                        .map(|p| {
+                            authorproof_protocol::rfc::wire_types::components::AnchorProofWire {
+                                provider: format!("{:?}", p.provider),
+                                proof: Some(p.proof_data.clone()),
+                                timestamp: p.submitted_at.to_rfc3339(),
+                                status: format!("{:?}", p.status),
+                            }
+                        })
+                        .collect();
+                    if !wire_anchors.is_empty() {
+                        last_cp.anchors = Some(wire_anchors);
+                    }
                 }
             }
         }
