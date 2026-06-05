@@ -3,13 +3,18 @@
 use super::error::{Result, SentinelError};
 use crate::crypto::ObfuscatedString;
 use crate::RwLockRecover;
+use chacha20poly1305::aead::Aead;
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::{Duration, SystemTime};
+use zeroize::Zeroizing;
 
-/// Shadow buffer for tracking unsaved document content
+/// Shadow buffer for tracking unsaved document content.
+/// Each buffer holds an ephemeral encryption key in memory; content is
+/// encrypted with ChaCha20-Poly1305 before writing to disk.
 #[derive(Debug, Clone)]
 struct ShadowBuffer {
     id: String,
@@ -19,6 +24,9 @@ struct ShadowBuffer {
     _created_at: SystemTime,
     updated_at: SystemTime,
     _size: i64,
+    /// Ephemeral 256-bit key for encrypting shadow content at rest.
+    /// Lives only in process memory; lost on process exit (shadow files become unreadable).
+    ephemeral_key: Zeroizing<[u8; 32]>,
 }
 
 #[derive(Debug)]
@@ -48,6 +56,9 @@ impl ShadowManager {
         let path = self.base_dir.join(format!("{}.shadow", id));
         File::create(&path)?;
 
+        let mut key = Zeroizing::new([0u8; 32]);
+        rng.fill(key.as_mut());
+
         let shadow = ShadowBuffer {
             id: id.clone(),
             app_name: app_name.to_string(),
@@ -56,6 +67,7 @@ impl ShadowManager {
             _created_at: SystemTime::now(),
             updated_at: SystemTime::now(),
             _size: 0,
+            ephemeral_key: key,
         };
 
         self.shadows.write_recover().insert(id.clone(), shadow);
@@ -65,20 +77,45 @@ impl ShadowManager {
 
     /// Write shadow content to the shadow directory on disk.
     ///
-    /// **Known limitation**: content is written unencrypted. The shadow directory
-    /// inherits the application data directory's file-system permissions (mode 0700).
-    /// Full encryption at rest is deferred; it would require key management for
-    /// temporary files that may outlive the process.
+    /// Content is encrypted with ChaCha20-Poly1305 using an ephemeral per-buffer
+    /// key held only in process memory. The key is zeroized on drop and never
+    /// persisted, so shadow files become unreadable after process exit.
     pub fn update(&self, id: &str, content: &[u8]) -> Result<()> {
-        let path = {
+        let (path, key) = {
             let shadows = self.shadows.read_recover();
-            shadows
+            let s = shadows
                 .get(id)
-                .map(|s| s.path.clone())
-                .ok_or_else(|| SentinelError::ShadowNotFound(id.to_string()))?
+                .ok_or_else(|| SentinelError::ShadowNotFound(id.to_string()))?;
+            (s.path.clone(), s.ephemeral_key.clone())
         };
 
-        fs::write(&path, content)?;
+        // Nonce: first 12 bytes of SHA-256(shadow_id || update_timestamp).
+        // Not reused across updates because the timestamp changes each time.
+        let nonce_input = {
+            use sha2::{Digest, Sha256};
+            let mut h = Sha256::new();
+            h.update(id.as_bytes());
+            h.update(
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+                    .to_le_bytes(),
+            );
+            h.finalize()
+        };
+        let nonce = chacha20poly1305::Nonce::from_slice(&nonce_input[..12]);
+
+        let cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&*key));
+        let ciphertext = cipher
+            .encrypt(nonce, content)
+            .map_err(|e| SentinelError::Serialization(format!("shadow encrypt: {e}")))?;
+
+        // Write nonce (12 bytes) || ciphertext to disk.
+        let mut blob = Vec::with_capacity(12 + ciphertext.len());
+        blob.extend_from_slice(&nonce_input[..12]);
+        blob.extend_from_slice(&ciphertext);
+        fs::write(&path, &blob)?;
 
         let mut shadows = self.shadows.write_recover();
         if let Some(shadow) = shadows.get_mut(id) {

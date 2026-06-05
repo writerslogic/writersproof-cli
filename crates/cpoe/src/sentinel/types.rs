@@ -166,12 +166,239 @@ pub const ENTROPY_CHECKPOINT_DST: &[u8] = b"cpoe-jitter-chain-v2";
 
 /// Max jitter samples retained per document to bound memory.
 ///
-/// Memory implication: 50,000 samples * ~24 bytes each = ~1.2 MB per active document.
-/// This is intentional; the full session is retained so that post-hoc forensic analysis
-/// has access to the complete typing timeline without lossy downsampling. Once this
-/// limit is reached, new samples are silently dropped (append-and-cap). For typical
-/// writing sessions (< 10,000 keystrokes) the limit is never hit.
+/// Default capacity for the per-document jitter ring buffer.
+///
+/// Memory: 50,000 samples * ~35 bytes each = ~1.7 MB per active document.
+/// Before the buffer wraps (typical sessions < 10,000 keystrokes), it behaves
+/// like a Vec with contiguous slice access. After wrapping, consumers use
+/// `to_vec_chronological()` or the chronological iterator.
 pub const MAX_DOCUMENT_JITTER_SAMPLES: usize = 50_000;
+
+/// Fixed-capacity ring buffer for jitter samples.
+///
+/// Replaces `Vec<SimpleJitterSample>` + `HashMap<i64, usize>` index.
+/// Before wrapping, provides zero-copy contiguous slice access via
+/// `as_contiguous_slice()`. After wrapping, oldest samples are overwritten
+/// and consumers that need a slice use `to_vec_chronological()`.
+#[derive(Debug)]
+pub(crate) struct JitterRingBuffer {
+    buf: Vec<crate::jitter::SimpleJitterSample>,
+    /// Next write position (wraps at capacity).
+    head: usize,
+    /// Number of valid samples (capped at capacity).
+    len: usize,
+    capacity: usize,
+}
+
+impl Clone for JitterRingBuffer {
+    fn clone(&self) -> Self {
+        Self {
+            buf: self.buf.clone(),
+            head: self.head,
+            len: self.len,
+            capacity: self.capacity,
+        }
+    }
+}
+
+impl JitterRingBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            buf: Vec::with_capacity(capacity),
+            head: 0,
+            len: 0,
+            capacity,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Whether the buffer has wrapped (oldest samples have been overwritten).
+    fn has_wrapped(&self) -> bool {
+        self.len == self.capacity && self.head != self.len
+    }
+
+    /// Push a sample. If at capacity, overwrites the oldest sample.
+    pub fn push(&mut self, sample: crate::jitter::SimpleJitterSample) {
+        if self.buf.len() < self.capacity {
+            // Pre-wrap: append like a Vec.
+            self.buf.push(sample);
+            self.head = self.buf.len();
+            self.len = self.buf.len();
+        } else {
+            // Post-wrap: overwrite at head.
+            self.buf[self.head] = sample;
+            self.head = (self.head + 1) % self.capacity;
+            // len stays at capacity
+        }
+    }
+
+    /// Undo the last push (for validation rollback). Returns the removed sample.
+    pub fn undo_last(&mut self) -> Option<crate::jitter::SimpleJitterSample> {
+        if self.len == 0 {
+            return None;
+        }
+        if self.buf.len() < self.capacity {
+            // Pre-wrap: simple pop.
+            self.len -= 1;
+            self.head = self.len;
+            self.buf.pop()
+        } else {
+            // Post-wrap: rewind head. The sample is still in buf but logically removed.
+            self.head = if self.head == 0 { self.capacity - 1 } else { self.head - 1 };
+            self.len -= 1;
+            Some(self.buf[self.head].clone())
+        }
+    }
+
+    /// Most recent sample.
+    pub fn last(&self) -> Option<&crate::jitter::SimpleJitterSample> {
+        if self.len == 0 {
+            return None;
+        }
+        if self.buf.len() < self.capacity {
+            self.buf.last()
+        } else {
+            let idx = if self.head == 0 { self.capacity - 1 } else { self.head - 1 };
+            Some(&self.buf[idx])
+        }
+    }
+
+    /// Mutable reference to the most recent sample.
+    pub fn last_mut(&mut self) -> Option<&mut crate::jitter::SimpleJitterSample> {
+        if self.len == 0 {
+            return None;
+        }
+        if self.buf.len() < self.capacity {
+            self.buf.last_mut()
+        } else {
+            let idx = if self.head == 0 { self.capacity - 1 } else { self.head - 1 };
+            Some(&mut self.buf[idx])
+        }
+    }
+
+    /// Backward scan for dwell time backfill. Finds the most recent sample
+    /// matching `timestamp_ns` within the last `max_scan` entries.
+    pub fn find_recent_mut(
+        &mut self,
+        timestamp_ns: i64,
+        max_scan: usize,
+    ) -> Option<&mut crate::jitter::SimpleJitterSample> {
+        if self.len == 0 {
+            return None;
+        }
+        let scan_count = max_scan.min(self.len);
+        if self.buf.len() < self.capacity {
+            // Pre-wrap: scan backward from end.
+            let start = self.len.saturating_sub(scan_count);
+            for i in (start..self.len).rev() {
+                if self.buf[i].timestamp_ns == timestamp_ns {
+                    return Some(&mut self.buf[i]);
+                }
+            }
+        } else {
+            // Post-wrap: scan backward from head.
+            for offset in 1..=scan_count {
+                let idx = (self.head + self.capacity - offset) % self.capacity;
+                if self.buf[idx].timestamp_ns == timestamp_ns {
+                    return Some(&mut self.buf[idx]);
+                }
+            }
+        }
+        None
+    }
+
+    /// Contiguous slice access (zero-copy). Returns `Some` only before wrapping.
+    pub fn as_contiguous_slice(&self) -> Option<&[crate::jitter::SimpleJitterSample]> {
+        if !self.has_wrapped() {
+            Some(&self.buf[..self.len])
+        } else {
+            None
+        }
+    }
+
+    /// Borrow as a contiguous slice when possible (pre-wrap), otherwise allocate.
+    /// Avoids allocation for 95%+ of real sessions (< 50k keystrokes).
+    pub fn as_slice(&self) -> std::borrow::Cow<'_, [crate::jitter::SimpleJitterSample]> {
+        if let Some(slice) = self.as_contiguous_slice() {
+            std::borrow::Cow::Borrowed(slice)
+        } else {
+            std::borrow::Cow::Owned(self.to_vec_chronological())
+        }
+    }
+
+    /// Returns all samples in chronological order as a Vec.
+    pub fn to_vec_chronological(&self) -> Vec<crate::jitter::SimpleJitterSample> {
+        if self.len == 0 {
+            return Vec::new();
+        }
+        if !self.has_wrapped() {
+            return self.buf[..self.len].to_vec();
+        }
+        // Post-wrap: tail (oldest) is from head..capacity, then 0..head.
+        let mut result = Vec::with_capacity(self.len);
+        result.extend_from_slice(&self.buf[self.head..]);
+        result.extend_from_slice(&self.buf[..self.head]);
+        result
+    }
+
+    /// Returns the trailing `n` samples in chronological order.
+    pub fn trailing(&self, n: usize) -> Vec<crate::jitter::SimpleJitterSample> {
+        let count = n.min(self.len);
+        if count == 0 {
+            return Vec::new();
+        }
+        if !self.has_wrapped() {
+            let start = self.len - count;
+            return self.buf[start..self.len].to_vec();
+        }
+        let mut result = Vec::with_capacity(count);
+        for offset in (1..=count).rev() {
+            let idx = (self.head + self.capacity - offset) % self.capacity;
+            result.push(self.buf[idx].clone());
+        }
+        result
+    }
+
+    /// Iterate samples in reverse chronological order (newest first).
+    pub fn iter_rev(&self) -> JitterRingRevIter<'_> {
+        JitterRingRevIter { ring: self, offset: 0 }
+    }
+
+}
+
+pub(crate) struct JitterRingRevIter<'a> {
+    ring: &'a JitterRingBuffer,
+    offset: usize,
+}
+
+impl<'a> Iterator for JitterRingRevIter<'a> {
+    type Item = &'a crate::jitter::SimpleJitterSample;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset >= self.ring.len {
+            return None;
+        }
+        self.offset += 1;
+        if self.ring.buf.len() < self.ring.capacity {
+            Some(&self.ring.buf[self.ring.len - self.offset])
+        } else {
+            let idx = (self.ring.head + self.ring.capacity - self.offset) % self.ring.capacity;
+            Some(&self.ring.buf[idx])
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.ring.len - self.offset;
+        (remaining, Some(remaining))
+    }
+}
 
 /// Maximum focus switch records per document session. Sessions that
 /// exceed this limit drop the oldest records.
@@ -881,10 +1108,8 @@ pub struct DocumentSession {
     pub app_bundle_id: String,
     pub app_name: String,
     pub window_title: ObfuscatedString,
-    /// Per-document jitter samples for forensic analysis.
-    pub(crate) jitter_samples: Vec<crate::jitter::SimpleJitterSample>,
-    /// O(1) index: timestamp_ns → index in jitter_samples. Kept in sync with jitter_samples.
-    pub(crate) jitter_sample_index: std::collections::HashMap<i64, usize>,
+    /// Per-document jitter samples for forensic analysis (ring buffer).
+    pub(crate) jitter_ring: JitterRingBuffer,
     /// Incremental hash chain over accepted jitter samples.
     ///
     /// Updated on every validated keystroke:
@@ -964,6 +1189,8 @@ pub struct DocumentSession {
     /// Cross-window transcription detector: compares typed text against visible
     /// windows to detect retyping from a visible source.
     pub(crate) transcription_detector: crate::transcription::TranscriptionDetector,
+    /// CGWindowID of the active window for this session (used to exclude from cross-window checks).
+    pub(crate) window_id: Option<u32>,
     /// Last writing mode label for hysteresis in live score polling.
     pub last_writing_mode: Option<String>,
     /// Content-bound edit context proofs: BLAKE3 keyed hashes of the 64-byte
@@ -1228,8 +1455,7 @@ impl Clone for DocumentSession {
             ref app_bundle_id,
             ref app_name,
             ref window_title,
-            ref jitter_samples,
-            ref jitter_sample_index,
+            ref jitter_ring,
             jitter_hash_state,
             ref cognitive,
             ref focus_switches,
@@ -1268,6 +1494,7 @@ impl Clone for DocumentSession {
             #[cfg(feature = "content_binding")]
             ref edit_context_proofs,
             ref scroll_attention,
+            window_id,
             non_keyboard_change_count,
             non_keyboard_chars_inserted,
         } = *self;
@@ -1288,8 +1515,7 @@ impl Clone for DocumentSession {
             app_bundle_id: app_bundle_id.clone(),
             app_name: app_name.clone(),
             window_title: window_title.clone(),
-            jitter_samples: jitter_samples.clone(),
-            jitter_sample_index: jitter_sample_index.clone(),
+            jitter_ring: jitter_ring.clone(),
             jitter_hash_state,
             cognitive: cognitive.clone(),
             focus_switches: focus_switches.clone(),
@@ -1325,6 +1551,7 @@ impl Clone for DocumentSession {
             confidence_reason: confidence_reason.clone(),
             transcription_suspicion: transcription_suspicion.clone(),
             transcription_detector: transcription_detector.clone(),
+            window_id,
             last_writing_mode: last_writing_mode.clone(),
             #[cfg(feature = "content_binding")]
             edit_context_proofs: edit_context_proofs.clone(),
@@ -1369,8 +1596,7 @@ impl DocumentSession {
             app_bundle_id,
             app_name,
             window_title,
-            jitter_samples: Vec::new(),
-            jitter_sample_index: std::collections::HashMap::new(),
+            jitter_ring: JitterRingBuffer::new(MAX_DOCUMENT_JITTER_SAMPLES),
             jitter_hash_state,
             cognitive: crate::forensics::cognitive_accumulator::CognitiveAccumulator::new(),
             focus_switches: VecDeque::new(),
@@ -1407,6 +1633,7 @@ impl DocumentSession {
             confidence_reason: None,
             transcription_suspicion: Default::default(),
             transcription_detector: crate::transcription::TranscriptionDetector::new(),
+            window_id: None,
             last_writing_mode: None,
             #[cfg(feature = "content_binding")]
             edit_context_proofs: Vec::new(),
@@ -1471,14 +1698,14 @@ impl DocumentSession {
     pub fn recent_wpm(&self) -> f64 {
         // Use the samples' own timestamps rather than wall clock to avoid
         // mismatch between kernel event timestamps and SystemTime::now().
-        if self.jitter_samples.len() < 2 {
+        if self.jitter_ring.len() < 2 {
             return 0.0;
         }
-        let newest_ns = self.jitter_samples.last().unwrap().timestamp_ns;
+        let newest_ns = self.jitter_ring.last().unwrap().timestamp_ns;
         let window_ns = 60_000_000_000i64;
         let mut count = 0usize;
         let mut oldest_ns = newest_ns;
-        for s in self.jitter_samples.iter().rev() {
+        for s in self.jitter_ring.iter_rev() {
             let delta = newest_ns - s.timestamp_ns;
             if delta >= window_ns {
                 break;
@@ -2381,7 +2608,7 @@ mod tests {
     #[test]
     fn test_recent_wpm_insufficient_samples() {
         let mut session = make_session();
-        session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+        session.jitter_ring.push(crate::jitter::SimpleJitterSample {
             timestamp_ns: 1_000_000_000,
             duration_since_last_ns: 0,
             zone: 0,
@@ -2399,7 +2626,7 @@ mod tests {
         let base_ns = 1_000_000_000_000i64; // 1000 seconds in ns
         let interval_ns = 200_000_000i64; // 200ms
         for i in 0..30 {
-            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+            session.jitter_ring.push(crate::jitter::SimpleJitterSample {
                 timestamp_ns: base_ns + (i as i64) * interval_ns,
                 duration_since_last_ns: if i == 0 { 0 } else { interval_ns as u64 },
                 zone: (i % 5) as u8,
@@ -2420,7 +2647,7 @@ mod tests {
         let base_ns = 1_000_000_000_000i64;
         // 10 old samples from 120 seconds ago
         for i in 0..10 {
-            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+            session.jitter_ring.push(crate::jitter::SimpleJitterSample {
                 timestamp_ns: base_ns + (i as i64) * 200_000_000,
                 duration_since_last_ns: 200_000_000,
                 zone: 0,
@@ -2431,7 +2658,7 @@ mod tests {
         // 20 recent samples in the last 4 seconds
         let recent_base = base_ns + 120_000_000_000; // 120 seconds later
         for i in 0..20 {
-            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+            session.jitter_ring.push(crate::jitter::SimpleJitterSample {
                 timestamp_ns: recent_base + (i as i64) * 200_000_000,
                 duration_since_last_ns: 200_000_000,
                 zone: 0,
@@ -2452,7 +2679,7 @@ mod tests {
         let base_ns = 1_000_000_000_000i64;
         // 100 keystrokes at 50ms intervals = very fast typing
         for i in 0..100 {
-            session.jitter_samples.push(crate::jitter::SimpleJitterSample {
+            session.jitter_ring.push(crate::jitter::SimpleJitterSample {
                 timestamp_ns: base_ns + (i as i64) * 50_000_000,
                 duration_since_last_ns: 50_000_000,
                 zone: (i % 5) as u8,

@@ -422,13 +422,8 @@ fn inject_keystroke_inner_v3(
                 path,
                 session.keystroke_count
             );
-            let pushed =
-                session.jitter_samples.len() < crate::sentinel::types::MAX_DOCUMENT_JITTER_SAMPLES;
-            if pushed {
-                let idx = session.jitter_samples.len();
-                session.jitter_samples.push(sample.clone());
-                session.jitter_sample_index.insert(sample.timestamp_ns, idx);
-            }
+            session.jitter_ring.push(sample.clone());
+            let pushed = true;
 
             let validation = crate::forensics::validate_keystroke_event(
                 timestamp_ns,
@@ -454,10 +449,7 @@ fn inject_keystroke_inner_v3(
                 );
                 session.keystroke_count = session.keystroke_count.saturating_sub(increment);
                 if pushed {
-                    session.jitter_sample_index.remove(&sample.timestamp_ns);
-                    if session.jitter_samples.last().map(|s| s.timestamp_ns) == Some(sample.timestamp_ns) {
-                        session.jitter_samples.pop();
-                    }
+                    session.jitter_ring.undo_last();
                 }
             } else {
                 // Record semantic and device classification only for validated

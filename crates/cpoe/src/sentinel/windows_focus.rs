@@ -78,27 +78,32 @@ impl WindowProvider for WindowsFocusMonitor {
     }
 }
 
-/// Query the focused element's Value pattern for a document file path via UI Automation.
-///
-/// Many editors (Word, Notepad++, Visual Studio) expose the current file path
-/// through `IUIAutomationValuePattern`. This is more reliable than parsing
-/// window titles, which vary by app and locale.
-/// Ensure COM is initialized once per thread (no matching CoUninitialize needed
-/// because the polling thread runs for the sentinel's lifetime).
-fn ensure_com_initialized() {
-    use std::cell::Cell;
-    thread_local! { static COM_INIT: Cell<bool> = const { Cell::new(false) }; }
-    COM_INIT.with(|init| {
-        if !init.get() {
-            unsafe { let _ = CoInitializeEx(None, COINIT_MULTITHREADED); }
-            init.set(true);
-        }
-    });
+/// RAII guard for COM initialization. Calls `CoUninitialize` on drop so
+/// COM state does not leak across `spawn_blocking` invocations.
+struct ComGuard;
+
+impl ComGuard {
+    fn init() -> Self {
+        unsafe { let _ = CoInitializeEx(None, COINIT_MULTITHREADED); }
+        Self
+    }
+}
+
+impl Drop for ComGuard {
+    fn drop(&mut self) {
+        unsafe { windows::Win32::System::Com::CoUninitialize(); }
+    }
+}
+
+/// Ensure COM is initialized for the current scope. Returns a guard that
+/// calls `CoUninitialize` when dropped.
+fn ensure_com_initialized() -> ComGuard {
+    ComGuard::init()
 }
 
 fn uia_get_document_path(hwnd: HWND) -> Option<String> {
     unsafe {
-        ensure_com_initialized();
+        let _com = ensure_com_initialized();
 
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;

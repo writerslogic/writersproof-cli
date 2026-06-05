@@ -82,7 +82,7 @@ pub(super) struct EventLoopCtx {
     pub(super) cached_focus: Option<String>,
     /// Bounded channel for cross-window transcription check requests.
     /// Capacity 1: at most one check in flight, extras silently dropped.
-    pub(super) xwin_check_tx: Option<std::sync::mpsc::SyncSender<(u32, String)>>,
+    pub(super) xwin_check_tx: Option<std::sync::mpsc::SyncSender<(u32, Option<u32>, String)>>,
 }
 
 /// Duration after last keystroke within which mouse micro-movements are recorded.
@@ -132,14 +132,15 @@ impl EventLoopCtx {
                     let mut map = self.sessions.write_recover();
                     if self.bridge_healthy_flag.load(Ordering::Acquire) {
                         if let Some(session) = map.get_mut(path.as_str()) {
-                            if let Some(&idx) =
-                                session.jitter_sample_index.get(&down_ts)
+                            // Fast path: most keyUp events match the most recent keyDown.
+                            let matched = session.jitter_ring.last_mut()
+                                .filter(|s| s.timestamp_ns == down_ts);
+                            if let Some(sample) = matched {
+                                sample.dwell_time_ns = Some(dwell);
+                            } else if let Some(sample) =
+                                session.jitter_ring.find_recent_mut(down_ts, 50)
                             {
-                                if let Some(sample) =
-                                    session.jitter_samples.get_mut(idx)
-                                {
-                                    sample.dwell_time_ns = Some(dwell);
-                                }
+                                sample.dwell_time_ns = Some(dwell);
                             }
                         }
                     }
@@ -270,16 +271,9 @@ impl EventLoopCtx {
         // per-document jitter samples. Skip the CGEventTap push to avoid
         // duplicates (the two paths use different timestamp domains so
         // timestamp-based dedup cannot work).
-        let was_buffered =
-            session.keystroke_count == 0
-            && session.jitter_samples.len() < MAX_DOCUMENT_JITTER_SAMPLES;
+        let was_buffered = session.keystroke_count == 0;
         if was_buffered {
-            let idx = session.jitter_samples.len();
-            session.jitter_samples.push(sample.clone());
-            session
-                .jitter_sample_index
-                .entry(sample.timestamp_ns)
-                .or_insert(idx);
+            session.jitter_ring.push(sample.clone());
         }
         let validation = crate::forensics::validate_keystroke_event(
             event.timestamp_ns,
@@ -292,15 +286,7 @@ impl EventLoopCtx {
         );
         if validation.confidence < 0.1 {
             if was_buffered {
-                let rollback_idx = session.jitter_samples.len() - 1;
-                if let Some(last) = session.jitter_samples.last() {
-                    // Only remove index entry if it points to the sample being rolled back.
-                    // With duplicate timestamps, or_insert preserves the earlier entry.
-                    if session.jitter_sample_index.get(&last.timestamp_ns) == Some(&rollback_idx) {
-                        session.jitter_sample_index.remove(&last.timestamp_ns);
-                    }
-                }
-                session.jitter_samples.pop();
+                session.jitter_ring.undo_last();
             }
             super::trace!(
                 "[KEYSTROKE] REJECTED conf={:.2}",
@@ -375,25 +361,21 @@ impl EventLoopCtx {
 
         // Periodically assess transcription suspicion (every 100 keystrokes).
         let should_cross_check = session.keystroke_count % 100 == 0
-            && session.jitter_samples.len() >= 20;
+            && session.jitter_ring.len() >= 20;
         let cross_check_ready = should_cross_check
             && session.transcription_detector.buffer_len() >= 100;
-        let exclude_pid = if cross_check_ready && event.target_pid > 0 {
-            Some(event.target_pid as u32)
+        let (exclude_pid, exclude_window_id) = if cross_check_ready && event.target_pid > 0 {
+            (Some(event.target_pid as u32), session.window_id)
+        } else {
+            (None, None)
+        };
+
+        // Snapshot trailing samples for deferred suspicion assessment (computed outside the lock).
+        let deferred_suspicion_samples = if should_cross_check {
+            Some(session.jitter_ring.trailing(200))
         } else {
             None
         };
-
-        if should_cross_check {
-            // Use a sliding window of recent samples so the suspicion flag
-            // recovers when the user switches from transcription to original writing.
-            const SUSPICION_WINDOW: usize = 200;
-            let window_start = session.jitter_samples.len().saturating_sub(SUSPICION_WINDOW);
-            session.transcription_suspicion =
-                crate::forensics::error_ecology::assess_transcription_suspicion(
-                    &session.jitter_samples[window_start..],
-                );
-        }
 
         if let Some(ref tpm) = self.tpm_provider {
             if session.hw_cosign_scheduler.is_none() {
@@ -417,20 +399,31 @@ impl EventLoopCtx {
 
         drop(map);
 
+        // Deferred transcription suspicion assessment (computed outside the lock).
+        if let Some(samples) = deferred_suspicion_samples {
+            let suspicion =
+                crate::forensics::error_ecology::assess_transcription_suspicion(&samples);
+            let mut map = self.sessions.write_recover();
+            if let Some(session) = map.get_mut(path.as_str()) {
+                session.transcription_suspicion = suspicion;
+            }
+        }
+
         // Cross-window comparison runs on a single background worker thread
         // to avoid blocking keystroke processing (AX IPC can take 50-200ms).
         // Bounded channel (capacity 1): at most one check in flight, extras dropped.
         if let Some(excl_pid) = exclude_pid {
             if self.xwin_check_tx.is_none() {
-                let (tx, rx) = std::sync::mpsc::sync_channel::<(u32, String)>(1);
+                let (tx, rx) = std::sync::mpsc::sync_channel::<(u32, Option<u32>, String)>(1);
                 let sessions = Arc::clone(&self.sessions);
                 match std::thread::Builder::new()
                     .name("cpoe-xwin-check".into())
                     .spawn(move || {
-                        while let Ok((pid, check_path)) = rx.recv() {
+                        while let Ok((pid, win_id, check_path)) = rx.recv() {
                             let visible =
                                 crate::platform::window_text::WindowTextCapture::capture_visible_windows(
                                     Some(pid),
+                                    win_id,
                                 );
                             if visible.is_empty() {
                                 continue;
@@ -455,7 +448,7 @@ impl EventLoopCtx {
             }
             if let Some(tx) = &self.xwin_check_tx {
                 if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) =
-                    tx.try_send((excl_pid, path.clone()))
+                    tx.try_send((excl_pid, exclude_window_id, path.clone()))
                 {
                     // Worker thread died; reset so it's re-spawned next time.
                     self.xwin_check_tx = None;

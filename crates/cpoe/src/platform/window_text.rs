@@ -27,15 +27,23 @@ pub struct WindowTextCapture;
 impl WindowTextCapture {
     /// Enumerate visible windows and read their text content.
     ///
-    /// `exclude_pid` filters out the monitored application's own windows.
+    /// `exclude_pid` filters out the monitored application's own windows UNLESS
+    /// `exclude_window_id` is provided, in which case only that specific window
+    /// is excluded (allowing other windows from the same app to be read).
     /// Returns text from on-screen, layer-0 windows that expose AX text content.
-    pub fn capture_visible_windows(exclude_pid: Option<u32>) -> Vec<WindowText> {
-        unsafe { capture_visible_windows_macos(exclude_pid) }
+    pub fn capture_visible_windows(
+        exclude_pid: Option<u32>,
+        exclude_window_id: Option<u32>,
+    ) -> Vec<WindowText> {
+        unsafe { capture_visible_windows_macos(exclude_pid, exclude_window_id) }
     }
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn capture_visible_windows_macos(exclude_pid: Option<u32>) -> Vec<WindowText> {
+unsafe fn capture_visible_windows_macos(
+    exclude_pid: Option<u32>,
+    exclude_window_id: Option<u32>,
+) -> Vec<WindowText> {
     use core_foundation::base::TCFType;
     use core_foundation::number::CFNumber;
     use core_foundation::string::CFString;
@@ -75,6 +83,7 @@ unsafe fn capture_visible_windows_macos(exclude_pid: Option<u32>) -> Vec<WindowT
     let key_name = CFString::from_static_string("kCGWindowName");
     let key_layer = CFString::from_static_string("kCGWindowLayer");
     let key_owner = CFString::from_static_string("kCGWindowOwnerName");
+    let key_number = CFString::from_static_string("kCGWindowNumber");
 
     let mut results = Vec::new();
 
@@ -111,8 +120,28 @@ unsafe fn capture_visible_windows_macos(exclude_pid: Option<u32>) -> Vec<WindowT
             continue;
         }
 
-        // Skip the excluded PID.
-        if let Some(excl) = exclude_pid {
+        // Read window number for exclusion filtering.
+        let window_number = {
+            let mut ptr: *const std::ffi::c_void = std::ptr::null();
+            if CFDictionaryGetValueIfPresent(raw_dict, key_number.as_CFTypeRef(), &mut ptr) != 0
+                && !ptr.is_null()
+            {
+                CFNumber::wrap_under_get_rule(ptr as core_foundation::number::CFNumberRef)
+                    .to_i32()
+                    .map(|n| n as u32)
+            } else {
+                None
+            }
+        };
+
+        // When exclude_window_id is set, only skip that specific window
+        // (allows reading other windows from the same app, e.g. two TextEdit docs).
+        // Otherwise fall back to excluding all windows from the PID.
+        if let Some(excl_wid) = exclude_window_id {
+            if window_number == Some(excl_wid) {
+                continue;
+            }
+        } else if let Some(excl) = exclude_pid {
             if pid as u32 == excl {
                 continue;
             }
@@ -144,9 +173,10 @@ unsafe fn capture_visible_windows_macos(exclude_pid: Option<u32>) -> Vec<WindowT
             }
         };
 
-        // Try to read text content via AX.
+        // Try to read text content via AX, targeting the specific window by title.
         let text_content = read_window_text_via_ax(
             pid,
+            if window_title.is_empty() { None } else { Some(window_title.as_str()) },
             AXUIElementCreateApplication,
             AXUIElementCopyAttributeValue,
         );
@@ -167,13 +197,16 @@ unsafe fn capture_visible_windows_macos(exclude_pid: Option<u32>) -> Vec<WindowT
     results
 }
 
-/// Read text content from an application's focused window via AX attributes.
+/// Read text content from a specific window of an application via AX attributes.
 ///
-/// Tries AXValue first (text fields), then AXSelectedText, then walks AXChildren
-/// for AXStaticText elements.
+/// When `target_title` is provided, enumerates AXWindows to find the matching
+/// window by title. Falls back to AXFocusedWindow if no title match is found
+/// or if `target_title` is None.
+/// Tries AXValue first (text areas), then AXSelectedText.
 #[cfg(target_os = "macos")]
 unsafe fn read_window_text_via_ax(
     pid: i32,
+    target_title: Option<&str>,
     create_app: unsafe extern "C" fn(i32) -> *mut std::ffi::c_void,
     copy_attr: unsafe extern "C" fn(
         *mut std::ffi::c_void,
@@ -192,7 +225,58 @@ unsafe fn read_window_text_via_ax(
         return None;
     }
 
-    // Get focused window.
+    // Try to find the specific window by title via AXWindows.
+    // Read text while the array is alive to avoid use-after-free
+    // (CFArrayGetValueAtIndex returns a Get-rule pointer).
+    if let Some(title) = target_title {
+        let attr_windows = CFString::new("AXWindows");
+        let mut windows_value: *const std::ffi::c_void = std::ptr::null();
+        let err = copy_attr(
+            app_element,
+            attr_windows.as_concrete_TypeRef(),
+            &mut windows_value,
+        );
+        if err == K_AX_ERROR_SUCCESS && !windows_value.is_null() {
+            use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetValueAtIndex};
+            let arr = windows_value as core_foundation_sys::array::CFArrayRef;
+            let win_count = CFArrayGetCount(arr);
+            let attr_title = CFString::new("AXTitle");
+            let mut result: Option<String> = None;
+            for j in 0..win_count {
+                let win = CFArrayGetValueAtIndex(arr, j);
+                if win.is_null() {
+                    continue;
+                }
+                let mut title_value: *const std::ffi::c_void = std::ptr::null();
+                let terr = copy_attr(
+                    win as *mut _,
+                    attr_title.as_concrete_TypeRef(),
+                    &mut title_value,
+                );
+                if terr == K_AX_ERROR_SUCCESS && !title_value.is_null() {
+                    use core_foundation::base::CFType;
+                    let cf_type = CFType::wrap_under_create_rule(title_value as _);
+                    #[allow(clippy::cmp_owned)]
+                    if let Some(win_title) = cf_type.downcast::<CFString>() {
+                        if win_title.to_string() == title {
+                            // Read text now while the window ref is still valid.
+                            result = try_ax_string(win as *mut _, copy_attr, "AXValue")
+                                .or_else(|| try_ax_string(win as *mut _, copy_attr, "AXSelectedText"))
+                                .or_else(|| find_text_in_children(win as *mut _, copy_attr));
+                            break;
+                        }
+                    }
+                }
+            }
+            CFRelease(windows_value as *mut _);
+            if result.is_some() {
+                CFRelease(app_element);
+                return result;
+            }
+        }
+    }
+
+    // Fall back to focused window if no title match or no title provided.
     let attr_focused = CFString::new("AXFocusedWindow");
     let mut focused_window: *const std::ffi::c_void = std::ptr::null();
     let err = copy_attr(
@@ -205,13 +289,91 @@ unsafe fn read_window_text_via_ax(
         return None;
     }
 
-    // Try AXValue (text areas, text fields).
     let result = try_ax_string(focused_window as *mut _, copy_attr, "AXValue")
-        .or_else(|| try_ax_string(focused_window as *mut _, copy_attr, "AXSelectedText"));
+        .or_else(|| try_ax_string(focused_window as *mut _, copy_attr, "AXSelectedText"))
+        .or_else(|| find_text_in_children(focused_window as *mut _, copy_attr));
 
     CFRelease(focused_window as *mut _);
     CFRelease(app_element);
     result
+}
+
+/// Search immediate children of an AX element for text content.
+/// Looks for AXTextArea or AXTextField children and reads their AXValue.
+#[cfg(target_os = "macos")]
+unsafe fn find_text_in_children(
+    element: *mut std::ffi::c_void,
+    copy_attr: unsafe extern "C" fn(
+        *mut std::ffi::c_void,
+        core_foundation_sys::string::CFStringRef,
+        *mut *const std::ffi::c_void,
+    ) -> i32,
+) -> Option<String> {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+    use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetValueAtIndex};
+    use core_foundation_sys::base::CFRelease;
+
+    const K_AX_ERROR_SUCCESS: i32 = 0;
+    const MAX_DEPTH: u8 = 3;
+
+    fn search_recursive(
+        element: *mut std::ffi::c_void,
+        copy_attr: unsafe extern "C" fn(
+            *mut std::ffi::c_void,
+            core_foundation_sys::string::CFStringRef,
+            *mut *const std::ffi::c_void,
+        ) -> i32,
+        depth: u8,
+    ) -> Option<String> {
+        if depth >= MAX_DEPTH {
+            return None;
+        }
+        unsafe {
+            let attr_role = CFString::new("AXRole");
+            let mut role_value: *const std::ffi::c_void = std::ptr::null();
+            let err = copy_attr(element, attr_role.as_concrete_TypeRef(), &mut role_value);
+            if err == K_AX_ERROR_SUCCESS && !role_value.is_null() {
+                use core_foundation::base::CFType;
+                let cf_type = CFType::wrap_under_create_rule(role_value as _);
+                if let Some(role_str) = cf_type.downcast::<CFString>() {
+                    let role = role_str.to_string();
+                    if role == "AXTextArea" || role == "AXTextField" {
+                        if let Some(text) = try_ax_string(element, copy_attr, "AXValue") {
+                            if text.len() >= 50 {
+                                return Some(text);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let attr_children = CFString::new("AXChildren");
+            let mut children_value: *const std::ffi::c_void = std::ptr::null();
+            let err = copy_attr(element, attr_children.as_concrete_TypeRef(), &mut children_value);
+            if err != K_AX_ERROR_SUCCESS || children_value.is_null() {
+                return None;
+            }
+            let arr = children_value as core_foundation_sys::array::CFArrayRef;
+            let count = CFArrayGetCount(arr);
+            let limit = count.min(20);
+            let mut result = None;
+            for j in 0..limit {
+                let child = CFArrayGetValueAtIndex(arr, j);
+                if child.is_null() {
+                    continue;
+                }
+                if let Some(text) = search_recursive(child as *mut _, copy_attr, depth + 1) {
+                    result = Some(text);
+                    break;
+                }
+            }
+            CFRelease(children_value as *mut _);
+            result
+        }
+    }
+
+    search_recursive(element, copy_attr, 0)
 }
 
 /// Attempt to read a string-valued AX attribute from an element.
@@ -250,7 +412,7 @@ pub struct WindowTextCapture;
 
 #[cfg(target_os = "windows")]
 impl WindowTextCapture {
-    pub fn capture_visible_windows(exclude_pid: Option<u32>) -> Vec<WindowText> {
+    pub fn capture_visible_windows(exclude_pid: Option<u32>, _exclude_window_id: Option<u32>) -> Vec<WindowText> {
         use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{
             EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
@@ -339,7 +501,7 @@ pub struct WindowTextCapture;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl WindowTextCapture {
-    pub fn capture_visible_windows(_exclude_pid: Option<u32>) -> Vec<WindowText> {
+    pub fn capture_visible_windows(_exclude_pid: Option<u32>, _exclude_window_id: Option<u32>) -> Vec<WindowText> {
         Vec::new()
     }
 }

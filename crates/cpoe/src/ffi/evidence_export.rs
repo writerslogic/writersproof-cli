@@ -680,7 +680,7 @@ fn enrich_checkpoints(
             let sessions = s.sessions.read_recover();
             sessions
                 .get(path)
-                .map(|sess| sess.jitter_samples.clone())
+                .map(|sess| sess.jitter_ring.to_vec_chronological())
                 .unwrap_or_default()
         })
         .unwrap_or_default();
@@ -817,13 +817,13 @@ fn build_baseline_verification(
     let sessions = sentinel.sessions.read_recover();
     let session = sessions.get(path)?;
 
-    if session.jitter_samples.len() < 30 {
+    let jitter_samples = session.jitter_ring.as_slice();
+    if jitter_samples.len() < 30 {
         return None;
     }
 
     // Build 9-bin IKI histogram, normalized to proportions.
-    let iki_ms_vals: Vec<u64> = session
-        .jitter_samples
+    let iki_ms_vals: Vec<u64> = jitter_samples
         .iter()
         .map(|s| s.duration_since_last_ns / 1_000_000)
         .collect();
@@ -837,7 +837,7 @@ fn build_baseline_verification(
     }
 
     // Compute IKI CV.
-    let cadence = crate::forensics::analyze_cadence(&session.jitter_samples);
+    let cadence = crate::forensics::analyze_cadence(&jitter_samples);
     let iki_cv = if cadence.coefficient_of_variation.is_finite() {
         cadence.coefficient_of_variation
     } else {
@@ -845,8 +845,7 @@ fn build_baseline_verification(
     };
 
     // Hurst exponent.
-    let iki_intervals: Vec<f64> = session
-        .jitter_samples
+    let iki_intervals: Vec<f64> = jitter_samples
         .windows(2)
         .filter_map(|w| {
             w[1].timestamp_ns
@@ -875,7 +874,7 @@ fn build_baseline_verification(
         hurst,
         pause_frequency: cadence.pause_depth_distribution[2], // deep pause fraction
         duration_secs,
-        keystroke_count: session.jitter_samples.len() as u64,
+        keystroke_count: jitter_samples.len() as u64,
     };
 
     Some(authorproof_protocol::rfc::wire_types::BaselineVerification {

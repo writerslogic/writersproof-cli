@@ -1099,7 +1099,7 @@ impl Sentinel {
         self.sessions
             .read_recover()
             .get(path)
-            .map(|s| s.jitter_samples.clone())
+            .map(|s| s.jitter_ring.to_vec_chronological())
             .unwrap_or_default()
     }
 
@@ -1108,7 +1108,7 @@ impl Sentinel {
         self.sessions
             .read_recover()
             .get(path)
-            .map(|s| crate::forensics::cadence_score_from_samples(&s.jitter_samples))
+            .map(|s| crate::forensics::cadence_score_from_samples(&s.jitter_ring.as_slice()))
             .unwrap_or(0.0)
     }
 

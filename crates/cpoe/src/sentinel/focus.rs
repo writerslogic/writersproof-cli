@@ -129,7 +129,14 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
             // the sentinel knows what document is active before keystrokes
             // arrive.  This is critical after a stop/restart cycle where the
             // document was already open and no OS focus event will fire.
-            if let Some(info) = provider.get_active_window() {
+            let initial_info = {
+                let p = Arc::clone(&provider);
+                tokio::task::spawn_blocking(move || p.get_active_window())
+                    .await
+                    .ok()
+                    .flatten()
+            };
+            if let Some(info) = initial_info {
                 let app = if !info.application.is_empty() {
                     info.application.clone()
                 } else {
@@ -178,7 +185,13 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     break;
                 }
 
-                let info = provider.get_active_window();
+                let info = {
+                    let p = Arc::clone(&provider);
+                    tokio::task::spawn_blocking(move || p.get_active_window())
+                        .await
+                        .ok()
+                        .flatten()
+                };
 
                 if info.is_none() {
                     log::trace!("[POLL] no active window (transient UI / Mission Control)");

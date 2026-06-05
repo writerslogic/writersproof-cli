@@ -1424,7 +1424,8 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
     );
 
     // Cadence score from a trailing window of jitter samples.
-    let window = recent_jitter_window(&session.jitter_samples, LIVE_CADENCE_WINDOW_NS);
+    let jitter_samples = session.jitter_ring.as_slice();
+    let window = recent_jitter_window(&jitter_samples, LIVE_CADENCE_WINDOW_NS);
     let cadence_score = finite_or(
         if window.len() < 10 {
             0.0
@@ -1566,7 +1567,7 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         evidence_confidence: session.evidence_confidence.to_string(),
         confidence_reason: session.confidence_reason.clone(),
         transcription_suspicious: session.transcription_suspicion.is_suspicious,
-        iki_sparkline: downsample_iki_sparkline(&session.jitter_samples, 60, 10),
+        iki_sparkline: downsample_iki_sparkline(&jitter_samples, 60, 10),
         error_message: None,
     }
     })

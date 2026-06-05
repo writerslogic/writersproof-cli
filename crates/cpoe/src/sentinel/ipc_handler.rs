@@ -221,9 +221,9 @@ impl SentinelIpcHandler {
                     match sessions.get(&path_str) {
                         Some(s) => (
                             s.jitter_hash_state,
-                            s.jitter_samples.len() as u64,
+                            s.jitter_ring.len() as u64,
                             s.session_id.clone(),
-                            s.jitter_samples.clone(),
+                            s.jitter_ring.to_vec_chronological(),
                         ),
                         None => {
                             // No active session: derive a document-specific fallback
@@ -389,8 +389,8 @@ impl SentinelIpcHandler {
             let sessions = self.sentinel.sessions.read_recover();
             sessions
                 .get(&path_str)
-                .filter(|s| !s.jitter_samples.is_empty())
-                .map(|s| s.jitter_samples.clone())
+                .filter(|s| !s.jitter_ring.is_empty())
+                .map(|s| s.jitter_ring.to_vec_chronological())
                 .unwrap_or_default()
         };
 

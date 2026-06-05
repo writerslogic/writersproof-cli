@@ -507,6 +507,9 @@ pub fn focus_document_sync(
 
         session.focus_gained();
         session.window_title = event.window_title.clone();
+        if event.window_id.is_some() {
+            session.window_id = event.window_id;
+        }
 
         if was_new {
             log::debug!("focus_document_sync: new session created for {}", path);
