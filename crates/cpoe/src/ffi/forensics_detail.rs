@@ -1494,6 +1494,17 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         // Mature session: mostly measured (evidence-driven).
         let mut composite = measured * maturity + 0.8 * (1.0 - maturity);
 
+        // Cross-window transcription: apply penalty if typed text matches a visible window.
+        let xwin_matches = session.transcription_detector.matches();
+        if !xwin_matches.is_empty() {
+            let max_sim = xwin_matches.iter()
+                .map(|m| m.similarity_score)
+                .fold(0.0f64, f64::max);
+            // Scale: 0.70 similarity = 0 penalty, 1.0 = full 0.30 penalty.
+            let penalty = ((max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.30;
+            composite -= penalty * maturity;
+        }
+
         if session.transcription_suspicion.is_suspicious {
             composite -= 0.15 * maturity;
         }
@@ -1566,7 +1577,8 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         capture_gaps: session.capture_gaps,
         evidence_confidence: session.evidence_confidence.to_string(),
         confidence_reason: session.confidence_reason.clone(),
-        transcription_suspicious: session.transcription_suspicion.is_suspicious,
+        transcription_suspicious: session.transcription_suspicion.is_suspicious
+            || !session.transcription_detector.matches().is_empty(),
         iki_sparkline: downsample_iki_sparkline(&jitter_samples, 60, 10),
         error_message: None,
     }
