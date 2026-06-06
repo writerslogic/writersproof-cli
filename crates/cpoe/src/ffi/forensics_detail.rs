@@ -1494,14 +1494,15 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         // Mature session: mostly measured (evidence-driven).
         let mut composite = measured * maturity + 0.8 * (1.0 - maturity);
 
-        // Cross-window transcription: apply penalty if typed text matches a visible window.
-        let xwin_matches = session.transcription_detector.matches();
-        if !xwin_matches.is_empty() {
-            let max_sim = xwin_matches.iter()
-                .map(|m| m.similarity_score)
-                .fold(0.0f64, f64::max);
-            // Scale: 0.70 similarity = 0 penalty, 1.0 = full 0.30 penalty.
-            let penalty = ((max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.30;
+        // Cross-window transcription: apply penalty only for RECENT matches (last 60s).
+        // Older matches decay so original writing after a transcription phase recovers.
+        let now = chrono::Utc::now();
+        let recent_max_sim = session.transcription_detector.matches().iter()
+            .filter(|m| (now - m.detected_at).num_seconds() < 60)
+            .map(|m| m.similarity_score)
+            .fold(0.0f64, f64::max);
+        if recent_max_sim > 0.0 {
+            let penalty = ((recent_max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.30;
             composite -= penalty * maturity;
         }
 
@@ -1577,8 +1578,11 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         capture_gaps: session.capture_gaps,
         evidence_confidence: session.evidence_confidence.to_string(),
         confidence_reason: session.confidence_reason.clone(),
-        transcription_suspicious: session.transcription_suspicion.is_suspicious
-            || !session.transcription_detector.matches().is_empty(),
+        transcription_suspicious: session.transcription_suspicion.is_suspicious || {
+            let now_ts = chrono::Utc::now();
+            session.transcription_detector.matches().iter()
+                .any(|m| (now_ts - m.detected_at).num_seconds() < 60)
+        },
         iki_sparkline: downsample_iki_sparkline(&jitter_samples, 60, 10),
         error_message: None,
     }

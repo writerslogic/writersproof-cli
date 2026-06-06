@@ -276,7 +276,13 @@ unsafe fn read_window_text_via_ax(
         }
     }
 
-    // Fall back to focused window if no title match or no title provided.
+    // Only fall back to focused window if no title was provided.
+    // When a title IS provided but didn't match, the window is unreachable via AX —
+    // falling back to AXFocusedWindow would read the typing target (self-match).
+    if target_title.is_some() {
+        CFRelease(app_element);
+        return None;
+    }
     let attr_focused = CFString::new("AXFocusedWindow");
     let mut focused_window: *const std::ffi::c_void = std::ptr::null();
     let err = copy_attr(
