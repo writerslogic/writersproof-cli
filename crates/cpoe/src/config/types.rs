@@ -230,7 +230,7 @@ impl Default for FingerprintConfig {
     fn default() -> Self {
         Self {
             activity_enabled: true,
-            style_enabled: false,
+            style_enabled: true,
             retention_days: 365,
             min_samples: 100,
             storage_path: dirs::home_dir()
