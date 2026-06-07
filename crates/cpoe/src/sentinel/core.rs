@@ -587,6 +587,7 @@ impl Sentinel {
                 last_capture_restart: None,
                 cached_focus: None,
                 xwin_check_tx: None,
+                xwin_keystroke_counter: 0,
             };
 
             ctx.cached_focus = ctx.current_focus.read_recover().clone();

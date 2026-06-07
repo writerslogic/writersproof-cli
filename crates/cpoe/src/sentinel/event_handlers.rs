@@ -83,6 +83,9 @@ pub(super) struct EventLoopCtx {
     /// Bounded channel for cross-window transcription check requests.
     /// Capacity 1: at most one check in flight, extras silently dropped.
     pub(super) xwin_check_tx: Option<std::sync::mpsc::SyncSender<(u32, Option<u32>, String)>>,
+    /// Local keystroke counter for cross-window check scheduling.
+    /// Independent of session.keystroke_count (which is incremented by FFI).
+    pub(super) xwin_keystroke_counter: u64,
 }
 
 /// Duration after last keystroke within which mouse micro-movements are recorded.
@@ -360,7 +363,11 @@ impl EventLoopCtx {
         }
 
         // Periodically assess transcription suspicion (every 100 keystrokes).
-        let should_cross_check = session.keystroke_count % 100 == 0
+        // Uses a local counter on EventLoopCtx rather than session.keystroke_count
+        // because the FFI path increments keystroke_count asynchronously, causing
+        // the modulo check to miss multiples of 100 from this code path.
+        self.xwin_keystroke_counter += 1;
+        let should_cross_check = self.xwin_keystroke_counter % 50 == 0
             && session.jitter_ring.len() >= 20;
         let cross_check_ready = should_cross_check
             && session.transcription_detector.buffer_len() >= 100;
