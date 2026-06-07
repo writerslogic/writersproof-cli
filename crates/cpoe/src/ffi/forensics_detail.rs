@@ -1502,12 +1502,14 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
             .map(|m| m.similarity_score)
             .fold(0.0f64, f64::max);
         if recent_max_sim > 0.0 {
-            let penalty = ((recent_max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.30;
+            // Strong penalty: 0.75 similarity → -0.35, 1.0 → -0.50.
+            // This alone should shift the verdict from "cognitive" to "transcriptive".
+            let penalty = ((recent_max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.50;
             composite -= penalty * maturity;
         }
 
         if session.transcription_suspicion.is_suspicious {
-            composite -= 0.15 * maturity;
+            composite -= 0.20 * maturity;
         }
         if !session.ai_tools_detected.is_empty() {
             composite -= 0.10 * maturity;

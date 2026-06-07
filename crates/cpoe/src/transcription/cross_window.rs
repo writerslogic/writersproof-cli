@@ -123,6 +123,11 @@ impl TranscriptionDetector {
         &self.matches
     }
 
+    /// Mutable access to the match list (for FFI-injected matches).
+    pub fn matches_mut(&mut self) -> &mut Vec<CrossWindowMatch> {
+        &mut self.matches
+    }
+
     /// Clear all recorded matches.
     pub fn clear_matches(&mut self) {
         self.matches.clear();

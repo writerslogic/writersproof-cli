@@ -355,6 +355,42 @@ pub fn ffi_sentinel_record_paste_checkpoint_skipped() -> bool {
 /// The pasted text itself is NOT stored — only the hash.
 ///
 /// **Caller contract**: Swift must check `pasted_text.utf8.count <= 10_485_760`
+/// Record a cross-window transcription match detected by the Swift-side
+/// `CrossWindowDetector`. Inserts a `CrossWindowMatch` into the focused
+/// session's transcription detector so the live score immediately reflects it.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_sentinel_cross_window_match(
+    source_app: String,
+    source_window_title: String,
+    similarity_score: f64,
+    matched_length: u32,
+) -> bool {
+    use crate::RwLockRecover as _;
+
+    let sentinel = match super::sentinel::get_running_sentinel() {
+        Some(s) => s,
+        None => return false,
+    };
+    let focus = sentinel.current_focus();
+    let Some(ref path) = focus else { return false };
+
+    let m = crate::transcription::CrossWindowMatch {
+        source_app,
+        source_window_title,
+        similarity_score: similarity_score.clamp(0.0, 1.0),
+        matched_length: matched_length as usize,
+        detected_at: chrono::Utc::now(),
+    };
+
+    let mut sessions = sentinel.sessions.write_recover();
+    if let Some(session) = sessions.get_mut(path.as_str()) {
+        session.transcription_detector.matches_mut().push(m);
+        true
+    } else {
+        false
+    }
+}
+
 /// (10 MiB) before calling this function. UniFFI allocates the full String
 /// before any Rust-side size check runs, so oversized pastes allocate memory
 /// regardless of the guard below.
