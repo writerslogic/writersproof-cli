@@ -1426,13 +1426,15 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
     // Cadence score from a trailing window of jitter samples.
     let jitter_samples = session.jitter_ring.as_slice();
     let window = recent_jitter_window(&jitter_samples, LIVE_CADENCE_WINDOW_NS);
+    let cadence_metrics = if window.len() >= 10 {
+        Some(crate::forensics::analyze_cadence(window))
+    } else {
+        None
+    };
     let cadence_score = finite_or(
-        if window.len() < 10 {
-            0.0
-        } else {
-            let metrics = crate::forensics::analyze_cadence(window);
-            crate::forensics::compute_cadence_score(&metrics)
-        },
+        cadence_metrics.as_ref()
+            .map(|m| crate::forensics::compute_cadence_score(m))
+            .unwrap_or(0.0),
         0.0,
     );
 
@@ -1506,6 +1508,25 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
             // This alone should shift the verdict from "cognitive" to "transcriptive".
             let penalty = ((recent_max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.50;
             composite -= penalty * maturity;
+        }
+
+        // Behavioral transcription signals from cadence analysis.
+        // These detect transcription from non-digital sources (books, phones, dictation)
+        // where cross-window comparison can't help.
+        if let Some(ref cm) = cadence_metrics {
+            // IKI autocorrelation > 0.10 = rhythmic metronomic typing (transcriptive).
+            if cm.iki_autocorrelation > 0.10 {
+                let penalty = ((cm.iki_autocorrelation - 0.10) / 0.20).clamp(0.0, 1.0) * 0.15;
+                composite -= penalty * maturity;
+            }
+            // Correction ratio < 0.03 with substantial typing = no edits (transcriptive).
+            if cm.correction_ratio < 0.03 && keystroke_count > 100 {
+                composite -= 0.10 * maturity;
+            }
+            // Burst speed CV < 0.12 = constant speed within bursts (transcriptive).
+            if cm.burst_speed_cv > 0.0 && cm.burst_speed_cv < 0.12 && cm.burst_count >= 3 {
+                composite -= 0.08 * maturity;
+            }
         }
 
         if session.transcription_suspicion.is_suspicious {
