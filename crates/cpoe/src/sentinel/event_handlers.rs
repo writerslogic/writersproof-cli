@@ -1009,6 +1009,22 @@ impl EventLoopCtx {
                 .collect()
         };
 
+        // Probe unknown apps to detect AX capabilities (title inference,
+        // storage pattern). This is metadata-only — per-session forensic
+        // scoring determines whether a session is real authorship, not
+        // app-level registration. Probe outside the session lock since
+        // AX queries and probe_app can block for seconds.
+        let unknown_apps: Vec<(String, String)> = {
+            let map = self.sessions.read_recover();
+            map.values()
+                .filter(|s| !super::app_registry::is_known(&s.app_bundle_id))
+                .map(|s| (s.app_bundle_id.clone(), s.app_name.clone()))
+                .collect()
+        };
+        for (bundle_id, app_name) in &unknown_apps {
+            super::app_registry::probe_and_cache(bundle_id, app_name);
+        }
+
         let pending_taken =
             self.pending_challenge.write_recover().take();
         let challenge_nonce =
@@ -1044,6 +1060,27 @@ impl EventLoopCtx {
         let nonce_for_closure = challenge_nonce.clone();
         let cp_stop = Arc::clone(&self.stopping_flag);
         let cp_anchor = self.anchor_manager.clone();
+        // For virtual title:// sessions, capture compose window text via AX
+        // for content-level witnessing (MMR) and content hash binding.
+        // We target the specific compose window by title to avoid capturing
+        // text from the wrong window (e.g. inbox instead of compose).
+        let captured_text = if path.starts_with("title://") {
+            let session_info = {
+                let map = self.sessions.read_recover();
+                map.get(path).map(|s| {
+                    (s.app_bundle_id.clone(), s.window_title.reveal().to_string())
+                })
+            };
+            session_info.and_then(|(bid, title)| {
+                crate::platform::window_text::WindowTextCapture::capture_text_for_bundle_id_and_title(
+                    &bid,
+                    if title.is_empty() { None } else { Some(&title) },
+                )
+            })
+        } else {
+            None
+        };
+
         let (semantic_json, checkpoint_reason) = {
             let map = self.sessions.read_recover();
             let sem = map.get(path).and_then(|s| {
@@ -1090,6 +1127,7 @@ impl EventLoopCtx {
                 &cp_stop,
                 semantic_json,
                 &cp_anchor,
+                captured_text,
             )
         })
         .await

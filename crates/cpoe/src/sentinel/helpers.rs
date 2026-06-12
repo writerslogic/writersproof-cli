@@ -1721,6 +1721,7 @@ pub(super) fn commit_checkpoint_for_path(
         stopping,
         None,
         anchor_manager,
+        None,
     )
 }
 
@@ -1735,6 +1736,7 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     stopping: &AtomicBool,
     semantic_summary: Option<String>,
     anchor_manager: &Option<Arc<crate::anchors::AnchorManager>>,
+    captured_text: Option<String>,
 ) -> Option<[u8; 32]> {
     if stopping.load(Ordering::SeqCst) {
         log::debug!("Skipping checkpoint for {path}: sentinel stopping");
@@ -1746,10 +1748,22 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
              WP unreachable or nonce not fetched before checkpoint window"
         );
     }
-    // Virtual title:// paths have no file to hash; use path-based hash.
+    // Virtual title:// paths have no file to hash. When captured text is
+    // available, hash it directly (analogous to hashing file contents for
+    // real files) so the evidence is bound to the actual composed content.
     let (raw_size, content_hash_override) = if path.starts_with("title://") {
-        let h: [u8; 32] = blake3::hash(path.as_bytes()).into();
-        (0u64, Some(h))
+        if let Some(ref text) = captured_text {
+            if !text.is_empty() {
+                let h: [u8; 32] = blake3::hash(text.as_bytes()).into();
+                // Also witness into content MMR for derivation proofs.
+                witness_virtual_text(path, text);
+                (text.len() as u64, Some(h))
+            } else {
+                (0u64, Some(blake3::hash(path.as_bytes()).into()))
+            }
+        } else {
+            (0u64, Some(blake3::hash(path.as_bytes()).into()))
+        }
     } else {
         (0u64, None)
     };
@@ -1938,6 +1952,49 @@ async fn submit_to_writersproof_anchor(wp_dir: &std::path::Path, hash: &[u8; 32]
 /// Maximum age (in seconds) of the last session activity for a "Save As" match.
 /// If the new file's content hash matches an active session whose last activity
 /// was more than this many seconds ago, we do not consider it a "Save As".
+/// Witness captured text into a content MMR for a virtual session.
+/// Appends paragraph-level segment hashes to a file-backed MMR so that
+/// derivation proofs can later verify that exported text was composed
+/// during the witnessed session.
+fn witness_virtual_text(path: &str, text: &str) {
+    use crate::content::mmr::ContentMmr;
+    use crate::sentinel::app_registry::ContentGranularity;
+
+    let mmr_dir = match ContentMmr::default_mmr_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            log::warn!("Content MMR dir error for {path}: {e}");
+            return;
+        }
+    };
+    // Derive a stable session ID from the virtual path for MMR file naming.
+    let session_id = hex::encode(&blake3::hash(path.as_bytes()).as_bytes()[..16]);
+    let mmr = match ContentMmr::open(&mmr_dir, &session_id, ContentGranularity::Paragraph) {
+        Ok(m) => m,
+        Err(e) => {
+            log::warn!("Content MMR open failed for {path}: {e}");
+            return;
+        }
+    };
+    match mmr.witness_text_if_changed(text, &mmr_dir) {
+        Ok(0) => {
+            log::debug!(
+                "Content MMR: text unchanged, skipped for virtual session {}",
+                &session_id[..8],
+            );
+        }
+        Ok(n) => {
+            log::debug!(
+                "Content MMR: appended {n} new segments for virtual session {}",
+                &session_id[..8],
+            );
+        }
+        Err(e) => {
+            log::warn!("Content MMR witness failed for {path}: {e}");
+        }
+    }
+}
+
 const SAVE_AS_TIME_WINDOW_SECS: u64 = 5;
 
 /// Detect if a newly created file is a "Save As" copy of an active session.

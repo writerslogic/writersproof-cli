@@ -90,6 +90,58 @@ impl ContentMmr {
         Ok(witnessed)
     }
 
+    /// Witness text incrementally: skip if unchanged, deduplicate segments
+    /// that already exist in the MMR.
+    ///
+    /// Uses a sidecar file to track a SHA-256 hash of the most recently
+    /// witnessed text. Returns the count of new segments appended.
+    pub fn witness_text_if_changed(
+        &self,
+        text: &str,
+        mmr_dir: &Path,
+    ) -> Result<usize> {
+        // Fast path: full text unchanged since last witness.
+        let text_hash: [u8; 32] = {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(text.as_bytes()).into()
+        };
+        let sidecar_path = mmr_dir.join(format!("content-{}.last", self.session_id));
+        if let Ok(prev) = std::fs::read(&sidecar_path) {
+            if prev.len() == 32 && prev[..] == text_hash[..] {
+                return Ok(0);
+            }
+        }
+
+        // Segment the new text and only append segments not already in the MMR.
+        let segments = segment_and_hash(text, self.granularity);
+        let mut added = 0usize;
+        for seg in segments {
+            if !self.has_segment(&seg.hash)? {
+                self.mmr.append(&seg.hash).map_err(Error::from)?;
+                added += 1;
+            }
+        }
+        if added > 0 {
+            self.mmr.sync().map_err(Error::from)?;
+        }
+
+        let _ = std::fs::write(&sidecar_path, text_hash);
+        Ok(added)
+    }
+
+    /// Check whether a segment hash already exists as a leaf in the MMR.
+    fn has_segment(&self, seg_hash: &[u8; 32]) -> Result<bool> {
+        for ord in 0..self.mmr.leaf_count() {
+            let idx = self.mmr.get_leaf_index(ord).map_err(Error::from)?;
+            let expected = hash_leaf(idx, seg_hash);
+            let node = self.mmr.get(idx).map_err(Error::from)?;
+            if node.hash == expected {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Generate a derivation proof: given the text of a derived document,
     /// segment it and find which segments exist in this MMR.
     pub fn generate_derivation_proof(

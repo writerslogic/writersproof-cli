@@ -356,3 +356,55 @@ pub fn ffi_generate_derivation_proof(
     }
     })
 }
+
+// ---------------------------------------------------------------------------
+// Active window text capture FFI
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiCapturedText {
+    pub success: bool,
+    pub text: String,
+    pub error_message: Option<String>,
+}
+
+crate::ffi::types::impl_ffi_err!(FfiCapturedText);
+
+/// Capture the current text content from an application's focused window.
+///
+/// Used at export time for virtual (`title://`) sessions to retrieve the
+/// compose window text for proof block generation. The `bundle_id` identifies
+/// the target application (e.g. `com.apple.mail`). When `window_title` is
+/// non-empty, targets that specific window instead of the focused one.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_capture_window_text(bundle_id: String, window_title: String) -> FfiCapturedText {
+    catch_ffi_panic!(FfiCapturedText {
+        success: false,
+        error_message: Some("engine internal error".to_string()),
+        ..Default::default()
+    }, {
+    log::debug!("ffi_capture_window_text: bundle_id={}, title={}", bundle_id, window_title);
+
+    let title = if window_title.is_empty() { None } else { Some(window_title.as_str()) };
+    let result = crate::platform::window_text::WindowTextCapture::capture_text_for_bundle_id_and_title(
+        &bundle_id, title,
+    );
+
+    match result {
+        Some(text) if !text.is_empty() => FfiCapturedText {
+            success: true,
+            text,
+            error_message: None,
+        },
+        _ => FfiCapturedText {
+            success: false,
+            text: String::new(),
+            error_message: Some(
+                "Could not capture text. Ensure the compose window is still open."
+                    .to_string(),
+            ),
+        },
+    }
+    })
+}

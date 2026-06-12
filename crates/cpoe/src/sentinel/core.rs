@@ -768,6 +768,7 @@ impl Sentinel {
                             &stop_c,
                             sem,
                             &am_c,
+                            None,
                         )
                     })
                     .await

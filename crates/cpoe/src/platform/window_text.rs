@@ -37,6 +37,48 @@ impl WindowTextCapture {
     ) -> Vec<WindowText> {
         unsafe { capture_visible_windows_macos(exclude_pid, exclude_window_id) }
     }
+
+    /// Capture text from a specific application's focused window by PID.
+    pub fn capture_text_for_pid(pid: u32) -> Option<String> {
+        unsafe { capture_text_for_pid_macos(pid) }
+    }
+
+    /// Capture text from an application's focused window by bundle ID.
+    ///
+    /// Resolves the bundle ID to a running PID via `NSRunningApplication`,
+    /// then reads text from the focused window via Accessibility.
+    pub fn capture_text_for_bundle_id(bundle_id: &str) -> Option<String> {
+        let pid = running_pid_for_bundle_id(bundle_id)?;
+        Self::capture_text_for_pid(pid)
+    }
+
+    /// Capture text from a specific window of an application, identified by
+    /// bundle ID and window title. When `title` is provided, targets that
+    /// specific window instead of the focused window; falls back to focused
+    /// window if no title match is found and `title` is `None`.
+    pub fn capture_text_for_bundle_id_and_title(
+        bundle_id: &str,
+        title: Option<&str>,
+    ) -> Option<String> {
+        let pid = running_pid_for_bundle_id(bundle_id)?;
+        unsafe {
+            #[link(name = "ApplicationServices", kind = "framework")]
+            extern "C" {
+                fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
+                fn AXUIElementCopyAttributeValue(
+                    element: *mut std::ffi::c_void,
+                    attribute: core_foundation_sys::string::CFStringRef,
+                    value: *mut *const std::ffi::c_void,
+                ) -> i32;
+            }
+            read_window_text_via_ax(
+                pid as i32,
+                title,
+                AXUIElementCreateApplication,
+                AXUIElementCopyAttributeValue,
+            )
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -411,6 +453,68 @@ unsafe fn try_ax_string(
         .filter(|s| !s.is_empty())
 }
 
+#[cfg(target_os = "macos")]
+unsafe fn capture_text_for_pid_macos(pid: u32) -> Option<String> {
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXUIElementCreateApplication(pid: i32) -> *mut std::ffi::c_void;
+        fn AXUIElementCopyAttributeValue(
+            element: *mut std::ffi::c_void,
+            attribute: core_foundation_sys::string::CFStringRef,
+            value: *mut *const std::ffi::c_void,
+        ) -> i32;
+    }
+
+    // Read text from the app's focused window via AX.
+    read_window_text_via_ax(
+        pid as i32,
+        None,
+        AXUIElementCreateApplication,
+        AXUIElementCopyAttributeValue,
+    )
+}
+
+/// Resolve a bundle ID to the PID of a running application via NSRunningApplication.
+#[cfg(target_os = "macos")]
+fn running_pid_for_bundle_id(bundle_id: &str) -> Option<u32> {
+    use objc::runtime::{Class, Object};
+
+    unsafe {
+        let pool_cls = Class::get("NSAutoreleasePool")?;
+        let ra_cls = Class::get("NSRunningApplication")?;
+        let pool: *mut Object = msg_send![pool_cls, new];
+
+        let ns_bid = nsstring_from_str(bundle_id);
+        let running: *mut Object =
+            msg_send![ra_cls, runningApplicationsWithBundleIdentifier: ns_bid];
+        if running.is_null() {
+            let _: () = msg_send![pool, drain];
+            return None;
+        }
+        let count: usize = msg_send![running, count];
+        if count == 0 {
+            let _: () = msg_send![pool, drain];
+            return None;
+        }
+        let app: *mut Object = msg_send![running, firstObject];
+        let pid: i32 = msg_send![app, processIdentifier];
+        let _: () = msg_send![pool, drain];
+        if pid > 0 { Some(pid as u32) } else { None }
+    }
+}
+
+/// Create an NSString from a Rust &str.
+#[cfg(target_os = "macos")]
+unsafe fn nsstring_from_str(s: &str) -> *mut objc::runtime::Object {
+    let cls = match objc::runtime::Class::get("NSString") {
+        Some(c) => c,
+        None => return std::ptr::null_mut(),
+    };
+    let ptr: *const u8 = s.as_ptr();
+    let len: usize = s.len();
+    msg_send![cls, stringWithBytes:ptr length:len encoding:4u64]
+}
+
 // --- Non-macOS stub ---
 
 #[cfg(target_os = "windows")]
@@ -418,6 +522,21 @@ pub struct WindowTextCapture;
 
 #[cfg(target_os = "windows")]
 impl WindowTextCapture {
+    pub fn capture_text_for_pid(_pid: u32) -> Option<String> {
+        None
+    }
+
+    pub fn capture_text_for_bundle_id(_bundle_id: &str) -> Option<String> {
+        None
+    }
+
+    pub fn capture_text_for_bundle_id_and_title(
+        _bundle_id: &str,
+        _title: Option<&str>,
+    ) -> Option<String> {
+        None
+    }
+
     pub fn capture_visible_windows(exclude_pid: Option<u32>, _exclude_window_id: Option<u32>) -> Vec<WindowText> {
         use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{
@@ -507,6 +626,21 @@ pub struct WindowTextCapture;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl WindowTextCapture {
+    pub fn capture_text_for_pid(_pid: u32) -> Option<String> {
+        None
+    }
+
+    pub fn capture_text_for_bundle_id(_bundle_id: &str) -> Option<String> {
+        None
+    }
+
+    pub fn capture_text_for_bundle_id_and_title(
+        _bundle_id: &str,
+        _title: Option<&str>,
+    ) -> Option<String> {
+        None
+    }
+
     pub fn capture_visible_windows(_exclude_pid: Option<u32>, _exclude_window_id: Option<u32>) -> Vec<WindowText> {
         Vec::new()
     }

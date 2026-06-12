@@ -1337,6 +1337,158 @@ use std::sync::OnceLock;
 /// apps are included in all lookups.
 static GLOBAL_REGISTRY: OnceLock<AppRegistry> = OnceLock::new();
 
+// ---------------------------------------------------------------------------
+// Adaptive app detection
+// ---------------------------------------------------------------------------
+
+use dashmap::DashMap;
+
+/// Runtime cache of auto-discovered writing apps. Apps are added here when the
+/// user types 20+ keystrokes into an unknown app that has an AX text area.
+/// Persisted to `user_apps.json` via `flush_discovered_apps()`.
+static AUTO_DISCOVERED: OnceLock<DashMap<String, AutoDiscoveredApp>> = OnceLock::new();
+
+fn auto_discovered() -> &'static DashMap<String, AutoDiscoveredApp> {
+    AUTO_DISCOVERED.get_or_init(DashMap::new)
+}
+
+/// Apps where typing is never authorship-relevant (system UI, media, utilities).
+/// Browsers, terminals, chat apps, and video conferencing are intentionally
+/// NOT excluded: users write in web editors, compose social posts, draft
+/// messages, and code in terminals.
+const NON_WRITING_BUNDLES: &[&str] = &[
+    "com.apple.finder",
+    "com.apple.systempreferences",
+    "com.apple.SystemPreferences",
+    "com.apple.ActivityMonitor",
+    "com.apple.Calculator",
+    "com.apple.Spotlight",
+    "com.apple.launchpad.launcher",
+    "com.apple.loginwindow",
+    "com.apple.screencaptureui",
+    "com.apple.dock",
+    "com.apple.Music",
+    "com.apple.Photos",
+    "com.apple.AppStore",
+    "com.apple.archiveutility",
+    "com.apple.DiskUtility",
+    "com.apple.keychainaccess",
+    "com.spotify.client",
+    "com.1password.1password",
+    "com.bitwarden.desktop",
+    "com.lastpass.LastPass",
+    "com.vmware.fusion",
+    "com.parallels.desktop.console",
+];
+
+#[derive(Debug, Clone)]
+struct AutoDiscoveredApp {
+    display_name: String,
+    storage: StoragePattern,
+    needs_title_inference: bool,
+    probe_confidence: ProbeConfidence,
+}
+
+/// Probe an unknown app's AX capabilities and cache the metadata.
+///
+/// This does NOT register the app as a "writing app" — per-session forensic
+/// scoring already determines whether a session is real authorship. This
+/// probe detects `needs_title_inference` and storage pattern so virtual
+/// sessions work correctly for apps that lack AXDocument.
+///
+/// The cache is session-scoped (lives in memory, not persisted to
+/// `user_apps.json`). Each launch re-probes on first encounter.
+pub fn probe_and_cache(bundle_id: &str, app_name: &str) {
+    if bundle_id.is_empty() {
+        return;
+    }
+    let key = bundle_id.to_lowercase();
+    if auto_discovered().contains_key(&key) || is_builtin_or_user(bundle_id) {
+        return;
+    }
+    if NON_WRITING_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(bundle_id)) {
+        return;
+    }
+    let probe = super::app_discovery::probe_app(bundle_id);
+    log::info!(
+        "Probed unknown app: {} ({}) storage={:?} title_infer={} confidence={:?}",
+        probe.display_name, bundle_id, probe.storage,
+        probe.needs_title_inference, probe.confidence,
+    );
+    auto_discovered().insert(key, AutoDiscoveredApp {
+        display_name: if probe.display_name == bundle_id {
+            app_name.to_string()
+        } else {
+            probe.display_name
+        },
+        storage: probe.storage,
+        needs_title_inference: probe.needs_title_inference,
+        probe_confidence: probe.confidence,
+    });
+}
+
+/// Check if a bundle ID is in the builtin or user-added registry
+/// (excluding auto-discovered cache).
+fn is_builtin_or_user(bundle_id: &str) -> bool {
+    if lookup(bundle_id).is_some() {
+        return true;
+    }
+    if let Some(reg) = GLOBAL_REGISTRY.get() {
+        return reg.is_known(bundle_id);
+    }
+    false
+}
+
+/// Check if an app was auto-discovered at runtime.
+pub fn is_auto_discovered(bundle_id: &str) -> bool {
+    auto_discovered().contains_key(&bundle_id.to_lowercase())
+}
+
+/// Return whether an auto-discovered app needs title inference.
+pub fn auto_discovered_needs_title_inference(bundle_id: &str) -> bool {
+    auto_discovered()
+        .get(&bundle_id.to_lowercase())
+        .map(|a| a.needs_title_inference)
+        .unwrap_or(false)
+}
+
+/// Flush auto-discovered apps into the persistent user app registry.
+/// Call on sentinel shutdown to persist discoveries across sessions.
+pub fn flush_discovered_apps() {
+    let Some(reg) = GLOBAL_REGISTRY.get() else { return };
+    let discovered = auto_discovered();
+    if discovered.is_empty() {
+        return;
+    }
+    let data_dir = &reg.data_dir;
+    let mut fresh_reg = AppRegistry::load(data_dir);
+    let mut count = 0usize;
+    for entry in discovered.iter() {
+        let bundle_id = entry.key();
+        let app = entry.value();
+        let user_app = UserWritingApp {
+            bundle_id: bundle_id.clone(),
+            display_name: app.display_name.clone(),
+            storage: app.storage,
+            container_paths: Vec::new(),
+            needs_title_inference: app.needs_title_inference,
+            default_debounce_ms: None,
+            title_parser: TitleParserVariant::Generic,
+            witnessing_mode: WitnessingMode::Auto,
+            added_at: SystemTime::now(),
+            probe_confidence: app.probe_confidence,
+        };
+        if let Err(e) = fresh_reg.add_user_app(user_app) {
+            log::warn!("Failed to persist auto-discovered app {bundle_id}: {e}");
+        } else {
+            count += 1;
+        }
+    }
+    if count > 0 {
+        log::info!("Flushed {count} auto-discovered apps to user registry");
+    }
+}
+
 /// Install a loaded `AppRegistry` as the global instance.
 ///
 /// Called once during sentinel startup. Subsequent calls are no-ops (the
@@ -1397,20 +1549,32 @@ pub fn auto_watch_paths() -> Vec<PathBuf> {
 /// Return whether `bundle_id` belongs to a known writing app that requires
 /// title-based document identity (i.e., does not expose `AXDocument`).
 ///
-/// Checks user-added apps (via global registry) first, then builtins.
+/// Checks user-added apps (via global registry) first, then builtins,
+/// then auto-discovered apps.
 pub fn needs_title_inference(bundle_id: &str) -> bool {
     if let Some(reg) = GLOBAL_REGISTRY.get() {
-        return reg.needs_title_inference(bundle_id);
+        if reg.is_known(bundle_id) {
+            return reg.needs_title_inference(bundle_id);
+        }
     }
-    lookup(bundle_id).is_some_and(|a| a.needs_title_inference)
+    if let Some(builtin) = lookup(bundle_id) {
+        return builtin.needs_title_inference;
+    }
+    auto_discovered_needs_title_inference(bundle_id)
 }
 
-/// Return whether `bundle_id` is recognized by either builtins or user apps.
+/// Return whether `bundle_id` is recognized by builtins, user apps, or
+/// auto-discovered apps.
 pub fn is_known(bundle_id: &str) -> bool {
     if let Some(reg) = GLOBAL_REGISTRY.get() {
-        return reg.is_known(bundle_id);
+        if reg.is_known(bundle_id) {
+            return true;
+        }
     }
-    lookup(bundle_id).is_some()
+    if lookup(bundle_id).is_some() {
+        return true;
+    }
+    is_auto_discovered(bundle_id)
 }
 
 // ---------------------------------------------------------------------------
