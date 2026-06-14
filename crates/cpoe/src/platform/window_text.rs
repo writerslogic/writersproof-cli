@@ -506,6 +506,9 @@ fn running_pid_for_bundle_id(bundle_id: &str) -> Option<u32> {
 /// Create an NSString from a Rust &str.
 #[cfg(target_os = "macos")]
 unsafe fn nsstring_from_str(s: &str) -> *mut objc::runtime::Object {
+    if s.len() > 4096 {
+        return std::ptr::null_mut();
+    }
     let cls = match objc::runtime::Class::get("NSString") {
         Some(c) => c,
         None => return std::ptr::null_mut(),

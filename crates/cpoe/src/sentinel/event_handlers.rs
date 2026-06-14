@@ -1072,10 +1072,15 @@ impl EventLoopCtx {
                 })
             };
             session_info.and_then(|(bid, title)| {
-                crate::platform::window_text::WindowTextCapture::capture_text_for_bundle_id_and_title(
+                let text = crate::platform::window_text::WindowTextCapture::capture_text_for_bundle_id_and_title(
                     &bid,
                     if title.is_empty() { None } else { Some(&title) },
-                )
+                );
+                if text.is_none() {
+                    log::debug!("AX text capture returned None for virtual session {path}");
+                }
+                // Cap at 10 MiB to prevent OOM from malicious/buggy AX responses.
+                text.filter(|t| t.len() <= 10 * 1024 * 1024)
             })
         } else {
             None

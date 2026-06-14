@@ -1403,10 +1403,10 @@ pub fn probe_and_cache(bundle_id: &str, app_name: &str) {
         return;
     }
     let key = bundle_id.to_lowercase();
-    if auto_discovered().contains_key(&key) || is_builtin_or_user(bundle_id) {
+    if auto_discovered().contains_key(&key) || is_builtin_or_user(&key) {
         return;
     }
-    if NON_WRITING_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(bundle_id)) {
+    if NON_WRITING_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(&key)) {
         return;
     }
     let probe = super::app_discovery::probe_app(bundle_id);

@@ -125,7 +125,9 @@ impl ContentMmr {
             self.mmr.sync().map_err(Error::from)?;
         }
 
-        let _ = std::fs::write(&sidecar_path, text_hash);
+        if let Err(e) = std::fs::write(&sidecar_path, text_hash) {
+            log::warn!("Content MMR sidecar write failed for {}: {e}", self.session_id);
+        }
         Ok(added)
     }
 
