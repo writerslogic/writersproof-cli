@@ -692,3 +692,23 @@ table.data thead th { position: sticky; top: 0; background: var(--bg); z-index: 
   margin: 4px 0 8px 0;
   line-height: 1.4;
 }
+
+/* Reference appendix — smaller text, de-emphasized */
+.reference-appendix {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 2px solid var(--border);
+}
+.reference-appendix h2 {
+  font-size: 16px;
+  color: var(--text-muted);
+}
+.reference-appendix table {
+  font-size: 10px;
+}
+.reference-appendix td, .reference-appendix th {
+  padding: 3px 6px;
+}
+.reference-appendix p {
+  font-size: 11px;
+}

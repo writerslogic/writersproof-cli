@@ -48,91 +48,56 @@ fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
         return write!(html, "</div></body></html>");
     }
 
-    // Visual overview — charts first, tables later (for human readers)
+    // ── PART 1: VISUAL SUMMARY (intended to be read) ──
+    // Charts and visual evidence — the primary way humans consume this report.
     write_visual_overview(html, r)?;
 
     sections::write_enfsi_scale(html, r)?;
     sections::write_lr_interpretation(html, r)?;
     sections::write_key_findings(html, r)?;
 
-    // Methodology with explicit hypotheses
-    sections::write_methodology(html, r)?;
-
-    // Chain of evidence
-    sections::write_chain_of_custody(html, r)?;
-
-    // Content provenance breakdown
-    sections::write_provenance_breakdown(html, r)?;
-
-    // Author declaration
-    sections::write_declaration_summary(html, r)?;
-
-    // Key hierarchy
-    sections::write_key_hierarchy(html, r)?;
-
-    // Category scores + writing flow
+    // ── PART 2: BEHAVIORAL ANALYSIS (intended to be read) ──
+    // Dimension scores, category breakdowns, writing flow — the analytical core.
+    sections::write_dimension_analysis(html, r)?;
     sections::write_category_scores(html, r)?;
-
-    // Process evidence (exhibits A-F, dynamic notes)
-    sections::write_process_evidence(html, r)?;
-
-    // Forensic breakdown
     sections::write_forensic_breakdown(html, r)?;
-
-    // Edit topology
-    sections::write_edit_topology(html, r)?;
-
-    // Session timeline
     sections::write_session_timeline(html, r)?;
-
-    // Activity contexts
+    sections::write_edit_topology(html, r)?;
     sections::write_activity_contexts(html, r)?;
 
-    // Hardware attestation
+    // ── PART 3: EVIDENCE CHAIN (intended to be read) ──
+    // Provenance, process evidence, chain of custody.
+    sections::write_provenance_breakdown(html, r)?;
+    sections::write_process_evidence(html, r)?;
+    sections::write_chain_of_custody(html, r)?;
+    sections::write_declaration_summary(html, r)?;
     sections::write_hardware_attestation(html, r)?;
-
-    // Detailed dimension analysis
-    sections::write_dimension_analysis(html, r)?;
-
-    // Per-dimension LR table
-    sections::write_dimension_lr_table(html, r)?;
-
-    // Checkpoint chain
-    sections::write_checkpoint_chain(html, r)?;
-
-    // Forgery resistance
     sections::write_forgery_resistance(html, r)?;
 
-    // Analysis flags
+    // ── PART 4: METHODOLOGY & SCOPE ──
+    sections::write_methodology(html, r)?;
+    sections::write_scope(html, r)?;
     sections::write_flags(html, r)?;
-
-    // Anomaly details
     sections::write_anomalies_detail(html, r)?;
 
-    // Scope, limitations, admissibility
-    sections::write_scope(html, r)?;
-
-    // Analyzed text
+    // ── PART 5: REFERENCE DATA (for legal/technical use, not casual reading) ──
+    writeln!(html, r#"<div class="reference-appendix">"#)?;
+    writeln!(html, r#"<h2>Reference Appendix</h2>"#)?;
+    writeln!(html, r#"<p class="chart-caption">The following sections contain raw technical data provided for legal verification and reproducibility. The visual charts and analysis above are the intended reading material.</p>"#)?;
+    sections::write_dimension_lr_table(html, r)?;
+    sections::write_checkpoint_chain(html, r)?;
+    sections::write_key_hierarchy(html, r)?;
     sections::write_analyzed_text(html, r)?;
-
-    // Verification instructions
     sections::write_verification_instructions(html)?;
-
-    // Glossary
     sections::write_glossary(html)?;
-
-    // Verifiable Credential
     sections::write_verifiable_credential(html, r)?;
-
-    // Embedded evidence (self-verifying artifact)
     sections::write_embedded_evidence(html, r)?;
+    writeln!(html, "</div>")?;
 
-    // Court-grade legal sections (only for sufficient evidence)
+    // ── LEGAL CERTIFICATIONS ──
     sections::write_certification(html, r)?;
     sections::write_fre_certification(html, r)?;
     sections::write_references(html, r)?;
-
-    // Certification
     sections::write_footer(html, r)?;
 
     write!(html, "</div></body></html>")

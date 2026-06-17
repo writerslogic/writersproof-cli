@@ -263,9 +263,11 @@ fn compute_transcription_likelihood(
     // Linear interpolation between cognitive and transcriptive thresholds.
     let mut signals: Vec<(f64, f64)> = Vec::new(); // (suspicion, weight)
 
-    // 1. IKI autocorrelation: cognitive -0.1 to 0.2, transcriptive >0.3
+    // 1. IKI autocorrelation: cognitive <0.10, transcriptive >0.30
+    // Field data: writing mean ~0.044, coding ~0.049. Both under 0.10.
+    // Only flag when clearly rhythmic (>0.15), maxing at 0.35.
     if cm.iki_autocorrelation.is_finite() {
-        let s = ((cm.iki_autocorrelation + 0.1) / 0.40).clamp(0.0, 1.0);
+        let s = ((cm.iki_autocorrelation - 0.10) / 0.25).clamp(0.0, 1.0);
         signals.push((s, 0.18));
     }
 
@@ -281,22 +283,24 @@ fn compute_transcription_likelihood(
         signals.push((s, 0.15));
     }
 
-    // 4. Correction ratio: cognitive >0.05, transcriptive <0.02
+    // 4. Correction ratio: cognitive >0.02, transcriptive <0.005
+    // Field data: writing correction ratio varies widely (prose has fewer
+    // corrections than code). Only flag extremely low correction rates.
     {
         let cr = cm.correction_ratio.get();
         if cr.is_finite() {
-            let s = 1.0 - ((cr - 0.01) / 0.05).clamp(0.0, 1.0);
-            signals.push((s, 0.12));
+            let s = 1.0 - ((cr - 0.003) / 0.02).clamp(0.0, 1.0);
+            signals.push((s, 0.08));
         }
     }
 
-    // 5. Planning pause rate: composition ~0.03, transcription <0.003
-    // Recalibrated from field data: forward-flowing writers average ~1.3% in prose,
-    // original diary calibration (6.2%) was too high for fast typists.
+    // 5. Planning pause rate: weak signal, high natural variance.
+    // Field data: 59% of writing checkpoints have 0 planning pauses, yet the
+    // writing is genuine. Only use as a mild hint, not a strong discriminator.
     if let Some(ppr) = cm.planning_pause_rate {
         if ppr.is_finite() {
-            let s = 1.0 - ((ppr - 0.002) / 0.028).clamp(0.0, 1.0);
-            signals.push((s, 0.08));
+            let s = if ppr < f64::EPSILON { 0.6 } else { 0.0 };
+            signals.push((s, 0.04));
         }
     }
 
