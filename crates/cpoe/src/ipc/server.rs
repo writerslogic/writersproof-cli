@@ -58,10 +58,14 @@ impl IpcServer {
             crate::crypto::restrict_permissions(parent, 0o700)?;
         }
 
-        // Try binding directly first to avoid TOCTOU between remove and bind.
-        match UnixListener::bind(&path) {
+        // Set umask to 0o177 so the socket is created with 0o600 atomically,
+        // eliminating the TOCTOU window between bind and chmod.
+        let old_umask = unsafe { libc::umask(0o177) };
+        let bind_result = UnixListener::bind(&path);
+        unsafe { libc::umask(old_umask) };
+
+        match bind_result {
             Ok(listener) => {
-                crate::crypto::restrict_permissions(&path, 0o600)?;
                 return Ok(Self {
                     listener,
                     socket_path: path,
@@ -105,8 +109,9 @@ impl IpcServer {
             Err(e) => return Err(e.into()),
         }
 
+        let old_umask2 = unsafe { libc::umask(0o177) };
         let listener = UnixListener::bind(&path)?;
-        crate::crypto::restrict_permissions(&path, 0o600)?;
+        unsafe { libc::umask(old_umask2) };
         Ok(Self {
             listener,
             socket_path: path,

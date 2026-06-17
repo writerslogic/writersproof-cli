@@ -245,6 +245,15 @@ impl Drop for SecureSession {
         self.key_bytes.zeroize();
         self.tx_nonce_prefix.zeroize();
         self.rx_nonce_prefix.zeroize();
+        // Aes256Gcm holds expanded round keys derived from key_bytes.
+        // The aes-gcm crate does not implement Zeroize, so zero the struct bytes directly.
+        // SAFETY: Aes256Gcm is a plain data struct (no pointers, no Drop).
+        // We are zeroing our own field within &mut self before the struct is freed.
+        unsafe {
+            let cipher_ptr = &mut self.cipher as *mut Aes256Gcm as *mut u8;
+            let cipher_size = std::mem::size_of::<Aes256Gcm>();
+            std::ptr::write_bytes(cipher_ptr, 0, cipher_size);
+        }
     }
 }
 
