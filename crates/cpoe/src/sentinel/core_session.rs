@@ -211,6 +211,13 @@ impl Sentinel {
             self.signing_key.read_recover().key()
         };
 
+        // Skip shadow:// paths before claiming the checkpoint slot; they have
+        // no real file to hash. Checking after claim would permanently leak
+        // checkpoint_count and last_checkpoint_keystrokes.
+        if path.starts_with("shadow://") {
+            return false;
+        }
+
         // Atomically check-and-claim the checkpoint slot so a concurrent
         // caller for the same path cannot start a duplicate commit during
         // the hash/store window. On failure below we roll the count back.
@@ -230,11 +237,6 @@ impl Sentinel {
             s.checkpoint_count += 1;
             (s.keystroke_count, prior)
         };
-
-        // Skip shadow:// paths; they have no real file to hash.
-        if path.starts_with("shadow://") {
-            return false;
-        }
 
         // Virtual title:// paths (database-backed apps like Bear, Electron
         // apps like Logseq) have no file to hash.  Use a hash of the session
@@ -408,6 +410,44 @@ impl Sentinel {
         match store_result {
             Ok((ev_content_hash, ev_event_hash)) => {
                 log::info!("Auto-checkpoint committed for {path}");
+
+                // Persist document stats on every checkpoint so the forensic
+                // report has accurate keystroke counts even before session end.
+                // Lock ordering: sessions(2) read, then cached_store(3) lock.
+                let doc_stats_snapshot = {
+                    let sessions_map = self.sessions.read_recover();
+                    sessions_map.get(path).map(|session| {
+                        let now_ts = crate::utils::now_secs() as i64;
+                        let first_tracked = session
+                            .first_tracked_at
+                            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(now_ts);
+                        let elapsed = session.start_time.elapsed().unwrap_or_default().as_secs();
+                        crate::store::DocumentStats {
+                            file_path: path.to_string(),
+                            total_keystrokes: i64::try_from(session.total_keystrokes())
+                                .unwrap_or(i64::MAX),
+                            total_focus_ms: session.total_focus_ms_cumulative(),
+                            session_count: i64::from(session.session_number + 1),
+                            total_duration_secs: i64::try_from(elapsed).unwrap_or(i64::MAX),
+                            first_tracked_at: first_tracked,
+                            last_tracked_at: now_ts,
+                            total_checkpoints: i64::try_from(session.checkpoint_count)
+                                .unwrap_or(i64::MAX),
+                        }
+                    })
+                    // sessions_map dropped here
+                };
+                if let Some(stats) = doc_stats_snapshot {
+                    if let Some(guard) = self.get_or_open_store() {
+                        if let Some(ref store) = *guard {
+                            if let Err(e) = store.save_document_stats(&stats) {
+                                log::warn!("checkpoint document_stats persist failed: {e}");
+                            }
+                        }
+                    }
+                }
 
                 // Phase 2: hw cosign — sessions write acquired first, then cached_store
                 // inside it (correct lock ordering per AUD-041: sessions → cached_store).
@@ -635,11 +675,12 @@ impl Sentinel {
         hasher.update(public_key);
         let identity_fingerprint = hasher.finalize().to_vec();
 
-        let db_path = self.config.writersproof_dir.join("events.db");
-        let mut key_bytes = signing_key_local.to_bytes();
-        let hmac_key = crate::crypto::derive_hmac_key(&key_bytes);
-        key_bytes.zeroize();
-        let store = crate::store::SecureStore::open(&db_path, hmac_key)?;
+        // Use the cached store instead of opening a second connection to
+        // events.db, which would risk SQLITE_BUSY under concurrent access.
+        let store_guard = self.open_event_store()?;
+        let store = store_guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("store not available"))?;
 
         let mut current_digest =
             if let Some((cbor, _)) = store.get_baseline_digest(&identity_fingerprint)? {
@@ -656,6 +697,7 @@ impl Sentinel {
         drop(signing_key_local);
 
         store.save_baseline_digest(&identity_fingerprint, &digest_json, &signature.to_bytes())?;
+        drop(store_guard);
 
         log::info!(
             "Authorship baseline updated. Tier: {:?}",
