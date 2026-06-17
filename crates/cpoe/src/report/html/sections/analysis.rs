@@ -18,16 +18,23 @@ pub(in crate::report::html) fn write_session_timeline(
         if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
     )?;
     for s in &r.sessions {
+        let dur = if s.duration_min.is_finite() { s.duration_min } else { 0.0 };
+        let dur_pct = (dur / r.total_duration_min.max(1.0) * 100.0).min(100.0);
         write!(
             html,
             r#"<div class="session-box">
-<h4>Session {idx} &mdash; {dur:.0} min</h4>
-<p>{start} &ensp;|&ensp; {events} events &ensp;|&ensp; {summary}</p>
+<h4>Session {idx}</h4>
+<div class="metric-grid">
+<div class="metric-card"><span class="metric-label">Started</span><span class="metric-value">{start}</span></div>
+<div class="metric-card"><span class="metric-label">Duration</span><span class="metric-value">{dur:.0} min</span></div>
+<div class="metric-card"><span class="metric-label">Events</span><span class="metric-value">{events}</span></div>
+</div>
+<div class="forgery-bar" style="margin:6px 0 4px"><div class="forgery-fill" style="width:{dur_pct:.0}%;background:var(--navy)"></div></div>
+<p style="font-size:12px;color:var(--text-muted)">{summary}</p>
 </div>
 "#,
             idx = s.index,
-            dur = s.duration_min,
-            start = s.start.format("%B %-d, %Y %H:%M UTC"),
+            start = s.start.format("%b %-d, %Y %H:%M"),
             events = s.event_count,
             summary = html_escape(&s.summary),
         )?;
@@ -77,6 +84,21 @@ The per-dimension scores and likelihood ratios below contribute to the composite
             score = d.score,
             circ = circumference,
         )?;
+        if !d.key_discriminator.is_empty() {
+            write!(
+                html,
+                r#"<p class="dimension-detail" style="font-style:italic;color:var(--navy-light)"><strong>Key signal:</strong> {}</p>"#,
+                html_escape(&d.key_discriminator),
+            )?;
+        }
+        if d.lr.is_finite() && d.lr > 0.0 {
+            write!(
+                html,
+                r#"<p class="dimension-detail"><strong>LR:</strong> {} (log&#8321;&#8320; = {:.2})</p>"#,
+                format_lr(d.lr),
+                d.log_lr,
+            )?;
+        }
         for detail in &d.analysis {
             write!(
                 html,

@@ -278,7 +278,7 @@ fn write_evidence_revision_intensity(html: &mut String, p: &ProcessEvidence) -> 
     }
     write!(
         html,
-        r#"<div class="evidence-card"><h4>Exhibit A: Revision Intensity</h4>"#
+        r#"<div class="evidence-card"><h4><span class="exhibit-badge">A</span> Revision Intensity</h4>"#
     )?;
     if let Some(ri) = p.revision_intensity.filter(|v| v.is_finite()) {
         let pct = (ri * 100.0).min(100.0);
@@ -314,7 +314,7 @@ fn write_evidence_pause_distribution(html: &mut String, p: &ProcessEvidence) -> 
     }
     write!(
         html,
-        r#"<div class="evidence-card"><h4>Exhibit B: Pause Distribution</h4>"#
+        r#"<div class="evidence-card"><h4><span class="exhibit-badge">B</span> Pause Distribution</h4>"#
     )?;
     if let Some(med) = p.pause_median_sec.filter(|v| v.is_finite()) {
         write!(html, r#"<div class="metric">Median: {:.1}s"#, med)?;
@@ -346,7 +346,7 @@ fn write_evidence_paste_ratio(html: &mut String, p: &ProcessEvidence) -> fmt::Re
     }
     write!(
         html,
-        r#"<div class="evidence-card"><h4>Exhibit C: Paste Analysis</h4>"#
+        r#"<div class="evidence-card"><h4><span class="exhibit-badge">C</span> Paste Analysis</h4>"#
     )?;
     if let Some(pr) = p.paste_ratio_pct.filter(|v| v.is_finite()) {
         let paste_color = if pr < 20.0 { "var(--accent)" } else if pr < 50.0 { "var(--caution)" } else { "var(--alert)" };
@@ -390,7 +390,7 @@ fn write_evidence_keystroke_dynamics(html: &mut String, p: &ProcessEvidence) -> 
     }
     write!(
         html,
-        r#"<div class="evidence-card"><h4>Exhibit D: Keystroke Dynamics</h4>"#
+        r#"<div class="evidence-card"><h4><span class="exhibit-badge">D</span> Keystroke Dynamics</h4>"#
     )?;
     if let Some(cv) = p.iki_cv.filter(|v| v.is_finite()) {
         let cv_color = if cv > 0.3 { "var(--accent)" } else if cv > 0.15 { "var(--caution)" } else { "var(--alert)" };
@@ -432,7 +432,7 @@ fn write_evidence_deletion_patterns(html: &mut String, p: &ProcessEvidence) -> f
     }
     write!(
         html,
-        r#"<div class="evidence-card"><h4>Exhibit E: Deletion Patterns</h4>"#
+        r#"<div class="evidence-card"><h4><span class="exhibit-badge">E</span> Deletion Patterns</h4>"#
     )?;
     if let Some(ds) = p.deletion_sequences {
         write!(
@@ -472,7 +472,7 @@ fn write_evidence_swf(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
     }
     write!(
         html,
-        r#"<div class="evidence-card"><h4>Exhibit F: Verifiable Delay Functions</h4>"#
+        r#"<div class="evidence-card"><h4><span class="exhibit-badge">F</span> Verifiable Delay Functions</h4>"#
     )?;
     if let Some(count) = p.swf_checkpoints {
         write!(
