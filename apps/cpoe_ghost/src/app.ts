@@ -26,6 +26,7 @@ app.use(requestLogger(logger));
 
 app.use(
 	express.json({
+		limit: "1mb",
 		verify(req: Request, _res: Response, buf: Buffer) {
 			(req as Request & { rawBody: Buffer }).rawBody = buf;
 		},
@@ -38,12 +39,12 @@ function verifyWebhookSecret(
 	next: NextFunction,
 ): void {
 	const provided = req.headers["x-ghost-webhook-secret"];
+	const actual = Buffer.from(String(provided ?? ""));
+	const expected = Buffer.from(WEBHOOK_SECRET);
 	if (
 		!provided ||
-		!crypto.timingSafeEqual(
-			Buffer.from(String(provided)),
-			Buffer.from(WEBHOOK_SECRET),
-		)
+		actual.length !== expected.length ||
+		!crypto.timingSafeEqual(actual, expected)
 	) {
 		res.status(403).json({ error: "Forbidden" });
 		return;

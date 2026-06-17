@@ -4,15 +4,33 @@ import { Request, Response } from "express";
 import { ContentMonitor } from "../services/ContentMonitor";
 import { WritersProofClient, Session } from "../services/WritersProofClient";
 
+const MAX_SESSIONS = 100;
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
 interface ActiveSession {
 	sessionId: string;
 	contentHash: string;
 	wordCount: number;
 	charCount: number;
+	createdAt: number;
 }
 
 // In-memory session store keyed by "{type}:{owner}/{repo}#{id}"
 const activeSessions = new Map<string, ActiveSession>();
+
+function pruneSessions(): void {
+	const now = Date.now();
+	for (const [key, entry] of activeSessions) {
+		if (now - entry.createdAt > SESSION_TTL_MS) activeSessions.delete(key);
+	}
+	if (activeSessions.size > MAX_SESSIONS) {
+		const sorted = [...activeSessions.entries()].sort(
+			(a, b) => a[1].createdAt - b[1].createdAt,
+		);
+		const excess = sorted.slice(0, activeSessions.size - MAX_SESSIONS);
+		for (const [key] of excess) activeSessions.delete(key);
+	}
+}
 
 function verifySignature(
 	rawBody: Buffer,
@@ -43,13 +61,17 @@ async function handleIssue(
 	client: WritersProofClient,
 ): Promise<void> {
 	const action = payload.action as string;
-	const issue = payload.issue as Record<string, unknown>;
-	const repo = payload.repository as Record<string, unknown>;
+	const issue = payload.issue as Record<string, unknown> | undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!issue || !repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const issueNumber = issue.number as number;
 	const storeKey = `issue:${owner}/${repoName}#${issueNumber}`;
@@ -78,11 +100,13 @@ async function handleIssue(
 			documentTitle: data.title,
 			contentHash: snap.contentHash,
 		});
+		pruneSessions();
 		activeSessions.set(storeKey, {
 			sessionId: (session as Session).id,
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		await client.submitEvents((session as Session).id, [
 			{
@@ -119,7 +143,9 @@ async function handleIssue(
 				contentHash: snap.contentHash,
 				wordCount: snap.wordCount,
 				charCount: snap.charCount,
+				createdAt: Date.now(),
 			};
+			pruneSessions();
 			activeSessions.set(storeKey, active);
 		}
 
@@ -136,6 +162,7 @@ async function handleIssue(
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		active.contentHash = snap.contentHash;
 		active.wordCount = snap.wordCount;
@@ -159,13 +186,17 @@ async function handleIssueComment(
 	client: WritersProofClient,
 ): Promise<void> {
 	const action = payload.action as string;
-	const comment = payload.comment as Record<string, unknown>;
-	const repo = payload.repository as Record<string, unknown>;
+	const comment = payload.comment as Record<string, unknown> | undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!comment || !repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const commentId = comment.id as number;
 	const storeKey = `issue_comment:${owner}/${repoName}#${commentId}`;
@@ -194,11 +225,13 @@ async function handleIssueComment(
 			documentTitle: `Comment #${commentId}`,
 			contentHash: snap.contentHash,
 		});
+		pruneSessions();
 		activeSessions.set(storeKey, {
 			sessionId: (session as Session).id,
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		await client.submitEvents((session as Session).id, [
 			{
@@ -235,7 +268,9 @@ async function handleIssueComment(
 				contentHash: snap.contentHash,
 				wordCount: snap.wordCount,
 				charCount: snap.charCount,
+				createdAt: Date.now(),
 			};
+			pruneSessions();
 			activeSessions.set(storeKey, active);
 		}
 
@@ -252,6 +287,7 @@ async function handleIssueComment(
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		active.contentHash = snap.contentHash;
 		active.wordCount = snap.wordCount;
@@ -265,13 +301,17 @@ async function handlePullRequest(
 	client: WritersProofClient,
 ): Promise<void> {
 	const action = payload.action as string;
-	const pr = payload.pull_request as Record<string, unknown>;
-	const repo = payload.repository as Record<string, unknown>;
+	const pr = payload.pull_request as Record<string, unknown> | undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!pr || !repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const prNumber = pr.number as number;
 	const storeKey = `pr:${owner}/${repoName}#${prNumber}`;
@@ -307,7 +347,9 @@ async function handlePullRequest(
 				contentHash: snap.contentHash,
 				wordCount: snap.wordCount,
 				charCount: snap.charCount,
+				createdAt: Date.now(),
 			};
+			pruneSessions();
 			activeSessions.set(storeKey, active);
 		}
 
@@ -352,14 +394,18 @@ async function handlePRReview(
 	const action = payload.action as string;
 	if (action !== "submitted") return;
 
-	const review = payload.review as Record<string, unknown>;
-	const pr = payload.pull_request as Record<string, unknown>;
-	const repo = payload.repository as Record<string, unknown>;
+	const review = payload.review as Record<string, unknown> | undefined;
+	const pr = payload.pull_request as Record<string, unknown> | undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!review || !pr || !repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const prNumber = pr.number as number;
 	const reviewId = review.id as number;
@@ -400,13 +446,17 @@ async function handlePRReviewComment(
 	client: WritersProofClient,
 ): Promise<void> {
 	const action = payload.action as string;
-	const comment = payload.comment as Record<string, unknown>;
-	const repo = payload.repository as Record<string, unknown>;
+	const comment = payload.comment as Record<string, unknown> | undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!comment || !repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const commentId = comment.id as number;
 	const storeKey = `pr_review_comment:${owner}/${repoName}#${commentId}`;
@@ -435,11 +485,13 @@ async function handlePRReviewComment(
 			documentTitle: `Review Comment #${commentId}`,
 			contentHash: snap.contentHash,
 		});
+		pruneSessions();
 		activeSessions.set(storeKey, {
 			sessionId: (session as Session).id,
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		await client.submitEvents((session as Session).id, [
 			{
@@ -476,7 +528,9 @@ async function handlePRReviewComment(
 				contentHash: snap.contentHash,
 				wordCount: snap.wordCount,
 				charCount: snap.charCount,
+				createdAt: Date.now(),
 			};
+			pruneSessions();
 			activeSessions.set(storeKey, active);
 		}
 
@@ -493,6 +547,7 @@ async function handlePRReviewComment(
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		active.contentHash = snap.contentHash;
 		active.wordCount = snap.wordCount;
@@ -506,13 +561,19 @@ async function handleDiscussion(
 	client: WritersProofClient,
 ): Promise<void> {
 	const action = payload.action as string;
-	const discussion = payload.discussion as Record<string, unknown>;
-	const repo = payload.repository as Record<string, unknown>;
+	const discussion = payload.discussion as
+		| Record<string, unknown>
+		| undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!discussion || !repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const discussionNumber = discussion.number as number;
 	const storeKey = `discussion:${owner}/${repoName}#${discussionNumber}`;
@@ -539,11 +600,13 @@ async function handleDiscussion(
 			documentTitle: data.title,
 			contentHash: snap.contentHash,
 		});
+		pruneSessions();
 		activeSessions.set(storeKey, {
 			sessionId: (session as Session).id,
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		await client.submitEvents((session as Session).id, [
 			{
@@ -578,7 +641,9 @@ async function handleDiscussion(
 				contentHash: snap.contentHash,
 				wordCount: snap.wordCount,
 				charCount: snap.charCount,
+				createdAt: Date.now(),
 			};
+			pruneSessions();
 			activeSessions.set(storeKey, active);
 		}
 
@@ -595,6 +660,7 @@ async function handleDiscussion(
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		active.contentHash = snap.contentHash;
 		active.wordCount = snap.wordCount;
@@ -608,13 +674,17 @@ async function handleDiscussionComment(
 	client: WritersProofClient,
 ): Promise<void> {
 	const action = payload.action as string;
-	const comment = payload.comment as Record<string, unknown>;
-	const repo = payload.repository as Record<string, unknown>;
+	const comment = payload.comment as Record<string, unknown> | undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!comment || !repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const commentId = comment.id as number;
 	const storeKey = `discussion_comment:${owner}/${repoName}#${commentId}`;
@@ -639,11 +709,13 @@ async function handleDiscussionComment(
 			documentTitle: `Discussion Comment #${commentId}`,
 			contentHash: snap.contentHash,
 		});
+		pruneSessions();
 		activeSessions.set(storeKey, {
 			sessionId: (session as Session).id,
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		await client.submitEvents((session as Session).id, [
 			{
@@ -675,7 +747,9 @@ async function handleDiscussionComment(
 				contentHash: snap.contentHash,
 				wordCount: snap.wordCount,
 				charCount: snap.charCount,
+				createdAt: Date.now(),
 			};
+			pruneSessions();
 			activeSessions.set(storeKey, active);
 		}
 
@@ -692,6 +766,7 @@ async function handleDiscussionComment(
 			contentHash: snap.contentHash,
 			wordCount: snap.wordCount,
 			charCount: snap.charCount,
+			createdAt: Date.now(),
 		});
 		active.contentHash = snap.contentHash;
 		active.wordCount = snap.wordCount;
@@ -704,13 +779,17 @@ async function handleGollum(
 	monitor: ContentMonitor,
 	client: WritersProofClient,
 ): Promise<void> {
-	const pages = payload.pages as Array<Record<string, unknown>>;
-	const repo = payload.repository as Record<string, unknown>;
+	const pages = payload.pages as Array<Record<string, unknown>> | undefined;
+	const repo = payload.repository as Record<string, unknown> | undefined;
 	const installation = payload.installation as
 		| Record<string, unknown>
 		| undefined;
 
-	const owner = (repo.owner as Record<string, unknown>).login as string;
+	if (!repo) return;
+	const ownerObj = repo.owner as Record<string, unknown> | undefined;
+	if (!ownerObj?.login || !repo.name) return;
+
+	const owner = ownerObj.login as string;
 	const repoName = repo.name as string;
 	const installationId = String(installation?.id ?? "");
 
@@ -742,11 +821,13 @@ async function handleGollum(
 				documentTitle: pageTitle,
 				contentHash: snap.contentHash,
 			});
+			pruneSessions();
 			activeSessions.set(storeKey, {
 				sessionId: (session as Session).id,
 				contentHash: snap.contentHash,
 				wordCount: snap.wordCount,
 				charCount: snap.charCount,
+				createdAt: Date.now(),
 			});
 			await client.submitEvents((session as Session).id, [
 				{
@@ -770,7 +851,9 @@ async function handleGollum(
 					contentHash: snap.contentHash,
 					wordCount: snap.wordCount,
 					charCount: snap.charCount,
+					createdAt: Date.now(),
 				};
+				pruneSessions();
 				activeSessions.set(storeKey, active);
 			}
 

@@ -11,7 +11,9 @@ import {
 } from "jose";
 import { randomBytes, createHash } from "crypto";
 
-const CANVAS_ISSUER = "https://canvas.instructure.com";
+// Configurable for self-hosted Canvas instances via environment variable.
+const CANVAS_ISSUER =
+	process.env.CANVAS_ISSUER || "https://canvas.instructure.com";
 
 // LTI 1.3 claim URIs
 const CLAIM_ROLES = "https://purl.imsglobal.org/spec/lti/claim/roles";
@@ -35,18 +37,27 @@ const ROLE_INSTRUCTOR =
 // In production, back with Redis or a shared database.
 const nonceStore = new Map<string, number>();
 const NONCE_TTL_MS = 10 * 60 * 1000;
+const NONCE_MAX_SIZE = 10000;
+let nonceStoreCounter = 0;
+const NONCE_CLEANUP_INTERVAL = 100;
 
 function generateNonce(): string {
 	return randomBytes(32).toString("base64url");
 }
 
 function storeNonce(nonce: string): void {
-	// Prune expired entries before storing new ones.
-	const now = Date.now();
-	for (const [key, expiry] of nonceStore) {
-		if (expiry < now) nonceStore.delete(key);
+	nonceStoreCounter++;
+	if (
+		nonceStoreCounter % NONCE_CLEANUP_INTERVAL === 0 ||
+		nonceStore.size >= NONCE_MAX_SIZE
+	) {
+		const now = Date.now();
+		for (const [key, expiry] of nonceStore) {
+			if (expiry < now) nonceStore.delete(key);
+		}
 	}
-	nonceStore.set(nonce, now + NONCE_TTL_MS);
+	if (nonceStore.size >= NONCE_MAX_SIZE) return;
+	nonceStore.set(nonce, Date.now() + NONCE_TTL_MS);
 }
 
 function consumeNonce(nonce: string): boolean {
@@ -347,6 +358,7 @@ function escapeHtml(str: string): string {
 	return str
 		.replace(/&/g, "&amp;")
 		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;")
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;");
 }

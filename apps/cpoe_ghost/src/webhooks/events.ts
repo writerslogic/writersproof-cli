@@ -23,8 +23,30 @@ interface GhostWebhookBody {
 	[key: string]: unknown;
 }
 
+const MAX_SESSIONS = 100;
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface SessionEntry {
+	sessionId: string;
+	createdAt: number;
+}
+
 /** Active WritersProof session IDs keyed by "{type}:{resourceId}" */
-const activeSessions = new Map<string, string>();
+const activeSessions = new Map<string, SessionEntry>();
+
+function pruneSessions(): void {
+	const now = Date.now();
+	for (const [key, entry] of activeSessions) {
+		if (now - entry.createdAt > SESSION_TTL_MS) activeSessions.delete(key);
+	}
+	if (activeSessions.size > MAX_SESSIONS) {
+		const sorted = [...activeSessions.entries()].sort(
+			(a, b) => a[1].createdAt - b[1].createdAt,
+		);
+		const excess = sorted.slice(0, activeSessions.size - MAX_SESSIONS);
+		for (const [key] of excess) activeSessions.delete(key);
+	}
+}
 
 function sessionKey(type: "post" | "page", id: string): string {
 	return `${type}:${id}`;
@@ -82,7 +104,11 @@ export function createGhostEventHandler(
 						documentTitle: diff.current.documentTitle,
 						contentHash: diff.current.contentHash,
 					});
-					activeSessions.set(key, session.id);
+					pruneSessions();
+					activeSessions.set(key, {
+						sessionId: session.id,
+						createdAt: Date.now(),
+					});
 					break;
 				}
 
@@ -95,7 +121,7 @@ export function createGhostEventHandler(
 								: "snapshotPage"
 						](resourceId);
 
-					let sessionId = activeSessions.get(key);
+					let sessionId = activeSessions.get(key)?.sessionId;
 					if (!sessionId) {
 						const session = await client.createSession({
 							documentId: resourceId,
@@ -105,7 +131,11 @@ export function createGhostEventHandler(
 								diff.current.contentHash,
 						});
 						sessionId = session.id;
-						activeSessions.set(key, sessionId);
+						pruneSessions();
+						activeSessions.set(key, {
+							sessionId,
+							createdAt: Date.now(),
+						});
 					}
 
 					if (diff.changed) {
@@ -136,9 +166,9 @@ export function createGhostEventHandler(
 								? "snapshotPost"
 								: "snapshotPage"
 						](resourceId);
-					const sessionId = activeSessions.get(key);
-					if (sessionId) {
-						await client.finalizeSession(sessionId, {
+					const published = activeSessions.get(key);
+					if (published) {
+						await client.finalizeSession(published.sessionId, {
 							contentHash: diff.current.contentHash,
 							wordCount: diff.current.wordCount,
 							finalSnapshot: diff.current.plainText,
@@ -154,13 +184,13 @@ export function createGhostEventHandler(
 
 				case "post.deleted":
 				case "page.deleted": {
-					const sessionId = activeSessions.get(key);
-					if (sessionId) {
+					const deleted = activeSessions.get(key);
+					if (deleted) {
 						const snapshot = monitor.getSnapshot(
 							resourceType === "post" ? "posts" : "pages",
 							resourceId,
 						);
-						await client.finalizeSession(sessionId, {
+						await client.finalizeSession(deleted.sessionId, {
 							contentHash: snapshot?.contentHash ?? "",
 							wordCount: snapshot?.wordCount ?? 0,
 							finalSnapshot: "deleted",

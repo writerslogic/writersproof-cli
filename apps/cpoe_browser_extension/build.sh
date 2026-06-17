@@ -26,6 +26,20 @@ SHARED_FILES=(
     options.css
 )
 
+# Validate all shared files exist before building
+for f in "${SHARED_FILES[@]}"; do
+    if [ ! -f "$f" ]; then
+        echo "ERROR: Missing required file: $f" >&2
+        exit 1
+    fi
+done
+for icon in icons/icon-16.png icons/icon-32.png icons/icon-48.png icons/icon-128.png; do
+    if [ ! -f "$icon" ]; then
+        echo "ERROR: Missing icon: $icon" >&2
+        exit 1
+    fi
+done
+
 echo "=== Building WritersProof Browser Extensions v${VERSION} ==="
 
 # --- Chrome Web Store ---

@@ -2,8 +2,30 @@
 import { WritersProofClient } from "../services/WritersProofClient.js";
 import { ContentMonitor } from "../services/ContentMonitor.js";
 
+const MAX_SESSIONS = 100;
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface SessionEntry {
+	sessionId: string;
+	createdAt: number;
+}
+
 /** Active WritersProof session IDs keyed by Notion page ID */
-const activeSessions = new Map<string, string>();
+const activeSessions = new Map<string, SessionEntry>();
+
+function pruneSessions(): void {
+	const now = Date.now();
+	for (const [key, entry] of activeSessions) {
+		if (now - entry.createdAt > SESSION_TTL_MS) activeSessions.delete(key);
+	}
+	if (activeSessions.size > MAX_SESSIONS) {
+		const sorted = [...activeSessions.entries()].sort(
+			(a, b) => a[1].createdAt - b[1].createdAt,
+		);
+		const excess = sorted.slice(0, activeSessions.size - MAX_SESSIONS);
+		for (const [key] of excess) activeSessions.delete(key);
+	}
+}
 
 export async function handlePageChanged(
 	page: { id: string; last_edited_time: string },
@@ -19,14 +41,18 @@ export async function handlePageChanged(
 			documentTitle: snapshot.pageTitle,
 			contentHash: snapshot.contentHash,
 		});
-		activeSessions.set(page.id, session.id);
+		pruneSessions();
+		activeSessions.set(page.id, {
+			sessionId: session.id,
+			createdAt: Date.now(),
+		});
 		return;
 	}
 
 	const diff = monitor.computeDiff(previous, snapshot);
 	if (diff.charDelta === 0 && diff.wordDelta === 0) return;
 
-	let sessionId = activeSessions.get(page.id);
+	let sessionId = activeSessions.get(page.id)?.sessionId;
 	if (!sessionId) {
 		const session = await client.createSession({
 			documentId: page.id,
@@ -34,7 +60,8 @@ export async function handlePageChanged(
 			contentHash: previous.contentHash,
 		});
 		sessionId = session.id;
-		activeSessions.set(page.id, sessionId);
+		pruneSessions();
+		activeSessions.set(page.id, { sessionId, createdAt: Date.now() });
 	}
 
 	await client.submitEvents(sessionId, [
@@ -60,11 +87,11 @@ export async function finalizePageSession(
 	client: WritersProofClient,
 	monitor: ContentMonitor,
 ): Promise<void> {
-	const sessionId = activeSessions.get(pageId);
-	if (!sessionId) return;
+	const entry = activeSessions.get(pageId);
+	if (!entry) return;
 
 	const snapshot = monitor.getPreviousSnapshot(pageId);
-	await client.finalizeSession(sessionId, {
+	await client.finalizeSession(entry.sessionId, {
 		contentHash: snapshot?.contentHash ?? "",
 		wordCount: snapshot?.wordCount ?? 0,
 		finalSnapshot: snapshot?.plainText,
@@ -75,5 +102,5 @@ export async function finalizePageSession(
 }
 
 export function getActiveSessionId(pageId: string): string | undefined {
-	return activeSessions.get(pageId);
+	return activeSessions.get(pageId)?.sessionId;
 }

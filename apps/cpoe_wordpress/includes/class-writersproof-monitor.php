@@ -194,8 +194,8 @@ class WritersProof_Monitor {
 			return max( 0, $count );
 		}
 
-		// Classic editor: count opening <p> tags.
-		$count = substr_count( strtolower( $raw_content ), '<p' );
+		// Classic editor: count opening <p> tags (avoid matching <pre>, <picture>, etc.).
+		$count = preg_match_all( '/<p[\s>]/i', $raw_content );
 		if ( $count > 0 ) {
 			return $count;
 		}

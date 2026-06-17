@@ -41,6 +41,12 @@ function stripHtml(html: string): string {
 	return html
 		.replace(/<[^>]+>/g, " ")
 		.replace(/&nbsp;/g, " ")
+		.replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) =>
+			String.fromCodePoint(parseInt(hex, 16)),
+		)
+		.replace(/&#(\d+);/g, (_m, dec) =>
+			String.fromCodePoint(parseInt(dec, 10)),
+		)
 		.replace(/&amp;/g, "&")
 		.replace(/&lt;/g, "<")
 		.replace(/&gt;/g, ">")
@@ -91,15 +97,29 @@ export class ContentMonitor {
 	/** In-memory snapshot store keyed by "{type}:{id}" */
 	private readonly snapshots = new Map<string, ContentSnapshot>();
 
+	private readonly adminKeyValid: boolean;
+
 	constructor(ghostUrl: string, adminApiKey: string) {
 		if (!ghostUrl) throw new Error("ContentMonitor: ghostUrl is required");
 		if (!adminApiKey)
 			throw new Error("ContentMonitor: adminApiKey is required");
 		this.ghostUrl = ghostUrl.replace(/\/$/, "");
 		this.adminApiKey = adminApiKey;
+
+		try {
+			buildGhostAdminToken(this.adminApiKey);
+			this.adminKeyValid = true;
+		} catch {
+			this.adminKeyValid = false;
+		}
 	}
 
 	private authHeader(): string {
+		if (!this.adminKeyValid) {
+			throw new Error(
+				'GHOST_ADMIN_API_KEY must be in the format "id:secret"',
+			);
+		}
 		return `Ghost ${buildGhostAdminToken(this.adminApiKey)}`;
 	}
 

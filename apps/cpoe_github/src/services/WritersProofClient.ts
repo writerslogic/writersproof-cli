@@ -107,7 +107,7 @@ export class WritersProofClient {
 					const delayMs = Number.isFinite(retryAfterSec)
 						? retryAfterSec * 1000
 						: 5000;
-					await this.delay(delayMs);
+					await this.delay(Math.min(delayMs, 60_000));
 					continue;
 				}
 

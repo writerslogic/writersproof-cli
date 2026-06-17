@@ -283,7 +283,7 @@ class client {
 
         if ($httpcode < 200 || $httpcode >= 300) {
             // Attempt to surface API error message from body.
-            $decoded = @json_decode($response, true);
+            $decoded = json_decode($response, true);
             $apimsg  = is_array($decoded) && isset($decoded['error'])
                 ? (string) $decoded['error']
                 : 'HTTP ' . $httpcode;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import "dotenv/config";
+import crypto from "crypto";
 import express, { Request, Response } from "express";
 import { WritersProofClient } from "./services/WritersProofClient.js";
 import { ContentMonitor } from "./services/ContentMonitor.js";
@@ -28,6 +29,10 @@ if (!NOTION_API_KEY && !NOTION_CLIENT_ID)
 let oauthAccessToken = NOTION_API_KEY;
 const oauthTokens = new Map<string, { accessToken: string }>();
 
+// OAuth CSRF state tokens — keyed by state value, expires after 10 minutes
+const pendingOAuthStates = new Map<string, number>();
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
 const app = express();
 app.use(express.json());
 
@@ -37,6 +42,27 @@ function buildMonitor(): ContentMonitor {
 	const key = oauthAccessToken;
 	if (!key) throw new Error("No Notion API key available");
 	return new ContentMonitor(key);
+}
+
+// Simple IP-based rate limiting (max 5 requests per minute per IP)
+const rateLimiter = new Map<string, number[]>();
+function rateLimit(
+	req: Request,
+	res: Response,
+	windowMs: number,
+	maxRequests: number,
+): boolean {
+	const key = req.ip ?? "unknown";
+	const now = Date.now();
+	const window = rateLimiter.get(key) ?? [];
+	const recent = window.filter((t) => now - t < windowMs);
+	if (recent.length >= maxRequests) {
+		res.status(429).json({ error: "Too many requests" });
+		return false;
+	}
+	recent.push(now);
+	rateLimiter.set(key, recent);
+	return true;
 }
 
 // Active polling state
@@ -77,11 +103,14 @@ app.get("/oauth/authorize", (_req: Request, res: Response) => {
 		res.status(400).json({ error: "OAuth not configured" });
 		return;
 	}
+	const state = crypto.randomBytes(32).toString("hex");
+	pendingOAuthStates.set(state, Date.now());
 	const params = new URLSearchParams({
 		client_id: NOTION_CLIENT_ID,
 		response_type: "code",
 		owner: "user",
 		redirect_uri: OAUTH_REDIRECT_URI,
+		state,
 	});
 	res.redirect(
 		`https://api.notion.com/v1/oauth/authorize?${params.toString()}`,
@@ -90,10 +119,25 @@ app.get("/oauth/authorize", (_req: Request, res: Response) => {
 
 app.get("/oauth/callback", async (req: Request, res: Response) => {
 	const code = req.query["code"];
+	const state = req.query["state"];
 	if (typeof code !== "string" || !code) {
 		res.status(400).json({ error: "Missing code parameter" });
 		return;
 	}
+	if (typeof state !== "string" || !state) {
+		res.status(400).json({ error: "Missing state parameter" });
+		return;
+	}
+	const stateCreatedAt = pendingOAuthStates.get(state);
+	if (
+		stateCreatedAt === undefined ||
+		Date.now() - stateCreatedAt > OAUTH_STATE_TTL_MS
+	) {
+		pendingOAuthStates.delete(state);
+		res.status(403).json({ error: "Invalid or expired OAuth state" });
+		return;
+	}
+	pendingOAuthStates.delete(state);
 	if (!NOTION_CLIENT_ID || !NOTION_CLIENT_SECRET) {
 		res.status(400).json({ error: "OAuth not configured" });
 		return;
@@ -149,7 +193,8 @@ app.get("/health", (_req: Request, res: Response) => {
 	});
 });
 
-app.post("/api/start-polling", (_req: Request, res: Response) => {
+app.post("/api/start-polling", (req: Request, res: Response) => {
+	if (!rateLimit(req, res, 60_000, 5)) return;
 	if (monitoringActive.value) {
 		res.json({ ok: true, message: "Polling already active" });
 		return;

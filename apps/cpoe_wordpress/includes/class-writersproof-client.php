@@ -199,10 +199,9 @@ class WritersProof_Client {
 
 			// 429 Too Many Requests: respect Retry-After if present.
 			if ( 429 === $code ) {
-				$retry_after = (int) wp_remote_retrieve_header( $response, 'retry-after' );
-				$sleep       = max( $retry_after, 1 );
+				$retry_after = max( 1, min( 60, intval( wp_remote_retrieve_header( $response, 'retry-after' ) ) ) );
 				if ( function_exists( 'sleep' ) ) {
-					sleep( min( $sleep, 60 ) ); // cap at 60s to avoid indefinite blocking.
+					sleep( $retry_after );
 				}
 				++$attempt;
 				continue;

@@ -40,6 +40,8 @@
 	let lastContentHash = "";
 	let observerRetries = 0;
 	let contentTier = "enhanced"; // "core" | "enhanced" | "maximum"
+	let pendingPaste = null;
+	let keystrokesSinceLastCheckpoint = 0;
 
 	const JITTER_BATCH_SIZE = 50;
 	const MIN_CHANGE_THRESHOLD = 5;
@@ -48,6 +50,23 @@
 
 	// Reuse encoder across all calls to avoid GC pressure
 	const textEncoder = new TextEncoder();
+
+	function sendToBackground(msg, attempt) {
+		const n = attempt || 0;
+		try {
+			chrome.runtime.sendMessage(msg).catch((err) => {
+				const retriable =
+					err?.message?.includes("Could not establish connection") ||
+					err?.message?.includes("Receiving end does not exist");
+				if (retriable && n < 3) {
+					const delay = 500 * Math.pow(2, n);
+					setTimeout(() => sendToBackground(msg, n + 1), delay);
+				}
+			});
+		} catch {
+			// Extension context invalidated — page needs reload
+		}
+	}
 
 	// Pre-allocated ring buffer for keystroke timestamps.
 	// Avoids dynamic array growth on every keydown event.
@@ -60,6 +79,8 @@
 	let detectedWritingTools = { category: "none", host: "" };
 	let writingToolsInterval = null;
 	let titleObserver = null;
+	let editorHealthInterval = null;
+	const EDITOR_HEALTH_INTERVAL_MS = 5000;
 
 	function storageKey() {
 		return `witnessing_${window.location.origin}${window.location.pathname}`;
@@ -213,6 +234,72 @@
 		timerResolution = Math.min(...samples);
 	}
 
+	function findEditorByHeuristic() {
+		const candidates = document.querySelectorAll(
+			'[contenteditable="true"], [role="textbox"], [role="document"], textarea',
+		);
+		let best = null;
+		let bestScore = 0;
+
+		for (const el of candidates) {
+			if (!el.isConnected || el.offsetHeight < 40) continue;
+			if (isSensitiveTarget(el)) continue;
+
+			// Skip elements inside navigation, headers, footers, sidebars
+			const container = el.closest(
+				"nav, header, footer, aside, [role='banner'], [role='navigation'], " +
+					"[role='complementary'], [role='search'], .comments, .sidebar",
+			);
+			if (container) continue;
+
+			let score = 0;
+			const rect = el.getBoundingClientRect();
+			const area = rect.width * rect.height;
+
+			// Large visible area suggests primary editor
+			if (area > 40000) score += 3;
+			else if (area > 10000) score += 2;
+			else if (area > 2000) score += 1;
+
+			// Contains text content (not empty placeholder)
+			const textLen = (el.textContent || "").trim().length;
+			if (textLen > 50) score += 2;
+			else if (textLen > 0) score += 1;
+
+			// Editable attributes
+			if (el.contentEditable === "true") score += 2;
+			if (el.getAttribute("role") === "textbox") score += 1;
+			if (el.getAttribute("role") === "document") score += 2;
+			if (el.getAttribute("aria-multiline") === "true") score += 1;
+			if (el.spellcheck !== false) score += 1;
+
+			// Textarea with significant rows
+			if (el.tagName === "TEXTAREA") {
+				const rows = parseInt(el.getAttribute("rows"), 10) || 0;
+				if (rows >= 5) score += 2;
+			}
+
+			if (score > bestScore) {
+				bestScore = score;
+				best = el;
+			}
+		}
+
+		return bestScore >= 4 ? best : null;
+	}
+
+	function isSensitiveTarget(el) {
+		if (el.tagName === "INPUT") return true;
+		const type = (el.getAttribute("type") || "").toLowerCase();
+		if (type === "password" || type === "email") return true;
+		const ac = (el.getAttribute("autocomplete") || "").toLowerCase();
+		if (ac.includes("password") || ac.includes("cc-")) return true;
+		const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
+		if (ariaLabel.includes("password") || ariaLabel.includes("search"))
+			return true;
+		return false;
+	}
+
 	function getEditorElement() {
 		if (cachedEditorElements && cachedEditorElements.length > 0) {
 			if (cachedEditorElements[0].isConnected) {
@@ -259,8 +346,64 @@
 
 		if (elements && elements.length > 0) {
 			cachedEditorElements = elements;
+			return elements;
 		}
+
+		// Fallback: if site-specific selectors failed, try generic framework selectors
+		if (site && site !== SITE_GENERIC) {
+			elements = document.querySelectorAll(
+				'[contenteditable="true"], .cm-content, .monaco-editor textarea, ' +
+					".ProseMirror, .ql-editor, .trix-content, textarea.editor, " +
+					'textarea[name="content"], textarea[name="body"]',
+			);
+			if (elements && elements.length > 0) {
+				cachedEditorElements = elements;
+				return elements;
+			}
+		}
+
+		// Last resort: heuristic detection for unknown/changed editors
+		const candidate = findEditorByHeuristic();
+		if (candidate) {
+			cachedEditorElements = [candidate];
+			return cachedEditorElements;
+		}
+
 		return elements;
+	}
+
+	function collectText(root, chunks, state) {
+		if (state.length >= MAX_DOCUMENT_SIZE) return;
+
+		const walker = document.createTreeWalker(
+			root,
+			NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+		);
+		let node;
+		while ((node = walker.nextNode())) {
+			if (state.length >= MAX_DOCUMENT_SIZE) break;
+
+			if (node.nodeType === Node.ELEMENT_NODE && node.shadowRoot) {
+				collectText(node.shadowRoot, chunks, state);
+				continue;
+			}
+
+			if (node.nodeType !== Node.TEXT_NODE) continue;
+			const value = node.nodeValue;
+			if (!value) continue;
+
+			const remaining = MAX_DOCUMENT_SIZE - state.length;
+			if (remaining <= 0) break;
+
+			if (value.length <= remaining) {
+				chunks.push(value);
+				state.length += value.length;
+			} else {
+				chunks.push(value.slice(0, remaining));
+				state.length += remaining;
+				break;
+			}
+		}
 	}
 
 	function getDocumentText() {
@@ -268,51 +411,46 @@
 		if (!elements || elements.length === 0) return "";
 
 		const chunks = [];
-		let totalLength = 0;
+		const state = { length: 0 };
 
 		for (const el of elements) {
-			if (totalLength >= MAX_DOCUMENT_SIZE) break;
-
-			const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-			let node;
-			while ((node = walker.nextNode())) {
-				const value = node.nodeValue;
-				if (!value) continue;
-
-				const remaining = MAX_DOCUMENT_SIZE - totalLength;
-				if (remaining <= 0) break;
-
-				if (value.length <= remaining) {
-					chunks.push(value);
-					totalLength += value.length;
-				} else {
-					chunks.push(value.slice(0, remaining));
-					totalLength += remaining;
-					break;
-				}
-			}
+			if (state.length >= MAX_DOCUMENT_SIZE) break;
+			collectText(el, chunks, state);
 		}
 
 		return chunks.join("");
+	}
+
+	function countText(root, state) {
+		if (state.length >= MAX_DOCUMENT_SIZE) return;
+		const walker = document.createTreeWalker(
+			root,
+			NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+		);
+		let node;
+		while ((node = walker.nextNode())) {
+			if (state.length >= MAX_DOCUMENT_SIZE) return;
+			if (node.nodeType === Node.ELEMENT_NODE && node.shadowRoot) {
+				countText(node.shadowRoot, state);
+				continue;
+			}
+			if (node.nodeType !== Node.TEXT_NODE) continue;
+			const value = node.nodeValue;
+			if (!value) continue;
+			state.length += value.length;
+		}
 	}
 
 	function getDocumentCharCount() {
 		const elements = getEditorElement();
 		if (!elements || elements.length === 0) return 0;
 
-		let total = 0;
+		const state = { length: 0 };
 		for (const el of elements) {
-			if (total >= MAX_DOCUMENT_SIZE) break;
-			const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-			let node;
-			while ((node = walker.nextNode())) {
-				const value = node.nodeValue;
-				if (!value) continue;
-				total += value.length;
-				if (total >= MAX_DOCUMENT_SIZE) return MAX_DOCUMENT_SIZE;
-			}
+			if (state.length >= MAX_DOCUMENT_SIZE) break;
+			countText(el, state);
 		}
-		return total;
+		return Math.min(state.length, MAX_DOCUMENT_SIZE);
 	}
 
 	function getDocumentTitle() {
@@ -397,14 +535,28 @@
 				const previousCount = lastCharCount;
 				lastCharCount = charCount;
 
+				const actualDelta = charCount - previousCount;
 				const msg = {
 					action: "content_changed",
 					contentHash,
 					charCount,
-					delta: charCount - previousCount,
+					delta: actualDelta,
 					toolCategory: detectedWritingTools.category,
 					toolHost: detectedWritingTools.host,
+					keystrokeCount: keystrokesSinceLastCheckpoint,
 				};
+
+				if (
+					pendingPaste &&
+					Date.now() - pendingPaste.timestamp < 5000
+				) {
+					msg.pasteDetected = true;
+					msg.pasteCharCount = pendingPaste.charCount;
+					msg.pasteHasRichContent = pendingPaste.hasRichContent;
+				}
+				pendingPaste = null;
+
+				keystrokesSinceLastCheckpoint = 0;
 
 				if (contentTier === "enhanced" || contentTier === "maximum") {
 					msg.documentTitle = getDocumentTitle();
@@ -419,7 +571,7 @@
 					msg.mutationRate = mutationRateWindow.length;
 				}
 
-				chrome.runtime.sendMessage(msg);
+				sendToBackground(msg);
 			} catch (_) {
 				// Will retry on next mutation
 			}
@@ -476,6 +628,27 @@
 		}
 	}
 
+	function checkEditorHealth() {
+		if (!isWitnessing) return;
+
+		let stale = !cachedEditorElements || cachedEditorElements.length === 0;
+		if (!stale) {
+			for (const el of cachedEditorElements) {
+				if (!el.isConnected) {
+					stale = true;
+					break;
+				}
+			}
+		}
+
+		if (stale) {
+			stopObserving();
+			invalidateEditorCache();
+			observerRetries = 0;
+			startObserving();
+		}
+	}
+
 	// Batched per-keystroke events for dual-source validation with native engine.
 	let keystrokeBatch = [];
 	let keystrokeBatchTimer = null;
@@ -485,14 +658,36 @@
 		if (keystrokeBatch.length === 0) return;
 		const batch = keystrokeBatch;
 		keystrokeBatch = [];
-		chrome.runtime.sendMessage({
+		sendToBackground({
 			action: "browser_keystroke_batch",
 			keystrokes: batch,
 		});
 	}
 
+	function handlePaste(e) {
+		if (!isWitnessing) return;
+		const clipData = e.clipboardData;
+		let charCount = 0;
+		let hasRichContent = false;
+		if (clipData) {
+			const text = clipData.getData("text/plain");
+			charCount = text ? text.length : 0;
+			hasRichContent =
+				clipData.types.includes("text/html") ||
+				clipData.types.includes("text/rtf") ||
+				clipData.types.some((t) => t.startsWith("image/"));
+		}
+		pendingPaste = {
+			timestamp: Date.now(),
+			charCount,
+			hasRichContent,
+		};
+	}
+
 	function handleKeyDown(e) {
 		if (!isWitnessing || contentTier === "core") return;
+		if (e.target && isSensitiveTarget(e.target)) return;
+		keystrokesSinceLastCheckpoint++;
 
 		// Collect per-keystroke data for dual-source validation.
 		keystrokeBatch.push({
@@ -521,7 +716,7 @@
 			jitterBuffer[0] = jitterBuffer[jitterIndex - 1];
 			jitterIndex = 1;
 
-			chrome.runtime.sendMessage({
+			sendToBackground({
 				action: "keystroke_jitter",
 				intervals,
 			});
@@ -603,8 +798,13 @@
 
 		startObserving();
 		document.addEventListener("keydown", handleKeyDown, { passive: true });
+		document.addEventListener("paste", handlePaste, { passive: true });
+		editorHealthInterval = setInterval(
+			checkEditorHealth,
+			EDITOR_HEALTH_INTERVAL_MS,
+		);
 
-		chrome.runtime.sendMessage({
+		sendToBackground({
 			action: "start_witnessing",
 			url: window.location.href,
 			title: getDocumentTitle(),
@@ -624,9 +824,25 @@
 
 		stopObserving();
 		document.removeEventListener("keydown", handleKeyDown);
+		document.removeEventListener("paste", handlePaste);
+		pendingPaste = null;
+		keystrokesSinceLastCheckpoint = 0;
 		jitterIndex = 0;
 		pendingMutationCount = 0;
 
+		if (keystrokeBatchTimer) {
+			clearTimeout(keystrokeBatchTimer);
+			keystrokeBatchTimer = null;
+		}
+		if (changeDebounceTimer) {
+			clearTimeout(changeDebounceTimer);
+			changeDebounceTimer = null;
+		}
+
+		if (editorHealthInterval) {
+			clearInterval(editorHealthInterval);
+			editorHealthInterval = null;
+		}
 		if (writingToolsInterval) {
 			clearInterval(writingToolsInterval);
 			writingToolsInterval = null;
@@ -636,7 +852,7 @@
 			titleObserver = null;
 		}
 
-		chrome.runtime.sendMessage({ action: "stop_witnessing" });
+		sendToBackground({ action: "stop_witnessing" });
 	}
 
 	chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -688,6 +904,7 @@
 
 	// SPA navigation: detect URL changes without full page reload (Notion, Coda, etc.)
 	let lastWitnessedURL = window.location.href;
+	let spaRetryTimer = null;
 	const spaNavHandler = () => {
 		if (!isWitnessing) return;
 		const newURL = window.location.href;
@@ -696,9 +913,18 @@
 			lastWitnessedURL = newURL;
 			cachedSiteId = undefined;
 			invalidateEditorCache();
-			if (detectSite()) {
-				setTimeout(startWitnessing, 1000);
-			}
+			if (spaRetryTimer) clearTimeout(spaRetryTimer);
+			let retries = 0;
+			const tryRestart = () => {
+				spaRetryTimer = null;
+				cachedSiteId = undefined;
+				if (detectSite()) {
+					startWitnessing();
+				} else if (++retries < 5) {
+					spaRetryTimer = setTimeout(tryRestart, 2000);
+				}
+			};
+			spaRetryTimer = setTimeout(tryRestart, 1000);
 		}
 	};
 	window.addEventListener("popstate", spaNavHandler);
@@ -723,14 +949,12 @@
 				const sel = window.getSelection();
 				const charCount = sel ? sel.toString().length : 0;
 				if (charCount === 0) return;
-				chrome.runtime
-					.sendMessage({
-						action: "ai_content_copied",
-						source: aiSiteId,
-						charCount,
-						timestamp: Date.now(),
-					})
-					.catch(() => {});
+				sendToBackground({
+					action: "ai_content_copied",
+					source: aiSiteId,
+					charCount,
+					timestamp: Date.now(),
+				});
 			},
 			{ passive: true },
 		);

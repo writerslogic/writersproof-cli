@@ -48,6 +48,81 @@ const elements = {
 let currentMode = "detecting";
 let sessionStartTime = null;
 let lastCheckpointCount = 0;
+let durationTimer = null;
+let jitterBatchCount = 0;
+
+function startDurationTimer() {
+	stopDurationTimer();
+	const durationEl = document.getElementById("session-duration");
+	if (!durationEl) return;
+	durationTimer = setInterval(() => {
+		if (!sessionStartTime) return;
+		const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+		const h = Math.floor(elapsed / 3600);
+		const m = Math.floor((elapsed % 3600) / 60);
+		const s = elapsed % 60;
+		durationEl.textContent =
+			h > 0
+				? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+				: `${m}:${String(s).padStart(2, "0")}`;
+	}, 1000);
+}
+
+function stopDurationTimer() {
+	if (durationTimer) {
+		clearInterval(durationTimer);
+		durationTimer = null;
+	}
+}
+
+function computeLiveScore(checkpoints, jitterBatches, durationMs) {
+	let score = 0;
+
+	// Match standalone.js computeEvidenceQuality weights exactly
+	if (checkpoints >= 20) score += 25;
+	else if (checkpoints >= 5) score += 15;
+	else if (checkpoints >= 1) score += 5;
+
+	if (jitterBatches >= 10) score += 25;
+	else if (jitterBatches >= 3) score += 15;
+	else if (jitterBatches >= 1) score += 5;
+
+	const durationMin = (durationMs || 0) / 60000;
+	if (durationMin >= 30) score += 15;
+	else if (durationMin >= 5) score += 10;
+	else if (durationMin >= 1) score += 5;
+
+	// Chain integrity assumed verified during live session
+	if (checkpoints >= 1) score += 20;
+
+	// Delta consistency placeholder — can't compute live without full checkpoint list
+	if (checkpoints >= 3) score += 15;
+
+	return Math.min(score, 100);
+}
+
+function updateEvidenceMeter(checkpoints, jitterBatches, durationMs) {
+	const fill = document.getElementById("evidence-fill");
+	const label = document.getElementById("evidence-label");
+	if (!fill || !label) return;
+
+	const score = computeLiveScore(checkpoints, jitterBatches, durationMs);
+
+	fill.style.width = score + "%";
+	fill.className = "meter-fill";
+	if (score >= 80) {
+		fill.classList.add("strong");
+		label.textContent = "Strong";
+	} else if (score >= 50) {
+		fill.classList.add("moderate");
+		label.textContent = "Moderate";
+	} else if (score >= 25) {
+		fill.classList.add("weak");
+		label.textContent = "Building...";
+	} else {
+		label.textContent = "Gathering...";
+	}
+}
 
 function updateUI(state) {
 	const isStandalone = state.mode === "standalone";
@@ -101,11 +176,21 @@ function updateUI(state) {
 		if (!sessionStartTime) {
 			chrome.storage.local.get("_sessionStartTime", (r) => {
 				sessionStartTime = r._sessionStartTime || Date.now();
+				startDurationTimer();
+				updateEvidenceMeter(
+					lastCheckpointCount,
+					jitterBatchCount,
+					Date.now() - sessionStartTime,
+				);
 			});
+		} else {
+			startDurationTimer();
 		}
 		// Mark first session seen
 		chrome.storage.local.set({ _hasUsedExtension: true });
 	} else {
+		stopDurationTimer();
+		jitterBatchCount = 0;
 		elements.activeSession.hidden = true;
 		elements.btnStart.hidden = false;
 		elements.btnStop.hidden = true;
@@ -195,6 +280,18 @@ function generateHTMLReport(evidence) {
 			? '<span style="color:#66bb6a;font-weight:600">Verified</span>'
 			: '<span style="color:#ef5350;font-weight:600">Broken</span>';
 
+	const qualityGrade = evidence.evidenceQuality?.grade || "unknown";
+	const qualityScore = evidence.evidenceQuality?.score || 0;
+	const qualityColors = {
+		strong: "#66bb6a",
+		moderate: "#ffa726",
+		weak: "#ef5350",
+		insufficient: "#ef5350",
+		unknown: "#8892a8",
+	};
+	const qualityColor = qualityColors[qualityGrade] || qualityColors.unknown;
+	const qualityLabel = `<span style="color:${qualityColor};font-weight:600">${escHtml(qualityGrade.charAt(0).toUpperCase() + qualityGrade.slice(1))} (${qualityScore}/100)</span>`;
+
 	let checkpointRows = "";
 	for (const cp of checkpoints) {
 		const ts = new Date(cp.timestamp).toLocaleString();
@@ -250,6 +347,7 @@ footer a:hover{text-decoration:underline}
   <div class="summary-item"><div class="summary-value">${durationMin} min</div><div class="summary-label">Duration</div></div>
   <div class="summary-item"><div class="summary-value">${lastCharCount.toLocaleString()}</div><div class="summary-label">Final Characters</div></div>
   <div class="summary-item"><div class="summary-value">${chainStatus}</div><div class="summary-label">Chain Integrity</div></div>
+  <div class="summary-item"><div class="summary-value">${qualityLabel}</div><div class="summary-label">Evidence Strength</div></div>
 </div>
 <table>
   <tr><td style="color:var(--muted)">Title</td><td>${escHtml(session.title || "Untitled")}</td></tr>
@@ -439,6 +537,19 @@ chrome.runtime.onMessage.addListener((message) => {
 			elements.checkpointCount.textContent =
 				message.checkpoint_count || "0";
 			lastCheckpointCount = message.checkpoint_count || 0;
+			if (message.charCount !== undefined) {
+				elements.charCount.textContent = formatNumber(
+					message.charCount,
+				);
+			}
+			if (message.keystrokeCount) {
+				jitterBatchCount++;
+			}
+			updateEvidenceMeter(
+				lastCheckpointCount,
+				jitterBatchCount,
+				sessionStartTime ? Date.now() - sessionStartTime : 0,
+			);
 			break;
 
 		case "connection_status":

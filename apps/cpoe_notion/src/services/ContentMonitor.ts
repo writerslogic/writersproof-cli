@@ -269,8 +269,32 @@ export class ContentMonitor {
 	/**
 	 * Fetches all blocks for a page, following has_more pagination.
 	 * Recursively fetches children for blocks that have them.
+	 * Depth is capped at 10 to prevent stack overflow on deeply nested pages.
 	 */
-	private async fetchAllBlocks(blockId: string): Promise<NotionBlock[]> {
+	private static readonly TEXT_BLOCK_TYPES = new Set([
+		"paragraph",
+		"heading_1",
+		"heading_2",
+		"heading_3",
+		"bulleted_list_item",
+		"numbered_list_item",
+		"to_do",
+		"toggle",
+		"code",
+		"callout",
+		"quote",
+		"table_row",
+		"column_list",
+		"column",
+		"table",
+		"synced_block",
+	]);
+
+	private async fetchAllBlocks(
+		blockId: string,
+		depth = 0,
+	): Promise<NotionBlock[]> {
+		if (depth >= 10) return [];
 		const allBlocks: NotionBlock[] = [];
 		let cursor: string | null = null;
 
@@ -285,20 +309,17 @@ export class ContentMonitor {
 				"GET",
 				url.toString(),
 			);
-			allBlocks.push(...resp.results);
+			const textBlocks = resp.results.filter((b) =>
+				ContentMonitor.TEXT_BLOCK_TYPES.has(b.type),
+			);
+			allBlocks.push(...textBlocks);
 			cursor = resp.has_more ? resp.next_cursor : null;
 		} while (cursor !== null);
 
 		// Recursively fetch children for blocks that have nested content
-		const withChildren = allBlocks.filter(
-			(b) =>
-				b.has_children &&
-				["toggle", "bulleted_list_item", "numbered_list_item"].includes(
-					b.type,
-				),
-		);
+		const withChildren = allBlocks.filter((b) => b.has_children);
 		for (const block of withChildren) {
-			const children = await this.fetchAllBlocks(block.id);
+			const children = await this.fetchAllBlocks(block.id, depth + 1);
 			allBlocks.push(...children);
 		}
 

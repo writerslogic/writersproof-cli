@@ -176,7 +176,10 @@ app.get("/oauth/callback", async (req: Request, res: Response) => {
 			res.status(502).json({ error: `Token exchange failed: ${text}` });
 			return;
 		}
-		const tokens = await resp.json();
+		const tokens = (await resp.json()) as Record<string, unknown>;
+		// Strip sensitive fields before returning to the client.
+		delete tokens["access_token"];
+		delete tokens["refresh_token"];
 		res.json({ message: "Authorization successful", tokens });
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -218,12 +221,13 @@ app.post("/webhooks/docusign", async (req: Request, res: Response) => {
 
 	res.status(202).json({ accepted: true });
 
-	setImmediate(async () => {
-		try {
-			await handleEnvelopeEvent(payload, wpClient, monitor);
-		} catch {
-			// Errors are non-fatal to the 202 response; Connect will retry on delivery failure
-		}
+	setImmediate(() => {
+		handleEnvelopeEvent(payload, wpClient, monitor).catch((err) => {
+			const detail = err instanceof Error ? err.message : String(err);
+			process.stderr.write(
+				`[cpoe-docusign] webhook processing failed for ${payload.envelopeId}: ${detail}\n`,
+			);
+		});
 	});
 });
 

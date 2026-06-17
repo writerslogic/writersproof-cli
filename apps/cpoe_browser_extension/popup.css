@@ -250,6 +250,41 @@ header {
   color: var(--text-muted);
 }
 
+/* Evidence strength meter */
+.evidence-meter {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.meter-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease, background-color 0.6s ease;
+  background: var(--accent);
+}
+
+.meter-fill.strong { background: var(--success); }
+.meter-fill.moderate { background: var(--warning); }
+.meter-fill.weak { background: var(--danger); }
+
+.meter-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: right;
+}
+
 /* Session summary */
 .summary-card {
   text-align: center;

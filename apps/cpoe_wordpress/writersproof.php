@@ -157,7 +157,7 @@ function writersproof_enqueue_admin_assets( string $hook_suffix ): void {
 				'nonce'               => wp_create_nonce( 'wp_rest' ),
 				'postId'              => (int) get_the_ID(),
 				'autoStart'           => (bool) get_option( 'writersproof_auto_start', '1' ),
-				'checkpointInterval'  => (int) get_option( 'writersproof_checkpoint_interval', '60' ),
+				'checkpointInterval'  => max( 10, min( 300, (int) get_option( 'writersproof_checkpoint_interval', '60' ) ) ),
 				'hasApiKey'           => ! empty( $api_key ),
 				'version'             => WRITERSPROOF_VERSION,
 			)
@@ -286,7 +286,7 @@ function writersproof_on_save_post( int $post_id, WP_Post $post, bool $update ):
 	$snapshot   = $monitor->capture_snapshot( $post_id );
 	$client     = new WritersProof_Client();
 
-	$client->create_checkpoint(
+	$result = $client->create_checkpoint(
 		$session_id,
 		array(
 			'contentHash' => $snapshot['content_hash'],
@@ -298,6 +298,9 @@ function writersproof_on_save_post( int $post_id, WP_Post $post, bool $update ):
 			),
 		)
 	);
+	if ( is_wp_error( $result ) ) {
+		return;
+	}
 
 	$monitor->save_snapshot( $post_id, $snapshot );
 }

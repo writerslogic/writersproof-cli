@@ -62,6 +62,17 @@ app.post("/api/setup", async (req: Request, res: Response) => {
 	}
 
 	try {
+		const parsed = new URL(webhookUrl);
+		if (parsed.protocol !== "https:") {
+			res.status(400).json({ error: "webhookUrl must use https://" });
+			return;
+		}
+	} catch {
+		res.status(400).json({ error: "webhookUrl is not a valid URL" });
+		return;
+	}
+
+	try {
 		const token = await monitor.getInstallationToken(installationId);
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 30_000);
