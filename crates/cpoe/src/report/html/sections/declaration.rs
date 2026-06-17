@@ -28,12 +28,37 @@ pub(in crate::report::html) fn write_verdict(
     }
 
     let lr_display = format_lr(r.likelihood_ratio);
+    // SVG semicircle gauge: score 0-100 maps to 0-180 degrees on the arc.
+    let score_clamped = (r.score as f64).clamp(0.0, 100.0);
+    let angle = score_clamped * 1.8; // 0-180 degrees
+    let cx = 50.0;
+    let cy = 50.0;
+    let radius = 40.0;
+    // Arc sweeps from left (10,50) clockwise. At 0 degrees end=(10,50), at 180 end=(90,50).
+    let end_x = cx - radius * angle.to_radians().cos();
+    let end_y = cy - radius * angle.to_radians().sin();
+    let large_arc = if angle > 90.0 { 1 } else { 0 };
+    // Arc from left (10,50) sweeping clockwise to (end_x, end_y)
+    let gauge_svg = format!(
+        r#"<svg viewBox="0 0 100 55" width="88" height="48" style="flex-shrink:0">
+<path d="M10,50 A40,40 0 0,1 90,50" fill="none" stroke="{border}" stroke-width="7" stroke-linecap="round"/>
+<path d="M10,50 A40,40 0 {large_arc},1 {ex:.1},{ey:.1}" fill="none" stroke="{color}" stroke-width="7" stroke-linecap="round"/>
+<text x="50" y="48" text-anchor="middle" font-family="var(--sans)" font-size="18" font-weight="800" fill="{color}">{score}</text>
+<text x="50" y="12" text-anchor="middle" font-family="var(--sans)" font-size="7" fill="{muted}" letter-spacing="0.5">OF 100</text>
+</svg>"#,
+        border = "var(--border-light)",
+        color = color,
+        score = r.score,
+        ex = end_x,
+        ey = end_y,
+        muted = "var(--text-muted)",
+    );
     write!(
         html,
         r#"<div class="declaration" style="border-color:{color}">
   <div class="declaration-header">Examiner's Determination</div>
   <div class="declaration-body">
-    <div class="declaration-score" style="color:{color}">{score}<small>of 100</small></div>
+    {gauge}
     <div class="declaration-text">
       <div class="verdict-label" style="color:{color}">{label}</div>
       <p>{desc}</p>
@@ -46,7 +71,7 @@ pub(in crate::report::html) fn write_verdict(
   </div>
 </div>
 "#,
-        score = r.score,
+        gauge = gauge_svg,
         label = r.verdict.label(),
         desc = html_escape(&r.verdict_description),
         lr = lr_display,

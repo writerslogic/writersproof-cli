@@ -149,7 +149,7 @@ mod tests {
     /// receives the client certificate.
     #[test]
     fn tls_handshake_with_real_p256() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         use p256::ecdsa::{DerSignature, SigningKey as P256SigningKey, VerifyingKey};
         use rustls::client::danger::{
             HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,

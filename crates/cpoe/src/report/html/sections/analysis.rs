@@ -198,20 +198,32 @@ pub(in crate::report::html) fn write_forgery_resistance(
     if r.forgery.components.is_empty() {
         return Ok(());
     }
-    section_heading(html, 9, SEC_FORGERY)?;
-    writeln!(
-        html,
-        r#"<p>The following analysis estimates the computational cost an adversary would incur to fabricate evidence equivalent to \
-that presented in this report. Higher costs indicate stronger resistance to forgery.</p>"#
-    )?;
-    write!(html, r#"<div class="info-box"><table>"#)?;
-    row(html, "Resistance Tier", &r.forgery.tier)?;
     let forge_time = format_duration_human(r.forgery.estimated_forge_time_sec);
-    row(html, "Estimated Forge Time", &forge_time)?;
-    if let Some(ref weak) = r.forgery.weakest_link {
-        row(html, "Weakest Component", weak)?;
+    write!(
+        html,
+        r#"<details class="report-section"><summary><span class="section-number">9.</span> {title} <span class="section-metric">{tier}, {time} to forge</span></summary>"#,
+        title = SEC_FORGERY,
+        tier = html_escape(&r.forgery.tier),
+        time = forge_time,
+    )?;
+
+    // Stacked cost bar showing relative contribution of each component.
+    let total_cost: f64 = r.forgery.components.iter()
+        .map(|c| if c.cost_cpu_sec.is_finite() { c.cost_cpu_sec } else { 0.0 })
+        .sum::<f64>().max(1.0);
+    let bar_colors = ["#1a4d2e", "#2c5282", "#5b3c8b", "#8b6914", "#3d7a4a", "#b45309", "#6b6b6b", "#8b1a1a"];
+    write!(html, r#"<div style="display:flex;height:18px;border:1px solid var(--border);margin:12px 0;overflow:hidden">"#)?;
+    for (i, c) in r.forgery.components.iter().enumerate() {
+        let cost = if c.cost_cpu_sec.is_finite() { c.cost_cpu_sec } else { 0.0 };
+        let pct = (cost / total_cost * 100.0).max(0.5);
+        let bg = bar_colors.get(i % bar_colors.len()).unwrap_or(&"#6b6b6b");
+        let opacity = if c.present { "1" } else { "0.3" };
+        write!(html, r#"<div style="width:{pct:.1}%;background:{bg};opacity:{opacity}" title="{name}: {cost_h}"></div>"#,
+            name = html_escape(&c.name),
+            cost_h = format_duration_human(c.cost_cpu_sec),
+        )?;
     }
-    writeln!(html, "</table></div>")?;
+    write!(html, "</div>")?;
 
     write!(
         html,
@@ -233,7 +245,7 @@ that presented in this report. Higher costs indicate stronger resistance to forg
             html_escape(&c.explanation),
         )?;
     }
-    writeln!(html, "</tbody></table>")
+    writeln!(html, "</tbody></table></details>")
 }
 
 pub(in crate::report::html) fn write_flags(html: &mut String, r: &WarReport) -> fmt::Result {
@@ -252,7 +264,7 @@ pub(in crate::report::html) fn write_flags(html: &mut String, r: &WarReport) -> 
         .count();
     write!(
         html,
-        r#"<h2><span class="section-number">10.</span> {} ({} human, {} synthetic)</h2>"#,
+        r#"<details class="report-section"><summary><span class="section-number">10.</span> {} <span class="section-metric">{} human, {} synthetic</span></summary>"#,
         SEC_FLAGS, pos, neg
     )?;
     writeln!(
@@ -284,7 +296,7 @@ synthetic indicators, if present, corroborate H\u{{2082}} and may warrant furthe
             label = f.signal.label(),
         )?;
     }
-    writeln!(html, "</tbody></table>")
+    writeln!(html, "</tbody></table></details>")
 }
 
 pub(in crate::report::html) fn write_scope(html: &mut String, r: &WarReport) -> fmt::Result {
