@@ -110,14 +110,7 @@ fn save_beacon_attestation(
         beacon_sidecar_path(document_path).ok_or_else(|| "data dir not configured".to_string())?;
     let json = serde_json::to_vec(attestation)
         .map_err(|e| format!("beacon JSON serialization failed: {e}"))?;
-    let parent = sidecar.parent().unwrap_or(std::path::Path::new("."));
-    let mut tmp = tempfile::NamedTempFile::new_in(parent)
-        .map_err(|e| format!("beacon sidecar temp file failed: {e}"))?;
-    std::io::Write::write_all(&mut tmp, &json)
-        .map_err(|e| format!("beacon sidecar write failed: {e}"))?;
-    tmp.persist(&sidecar)
-        .map_err(|e| format!("beacon sidecar persist failed: {e}"))?;
-    Ok(())
+    crate::ffi::helpers::atomic_write(&sidecar, &json)
 }
 
 pub(crate) fn load_beacon_attestation(

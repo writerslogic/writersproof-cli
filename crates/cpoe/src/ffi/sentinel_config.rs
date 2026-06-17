@@ -3,7 +3,7 @@
 //! FFI functions for reading and modifying sentinel configuration
 //! (excluded paths, allowed extensions) persisted in writersproof.json.
 
-use super::helpers::get_data_dir;
+use super::helpers::{get_data_dir, require_data_dir};
 use super::types::{catch_ffi_panic, FfiResult};
 use std::path::PathBuf;
 
@@ -26,7 +26,7 @@ fn with_config_mut(f: impl FnOnce(&mut crate::config::CpopConfig)) -> FfiResult 
 
 /// Load the current config (read-only).
 fn load_config() -> Result<crate::config::CpopConfig, String> {
-    let data_dir = get_data_dir().ok_or_else(|| "Cannot determine data directory".to_string())?;
+    let data_dir = require_data_dir()?;
     crate::config::CpopConfig::load_or_default(&data_dir)
         .map_err(|e| format!("Failed to load config: {e}"))
 }

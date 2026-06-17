@@ -597,7 +597,7 @@ pub fn ffi_attest_text(
 
     // Build compact VC signature over the attestation claim.
     // Includes nonce for replay resistance.
-    let nonce_hex = hex::encode(&nonce);
+    let nonce_hex = hex::encode(nonce);
     let author_did = crate::identity::did_key_from_public(
         signing_key.verifying_key().as_bytes(),
     )

@@ -184,7 +184,12 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
 /// bundle the original asset + `.c2pa` sidecar manifest + `.vc.json` into
 /// a ZIP archive per the C2PA sidecar distribution model.
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_export_c2pa(path: String, tier: String, output: String) -> FfiResult {
+pub fn ffi_export_c2pa(
+    path: String,
+    tier: String,
+    output: String,
+    ai_declaration: Option<String>,
+) -> FfiResult {
     catch_ffi_panic!(@err FfiResult, {
     super::types::run_on_stack(move || {
     log::debug!("ffi_export_c2pa: path={} tier={} output={}", path, tier, output);
@@ -206,7 +211,9 @@ pub fn ffi_export_c2pa(path: String, tier: String, output: String) -> FfiResult 
 
     // Build evidence packet in memory.
     let (_packet, evidence_bytes, is_signed) = try_ffi!(
-        crate::ffi::evidence_export::build_wire_packet(path.clone(), tier, None, None),
+        crate::ffi::evidence_export::build_wire_packet_with_ai(
+            path.clone(), tier, None, None, ai_declaration,
+        ),
         FfiResult
     );
     if !is_signed {
@@ -267,23 +274,34 @@ pub fn ffi_export_c2pa(path: String, tier: String, output: String) -> FfiResult 
     }
 
     // Build signed VC (both embedded in C2PA manifest and as standalone JSON).
-    let vc_json = if let Ok((ear, author_did)) = crate::ffi::vc_export::build_ear_for_path(
+    let mut vc_warning: Option<String> = None;
+    let vc_json = match crate::ffi::vc_export::build_ear_for_path(
         &doc_path_string, &doc_path_string, &signing_key,
     ) {
-        let provider = crate::tpm::detect_provider();
-        if let Ok(vc) = crate::war::profiles::vc::to_signed_verifiable_credential(
-            &ear, &author_did, &*provider,
-        ) {
-            let json = serde_json::to_string_pretty(&vc).ok();
-            if let Ok(embed) = serde_json::to_string(&vc) {
-                builder = builder.vc_embedded(embed);
+        Ok((ear, author_did)) => {
+            let provider = crate::tpm::detect_provider();
+            match crate::war::profiles::vc::to_signed_verifiable_credential(
+                &ear, &author_did, &*provider,
+            ) {
+                Ok(vc) => {
+                    let json = serde_json::to_string_pretty(&vc).ok();
+                    if let Ok(embed) = serde_json::to_string(&vc) {
+                        builder = builder.vc_embedded(embed);
+                    }
+                    json
+                }
+                Err(e) => {
+                    log::warn!("VC signing failed, exporting without credential: {e}");
+                    vc_warning = Some(format!("Verifiable credential not included: {e}"));
+                    None
+                }
             }
-            json
-        } else {
+        }
+        Err(e) => {
+            log::warn!("EAR build failed, exporting without credential: {e}");
+            vc_warning = Some(format!("Verifiable credential not included: {e}"));
             None
         }
-    } else {
-        None
     };
 
     let jumbf = try_ffi!(
@@ -345,12 +363,18 @@ pub fn ffi_export_c2pa(path: String, tier: String, output: String) -> FfiResult 
         }
     }
 
-    FfiResult::ok(format!(
+    let mut msg = format!(
         "C2PA evidence exported to {} ({} bytes, {} files)",
         out_file.display(),
         zip_bytes.len(),
         if vc_json.is_some() { 3 } else { 2 }
-    ))
+    );
+    if let Some(warn) = vc_warning {
+        msg.push_str(" [warning: ");
+        msg.push_str(&warn);
+        msg.push(']');
+    }
+    FfiResult::ok(msg)
     })
     })
 }
@@ -519,16 +543,29 @@ pub fn ffi_export_c2pa_manifest(
     }
 
     // Build signed VC and embed in manifest.
-    if let Ok((ear, author_did)) = crate::ffi::vc_export::build_ear_for_path(
+    let mut vc_warning: Option<String> = None;
+    match crate::ffi::vc_export::build_ear_for_path(
         &evidence_path, &doc_path_string, &signing_key,
     ) {
-        let provider = crate::tpm::detect_provider();
-        if let Ok(vc) = crate::war::profiles::vc::to_signed_verifiable_credential(
-            &ear, &author_did, &*provider,
-        ) {
-            if let Ok(vc_json) = serde_json::to_string(&vc) {
-                builder = builder.vc_embedded(vc_json);
+        Ok((ear, author_did)) => {
+            let provider = crate::tpm::detect_provider();
+            match crate::war::profiles::vc::to_signed_verifiable_credential(
+                &ear, &author_did, &*provider,
+            ) {
+                Ok(vc) => {
+                    if let Ok(vc_json) = serde_json::to_string(&vc) {
+                        builder = builder.vc_embedded(vc_json);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("VC signing failed in manifest export: {e}");
+                    vc_warning = Some(format!("Verifiable credential not included: {e}"));
+                }
             }
+        }
+        Err(e) => {
+            log::warn!("EAR build failed in manifest export: {e}");
+            vc_warning = Some(format!("Verifiable credential not included: {e}"));
         }
     }
 
@@ -567,11 +604,17 @@ pub fn ffi_export_c2pa_manifest(
                             }
                         }
                     }
-                    FfiResult::ok(format!(
+                    let mut msg = format!(
                         "C2PA manifest exported to {} ({} bytes)",
                         out_file.display(),
                         jumbf.len()
-                    ))
+                    );
+                    if let Some(ref warn) = vc_warning {
+                        msg.push_str(" [warning: ");
+                        msg.push_str(warn);
+                        msg.push(']');
+                    }
+                    FfiResult::ok(msg)
                 }
                 Err(e) => FfiResult::err(format!("Failed to persist C2PA manifest: {e}")),
             }

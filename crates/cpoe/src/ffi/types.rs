@@ -217,7 +217,7 @@ pub struct FfiEngineVersion {
     pub build_profile: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiProcessScore {
     pub success: bool,
@@ -229,13 +229,17 @@ pub struct FfiProcessScore {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+crate::ffi::types::impl_ffi_err!(FfiProcessScore);
+
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiCalibrationResult {
     pub success: bool,
     pub iterations_per_second: u64,
     pub error_message: Option<String>,
 }
+
+crate::ffi::types::impl_ffi_err!(FfiCalibrationResult);
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -323,7 +327,7 @@ pub struct FfiAttestationInfo {
     pub device_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiAttestationResponse {
     pub success: bool,
@@ -338,6 +342,8 @@ pub struct FfiAttestationResponse {
     pub os_version: String,
     pub error_message: Option<String>,
 }
+
+crate::ffi::types::impl_ffi_err!(FfiAttestationResponse);
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]

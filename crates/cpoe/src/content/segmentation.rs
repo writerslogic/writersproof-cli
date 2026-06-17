@@ -112,6 +112,26 @@ fn split_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
+/// Common abbreviations that end with '.' but do not end a sentence.
+const ABBREVIATIONS: &[&str] = &[
+    "Dr", "Mr", "Mrs", "Ms", "Prof", "Sr", "Jr", "St", "Rev", "Gen", "Gov",
+    "Sgt", "Cpl", "Pvt", "Lt", "Col", "Capt", "Cmdr", "Adm", "Maj",
+    "vs", "etc", "approx", "dept", "est", "vol", "no",
+    "i.e", "e.g", "cf", "al",
+];
+
+/// Check if the word immediately before position `i` (a '.') is a known abbreviation.
+fn is_abbreviation(chars: &[char], dot_pos: usize) -> bool {
+    let mut end = dot_pos;
+    // Walk back past any inner dots (for "i.e.", "e.g.")
+    while end > 0 && (chars[end - 1].is_alphanumeric() || chars[end - 1] == '.') {
+        end -= 1;
+    }
+    let word: String = chars[end..dot_pos].iter().collect();
+    // Strip inner dots for comparison ("i.e" → "ie" won't match, but we keep "i.e" in the list)
+    ABBREVIATIONS.iter().any(|&abbr| word.eq_ignore_ascii_case(abbr))
+}
+
 /// Check if position `i` (a sentence-ending punctuation) is likely a real
 /// sentence boundary: followed by whitespace+uppercase, end-of-string, or
 /// closing quote then whitespace.
@@ -120,6 +140,10 @@ fn is_sentence_end(chars: &[char], i: usize) -> bool {
     // End of string
     if i + 1 >= len {
         return true;
+    }
+    // Known abbreviation → not a sentence boundary
+    if chars[i] == '.' && is_abbreviation(chars, i) {
+        return false;
     }
     let next = chars[i + 1];
     // Closing quote/paren after punctuation

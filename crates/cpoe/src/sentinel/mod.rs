@@ -71,12 +71,11 @@ pub use self::daemon::{
 pub use self::error::{Result, SentinelError};
 pub use self::focus::{PollingSentinelFocusTracker, SentinelFocusTracker, WindowProvider};
 pub use self::helpers::{
-    attribute_change_to_segment, check_idle_sessions_sync, classify_paste_source,
-    compute_file_hash, create_document_hash_payload, create_session_start_payload,
-    detect_export_event, detect_paste_boundary, end_all_sessions_sync, end_session_sync,
-    focus_document_sync, handle_change_event_sync, handle_focus_event_sync,
-    is_within_paste_window, parse_fdx_scene_fingerprint, parse_scrivener_project_map,
-    unfocus_document_sync, update_keystroke_context_window,
+    attribute_change_to_segment, classify_paste_source, compute_file_hash,
+    create_document_hash_payload, create_session_start_payload, detect_export_event,
+    detect_paste_boundary, end_session_sync, focus_document_sync, handle_change_event_sync,
+    handle_focus_event_sync, is_within_paste_window, parse_fdx_scene_fingerprint,
+    parse_scrivener_project_map, unfocus_document_sync, update_keystroke_context_window,
 };
 pub use self::ipc_handler::SentinelIpcHandler;
 pub use self::shadow::ShadowManager;

@@ -4,7 +4,7 @@
 //! content segmentation, paragraph MMR witnessing, and derivation proofs.
 
 use super::helpers::get_data_dir;
-use super::types::{catch_ffi_panic, FfiResult};
+use super::types::{catch_ffi_panic, try_ffi, FfiResult};
 use crate::content::mmr::ContentMmr;
 use crate::sentinel::app_registry::{ContentGranularity, WitnessingMode};
 
@@ -20,6 +20,8 @@ pub struct FfiWitnessingConfig {
     pub content_granularity: String,
     pub error_message: Option<String>,
 }
+
+crate::ffi::types::impl_ffi_err!(FfiWitnessingConfig);
 
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -57,34 +59,24 @@ pub struct FfiResolvedMode {
     pub error_message: Option<String>,
 }
 
+crate::ffi::types::impl_ffi_err!(FfiResolvedMode);
+
 // ---------------------------------------------------------------------------
 // Configuration FFI
 // ---------------------------------------------------------------------------
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_witnessing_config() -> FfiWitnessingConfig {
-    catch_ffi_panic!(FfiWitnessingConfig {
-        success: false,
-        error_message: Some("engine internal error".to_string()),
-        ..Default::default()
-    }, {
+    catch_ffi_panic!(@err FfiWitnessingConfig, {
     log::debug!("ffi_get_witnessing_config called");
-    let data_dir = match get_data_dir() {
-        Some(d) => d,
-        None => return FfiWitnessingConfig {
-            success: false,
-            error_message: Some("Cannot determine data directory".to_string()),
-            ..Default::default()
-        },
-    };
-    let config = match crate::config::CpopConfig::load_or_default(&data_dir) {
-        Ok(c) => c,
-        Err(e) => return FfiWitnessingConfig {
-            success: false,
-            error_message: Some(format!("Failed to load config: {e}")),
-            ..Default::default()
-        },
-    };
+    let data_dir = try_ffi!(
+        get_data_dir().ok_or("Cannot determine data directory"),
+        FfiWitnessingConfig
+    );
+    let config = try_ffi!(
+        crate::config::CpopConfig::load_or_default(&data_dir),
+        FfiWitnessingConfig
+    );
     FfiWitnessingConfig {
         success: true,
         witnessing_mode: config.sentinel.default_witnessing_mode.as_str().to_string(),
@@ -148,29 +140,17 @@ pub fn ffi_set_content_granularity(granularity: String) -> FfiResult {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_resolve_witnessing_mode(bundle_id: String) -> FfiResolvedMode {
-    catch_ffi_panic!(FfiResolvedMode {
-        success: false,
-        error_message: Some("engine internal error".to_string()),
-        ..Default::default()
-    }, {
+    catch_ffi_panic!(@err FfiResolvedMode, {
     log::debug!("ffi_resolve_witnessing_mode: bundle_id={}", bundle_id);
 
-    let data_dir = match get_data_dir() {
-        Some(d) => d,
-        None => return FfiResolvedMode {
-            success: false,
-            error_message: Some("Cannot determine data directory".to_string()),
-            ..Default::default()
-        },
-    };
-    let config = match crate::config::CpopConfig::load_or_default(&data_dir) {
-        Ok(c) => c,
-        Err(e) => return FfiResolvedMode {
-            success: false,
-            error_message: Some(format!("Failed to load config: {e}")),
-            ..Default::default()
-        },
-    };
+    let data_dir = try_ffi!(
+        get_data_dir().ok_or("Cannot determine data directory"),
+        FfiResolvedMode
+    );
+    let config = try_ffi!(
+        crate::config::CpopConfig::load_or_default(&data_dir),
+        FfiResolvedMode
+    );
 
     // Check app registry (user overrides + builtins)
     let registry = crate::sentinel::app_registry::AppRegistry::load(&data_dir);

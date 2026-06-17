@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::types::{catch_ffi_panic, FfiCalibrationResult, FfiProcessScore};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiCalibrationResult, FfiProcessScore};
 use crate::forensics::provenance_metrics::ProvenanceMetrics;
 use crate::vdf::Parameters;
 use std::sync::Mutex;
@@ -9,7 +9,7 @@ use std::time::Duration;
 use super::sentinel::get_sentinel;
 
 /// Provenance metrics result returned to Swift.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiProvenanceMetrics {
     pub success: bool,
@@ -24,6 +24,8 @@ pub struct FfiProvenanceMetrics {
     pub error_message: Option<String>,
 }
 
+crate::ffi::types::impl_ffi_err!(FfiProvenanceMetrics);
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct FfiSourceSession {
@@ -35,55 +37,13 @@ pub struct FfiSourceSession {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_provenance_metrics(session_id: String) -> FfiProvenanceMetrics {
-    let empty = FfiProvenanceMetrics {
-        success: false,
-        total_fragments: 0,
-        original_composition_pct: 0.0,
-        sourced_unknown_pct: 0.0,
-        sourced_verified_pct: 0.0,
-        chain_depth: 0,
-        source_trustworthiness: 0.0,
-        authenticity_score: 0.0,
-        source_sessions: vec![],
-        error_message: Some("engine internal error".to_string()),
-    };
-    catch_ffi_panic!(empty, {
+    catch_ffi_panic!(@err FfiProvenanceMetrics, {
     log::debug!("ffi_get_provenance_metrics: session_id={}", session_id);
-    let store = match crate::ffi::helpers::open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiProvenanceMetrics {
-                success: false,
-                total_fragments: 0,
-                original_composition_pct: 0.0,
-                sourced_unknown_pct: 0.0,
-                sourced_verified_pct: 0.0,
-                chain_depth: 0,
-                source_trustworthiness: 0.0,
-                authenticity_score: 0.0,
-                source_sessions: vec![],
-                error_message: Some(e),
-            };
-        }
-    };
-
-    let fragments = match store.get_fragments_for_session(&session_id) {
-        Ok(f) => f,
-        Err(e) => {
-            return FfiProvenanceMetrics {
-                success: false,
-                total_fragments: 0,
-                original_composition_pct: 0.0,
-                sourced_unknown_pct: 0.0,
-                sourced_verified_pct: 0.0,
-                chain_depth: 0,
-                source_trustworthiness: 0.0,
-                authenticity_score: 0.0,
-                source_sessions: vec![],
-                error_message: Some(format!("Failed to load fragments: {e}")),
-            };
-        }
-    };
+    let store = try_ffi!(crate::ffi::helpers::open_store(), FfiProvenanceMetrics);
+    let fragments = try_ffi!(
+        store.get_fragments_for_session(&session_id),
+        FfiProvenanceMetrics
+    );
 
     let metrics = ProvenanceMetrics::compute(&fragments);
 
@@ -116,62 +76,24 @@ pub fn ffi_get_provenance_metrics(session_id: String) -> FfiProvenanceMetrics {
 /// to `ffi_get_provenance_metrics`.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_provenance_metrics_for_document(path: String) -> FfiProvenanceMetrics {
-    let fallback = FfiProvenanceMetrics {
-        success: false,
-        total_fragments: 0,
-        original_composition_pct: 0.0,
-        sourced_unknown_pct: 0.0,
-        sourced_verified_pct: 0.0,
-        chain_depth: 0,
-        source_trustworthiness: 0.0,
-        authenticity_score: 0.0,
-        source_sessions: vec![],
-        error_message: Some("engine internal error".to_string()),
-    };
-    catch_ffi_panic!(fallback, {
+    use crate::ffi::types::FfiErrResult;
+    catch_ffi_panic!(@err FfiProvenanceMetrics, {
     log::debug!("ffi_get_provenance_metrics_for_document: path={}", path);
-    let empty = FfiProvenanceMetrics {
-        success: false,
-        total_fragments: 0,
-        original_composition_pct: 0.0,
-        sourced_unknown_pct: 0.0,
-        sourced_verified_pct: 0.0,
-        chain_depth: 0,
-        source_trustworthiness: 0.0,
-        authenticity_score: 0.0,
-        source_sessions: vec![],
-        error_message: None,
-    };
 
-    let path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => {
-            return FfiProvenanceMetrics {
-                error_message: Some(format!("Invalid path: {e}")),
-                ..empty
-            };
-        }
-    };
+    let path = try_ffi!(
+        crate::sentinel::helpers::validate_path(&path).map(|p| p.to_string_lossy().to_string()),
+        FfiProvenanceMetrics
+    );
 
     let sentinel_opt = get_sentinel();
     let sentinel = match sentinel_opt.as_ref() {
         Some(s) => s,
-        None => {
-            return FfiProvenanceMetrics {
-                error_message: Some("Sentinel not initialized".to_string()),
-                ..empty
-            };
-        }
+        None => return FfiProvenanceMetrics::ffi_err("Sentinel not initialized"),
     };
 
     let session_id = match sentinel.session(&path) {
         Ok(s) => s.session_id,
-        Err(_) => {
-            return FfiProvenanceMetrics {
-                error_message: Some(format!("No active session for: {path}")),
-                ..empty
-            };
-        }
+        Err(_) => return FfiProvenanceMetrics::ffi_err(format!("No active session for: {path}")),
     };
 
     ffi_get_provenance_metrics(session_id)
@@ -312,41 +234,16 @@ pub(crate) fn calibrated_params() -> Option<Parameters> {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_compute_process_score(path: String) -> FfiProcessScore {
-    catch_ffi_panic!(FfiProcessScore {
-        success: false,
-        residency: 0.0,
-        sequence: 0.0,
-        behavioral: 0.0,
-        composite: 0.0,
-        meets_threshold: false,
-        error_message: Some("engine internal error".to_string()),
-    }, {
+    use crate::ffi::types::FfiErrResult;
+    catch_ffi_panic!(@err FfiProcessScore, {
     log::debug!("ffi_compute_process_score: path={}", path);
-    let (_path, _store, events) = match crate::ffi::helpers::load_events_for_path(&path) {
-        Ok(v) => v,
-        Err(e) => {
-            return FfiProcessScore {
-                success: false,
-                residency: 0.0,
-                sequence: 0.0,
-                behavioral: 0.0,
-                composite: 0.0,
-                meets_threshold: false,
-                error_message: Some(e),
-            };
-        }
-    };
+    let (_path, _store, events) = try_ffi!(
+        crate::ffi::helpers::load_events_for_path(&path),
+        FfiProcessScore
+    );
 
     if events.is_empty() {
-        return FfiProcessScore {
-            success: false,
-            residency: 0.0,
-            sequence: 0.0,
-            behavioral: 0.0,
-            composite: 0.0,
-            meets_threshold: false,
-            error_message: Some("No events found for this file".to_string()),
-        };
+        return FfiProcessScore::ffi_err("No events found for this file");
     }
 
     let profile = crate::forensics::ForensicEngine::evaluate_authorship(&path, &events);
@@ -385,11 +282,8 @@ pub fn ffi_compute_process_score(path: String) -> FfiProcessScore {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_calibrate_swf() -> FfiCalibrationResult {
-    catch_ffi_panic!(FfiCalibrationResult {
-        success: false,
-        iterations_per_second: 0,
-        error_message: Some("engine internal error".to_string()),
-    }, {
+    use crate::ffi::types::FfiErrResult;
+    catch_ffi_panic!(@err FfiCalibrationResult, {
     log::debug!("ffi_calibrate_swf");
     match crate::vdf::calibrate(Duration::from_secs(1)) {
         Ok(params) => {
@@ -398,16 +292,12 @@ pub fn ffi_calibrate_swf() -> FfiCalibrationResult {
             let valid_range = crate::vdf::CALIBRATION_MIN_ITERS_PER_SEC
                 ..=crate::vdf::CALIBRATION_MAX_ITERS_PER_SEC;
             if !valid_range.contains(&ips) {
-                return FfiCalibrationResult {
-                    success: false,
-                    iterations_per_second: 0,
-                    error_message: Some(format!(
-                        "Calibration result out of bounds: {ips} iter/s \
-                         (expected {}..={})",
-                        crate::vdf::CALIBRATION_MIN_ITERS_PER_SEC,
-                        crate::vdf::CALIBRATION_MAX_ITERS_PER_SEC,
-                    )),
-                };
+                return FfiCalibrationResult::ffi_err(format!(
+                    "Calibration result out of bounds: {ips} iter/s \
+                     (expected {}..={})",
+                    crate::vdf::CALIBRATION_MIN_ITERS_PER_SEC,
+                    crate::vdf::CALIBRATION_MAX_ITERS_PER_SEC,
+                ));
             }
             {
                 let mut cached = CALIBRATED_PARAMS.lock().unwrap_or_else(|e| {
@@ -422,11 +312,7 @@ pub fn ffi_calibrate_swf() -> FfiCalibrationResult {
                 error_message: None,
             }
         }
-        Err(e) => FfiCalibrationResult {
-            success: false,
-            iterations_per_second: 0,
-            error_message: Some(format!("Calibration failed: {}", e)),
-        },
+        Err(e) => FfiCalibrationResult::ffi_err(format!("Calibration failed: {e}")),
     }
     })
 }

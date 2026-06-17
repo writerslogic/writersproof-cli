@@ -69,7 +69,7 @@ const SUSPICIOUS_INDICATOR_CRITICAL: usize = 3;
 const VELOCITY_WINDOW_SEC: f64 = 60.0;
 
 /// IKI autocorrelation above which typing rhythm is suspiciously uniform.
-/// Calibrated: composing 0.007, transcribing 0.099-0.298 (diary data).
+/// Field-calibrated: composing ~0.044, transcribing >0.10.
 const IKI_AUTOCORR_TRANSCRIPTIVE: f64 = 0.05;
 /// Maximum penalty for high IKI autocorrelation.
 const IKI_AUTOCORR_PENALTY: f64 = 0.12;

@@ -66,6 +66,10 @@ pub(crate) fn get_data_dir() -> Option<PathBuf> {
     crate::utils::get_data_dir()
 }
 
+pub(crate) fn require_data_dir() -> Result<PathBuf, String> {
+    get_data_dir().ok_or_else(|| "Data directory not found".to_string())
+}
+
 pub(crate) fn get_db_path() -> Option<PathBuf> {
     get_data_dir().map(|d| d.join("events.db"))
 }
@@ -100,7 +104,7 @@ pub(crate) fn load_signing_key() -> Result<ed25519_dalek::SigningKey, String> {
 pub(crate) fn load_or_generate_cert(
     signing_key: &ed25519_dalek::SigningKey,
 ) -> Result<Vec<u8>, String> {
-    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+    let data_dir = require_data_dir()?;
     let cert_path = data_dir.join("ca_cert.der");
 
     // Prefer CA-signed cert if cached.
@@ -117,30 +121,34 @@ pub(crate) fn load_or_generate_cert(
         .map_err(|e| format!("Failed to generate self-signed cert: {e}"))
 }
 
+/// Write `data` to `path` atomically via tempfile + sync + rename.
+pub(crate) fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
+    let parent = path.parent().unwrap_or(std::path::Path::new("."));
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| format!("Failed to create temp file: {e}"))?;
+    std::io::Write::write_all(&mut tmp, data)
+        .map_err(|e| format!("Failed to write data: {e}"))?;
+    tmp.as_file()
+        .sync_all()
+        .map_err(|e| format!("Failed to sync to disk: {e}"))?;
+    tmp.persist(path)
+        .map_err(|e| format!("Failed to persist file: {e}"))?;
+    Ok(())
+}
+
 /// Cache a CA-signed certificate from WritersProof CA.
 ///
 /// Called after successful enrollment. Writes the DER-encoded cert to
 /// `{DATA_DIR}/ca_cert.der` via atomic rename.
 pub(crate) fn cache_ca_cert(cert_der: &[u8]) -> Result<(), String> {
-    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+    let data_dir = require_data_dir()?;
     let cert_path = data_dir.join("ca_cert.der");
-
-    let parent = cert_path.parent().unwrap_or(std::path::Path::new("."));
-    let mut tmp = tempfile::NamedTempFile::new_in(parent)
-        .map_err(|e| format!("Failed to create temp file for cert: {e}"))?;
-    std::io::Write::write_all(&mut tmp, cert_der)
-        .map_err(|e| format!("Failed to write cert: {e}"))?;
-    tmp.as_file()
-        .sync_all()
-        .map_err(|e| format!("Failed to sync cert: {e}"))?;
-    tmp.persist(&cert_path)
-        .map_err(|e| format!("Failed to persist cert: {e}"))?;
-    Ok(())
+    atomic_write(&cert_path, cert_der)
 }
 
 /// Load the DID string from identity.json.
 pub(crate) fn load_did() -> Result<String, String> {
-    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+    let data_dir = require_data_dir()?;
     let identity_path = data_dir.join("identity.json");
     let data = std::fs::read_to_string(&identity_path)
         .map_err(|e| format!("Failed to read identity.json: {e}"))?;
@@ -160,7 +168,7 @@ pub(crate) fn load_api_key() -> Result<Zeroizing<String>, String> {
     use std::io::Read;
     use zeroize::Zeroize;
 
-    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+    let data_dir = require_data_dir()?;
     let key_path = data_dir.join("writersproof_api_key");
     let key_file = std::fs::File::open(&key_path)
         .map_err(|_| "API key not found".to_string())?;

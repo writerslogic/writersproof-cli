@@ -336,7 +336,7 @@ fn load_signing_key_and_seed() -> (Option<ed25519_dalek::SigningKey>, String, St
                 signing_key.as_bytes(),
             ) {
                 Ok(mut seed) => {
-                    let result = hex::encode(&seed);
+                    let result = hex::encode(seed);
                     seed.zeroize();
                     result
                 }
@@ -1073,7 +1073,7 @@ fn embed_c2pa_in_report_pdf(
 
     let mut builder = C2paManifestBuilder::new(evidence_packet, evidence_bytes, doc_hash);
     builder = builder
-        .document_filename(&format!("{}-forensic.pdf", report.report_id))
+        .document_filename(format!("{}-forensic.pdf", report.report_id))
         .format("application/pdf");
 
     // Load signing key and cert.

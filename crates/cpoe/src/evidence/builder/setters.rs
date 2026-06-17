@@ -688,4 +688,14 @@ impl Builder {
         self.packet.beacon_attestation = Some(beacon);
         self
     }
+
+    pub fn with_export_attestation(mut self, attestation: super::ManuscriptExportAttestation) -> Self {
+        self.packet.export_attestation = Some(attestation);
+        self
+    }
+
+    pub fn with_document_structure(mut self, snapshot: super::DocumentStructureSnapshot) -> Self {
+        self.packet.document_structure = Some(snapshot);
+        self
+    }
 }

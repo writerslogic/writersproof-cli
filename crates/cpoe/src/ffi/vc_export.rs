@@ -262,17 +262,7 @@ pub(crate) fn build_ear_for_path(
 
 
 fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
-    let parent = path.parent().unwrap_or(std::path::Path::new("."));
-    let mut tmp = tempfile::NamedTempFile::new_in(parent)
-        .map_err(|e| format!("Failed to create temp file: {e}"))?;
-    std::io::Write::write_all(&mut tmp, data)
-        .map_err(|e| format!("Failed to write VC: {e}"))?;
-    tmp.as_file()
-        .sync_all()
-        .map_err(|e| format!("Failed to sync VC to disk: {e}"))?;
-    tmp.persist(path)
-        .map_err(|e| format!("Failed to finalize VC file: {e}"))?;
-    Ok(())
+    crate::ffi::helpers::atomic_write(path, data)
 }
 
 fn verify_cbor_vc(

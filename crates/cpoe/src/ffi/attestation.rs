@@ -96,50 +96,22 @@ pub fn ffi_is_hardware_bound() -> bool {
 /// platform attestation object as payload).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sign_attestation_challenge(challenge_b64: String) -> FfiAttestationResponse {
-    catch_ffi_panic!(FfiAttestationResponse {
-        success: false,
-        signature_b64: String::new(),
-        public_key_b64: String::new(),
-        cose_sign1_b64: String::new(),
-        device_id: String::new(),
-        model: String::new(),
-        os_version: String::new(),
-        error_message: Some("engine internal error".to_string()),
-    }, {
+    catch_ffi_panic!(@err FfiAttestationResponse, {
+    use crate::ffi::types::FfiErrResult;
     log::debug!("ffi_sign_attestation_challenge: challenge_b64_len={}", challenge_b64.len());
     // Reject oversized challenges before decoding (challenge should be ~32–64 bytes,
     // base64-encoded ≈ 44–88 chars; cap at 4KB to prevent memory DoS).
     const MAX_CHALLENGE_B64_LEN: usize = 4096;
     if challenge_b64.len() > MAX_CHALLENGE_B64_LEN {
-        return FfiAttestationResponse {
-            success: false,
-            signature_b64: String::new(),
-            public_key_b64: String::new(),
-            cose_sign1_b64: String::new(),
-            device_id: String::new(),
-            model: String::new(),
-            os_version: String::new(),
-            error_message: Some(format!(
-                "Challenge too large: {} bytes (max {})",
-                challenge_b64.len(),
-                MAX_CHALLENGE_B64_LEN
-            )),
-        };
+        return FfiAttestationResponse::ffi_err(format!(
+            "Challenge too large: {} bytes (max {})",
+            challenge_b64.len(),
+            MAX_CHALLENGE_B64_LEN
+        ));
     }
     let challenge = match base64::engine::general_purpose::STANDARD.decode(&challenge_b64) {
         Ok(bytes) => bytes,
-        Err(e) => {
-            return FfiAttestationResponse {
-                success: false,
-                signature_b64: String::new(),
-                public_key_b64: String::new(),
-                cose_sign1_b64: String::new(),
-                device_id: String::new(),
-                model: String::new(),
-                os_version: String::new(),
-                error_message: Some(format!("Invalid base64 challenge: {e}")),
-            };
-        }
+        Err(e) => return FfiAttestationResponse::ffi_err(format!("Invalid base64 challenge: {e}")),
     };
 
     let provider = crate::tpm::detect_provider();

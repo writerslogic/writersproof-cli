@@ -595,6 +595,25 @@ impl Sentinel {
         self.sessions.read_recover().keys().cloned().collect()
     }
 
+    /// Record a manuscript export attestation on the session for `path`.
+    /// Called when a compile process writes an output file correlated with this session.
+    pub fn record_export_attestation(
+        &self,
+        path: &str,
+        attestation: crate::evidence::ManuscriptExportAttestation,
+    ) {
+        let mut sessions = self.sessions.write_recover();
+        if let Some(session) = sessions.get_mut(path) {
+            session.last_export_detected_ns = Some(attestation.export_detected_ns);
+            session.export_attestation = Some(attestation);
+        }
+    }
+
+    /// Return a reference to the session event broadcast sender.
+    pub fn session_events_tx(&self) -> &tokio::sync::broadcast::Sender<super::types::SessionEvent> {
+        &self.session_events_tx
+    }
+
     /// Compute and persist an updated authorship baseline digest from accumulated activity.
     pub fn update_baseline(&self) -> anyhow::Result<()> {
         let summary = crate::fingerprint::global::get_global_accumulator()

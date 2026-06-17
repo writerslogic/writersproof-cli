@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use super::helpers::{get_data_dir, load_signing_key};
+use super::helpers::{load_signing_key, require_data_dir};
 use super::types::{catch_ffi_panic, FfiResult};
 
 #[derive(Debug, Clone)]
@@ -60,7 +60,7 @@ pub struct FfiDiffOp {
 }
 
 fn open_snapshot_store() -> Result<crate::snapshot::SnapshotStore, String> {
-    let data_dir = get_data_dir().ok_or_else(|| "Data directory not found".to_string())?;
+    let data_dir = require_data_dir()?;
     let sk = load_signing_key()?;
     let db_path = data_dir.join("snapshots.db");
     crate::snapshot::SnapshotStore::open(&db_path, &sk)

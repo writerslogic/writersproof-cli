@@ -64,11 +64,17 @@ fn has_consistent_delimiters(text: &str, delimiter: char, min_per_line: usize) -
     // on a sorted slice beats HashMap allocation overhead.
     let mut sorted = counts.clone();
     sorted.sort_unstable();
-    let max_freq = sorted
-        .chunk_by(|a, b| a == b)
-        .map(|g| g.len())
-        .max()
-        .unwrap_or(0);
+    let mut max_freq: usize = 0;
+    let mut run: usize = 1;
+    for w in sorted.windows(2) {
+        if w[0] == w[1] {
+            run += 1;
+        } else {
+            max_freq = max_freq.max(run);
+            run = 1;
+        }
+    }
+    max_freq = max_freq.max(run);
 
     (max_freq as f64 / counts.len() as f64) >= CONSISTENCY_THRESHOLD
 }

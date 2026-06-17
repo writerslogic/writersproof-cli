@@ -49,63 +49,8 @@ pub use wire_types::{
 /// Registered under SMI Network Management Private Enterprise Codes.
 pub const IANA_PEN: u32 = crate::codec::IANA_PEN;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u64)]
-pub enum HashAlgorithm {
-    /// SHA-256 (32-byte digest).
-    Sha256 = 1,
-    /// SHA-384 (48-byte digest).
-    Sha384 = 2,
-    /// SHA-512 (64-byte digest).
-    Sha512 = 3,
-}
-
-/// Hardware attestation strength tier per draft-condrey-rats-pop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u64)]
-pub enum AttestationTier {
-    /// Pure software signing, no hardware root of trust.
-    SoftwareOnly = 1,
-    /// Software key with remote attestation evidence.
-    AttestedSoftware = 2,
-    /// Key bound to TPM/Secure Enclave.
-    HardwareBound = 3,
-    /// Hardware-hardened with anti-tamper protections.
-    HardwareHardened = 4,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u64)]
-pub enum ContentTier {
-    /// Minimal evidence (checkpoints and hashes only).
-    Core = 1,
-    /// Additional behavioral metrics included.
-    Enhanced = 2,
-    /// Full forensic payload with jitter and HID data.
-    Maximum = 3,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u64)]
-pub enum ProofAlgorithm {
-    SwfSha256 = 10,
-    SwfArgon2id = 20,
-    /// Argon2id with cross-checkpoint entanglement.
-    SwfArgon2idEntangled = 21,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u64)]
-pub enum Verdict {
-    /// Evidence verified as authentic human authorship.
-    Authentic = 1,
-    /// Insufficient data to reach a definitive conclusion.
-    Inconclusive = 2,
-    /// Anomalies detected; manual review recommended.
-    Suspicious = 3,
-    /// Evidence is structurally or cryptographically invalid.
-    Invalid = 4,
-}
+// Shared enums: single definitions live in wire_types::enums.
+pub use wire_types::enums::{AttestationTier, ContentTier, HashAlgorithm, ProofAlgorithm, Verdict};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HashValue {

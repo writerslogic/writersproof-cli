@@ -90,7 +90,7 @@ fn test_update_with_ema() {
 fn test_default_config() {
     let config = FingerprintConfig::default();
     assert!(config.activity_enabled);
-    assert!(!config.style_enabled);
+    assert!(config.style_enabled);
     assert_eq!(config.retention_days, 365);
 }
 

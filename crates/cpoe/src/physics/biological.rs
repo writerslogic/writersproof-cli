@@ -75,7 +75,7 @@ impl BiologicalCadence {
 
         for sample in samples {
             let x = sample.duration_since_last_ns as f64;
-            if x < BIOLOGICAL_LOWER_BOUND_NS || x > BIOLOGICAL_UPPER_BOUND_NS {
+            if !(BIOLOGICAL_LOWER_BOUND_NS..=BIOLOGICAL_UPPER_BOUND_NS).contains(&x) {
                 continue;
             }
 

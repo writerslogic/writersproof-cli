@@ -423,7 +423,7 @@ fn count_zero_variance_windows(ikis: &[f64]) -> usize {
 /// Fraction of keystrokes preceded by a planning pause (>2s).
 ///
 /// Composition produces ~2x the planning pause rate of transcription
-/// (diary calibration: 0.062 composing vs 0.007-0.009 transcribing).
+/// (field-calibrated: ~0.03 composing vs <0.003 transcribing).
 fn compute_planning_pause_rate(ikis: &[f64]) -> Option<f64> {
     if ikis.len() < 10 {
         return None;

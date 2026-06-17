@@ -71,6 +71,17 @@ pub(crate) fn build_wire_packet(
     start_ns: Option<i64>,
     end_ns: Option<i64>,
 ) -> Result<(EvidencePacketWire, Vec<u8>, bool), String> {
+    build_wire_packet_with_ai(path, tier, start_ns, end_ns, None)
+}
+
+/// Build an evidence packet with an optional AI disclosure embedded in limitations.
+pub(crate) fn build_wire_packet_with_ai(
+    path: String,
+    tier: String,
+    start_ns: Option<i64>,
+    end_ns: Option<i64>,
+    ai_declaration: Option<String>,
+) -> Result<(EvidencePacketWire, Vec<u8>, bool), String> {
     let file_path = crate::utils::fs::canonicalize_validated(std::path::Path::new(&path))
         .map_err(|e| format!("Invalid source path: {e}"))?;
 
@@ -372,6 +383,12 @@ pub(crate) fn build_wire_packet(
             lims.extend(collect_repair_history(&data_dir));
             lims.extend(collect_dictation_limitations(&path));
             lims.extend(collect_composition_mode_limitations(&path, events.len()));
+            if let Some(ref decl) = ai_declaration {
+                let trimmed = decl.trim();
+                if !trimmed.is_empty() {
+                    lims.push(format!("ai-disclosure: {trimmed}"));
+                }
+            }
             if lims.is_empty() { None } else { Some(lims) }
         },
         profile: None,
@@ -482,12 +499,7 @@ fn export_evidence_inner(
     })();
     match write_result {
         Ok(()) => {
-            let label = if is_signed {
-                "signed CBOR"
-            } else {
-                "unsigned CBOR (signing unavailable)"
-            };
-            FfiResult::ok(format!("Exported {} to {}", label, output_path.display()))
+            FfiResult::ok(format!("Exported signed CBOR to {}", output_path.display()))
         }
         Err(e) => FfiResult::err(format!("Failed to write output: {}", e)),
     }

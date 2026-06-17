@@ -85,17 +85,19 @@ const BURST_LENGTH_CV: ScoringSignal = ScoringSignal::new(0.20, 0.60, 0.03);
 mod v2 {
     use super::ScoringSignal;
 
-    // PRIMARY — structural signals (total 0.60)
+    // PRIMARY — structural signals (total 0.51)
     /// diary: composing 0.007 vs transcribing 0.099-0.298
     pub const IKI_AUTOCORR: ScoringSignal = ScoringSignal::inverted(0.01, 0.10, 0.20);
     /// diary: composing 11/82 spikes vs transcribing 1/13
     pub const REVISION_SPIKES: ScoringSignal = ScoringSignal::new(0.0, 5.0, 0.15);
-    /// diary: composing 0.062 vs transcribing 0.007-0.009
-    pub const PLANNING_PAUSE_RATE: ScoringSignal = ScoringSignal::new(0.005, 0.04, 0.13);
-    /// diary: composing 0.403 vs transcribing 0.807
-    pub const TRANSLATING_BURST: ScoringSignal = ScoringSignal::inverted(0.40, 0.82, 0.12);
+    /// Field-calibrated: fast prose writers average ~1.3% planning pauses,
+    /// transcription <0.3%. Original diary data (6.2%) overestimated.
+    pub const PLANNING_PAUSE_RATE: ScoringSignal = ScoringSignal::new(0.002, 0.03, 0.08);
+    /// Field-calibrated: forward-flowing writers regularly hit 0.77 translating ratio.
+    /// Transcription threshold raised from 0.82 to 0.90.
+    pub const TRANSLATING_BURST: ScoringSignal = ScoringSignal::inverted(0.50, 0.90, 0.08);
 
-    // SECONDARY — demoted gross metrics (total 0.40)
+    // SECONDARY — demoted gross metrics (total 0.42)
     /// prior literature: backspace ratio as proxy for revision
     pub const CORRECTION_RATIO: ScoringSignal = ScoringSignal::new(0.02, 0.05, 0.08);
     /// diary: supports revision spikes signal
@@ -616,7 +618,7 @@ fn compute_pause_burst_correlation(sorted: SortedEvents<'_>) -> f64 {
 /// A "revising" sub-sequence is >= 1 consecutive event with `size_delta < 0`.
 /// Bursts are separated by gaps > `BURST_SEPARATOR_NS` (1s).
 ///
-/// Diary calibration: composition ~0.40, transcription ~0.81.
+/// Field-calibrated: composition ~0.50, transcription >0.90.
 pub fn compute_translating_burst_ratio(sorted: SortedEvents<'_>) -> Option<f64> {
     if sorted.len() < MIN_EVENTS_FOR_MODE {
         return None;

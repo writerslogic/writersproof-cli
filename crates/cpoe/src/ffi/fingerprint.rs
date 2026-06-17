@@ -2,7 +2,7 @@
 
 //! FFI bindings for fingerprint management — status, consent, export.
 
-use super::helpers::get_data_dir;
+use super::helpers::require_data_dir;
 use crate::RwLockRecover;
 use super::types::{
     catch_ffi_panic, FfiConsentResult, FfiFingerprintDimension, FfiFingerprintSnapshot,
@@ -31,7 +31,7 @@ where
     })?;
 
     if guard.is_none() {
-        let data_dir = get_data_dir().ok_or("Cannot determine data directory")?;
+        let data_dir = require_data_dir()?;
         let fp_dir = data_dir.join("fingerprints");
         std::fs::create_dir_all(&fp_dir)
             .map_err(|e| format!("Failed to create fingerprint directory: {e}"))?;
