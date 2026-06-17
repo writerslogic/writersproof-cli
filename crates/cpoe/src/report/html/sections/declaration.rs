@@ -145,12 +145,10 @@ pub(in crate::report::html) fn write_key_findings(
     html: &mut String,
     r: &WarReport,
 ) -> fmt::Result {
-    write!(html, r#"<ol class="key-findings">"#)?;
-
     write!(
         html,
-        "<li><strong>Writing duration:</strong> {} session{}, {:.0} minutes of active composition, \
-         {} revision events recorded.</li>",
+        r#"<div class="finding-card finding-human"><strong>Writing duration:</strong> {} session{}, {:.0} minutes of active composition, \
+         {} revision events recorded.</div>"#,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
         if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
@@ -158,9 +156,12 @@ pub(in crate::report::html) fn write_key_findings(
     )?;
 
     if let Some(ks) = r.process.total_keystrokes {
+        let cv_class = r.process.iki_cv.filter(|v| v.is_finite()).map(|cv| {
+            if cv < 0.15 { "finding-synthetic" } else { "finding-human" }
+        }).unwrap_or("finding-human");
         write!(
             html,
-            "<li><strong>Keystroke capture:</strong> {} keystrokes recorded with timing data.",
+            r#"<div class="finding-card {cv_class}"><strong>Keystroke capture:</strong> {} keystrokes recorded with timing data."#,
             format_number(ks),
         )?;
         if let Some(cv) = r.process.iki_cv.filter(|v| v.is_finite()) {
@@ -177,7 +178,7 @@ pub(in crate::report::html) fn write_key_findings(
                 },
             )?;
         }
-        write!(html, "</li>")?;
+        write!(html, "</div>")?;
     }
 
     if !r.checkpoints.is_empty() {
@@ -188,7 +189,7 @@ pub(in crate::report::html) fn write_key_findings(
         };
         write!(
             html,
-            "<li><strong>Cryptographic checkpoints:</strong> {} checkpoints in tamper-evident chain, {}.",
+            r#"<div class="finding-card finding-human"><strong>Cryptographic checkpoints:</strong> {} checkpoints in tamper-evident chain, {}."#,
             r.checkpoints.len(),
             verified,
         )?;
@@ -213,10 +214,11 @@ pub(in crate::report::html) fn write_key_findings(
                 )?;
             }
         }
-        write!(html, "</li>")?;
+        write!(html, "</div>")?;
     }
 
     if let Some(pr) = r.process.paste_ratio_pct.filter(|v| v.is_finite()) {
+        let paste_class = if pr < 20.0 { "finding-human" } else if pr < 50.0 { "finding-neutral" } else { "finding-synthetic" };
         let assessment = if pr < 5.0 {
             "minimal paste activity, consistent with original composition"
         } else if pr < 20.0 {
@@ -228,7 +230,7 @@ pub(in crate::report::html) fn write_key_findings(
         };
         write!(
             html,
-            "<li><strong>Paste analysis:</strong> {:.1}% of text entered via paste ({}).</li>",
+            r#"<div class="finding-card {paste_class}"><strong>Paste analysis:</strong> {:.1}% of text entered via paste ({}).</div>"#,
             pr, assessment,
         )?;
     }
@@ -237,18 +239,17 @@ pub(in crate::report::html) fn write_key_findings(
         let not_evaluated = r.dimensions.iter().filter(|d| d.score == 0).count();
         let anomalous = r.dimensions.iter().filter(|d| d.score > 0 && d.score < 40).count();
         let evaluated = r.dimensions.len() - not_evaluated;
+        let dim_class = if anomalous > 0 { "finding-synthetic" } else { "finding-human" };
         if anomalous == 0 && not_evaluated == 0 {
             write!(
                 html,
-                "<li><strong>Dimension concordance:</strong> All {} analytical dimensions support \
-                 the composite determination. No contradictory signals detected.</li>",
+                r#"<div class="finding-card {dim_class}"><strong>Dimension concordance:</strong> All {} analytical dimensions support the composite determination. No contradictory signals detected.</div>"#,
                 r.dimensions.len(),
             )?;
         } else if anomalous > 0 {
             write!(
                 html,
-                "<li><strong>Dimension concordance:</strong> {} of {} evaluated dimensions scored below \
-                 threshold, indicating potential anomalies in those areas.{}</li>",
+                r#"<div class="finding-card {dim_class}"><strong>Dimension concordance:</strong> {} of {} evaluated dimensions scored below threshold, indicating potential anomalies in those areas.{}</div>"#,
                 anomalous,
                 evaluated,
                 if not_evaluated > 0 {
@@ -261,8 +262,7 @@ pub(in crate::report::html) fn write_key_findings(
         } else if not_evaluated > 0 {
             write!(
                 html,
-                "<li><strong>Dimension concordance:</strong> {} of {} dimensions evaluated; \
-                 {} dimension{} had insufficient data. No contradictory signals in evaluated dimensions.</li>",
+                r#"<div class="finding-card {dim_class}"><strong>Dimension concordance:</strong> {} of {} dimensions evaluated; {} dimension{} had insufficient data. No contradictory signals in evaluated dimensions.</div>"#,
                 evaluated,
                 r.dimensions.len(),
                 not_evaluated,
@@ -271,5 +271,5 @@ pub(in crate::report::html) fn write_key_findings(
         }
     }
 
-    writeln!(html, "</ol>")
+    Ok(())
 }

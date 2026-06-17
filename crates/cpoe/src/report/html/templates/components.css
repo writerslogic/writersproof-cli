@@ -305,6 +305,8 @@ table.data td {
 }
 table.data tr:last-child td { border-bottom: none; }
 table.data td:first-child { font-weight: 500; color: var(--text); }
+table.data tbody tr:nth-child(even) { background: var(--bg-warm); }
+table.data thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; }
 
 /* --- Session timeline --- */
 .session-box {
@@ -542,4 +544,169 @@ table.data td:first-child { font-weight: 500; color: var(--text); }
   color: var(--text-secondary);
   margin-bottom: 10px;
   line-height: 1.6;
+}
+
+/* --- Collapsible sections --- */
+details.report-section { margin: 28px 0; }
+details.report-section > summary {
+  font-family: var(--sans);
+  font-size: clamp(11px, 1.8vw, 13px);
+  font-weight: 700;
+  color: var(--navy);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 0;
+  border-top: 2px solid var(--rule);
+  border-bottom: 1px solid var(--rule-light);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+details.report-section > summary::-webkit-details-marker { display: none; }
+details.report-section > summary::before {
+  content: "\25B6";
+  font-size: 8px;
+  color: var(--navy);
+  transition: transform 0.15s;
+  display: inline-block;
+}
+details.report-section[open] > summary::before { transform: rotate(90deg); }
+details.report-section > summary .section-metric {
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: auto;
+}
+
+/* --- Score gauge (CSS-only arc) --- */
+.score-gauge {
+  position: relative;
+  width: 80px;
+  height: 44px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.score-gauge-arc {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 8px solid var(--border-light);
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  transform: rotate(-45deg);
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.score-gauge-fill {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 8px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  transform: rotate(-45deg);
+  position: absolute;
+  top: 0;
+  left: 0;
+  clip-path: inset(0 0 50% 0);
+}
+.score-gauge-value {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* --- Key finding cards --- */
+.finding-card {
+  border-left: 4px solid var(--border);
+  padding: 10px 16px;
+  margin: 8px 0;
+  background: var(--bg-warm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+.finding-card strong { color: var(--text); }
+.finding-card.finding-human { border-left-color: var(--accent); }
+.finding-card.finding-synthetic { border-left-color: var(--alert); }
+.finding-card.finding-neutral { border-left-color: var(--text-muted); }
+
+/* --- Checkpoint timeline --- */
+.checkpoint-timeline { position: relative; padding-left: 24px; margin: 16px 0; }
+.checkpoint-timeline::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--rule-light);
+}
+.checkpoint-node {
+  position: relative;
+  padding: 6px 0 14px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.checkpoint-node::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 9px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--navy-muted);
+  border: 2px solid var(--navy);
+}
+.checkpoint-node:first-child::before { background: var(--accent); border-color: var(--accent); }
+.checkpoint-node:last-child::before { background: var(--navy); }
+.checkpoint-node .cp-hash {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.checkpoint-node .cp-time {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+.checkpoint-node .cp-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.checkpoint-node .cp-badge {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: var(--navy-muted);
+  color: var(--navy);
+  margin-left: 6px;
+}
+.checkpoint-elapsed {
+  position: absolute;
+  left: -50px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--sans);
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }

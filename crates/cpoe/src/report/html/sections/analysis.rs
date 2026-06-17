@@ -131,17 +131,23 @@ pub(in crate::report::html) fn write_checkpoint_chain(
     if r.checkpoints.is_empty() {
         return Ok(());
     }
-    section_heading(html, 8, SEC_CHECKPOINTS)?;
+    let total_elapsed: f64 = r.checkpoints.iter()
+        .filter_map(|cp| cp.elapsed_ms)
+        .sum::<u64>() as f64 / 1000.0;
+    write!(
+        html,
+        r#"<details class="report-section" open><summary><span class="section-number">8.</span> {title} <span class="section-metric">{count} checkpoints, {elapsed:.0}s total</span></summary>"#,
+        title = SEC_CHECKPOINTS,
+        count = r.checkpoints.len(),
+        elapsed = total_elapsed,
+    )?;
     writeln!(
         html,
         r#"<p>Each checkpoint records a cryptographic hash of the document state at a point in time. The chain is linked by including \
-the previous checkpoint's hash in each successive entry, forming a tamper-evident log. Any modification to a checkpoint \
-invalidates all subsequent entries, making undetected alteration computationally infeasible.</p>"#
+the previous checkpoint's hash in each successive entry, forming a tamper-evident log.</p>"#
     )?;
-    write!(
-        html,
-        r#"<table class="data"><thead><tr><th>#</th><th>Timestamp</th><th>Content Hash (SHA-256)</th><th>Size</th><th>PoSME Iterations</th><th>Elapsed</th></tr></thead><tbody>"#
-    )?;
+    write!(html, r#"<div class="checkpoint-timeline">"#)?;
+    let mut prev_ts = None;
     for cp in &r.checkpoints {
         let hash_short = if cp.content_hash.len() > 16 {
             format!(
@@ -154,24 +160,35 @@ invalidates all subsequent entries, making undetected alteration computationally
         } else {
             cp.content_hash.clone()
         };
-        let vdf = cp
+        let vdf_badge = cp
             .vdf_iterations
-            .map(format_number)
-            .unwrap_or_else(|| "\u{2014}".into());
-        let elapsed = cp
-            .elapsed_ms
-            .map(|ms| format!("{:.1}s", ms as f64 / 1000.0))
-            .unwrap_or_else(|| "\u{2014}".into());
+            .filter(|&v| v > 0)
+            .map(|v| format!(r#"<span class="cp-badge">{} iterations</span>"#, format_number(v)))
+            .unwrap_or_default();
+        let elapsed_label = match (prev_ts, Some(cp.timestamp)) {
+            (Some(prev), Some(cur)) => {
+                let delta = cur.signed_duration_since(prev);
+                let secs = delta.num_seconds().unsigned_abs();
+                if secs < 60 { format!("{}s", secs) }
+                else if secs < 3600 { format!("{}m {}s", secs / 60, secs % 60) }
+                else { format!("{}h {}m", secs / 3600, (secs % 3600) / 60) }
+            }
+            _ => String::new(),
+        };
         write!(
             html,
-            "<tr><td>{ord}</td><td>{ts}</td><td><code>{hash}</code></td><td>{size}</td><td>{vdf}</td><td>{elapsed}</td></tr>",
+            r#"<div class="checkpoint-node"><span class="cp-time">#{ord} {ts}</span> <span class="cp-hash" title="{full_hash}">{hash}</span> {size}{vdf}{elapsed}</div>"#,
             ord = cp.ordinal,
-            ts = cp.timestamp.format("%H:%M:%S UTC"),
+            ts = cp.timestamp.format("%H:%M:%S"),
             hash = html_escape(&hash_short),
+            full_hash = html_escape(&cp.content_hash),
             size = format_bytes(cp.content_size),
+            vdf = vdf_badge,
+            elapsed = if elapsed_label.is_empty() { String::new() } else { format!(r#" <span class="cp-meta">+{elapsed_label}</span>"#) },
         )?;
+        prev_ts = Some(cp.timestamp);
     }
-    writeln!(html, "</tbody></table>")
+    writeln!(html, "</div></details>")
 }
 
 pub(in crate::report::html) fn write_forgery_resistance(

@@ -73,6 +73,15 @@
   .cpoe-report .score-bar-track { background: #ddd; }
   /* Ensure colored text remains legible in B&W */
   .cpoe-report .flag-human, .cpoe-report .flag-synthetic { font-weight: 700; }
+  /* Page breaks between major sections */
+  .cpoe-report details.report-section { break-before: auto; break-inside: avoid-page; }
+  .cpoe-report details.report-section > summary { break-after: avoid; }
+  .cpoe-report .finding-card { break-inside: avoid; background: #fff; }
+  .cpoe-report .checkpoint-timeline { break-inside: auto; }
+  .cpoe-report .checkpoint-node { break-inside: avoid; }
+  /* Collapsible sections print as open */
+  .cpoe-report details.report-section { display: block; }
+  .cpoe-report details.report-section > summary::before { display: none; }
 }
 
 /* --- Tablet (601-900px) --- */
