@@ -57,8 +57,10 @@ certs/
 *.tar.gz
 *.tgz
 
-# Vendored dependencies
+# Vendored / installed dependencies
 vendor/
+**/node_modules/
+**/.wrangler/
 
 # Scratchpad
 .scratchpad/
@@ -88,3 +90,9 @@ IMPLEMENTATION_CHECKLIST.md
 PLANNING_SUMMARY.md
 DELIVERY_MANIFEST.md
 PHASE_2_1_BLOCKER.md
+
+# Local planning and orchestration
+conductor/
+
+# Cloudflare Workers (deployed separately)
+apps/updates-worker/
