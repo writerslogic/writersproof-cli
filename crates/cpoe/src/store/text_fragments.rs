@@ -163,8 +163,9 @@ impl SecureStore {
         Ok(now_ms)
     }
 
-    /// Insert a text fragment with COSE_Sign1 signature verification.
-    /// The fragment must contain a valid `source_signature` matching session key.
+    /// Insert a text fragment after field and nonce validation.
+    /// The caller is responsible for signing the fragment before insertion;
+    /// use `verify_fragment_signature` for post-hoc verification.
     pub fn insert_text_fragment(&mut self, fragment: &TextFragment) -> anyhow::Result<i64> {
         let now_ms = self.validate_fragment_fields(fragment)?;
 

@@ -897,13 +897,13 @@ pub fn handle_change_event_sync(
                 payload.extend_from_slice(
                     &u32::try_from(detection.original_path.len())
                         .unwrap_or(u32::MAX)
-                        .to_le_bytes(),
+                        .to_be_bytes(),
                 );
                 payload.extend_from_slice(detection.original_path.as_bytes());
                 payload.extend_from_slice(
                     &u32::try_from(normalized_path.len())
                         .unwrap_or(u32::MAX)
-                        .to_le_bytes(),
+                        .to_be_bytes(),
                 );
                 payload.extend_from_slice(normalized_path.as_bytes());
                 wal_append_session_event(
@@ -1911,8 +1911,7 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     event.machine_id = mach_id;
     event.challenge_nonce = challenge_nonce.clone();
     event.semantic_summary = semantic_summary;
-    let sk_guard = signing_key.read_recover();
-    let sk_opt = sk_guard.key();
+    let sk_opt = signing_key.read_recover().key();
     let result = store.add_secure_event_with_signer(&mut event, sk_opt.as_ref());
 
     // File handle drops here — after the SQLite transaction has committed.
@@ -2287,8 +2286,8 @@ pub fn extract_word_count(path: &Path) -> Option<u64> {
 
 /// Count whitespace-separated tokens in a plain text file.
 fn extract_word_count_plaintext(path: &Path) -> Option<u64> {
-    let meta = std::fs::metadata(path).ok()?;
-    if meta.len() > MAX_HASH_FILE_SIZE {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
         return None;
     }
     let contents = std::fs::read_to_string(path).ok()?;
@@ -2298,8 +2297,8 @@ fn extract_word_count_plaintext(path: &Path) -> Option<u64> {
 
 /// Strip RTF control words and count remaining whitespace-separated tokens.
 fn extract_word_count_rtf(path: &Path) -> Option<u64> {
-    let meta = std::fs::metadata(path).ok()?;
-    if meta.len() > MAX_HASH_FILE_SIZE {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
         return None;
     }
     let contents = std::fs::read_to_string(path).ok()?;

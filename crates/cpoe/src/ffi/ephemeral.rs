@@ -291,17 +291,14 @@ pub fn ffi_ephemeral_checkpoint(session_id: String, content: String, message: St
     flush_session_state(&session_id, &entry);
     drop(entry);
 
-    let msg = format!(
+    if let Some(err) = persist_error {
+        return FfiResult::err(format!("Ephemeral checkpoint #{checkpoint_num} failed to persist: {err}"));
+    }
+    FfiResult::ok(format!(
         "Ephemeral checkpoint #{}: {}",
         checkpoint_num,
         crate::utils::short_hex_id(&content_hash)
-    );
-    FfiResult {
-        success: true,
-        message: Some(msg),
-        error_message: persist_error,
-        error_code: None,
-    }
+    ))
     })
 }
 
