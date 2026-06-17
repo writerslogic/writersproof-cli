@@ -525,7 +525,7 @@ table.data thead th { position: sticky; top: 0; background: var(--bg); z-index: 
 }
 
 /* --- Forensic breakdown --- */
-.topology-bar{display:flex;height:18px;border:1px solid var(--border);margin:8px 0;overflow:hidden}
+.topology-bar{display:flex;height:28px;border:1px solid var(--border);margin:8px 0;overflow:hidden;border-radius:2px}
 .topology-segment{min-width:1px}
 .context-timeline{display:flex;height:14px;border:1px solid var(--border);margin:8px 0;overflow:hidden}
 .context-segment{min-width:1px}

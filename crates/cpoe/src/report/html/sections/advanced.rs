@@ -237,10 +237,11 @@ pub(in crate::report::html) fn write_forensic_breakdown(
         r#"<div class="metric-card"><div class="metric-label">Mean IKI</div><div class="metric-value">{:.0} ms</div></div>"#,
         finite_or(fm.mean_iki_ms, 0.0),
     )?;
+    let cv = finite_or(fm.coefficient_of_variation, 0.0);
+    let cv_interp = if cv > 0.3 { "human-like variability" } else if cv > 0.15 { "normal range" } else { "unusually uniform" };
     write!(
         html,
-        r#"<div class="metric-card"><div class="metric-label">Coefficient of Variation</div><div class="metric-value">{:.3}</div></div>"#,
-        finite_or(fm.coefficient_of_variation, 0.0),
+        r#"<div class="metric-card"><div class="metric-label">Coefficient of Variation</div><div class="metric-value">{cv:.3}</div><div class="chart-caption">{cv_interp}</div></div>"#,
     )?;
     write!(
         html,
@@ -252,10 +253,11 @@ pub(in crate::report::html) fn write_forensic_breakdown(
         r#"<div class="metric-card"><div class="metric-label">Pause Count</div><div class="metric-value">{}</div></div>"#,
         fm.pause_count,
     )?;
+    let cr = finite_or(fm.correction_ratio, 0.0);
+    let cr_interp = if cr > 0.15 { "active self-editing" } else if cr > 0.05 { "moderate revision" } else { "minimal correction" };
     write!(
         html,
-        r#"<div class="metric-card"><div class="metric-label">Correction Ratio</div><div class="metric-value">{:.3}</div></div>"#,
-        finite_or(fm.correction_ratio, 0.0),
+        r#"<div class="metric-card"><div class="metric-label">Correction Ratio</div><div class="metric-value">{cr:.3}</div><div class="chart-caption">{cr_interp}</div></div>"#,
     )?;
     write!(
         html,
@@ -390,7 +392,8 @@ pub(in crate::report::html) fn write_edit_topology(
     write!(html, "</div>")?;
     write!(
         html,
-        r#"<p style="font-size:11px;color:var(--text-muted)">{} edit regions across the document. <span style="color:#3d7a4a">Green = insertions</span>, <span style="color:#b71c1c">red = deletions</span>.</p>"#,
+        r#"<div style="display:flex;justify-content:space-between;font-family:var(--sans);font-size:9px;color:var(--text-muted);margin-top:2px"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+<p style="font-size:11px;color:var(--text-muted);margin-top:4px">{} edit regions across the document. <span style="color:#3d7a4a">Green = insertions</span>, <span style="color:#b71c1c">red = deletions</span>. Distributed edits indicate real-time revision; concentrated edits suggest block insertion.</p>"#,
         r.edit_topology.len(),
     )
 }
@@ -677,14 +680,14 @@ pub(in crate::report::html) fn write_anomalies_detail(
         r#"<table class="data"><thead><tr><th>Severity</th><th>Type</th><th>Description</th></tr></thead><tbody>"#,
     )?;
     for a in &r.anomalies {
-        let sev_class = match a.severity.as_str() {
-            "Alert" => "severity-alert",
-            "Warning" => "severity-warning",
-            _ => "severity-info",
+        let (sev_class, icon) = match a.severity.as_str() {
+            "Alert" => ("severity-alert", "&#9888;"),
+            "Warning" => ("severity-warning", "&#9670;"),
+            _ => ("severity-info", "&#9679;"),
         };
         write!(
             html,
-            r#"<tr><td class="{cls}">{sev}</td><td>{typ}</td><td>{desc}</td></tr>"#,
+            r#"<tr><td class="{cls}">{icon} {sev}</td><td>{typ}</td><td>{desc}</td></tr>"#,
             cls = sev_class,
             sev = html_escape(&a.severity),
             typ = html_escape(&a.anomaly_type),
