@@ -82,6 +82,7 @@ pub(super) struct EventLoopCtx {
     /// Bounded channel for cross-window transcription check requests.
     /// Capacity 1: at most one check in flight, extras silently dropped.
     pub(super) xwin_check_tx: Option<std::sync::mpsc::SyncSender<(u32, Option<u32>, String)>>,
+    pub(super) xwin_check_handle: Option<std::thread::JoinHandle<()>>,
     /// Local keystroke counter for cross-window check scheduling.
     /// Independent of session.keystroke_count (which is incremented by FFI).
     pub(super) xwin_keystroke_counter: u64,
@@ -448,7 +449,10 @@ impl EventLoopCtx {
                             }
                         }
                     }) {
-                    Ok(_) => self.xwin_check_tx = Some(tx),
+                    Ok(handle) => {
+                        self.xwin_check_tx = Some(tx);
+                        self.xwin_check_handle = Some(handle);
+                    }
                     Err(e) => log::warn!("failed to spawn xwin-check worker: {e}"),
                 }
             }
@@ -456,8 +460,8 @@ impl EventLoopCtx {
                 if let Err(std::sync::mpsc::TrySendError::Disconnected(_)) =
                     tx.try_send((excl_pid, exclude_window_id, path.clone()))
                 {
-                    // Worker thread died; reset so it's re-spawned next time.
                     self.xwin_check_tx = None;
+                    self.xwin_check_handle = None;
                 }
             }
         }
@@ -923,6 +927,13 @@ impl EventLoopCtx {
                 self.bridge_healthy_flag
                     .store(false, Ordering::SeqCst);
                 needs_restart = true;
+            }
+        }
+        if let Some(ref h) = self.xwin_check_handle {
+            if h.is_finished() {
+                log::warn!("cpoe-xwin-check worker thread exited; will respawn on next focus event");
+                self.xwin_check_tx = None;
+                self.xwin_check_handle = None;
             }
         }
         if needs_restart {
