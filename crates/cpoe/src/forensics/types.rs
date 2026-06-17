@@ -861,7 +861,9 @@ pub enum AnomalyType {
     MonotonicAppend,
     LowEntropy,
     RoboticCadence,
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     UndetectedPaste,
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     ContentMismatch,
     ScatteredDeletions,
 }

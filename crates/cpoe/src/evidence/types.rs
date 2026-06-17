@@ -445,12 +445,16 @@ pub enum ContextPeriodType {
     /// Content sourced from outside the session (paste, import).
     External,
     /// Pause or away-from-keyboard interval.
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     Break,
     /// Research activity (browser, reference material).
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     Research,
     /// Editing or revising existing content.
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     Revision,
     /// Idle period with no meaningful input.
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     Idle,
 }
 

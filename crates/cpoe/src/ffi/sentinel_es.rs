@@ -35,18 +35,86 @@ pub fn ffi_sentinel_es_file_write(path: String, pid: i32, signing_id: String) ->
         }
     };
 
-    // Only act on paths that are actually being tracked.
+    // If the file is already tracked, commit a checkpoint.
     let tracked = sentinel.tracked_files();
-    if !tracked.iter().any(|t| t == &path) {
-        return false;
+    if tracked.iter().any(|t| t == &path) {
+        log::info!(
+            "ES file write detected for tracked document: {path} (pid={pid}, signing_id={signing_id})"
+        );
+        return sentinel.commit_checkpoint_for_path(&path);
     }
 
-    log::info!(
-        "ES file write detected for tracked document: {path} (pid={pid}, signing_id={signing_id})"
-    );
+    // Not a tracked file — check if this is a compile/export output from a
+    // bundle app (Scrivener, Vellum, Final Draft). If the signing ID matches
+    // a known app and the file has an export extension, correlate it with the
+    // active bundle session.
+    let now_ns = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as i64;
 
-    // Commit a checkpoint for this file since we know it was saved.
-    sentinel.commit_checkpoint_for_path(&path)
+    for session in sentinel.sessions() {
+        // Only bundle sessions can produce compile exports
+        if session.segment_counts.is_empty() && session.scrivener_project_map.is_none() {
+            continue;
+        }
+
+        // Check if the writing process matches this session's app
+        let session_bid = session.app_bundle_id.as_str();
+        if let Some(adapter) = crate::sentinel::app_registry::adapter_for_bundle(session_bid) {
+            // signing_id format from ES is "teamID:bundleID" or just the process name
+            let process_name = signing_id.split(':').next_back().unwrap_or(&signing_id);
+            if !adapter.is_compile_process(process_name) {
+                continue;
+            }
+
+            let bundle_hash = session
+                .scrivener_project_map
+                .as_ref()
+                .map(|m| m.scrivx_hash.clone())
+                .or_else(|| session.current_hash.clone())
+                .unwrap_or_default();
+
+            let file_hash = crate::sentinel::helpers::compute_file_hash(&path)
+                .unwrap_or_default();
+
+            if let Some(attestation) = crate::sentinel::helpers::detect_export_event(
+                &session,
+                &path,
+                &file_hash,
+                &bundle_hash,
+                now_ns,
+            ) {
+                log::info!(
+                    "Manuscript export detected: {} -> {} (session {})",
+                    session.path,
+                    path,
+                    session.session_id
+                );
+
+                let session_path = session.path.clone();
+                let session_id = session.session_id.clone();
+
+                // Store the attestation in the session under lock
+                sentinel.record_export_attestation(&session_path, attestation);
+
+                // Emit ExportDetected session event
+                let _ = sentinel.session_events_tx().send(
+                    crate::sentinel::types::SessionEvent {
+                        event_type: crate::sentinel::types::SessionEventType::ExportDetected,
+                        session_id,
+                        document_path: session_path,
+                        timestamp: SystemTime::now(),
+                        hash: Some(file_hash),
+                    },
+                );
+
+                return true;
+            }
+        }
+    }
+
+    false
     })
 }
 

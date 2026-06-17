@@ -69,8 +69,10 @@ pub enum SessionEventType {
     /// A manuscript export was detected within 30s of the last checkpoint.
     ExportDetected,
     /// App compile pipeline started.
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     CompileStarted,
     /// App compile pipeline finished.
+    #[allow(dead_code)] // Deserialize target; not constructed in Rust code
     CompileFinished,
 }
 
@@ -843,20 +845,15 @@ pub struct SaveAsDetection {
 
 /// Semantic type of pasted content. Prose is the forgery-risk category;
 /// tables, images, and formatting are legitimate authoring artifacts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum PasteContentKind {
+    #[default]
     Prose = 0,
     StructuredData = 1,
     Media = 2,
     FormattingOnly = 3,
     Mixed = 4,
-}
-
-impl Default for PasteContentKind {
-    fn default() -> Self {
-        Self::Prose
-    }
 }
 
 impl fmt::Display for PasteContentKind {
@@ -1177,6 +1174,8 @@ pub struct DocumentSession {
     pub(crate) scrivener_project_map: Option<ScrivenerProjectMap>,
     /// Unix nanoseconds of the most recently detected export event for this session.
     pub(crate) last_export_detected_ns: Option<i64>,
+    /// Attestation linking a compile/export output to this session's source bundle.
+    pub(crate) export_attestation: Option<crate::evidence::ManuscriptExportAttestation>,
     /// Confidence in the evidence path and storage metadata for this session.
     pub evidence_confidence: EvidenceConfidence,
     /// Human-readable reason the confidence was downgraded from Full.
@@ -1486,6 +1485,7 @@ impl Clone for DocumentSession {
             ref segment_counts,
             ref scrivener_project_map,
             last_export_detected_ns,
+            ref export_attestation,
             evidence_confidence,
             ref confidence_reason,
             ref transcription_suspicion,
@@ -1547,6 +1547,7 @@ impl Clone for DocumentSession {
             segment_counts: segment_counts.clone(),
             scrivener_project_map: scrivener_project_map.clone(),
             last_export_detected_ns,
+            export_attestation: export_attestation.clone(),
             evidence_confidence,
             confidence_reason: confidence_reason.clone(),
             transcription_suspicion: transcription_suspicion.clone(),
@@ -1627,6 +1628,7 @@ impl DocumentSession {
             segment_counts: HashMap::new(),
             scrivener_project_map: None,
             last_export_detected_ns: None,
+            export_attestation: None,
             // Starts as Full; downgraded to Partial/Heuristic by the focus
             // handler when AX path resolution or storage checks fail.
             evidence_confidence: EvidenceConfidence::Full,

@@ -1292,7 +1292,6 @@ fn c2pa_rs_reader_parses_our_jumbf() {
 
 #[test]
 fn generate_conformance_sample_c2pa() {
-    use std::io::Write;
     let out_dir = match std::env::var("CPOE_CONFORMANCE_DIR") {
         Ok(d) => d,
         Err(_) => return, // skip unless env var set
@@ -1338,15 +1337,6 @@ fn generate_conformance_sample_c2pa() {
         .build_jumbf(&signing_key)
         .unwrap();
 
-    // Build reverse sidecar (JUMBF + embedded asset)
-    let container = super::container::build_reverse_sidecar(
-        &jumbf, essay, "sample-essay.txt", "text/plain"
-    ).unwrap();
-
-    let sidecar_path = format!("{}/sample-essay.c2pa", out_dir);
     let jumbf_path = format!("{}/sample-essay.jumbf", out_dir);
-
-    std::fs::write(&sidecar_path, &container).unwrap();
     std::fs::write(&jumbf_path, &jumbf).unwrap();
-    eprintln!("Wrote {} (container: {} bytes, JUMBF: {} bytes)", sidecar_path, container.len(), jumbf.len());
 }

@@ -1433,7 +1433,7 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
     };
     let cadence_score = finite_or(
         cadence_metrics.as_ref()
-            .map(|m| crate::forensics::compute_cadence_score(m))
+            .map(crate::forensics::compute_cadence_score)
             .unwrap_or(0.0),
         0.0,
     );
@@ -1608,6 +1608,78 @@ pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
         },
         iki_sparkline: downsample_iki_sparkline(&jitter_samples, 60, 10),
         error_message: None,
+    }
+    })
+}
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiSegmentVelocityProfile {
+    pub rel_path: String,
+    pub is_prose: bool,
+    pub mean_bps: f64,
+    pub max_bps: f64,
+    pub keystroke_count: u64,
+    pub high_velocity_bursts: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiSegmentVelocityResult {
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub profiles: Vec<FfiSegmentVelocityProfile>,
+}
+
+crate::ffi::types::impl_ffi_err!(FfiSegmentVelocityResult);
+
+/// Analyze per-segment typing velocity for a document.
+///
+/// Groups events by file path and computes velocity profiles per segment.
+/// Useful for bundle documents (Scrivener) where chapters are separate files.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_segment_velocity(path: String) -> FfiSegmentVelocityResult {
+    catch_ffi_panic!(@err FfiSegmentVelocityResult, {
+    let (_canonical, _store, events) =
+        try_ffi!(load_events_for_path(&path), FfiSegmentVelocityResult);
+    if events.len() < 2 {
+        return FfiSegmentVelocityResult {
+            success: true,
+            error_message: None,
+            profiles: vec![],
+        };
+    }
+
+    let event_data = crate::forensics::EventData::from_secure_events(&events);
+
+    // Group by file_path to create segments.
+    let mut grouped: std::collections::HashMap<String, Vec<crate::forensics::EventData>> =
+        std::collections::HashMap::new();
+    for (ev, data) in events.iter().zip(event_data.into_iter()) {
+        grouped.entry(ev.file_path.clone()).or_default().push(data);
+    }
+
+    let segment_refs: Vec<(&str, &[crate::forensics::EventData])> = grouped
+        .iter()
+        .map(|(p, v)| (p.as_str(), v.as_slice()))
+        .collect();
+
+    let profiles = crate::forensics::analyze_segment_velocity(&segment_refs);
+
+    FfiSegmentVelocityResult {
+        success: true,
+        error_message: None,
+        profiles: profiles
+            .into_iter()
+            .map(|p| FfiSegmentVelocityProfile {
+                rel_path: p.rel_path,
+                is_prose: p.is_prose,
+                mean_bps: finite_or(p.mean_bps, 0.0),
+                max_bps: finite_or(p.max_bps, 0.0),
+                keystroke_count: p.keystroke_count,
+                high_velocity_bursts: usize_u32(p.high_velocity_bursts),
+            })
+            .collect(),
     }
     })
 }

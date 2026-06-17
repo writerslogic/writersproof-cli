@@ -217,7 +217,7 @@ pub fn build_signed_ephemeral_block(
     keystroke_count: u64,
     signing_key: &ed25519_dalek::SigningKey,
 ) -> Result<String, String> {
-    let packet = crate::evidence::build_ephemeral_packet(
+    let mut packet = crate::evidence::build_ephemeral_packet(
         final_hash_hex,
         statement,
         context_label,
@@ -227,6 +227,35 @@ pub fn build_signed_ephemeral_block(
         keystroke_count,
     )
     .map_err(|e| format!("{e}"))?;
+
+    // Sign the internal packet and attach author DID if available.
+    let author_did: Option<String> = {
+        #[cfg(feature = "did-webvh")]
+        {
+            crate::identity::did_webvh::load_active_did()
+                .map_err(|e| log::debug!("DID not available for WAR: {e}"))
+                .ok()
+        }
+        #[cfg(not(feature = "did-webvh"))]
+        {
+            None
+        }
+    };
+    packet
+        .sign_with_did(signing_key, author_did.as_deref())
+        .map_err(|e| format!("packet signing failed: {e}"))?;
+
+    // Hardware co-sign the packet if a TPM/Secure Enclave is available.
+    if let Some(sentinel) = crate::ffi::sentinel::get_sentinel() {
+        if let Some(ref tpm) = sentinel.tpm_provider {
+            if tpm.capabilities().hardware_backed {
+                if let Err(e) = packet.cosign_hardware(tpm.as_ref(), None) {
+                    log::debug!("Hardware co-sign skipped for WAR: {e}");
+                }
+            }
+        }
+    }
+
     let block = Block::from_packet_signed(&packet, signing_key)
         .map_err(|e| format!("WAR block creation failed: {e}"))?;
     Ok(block.encode_ascii())

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use crate::ffi::helpers::{get_db_path, open_store};
-use crate::ffi::types::{catch_ffi_panic, try_ffi};
+use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult};
 
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
@@ -147,3 +147,129 @@ pub struct FfiSpanningQueryResult {
 }
 
 crate::ffi::types::impl_ffi_err!(FfiSpanningQueryResult);
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiRetentionResult {
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub events_pruned: u64,
+}
+
+crate::ffi::types::impl_ffi_err!(FfiRetentionResult);
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FfiDataExportResult {
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub event_count: u64,
+    pub export_path: Option<String>,
+}
+
+crate::ffi::types::impl_ffi_err!(FfiDataExportResult);
+
+/// Enforce data retention policy: prune event payloads older than `retention_days`.
+/// Returns the number of events pruned. Minimum 1 day.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_enforce_retention(retention_days: u32) -> FfiRetentionResult {
+    catch_ffi_panic!(@err FfiRetentionResult, {
+    log::debug!("ffi_enforce_retention: retention_days={}", retention_days);
+    let store = try_ffi!(open_store(), FfiRetentionResult);
+    let count = try_ffi!(store.enforce_retention(retention_days), FfiRetentionResult);
+    FfiRetentionResult {
+        success: true,
+        error_message: None,
+        events_pruned: count as u64,
+    }
+    })
+}
+
+/// Export all events for a device identity (GDPR Article 15 DSAR).
+/// `device_id_hex` is a 32-character hex string (16 bytes).
+/// Writes JSON to `{data_dir}/dsar_export.json` and returns the path.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_export_all_events_for_identity(device_id_hex: String) -> FfiDataExportResult {
+    catch_ffi_panic!(@err FfiDataExportResult, {
+    log::debug!("ffi_export_all_events_for_identity");
+    let id_bytes = try_ffi!(
+        hex::decode(&device_id_hex).map_err(|e| format!("Invalid device ID hex: {e}")),
+        FfiDataExportResult
+    );
+    if id_bytes.len() != 16 {
+        return FfiDataExportResult::ffi_err(format!(
+            "Device ID must be 16 bytes (32 hex chars), got {}",
+            id_bytes.len()
+        ));
+    }
+    let mut device_id = [0u8; 16];
+    device_id.copy_from_slice(&id_bytes);
+
+    let store = try_ffi!(open_store(), FfiDataExportResult);
+    let events = try_ffi!(
+        store.export_all_events_for_identity(&device_id),
+        FfiDataExportResult
+    );
+
+    let data_dir = try_ffi!(
+        crate::ffi::helpers::get_data_dir().ok_or("Data directory not found"),
+        FfiDataExportResult
+    );
+    let export_path = data_dir.join("dsar_export.json");
+    // SecureEvent doesn't derive Serialize; emit all fields with hex-encoded byte arrays.
+    let summaries: Vec<serde_json::Value> = events
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "id": e.id,
+                "device_id": hex::encode(e.device_id),
+                "machine_id": e.machine_id,
+                "timestamp_ns": e.timestamp_ns,
+                "file_path": e.file_path,
+                "content_hash": hex::encode(e.content_hash),
+                "file_size": e.file_size,
+                "size_delta": e.size_delta,
+                "previous_hash": hex::encode(e.previous_hash),
+                "event_hash": hex::encode(e.event_hash),
+                "context_type": e.context_type,
+                "context_note": e.context_note,
+                "vdf_input": e.vdf_input.map(hex::encode),
+                "vdf_output": e.vdf_output.map(hex::encode),
+                "vdf_iterations": e.vdf_iterations,
+                "forensic_score": e.forensic_score,
+                "is_paste": e.is_paste,
+                "hardware_counter": e.hardware_counter,
+                "input_method": e.input_method,
+                "challenge_nonce": e.challenge_nonce,
+                "hw_cosign_chain_index": e.hw_cosign_chain_index,
+                "hw_cosign_entropy_bytes": e.hw_cosign_entropy_bytes,
+                "semantic_summary": e.semantic_summary,
+            })
+        })
+        .collect();
+    let json = try_ffi!(
+        serde_json::to_vec_pretty(&summaries)
+            .map_err(|e| format!("JSON serialization failed: {e}")),
+        FfiDataExportResult
+    );
+    try_ffi!(
+        std::fs::write(&export_path, &json).map_err(|e| format!("Write failed: {e}")),
+        FfiDataExportResult
+    );
+
+    FfiDataExportResult {
+        success: true,
+        error_message: None,
+        event_count: events.len() as u64,
+        export_path: Some(export_path.to_string_lossy().into_owned()),
+    }
+    })
+}
+
+/// Return the current device identity as a 32-character hex string.
+/// Used by the Swift GDPR UI to call `ffi_export_all_events_for_identity`.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_get_device_id_hex() -> String {
+    let (id, _) = crate::ffi::helpers::device_identity();
+    hex::encode(id)
+}

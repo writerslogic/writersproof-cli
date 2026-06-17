@@ -150,6 +150,8 @@ pub fn chain_to_wire_with_signatures(
         project_files: None,
         session_counter: None,
         forensic_summary: None,
+        export_attestation: None,
+        document_structure: None,
     })
 }
 

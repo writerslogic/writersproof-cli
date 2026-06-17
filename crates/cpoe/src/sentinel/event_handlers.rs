@@ -797,6 +797,24 @@ impl EventLoopCtx {
             });
         }
 
+        // Auto-archive if the event database exceeds the 1.5 GiB threshold.
+        {
+            let db_path = self.writersproof_dir.join("events.db");
+            if let Some(ref mut store) = *self.cached_store.lock_recover() {
+                match store.auto_archive_if_needed(&db_path) {
+                    Ok(Some(result)) => {
+                        log::info!(
+                            "Auto-archived {} events to {}",
+                            result.events_archived,
+                            result.archive_path.display(),
+                        );
+                    }
+                    Ok(None) => {}
+                    Err(e) => log::warn!("Auto-archive check failed: {e}"),
+                }
+            }
+        }
+
         self.check_capture_health();
     }
 

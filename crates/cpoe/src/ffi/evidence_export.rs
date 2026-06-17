@@ -380,7 +380,21 @@ pub(crate) fn build_wire_packet(
         signing_public_key: signing_pub,
         content_tier,
         previous_packet_ref: None,
-        packet_sequence: None,
+        packet_sequence: {
+            // Populate from session_number (0 = first session, maps to sequence 1).
+            super::sentinel::get_sentinel()
+                .and_then(|s| {
+                    let sessions = s.sessions();
+                    sessions.iter().find(|sess| sess.path == path).map(|sess| {
+                        u64::from(sess.session_number) + 1
+                    })
+                })
+                .or_else(|| {
+                    store.load_document_stats(&path).ok().flatten().map(|stats| {
+                        u64::try_from(stats.session_count).unwrap_or(1).max(1)
+                    })
+                })
+        },
         physical_liveness: None,
         baseline_verification: build_baseline_verification(&path, &events),
         author_did: {
@@ -400,6 +414,8 @@ pub(crate) fn build_wire_packet(
         project_files: collect_project_files(&file_path, &store),
         session_counter: events.last().and_then(|e| e.hardware_counter),
         forensic_summary,
+        export_attestation: collect_export_attestation(&path),
+        document_structure: collect_document_structure(&path),
     };
 
     let encoded = wire_packet
@@ -511,6 +527,53 @@ pub(crate) fn collect_ai_tool_limitations(path: &str) -> Option<Vec<String>> {
         ));
     }
     Some(limitations)
+}
+
+fn collect_export_attestation(path: &str) -> Option<authorproof_protocol::rfc::wire_types::ExportAttestationWire> {
+    let sentinel = get_sentinel()?;
+    let sessions = sentinel.sessions.read_recover();
+    let session = sessions.get(path)?;
+    let att = session.export_attestation.as_ref()?;
+    Some(authorproof_protocol::rfc::wire_types::ExportAttestationWire {
+        source_session_id: att.source_session_id.clone(),
+        bundle_hash: att.bundle_hash.clone(),
+        output_hash: att.output_hash.clone(),
+        output_path_hash: att.output_path_hash.clone(),
+        source_checkpoint_ns: att.source_checkpoint_ns,
+        export_detected_ns: att.export_detected_ns,
+    })
+}
+
+fn collect_document_structure(path: &str) -> Option<authorproof_protocol::rfc::wire_types::DocumentStructureWire> {
+    let sentinel = get_sentinel()?;
+    let sessions = sentinel.sessions.read_recover();
+    let session = sessions.get(path)?;
+    let map = session.scrivener_project_map.as_ref()?;
+    if map.uuid_to_title.is_empty() {
+        return None;
+    }
+    let captured_at_ms = if map.captured_at_ns > 0 {
+        (map.captured_at_ns / 1_000_000) as u64
+    } else {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(crate::utils::duration_to_ms)
+            .unwrap_or(0)
+    };
+    let entries = map.uuid_to_title.iter().map(|(uuid, title)| {
+        authorproof_protocol::rfc::wire_types::DocumentStructureEntryWire {
+            uuid: uuid.clone(),
+            title: title.clone(),
+            depth: 0,
+            item_type: "Text".to_string(),
+        }
+    }).collect();
+    Some(authorproof_protocol::rfc::wire_types::DocumentStructureWire {
+        document_path_hash: hex::encode(blake3::hash(path.as_bytes()).as_bytes()),
+        entries,
+        source_hash: map.scrivx_hash.clone(),
+        captured_at_ms,
+    })
 }
 
 /// Read `repair-log.json` from the data directory and return limitation strings
@@ -1432,6 +1495,7 @@ mod tests {
                     lamport_signature: None,
                     lamport_pubkey_fingerprint: None,
                     posme_proof: None,
+                    anchors: None,
                 }
             })
             .collect()

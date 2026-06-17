@@ -62,4 +62,7 @@ pub use enums::{
     HashAlgorithm, HashSaltMode, ProbeType, ProofAlgorithm, Verdict,
 };
 pub use hash::{CompactRef, HashValue, TimeWindow};
-pub use packet::{EvidencePacketWire, ForensicSummaryWire, ProjectFileRef};
+pub use packet::{
+    DocumentStructureEntryWire, DocumentStructureWire, EvidencePacketWire,
+    ExportAttestationWire, ForensicSummaryWire, ProjectFileRef,
+};

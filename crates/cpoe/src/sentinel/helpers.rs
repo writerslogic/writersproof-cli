@@ -6,7 +6,7 @@ use crate::config::SentinelConfig;
 use crate::wal::{EntryType, Wal};
 
 use crate::RwLockRecover;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{Signer, SigningKey};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -79,8 +79,8 @@ pub fn handle_focus_event_sync(
         // (allowed) app. Unconditionally clearing current_focus here would destroy
         // the correct AXObserver focus.
         let path_to_unfocus = {
-            let focus = current_focus.read_recover();
-            if let Some(ref path) = *focus {
+            let focused_path = current_focus.read_recover().clone();
+            if let Some(ref path) = focused_path {
                 let belongs_to_blocked = sessions.read_recover()
                     .get(path.as_str())
                     .map(|s| {
@@ -655,6 +655,14 @@ pub fn handle_change_event_sync(
         return;
     }
 
+    // Pre-compute file hash outside the write lock to avoid blocking other
+    // threads on potentially slow file I/O (NFS, FUSE).
+    let precomputed_hash = if event.hash.is_none() {
+        compute_file_hash(&normalized_path).ok()
+    } else {
+        None
+    };
+
     // Acquire signing_key before sessions to match lock order in focus_document_sync
     let key = signing_key.read_recover().key();
     let mut sessions_map = sessions.write_recover();
@@ -758,7 +766,7 @@ pub fn handle_change_event_sync(
                 let current_hash = event
                     .hash
                     .clone()
-                    .or_else(|| compute_file_hash(&normalized_path).ok());
+                    .or(precomputed_hash.clone());
                 session.current_hash = current_hash.clone();
 
                 if let Some(hash) = current_hash {
@@ -785,7 +793,56 @@ pub fn handle_change_event_sync(
             ChangeEventType::Modified => {
                 session.change_count += 1;
                 if let Some(hash) = &event.hash {
+                    // Paste boundary detection: compare old/new content hashes
+                    // and timing to classify large content changes.
+                    let new_text_hash = {
+                        use sha2::{Sha256, Digest};
+                        let mut h = Sha256::new();
+                        h.update(hash.as_bytes());
+                        let result: [u8; 32] = h.finalize().into();
+                        result
+                    };
+                    let last_ts = session
+                        .jitter_ring
+                        .last()
+                        .map(|s| s.timestamp_ns)
+                        .unwrap_or(0);
+                    let current_ts = event
+                        .timestamp
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_nanos() as i64)
+                        .unwrap_or(0);
+                    let (context, confidence) = detect_paste_boundary(
+                        last_ts,
+                        current_ts,
+                        &session.jitter_hash_state,
+                        &new_text_hash,
+                        &session.app_bundle_id,
+                        &session.app_bundle_id,
+                    );
+                    if matches!(context, super::types::KeystrokeContext::PastedContent)
+                        && confidence >= 0.80
+                    {
+                        log::info!(
+                            "Paste boundary detected for {}: confidence={:.2}",
+                            normalized_path,
+                            confidence
+                        );
+                        update_keystroke_context_window(
+                            session,
+                            current_ts,
+                            5000,
+                            super::types::PasteSource::Unknown,
+                            super::types::PasteContentKind::Prose,
+                        );
+                    }
                     session.current_hash = Some(hash.clone());
+                }
+                // Detect encoding transitions (e.g. ASCII -> UTF-8 BOM).
+                if !normalized_path.starts_with("shadow://")
+                    && !normalized_path.starts_with("title://")
+                {
+                    check_encoding_transition(session, Path::new(&normalized_path));
                 }
                 // Attribute intra-bundle file changes (e.g. Scrivener chapter .rtf)
                 // to the bundle-relative segment so per-chapter velocity is tracked.
@@ -813,32 +870,22 @@ pub fn handle_change_event_sync(
                 unreachable!("handled above")
             }
         }
-    }
-}
-
-pub fn check_idle_sessions_sync(
-    sessions: &Arc<RwLock<HashMap<String, DocumentSession>>>,
-    idle_timeout: std::time::Duration,
-    session_events_tx: &broadcast::Sender<SessionEvent>,
-) {
-    let sessions_to_end: Vec<String> = {
-        let sessions_map = sessions.read_recover();
-        sessions_map
-            .iter()
-            .filter(|(_, session)| {
-                !session.is_focused()
-                    && session
-                        .last_focus_time
-                        .elapsed()
-                        .map(|d| d > idle_timeout)
-                        .unwrap_or(false)
-            })
-            .map(|(path, _)| path.clone())
-            .collect()
-    };
-
-    for path in sessions_to_end {
-        end_session_sync(&path, sessions, session_events_tx);
+    } else if matches!(
+        event.event_type,
+        ChangeEventType::Created | ChangeEventType::Saved
+    ) {
+        // New file without an active session: check if it's a Save As copy.
+        if let Some(hash) = &event.hash {
+            drop(sessions_map);
+            if let Some(detection) = detect_save_as(hash, &normalized_path, sessions) {
+                log::info!(
+                    "Save As detected: {} -> {} (session {})",
+                    detection.original_path,
+                    normalized_path,
+                    &detection.original_session_id[..8],
+                );
+            }
+        }
     }
 }
 
@@ -860,33 +907,6 @@ pub fn end_session_sync(
             timestamp: SystemTime::now(),
             hash: session.current_hash,
         });
-    }
-}
-
-pub fn end_all_sessions_sync(
-    sessions: &Arc<RwLock<HashMap<String, DocumentSession>>>,
-    shadow: &Arc<ShadowManager>,
-    session_events_tx: &broadcast::Sender<SessionEvent>,
-) {
-    let all_sessions: Vec<_> = sessions.write_recover().drain().collect();
-
-    for (path, mut session) in all_sessions {
-        session.transcription_detector.clear_buffer();
-        session.transcription_detector.clear_matches();
-        // Intentionally ignored: broadcast send fails only when no receivers are subscribed
-        let _ = session_events_tx.send(SessionEvent {
-            event_type: SessionEventType::Ended,
-            session_id: session.session_id,
-            document_path: path,
-            timestamp: SystemTime::now(),
-            hash: session.current_hash,
-        });
-
-        if let Some(shadow_id) = session.shadow_id {
-            if let Err(e) = shadow.delete(&shadow_id) {
-                log::warn!("shadow buffer cleanup failed for {shadow_id}: {e}");
-            }
-        }
     }
 }
 
@@ -1829,12 +1849,37 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
         Some(reason.to_string())
     };
 
+    // Enrich context_note with word count and track changes for real files.
+    let context_note = if !path.starts_with("shadow://") && !path.starts_with("title://") {
+        let file_path = Path::new(path);
+        let mut extra = Vec::new();
+        if let Some(wc) = extract_word_count(file_path) {
+            extra.push(format!("wc:{wc}"));
+        }
+        if has_track_changes(file_path) {
+            extra.push("track_changes:true".to_string());
+        }
+        if let Some(fp) = parse_fdx_scene_fingerprint(file_path) {
+            extra.push(format!("fdx_scene_fp:{fp}"));
+        }
+        if extra.is_empty() {
+            context_note
+        } else {
+            context_note.map(|cn| format!("{cn}|{}", extra.join("|")))
+        }
+    } else {
+        context_note
+    };
+
+    let (dev_id, mach_id) = crate::ffi::helpers::device_identity();
     let mut event = crate::store::SecureEvent::new(
         path.to_string(),
         content_hash,
         file_size,
         context_note,
     );
+    event.device_id = dev_id;
+    event.machine_id = mach_id;
     event.challenge_nonce = challenge_nonce.clone();
     event.semantic_summary = semantic_summary;
     let sk_guard = signing_key.read_recover();
@@ -1850,6 +1895,10 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     match result {
         Ok(_) => {
             log::info!("Auto-checkpoint committed for {path} ({reason})");
+            let db_path = writersproof_dir.join("events.db");
+            if let Err(e) = store.auto_archive_if_needed(&db_path) {
+                log::debug!("Auto-archive check failed: {e}");
+            }
             if let Some(ref am) = *anchor_manager {
                 let am = Arc::clone(am);
                 let hash = event.event_hash;
@@ -1875,7 +1924,8 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
                                 let _ = std::fs::write(&file_path, json);
                             }
                             // Submit to WritersProof transparency log if configured.
-                            submit_to_writersproof_anchor(&wp_dir, &hash).await;
+                            let anchor_sk = crate::ffi::helpers::load_signing_key().ok();
+                            submit_to_writersproof_anchor(&wp_dir, &hash, anchor_sk.as_ref()).await;
                         }
                         Ok(Err(e)) => {
                             log::warn!(
@@ -1905,7 +1955,11 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
 ///
 /// Reads config from `wp_dir`, signs the hash with the device key, and POSTs.
 /// On failure, queues the request for later retry if offline_queue is enabled.
-async fn submit_to_writersproof_anchor(wp_dir: &std::path::Path, hash: &[u8; 32]) {
+async fn submit_to_writersproof_anchor(
+    wp_dir: &std::path::Path,
+    hash: &[u8; 32],
+    signing_key: Option<&ed25519_dalek::SigningKey>,
+) {
     let config = match crate::config::CpopConfig::load_or_default(wp_dir) {
         Ok(c) => c.writersproof,
         Err(_) => return,
@@ -1921,10 +1975,22 @@ async fn submit_to_writersproof_anchor(wp_dir: &std::path::Path, hash: &[u8; 32]
             return;
         }
     };
+    let (author_did, signature) = match signing_key {
+        Some(sk) => {
+            let vk = sk.verifying_key();
+            let did = format!("did:key:z6Mk{}", bs58::encode(vk.as_bytes()).into_string());
+            let sig = hex::encode(sk.sign(hash).to_bytes());
+            (did, sig)
+        }
+        None => {
+            log::warn!("No signing key available for anchor authentication");
+            (String::new(), String::new())
+        }
+    };
     let req = crate::writersproof::types::AnchorRequest {
         evidence_hash: hash_hex.clone(),
-        author_did: String::new(),
-        signature: String::new(),
+        author_did,
+        signature,
         metadata: None,
     };
     match client.anchor(req).await {
@@ -2118,45 +2184,6 @@ pub fn check_encoding_transition(
 // Third-party app integration: Scrivener, word count, Track Changes
 // ---------------------------------------------------------------------------
 
-/// Extract the chapter title for a binder item inside a Scrivener `.scriv` package.
-///
-/// Scrivener stores its binder structure in a `.scrivx` XML file at the package
-/// root. Each `<BinderItem>` has an `ID` attribute matching a UUID subdirectory
-/// under `Files/Data/`. This function finds the `.scrivx` file, locates the
-/// binder item whose ID matches the UUID in the file path, and returns its
-/// `<Title>` text.
-///
-/// Returns `None` if the path is not inside a `.scriv` package, the `.scrivx`
-/// file cannot be read, or the binder item is not found.
-pub fn extract_scrivener_chapter_title(path: &Path) -> Option<String> {
-    let path_str = path.to_str()?;
-    let scriv_root = extract_bundle_package_root(path_str)?;
-
-    // Only process .scriv bundles
-    if !scriv_root.ends_with(".scriv") {
-        return None;
-    }
-
-    // Extract the UUID from the path: .scriv/Files/Data/<UUID>/content.rtf
-    let after_root = path_str.get(scriv_root.len()..)?;
-    let after_root = after_root.strip_prefix('/')?;
-
-    // Expected: Files/Data/<UUID>/...
-    let parts: Vec<&str> = after_root.splitn(4, '/').collect();
-    if parts.len() < 3 || parts[0] != "Files" || parts[1] != "Data" {
-        return None;
-    }
-    let uuid = parts[2];
-
-    // Find the .scrivx file inside the .scriv package root
-    let scriv_dir = Path::new(&scriv_root);
-    let scrivx_path = find_scrivx_file(scriv_dir)?;
-
-    // Read and parse the .scrivx XML to find the binder item title
-    let contents = std::fs::read_to_string(&scrivx_path).ok()?;
-    find_binder_item_title(&contents, uuid)
-}
-
 /// Locate the `.scrivx` file inside a `.scriv` package directory.
 fn find_scrivx_file(scriv_dir: &Path) -> Option<PathBuf> {
     let entries = std::fs::read_dir(scriv_dir).ok()?;
@@ -2176,6 +2203,7 @@ fn find_scrivx_file(scriv_dir: &Path) -> Option<PathBuf> {
 /// Uses simple string scanning rather than an XML parser to avoid adding
 /// dependencies. The `.scrivx` format uses `<BinderItem ID="..." ...>` with
 /// nested `<Title>text</Title>`.
+#[allow(dead_code)] // Available for Scrivener binder title resolution
 fn find_binder_item_title(xml: &str, target_id: &str) -> Option<String> {
     let search_patterns = [
         format!("ID=\"{}\"", target_id),
@@ -3344,26 +3372,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_scrivener_chapter_title_non_scriv_path() {
-        let path = Path::new("/Users/me/essay.md");
-        assert_eq!(extract_scrivener_chapter_title(path), None);
-    }
-
-    #[test]
-    fn test_scrivener_chapter_title_bare_scriv_root() {
-        // Just the .scriv root, no Files/Data/<UUID> component
-        let path = Path::new("/Users/me/Novel.scriv");
-        assert_eq!(extract_scrivener_chapter_title(path), None);
-    }
-
-    #[test]
-    fn test_scrivener_chapter_title_pages_bundle() {
-        // .pages bundle should return None (not .scriv)
-        let path = Path::new("/Users/me/Doc.pages/Index/foo");
-        assert_eq!(extract_scrivener_chapter_title(path), None);
-    }
-
     // -----------------------------------------------------------------------
     // Word count extraction
     // -----------------------------------------------------------------------
@@ -3631,5 +3639,19 @@ mod tests {
         std::fs::write(&file, &docx).unwrap();
 
         assert!(!has_track_changes(&file));
+    }
+
+    #[test]
+    fn test_parse_fdx_scene_fingerprint_non_fdx() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("script.txt");
+        std::fs::write(&file, "not an fdx file").unwrap();
+        assert!(parse_fdx_scene_fingerprint(&file).is_none());
+    }
+
+    #[test]
+    fn test_parse_fdx_scene_fingerprint_missing_file() {
+        let path = std::path::Path::new("/nonexistent/script.fdx");
+        assert!(parse_fdx_scene_fingerprint(path).is_none());
     }
 }
