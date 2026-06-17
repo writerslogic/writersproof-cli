@@ -839,11 +839,12 @@ unsafe fn is_editable_text_role(element: *mut std::ffi::c_void) -> bool {
         return false;
     }
 
-    let cf_str = core_foundation::string::CFString::wrap_under_get_rule(
+    // AXUIElementCopyAttributeValue returns a +1 reference (Create Rule),
+    // so use wrap_under_create_rule to take ownership without extra retain.
+    let cf_str = core_foundation::string::CFString::wrap_under_create_rule(
         role_value as core_foundation_sys::string::CFStringRef,
     );
     let role = cf_str.to_string();
-    core_foundation_sys::base::CFRelease(role_value);
 
     matches!(
         role.as_str(),

@@ -53,6 +53,10 @@ impl MacOSFocusMonitor {
             let name: *mut Object = msg_send![active_app, localizedName];
             let bundle_id: *mut Object = msg_send![active_app, bundleIdentifier];
             let pid: i32 = msg_send![active_app, processIdentifier];
+            if pid <= 0 {
+                let _: () = msg_send![pool, drain];
+                return None;
+            }
 
             let app_name = nsstring_to_string(name);
             let bundle_id_str = nsstring_to_string(bundle_id);
@@ -696,7 +700,9 @@ extern "C" fn ax_observer_callback(
                 window_id: info.window_number,
                 char_count_delta: Some(delta),
             };
-            let _ = ctx.tx.send(event);
+            if ctx.tx.send(event).is_err() {
+                log::debug!("focus event channel closed");
+            }
         }
         return;
     }
@@ -728,7 +734,9 @@ extern "C" fn ax_observer_callback(
             window_id: info.window_number,
             char_count_delta: None,
         };
-        let _ = ctx.tx.send(event);
+        if ctx.tx.send(event).is_err() {
+            log::debug!("focus event channel closed");
+        }
     }
 }
 

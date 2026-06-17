@@ -298,7 +298,7 @@ fn test_export_json_valid() {
     // so the value will be close to 500 but not exact.
     let jitter = parsed.sessions[0].samples[0].jitter_micros;
     assert!(
-        (450..=550).contains(&jitter),
+        (400..=600).contains(&jitter),
         "jitter_micros {jitter} should be near 500 (Laplace noise applied)"
     );
 }

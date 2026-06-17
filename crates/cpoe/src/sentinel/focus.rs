@@ -588,10 +588,14 @@ impl SentinelFocusTracker for HybridFocusTracker {
                             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                         }
                     }
-                })
-                .ok();
-            if let Some(h) = handle {
-                *self.bridge_handle.lock_recover() = Some(h);
+                });
+            match handle {
+                Ok(h) => {
+                    *self.bridge_handle.lock_recover() = Some(h);
+                }
+                Err(e) => {
+                    log::error!("Failed to spawn ax-bridge thread: {e}");
+                }
             }
         }
 
@@ -683,7 +687,12 @@ impl SentinelFocusTracker for HybridFocusTracker {
             return Ok(());
         }
         self.ax_provider.stop();
-        let _ = self.poller.stop();
+        if let Err(e) = self.poller.stop() {
+            log::warn!("poller stop failed: {e}");
+        }
+        if let Some(handle) = self.bridge_handle.lock_recover().take() {
+            let _ = handle.join();
+        }
         if let Some(handle) = self.merge_handle.lock_recover().take() {
             handle.abort();
         }
@@ -722,6 +731,9 @@ impl Drop for HybridFocusTracker {
     fn drop(&mut self) {
         self.running.store(false, Ordering::SeqCst);
         self.ax_provider.stop();
+        if let Some(handle) = self.bridge_handle.lock_recover().take() {
+            let _ = handle.join();
+        }
         if let Some(handle) = self.merge_handle.lock_recover().take() {
             handle.abort();
         }

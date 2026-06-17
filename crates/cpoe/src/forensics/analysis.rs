@@ -397,7 +397,7 @@ pub fn analyze_forensics_ext_with_focus(
                 let mut pause_hist = [0usize; 10];
                 for &p in &pauses {
                     let p_sec = p / 1_000_000_000.0;
-                    let bin = ((p_sec - 1.0).floor() as usize).min(9);
+                    let bin = ((p_sec - 1.0).max(0.0).floor() as usize).min(9);
                     pause_hist[bin] += 1;
                 }
                 metrics.primary.pause_entropy =

@@ -207,8 +207,15 @@ pub fn ffi_text_fragment_store(
 ) -> FfiTextFragmentStoreResult {
     catch_ffi_panic!(@err FfiTextFragmentStoreResult, {
     log::debug!("ffi_text_fragment_store: session_id={}, app_bundle_id={}", session_id, app_bundle_id);
+    const MAX_TEXT_SIZE: usize = 10 * 1024 * 1024;
     if text_content.is_empty() {
         return FfiTextFragmentStoreResult::err("Text content is empty");
+    }
+    if text_content.len() > MAX_TEXT_SIZE {
+        return FfiTextFragmentStoreResult::err(format!(
+            "Text too large: {} bytes (max {MAX_TEXT_SIZE})",
+            text_content.len()
+        ));
     }
     if session_id.is_empty() {
         return FfiTextFragmentStoreResult::err("Session ID is required");
@@ -366,6 +373,11 @@ pub fn ffi_sentinel_cross_window_match(
     matched_length: u32,
 ) -> bool {
     use crate::RwLockRecover as _;
+
+    const MAX_STRING_LEN: usize = 1024;
+    let source_app: String = source_app.chars().take(MAX_STRING_LEN).collect();
+    let source_window_title: String =
+        source_window_title.chars().take(MAX_STRING_LEN).collect();
 
     let sentinel = match super::sentinel::get_running_sentinel() {
         Some(s) => s,
@@ -698,7 +710,6 @@ pub fn ffi_embed_text_manifest(
     // NFC-normalize the text before hashing (per C2PA spec).
     let normalized: String = text_content.nfc().collect();
     let text_hash: [u8; 32] = {
-        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(normalized.as_bytes());
         hasher.finalize().into()
@@ -1010,6 +1021,7 @@ pub fn ffi_resolve_sync_conflict(
     remote_nonce_hex: Option<String>,
     remote_timestamp_ms: Option<i64>,
     remote_cloudkit_record_id: Option<String>,
+    remote_signing_public_key_hex: Option<String>,
 ) -> FfiSyncResult {
     catch_ffi_panic!(@err FfiSyncResult, {
     log::debug!("ffi_resolve_sync_conflict: fragment_id={}, strategy={}", fragment_id, strategy);
@@ -1074,12 +1086,19 @@ pub fn ffi_resolve_sync_conflict(
                 frag.source_signature.len()
             )),
         };
-        let signing_key = try_ffi!(
-            crate::ffi::helpers::load_signing_key()
-                .map_err(|e| format!("Cannot verify remote signature: {e}")),
-            FfiSyncResult
-        );
-        let pub_bytes = signing_key.verifying_key().to_bytes();
+        let pub_bytes = match remote_signing_public_key_hex.as_deref() {
+            Some(hex_str) => {
+                match crate::utils::crypto_types::Ed25519Pubkey::from_hex(hex_str) {
+                    Ok(pk) => pk.0,
+                    _ => return FfiSyncResult::err(
+                        "remote_signing_public_key_hex must be 64 hex chars (32 bytes)",
+                    ),
+                }
+            }
+            None => return FfiSyncResult::err(
+                "remote_signing_public_key_hex is required to verify remote fragment signature",
+            ),
+        };
         match store.verify_fragment_signature(
             hash_arr,
             &frag.nonce,

@@ -1277,8 +1277,7 @@ fn build_enhanced_signals(
         .or_else(|| {
             // Fall back to computing from sentinel if the pipeline didn't populate it.
             let sentinel = super::sentinel::get_sentinel()?;
-            let sessions = sentinel.sessions();
-            let session = sessions.iter().find(|s| s.path == path)?;
+            let session = sentinel.session(path).ok()?;
             let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
             let pastes: Vec<_> = session
                 .paste_context
