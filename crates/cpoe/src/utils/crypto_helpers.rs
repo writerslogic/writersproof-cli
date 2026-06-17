@@ -46,8 +46,8 @@ impl SignedPayloadBuilder {
 
     /// Write a length-prefixed field directly into the buffer.
     fn push_field(mut self, data: &[u8]) -> Self {
-        self.buf
-            .extend_from_slice(&(data.len() as u32).to_le_bytes());
+        let len = u32::try_from(data.len()).expect("field exceeds u32::MAX");
+        self.buf.extend_from_slice(&len.to_le_bytes());
         self.buf.extend_from_slice(data);
         self
     }
@@ -183,7 +183,8 @@ impl NonceManager {
     /// Returns count of deleted rows.
     pub fn cleanup_expired(&self, ttl_secs: u64) -> Result<usize> {
         let now = chrono::Utc::now().timestamp_nanos_safe();
-        let cutoff = now - (ttl_secs as i64 * 1_000_000_000);
+        let ttl_ns = (ttl_secs as i64).saturating_mul(1_000_000_000);
+        let cutoff = now.saturating_sub(ttl_ns);
 
         let affected = self
             .db

@@ -415,7 +415,8 @@ pub(crate) async fn send_encrypted<S: tokio::io::AsyncWrite + Unpin>(
     use tokio::io::AsyncWriteExt;
 
     let encrypted = session.encrypt(json_bytes)?;
-    let len = encrypted.len() as u32;
+    let len = u32::try_from(encrypted.len())
+        .map_err(|_| anyhow!("Encrypted payload exceeds u32::MAX"))?;
     stream.write_all(&len.to_le_bytes()).await?;
     stream.write_all(&encrypted).await?;
     stream.flush().await?;
@@ -443,9 +444,12 @@ pub(crate) fn encode_message(msg: &IpcMessage) -> Result<Vec<u8>> {
 }
 
 pub(crate) fn decode_message(bytes: &[u8]) -> Result<IpcMessage> {
-    let (msg, _): (IpcMessage, usize) =
-        bincode::serde::decode_from_slice(bytes, bincode::config::standard())
-            .map_err(|e| anyhow!("Failed to decode message: {}", e))?;
+    let (msg, _): (IpcMessage, usize) = bincode::serde::decode_from_slice(
+        bytes,
+        bincode::config::standard()
+            .with_limit::<{ super::messages::MAX_MESSAGE_SIZE }>(),
+    )
+    .map_err(|e| anyhow!("Failed to decode message: {}", e))?;
     Ok(msg)
 }
 

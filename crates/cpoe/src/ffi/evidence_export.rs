@@ -270,7 +270,12 @@ pub(crate) fn build_wire_packet_with_ai(
             .join("anchors")
             .join(format!("{}.json", hex::encode(latest.event_hash)));
         if anchor_path.exists() {
-            if let Ok(data) = std::fs::read(&anchor_path) {
+            let anchor_too_large = std::fs::metadata(&anchor_path)
+                .map(|m| m.len() > 1024 * 1024)
+                .unwrap_or(false);
+            if anchor_too_large {
+                log::warn!("Anchor file too large, skipping");
+            } else if let Ok(data) = std::fs::read(&anchor_path) {
                 if let Ok(anchor) = serde_json::from_slice::<crate::anchors::Anchor>(&data) {
                     let wire_anchors: Vec<_> = anchor
                         .proofs
@@ -624,6 +629,10 @@ fn build_continuation_summary(
 /// for each recorded integrity repair event.
 fn collect_repair_history(data_dir: &std::path::Path) -> Vec<String> {
     let log_path = data_dir.join("repair-log.json");
+    if std::fs::metadata(&log_path).map(|m| m.len() > 10 * 1024 * 1024).unwrap_or(false) {
+        log::warn!("repair-log.json too large, skipping");
+        return vec![];
+    }
     let bytes = match std::fs::read(&log_path) {
         Ok(b) => b,
         Err(_) => return vec![],
@@ -702,6 +711,15 @@ pub fn ffi_provision_ca_cert() -> FfiResult {
             return Err(format!(
                 "WRITERSPROOF_API_URL must use HTTPS: {preview}"
             ));
+        }
+        if !cfg!(debug_assertions) {
+            let allowed = [".writersproof.com", ".writerslogic.com"];
+            let host = base_url.trim_start_matches("https://").split('/').next().unwrap_or("");
+            if !allowed.iter().any(|d| host.ends_with(d) || host == &d[1..]) {
+                return Err(format!(
+                    "WRITERSPROOF_API_URL domain not allowed in release builds: {host}"
+                ));
+            }
         }
         let client = crate::writersproof::WritersProofClient::new(&base_url)
             .map_err(|e| format!("Failed to create WritersProof client: {e}"))?;
@@ -1165,8 +1183,14 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         FfiResult
     );
     const MAX_EVIDENCE_FILE_SIZE: u64 = 256 * 1024 * 1024; // 256 MB
+    let file = try_ffi!(
+        std::fs::File::open(&cpoe_path)
+            .map_err(|e| format!("Failed to open evidence file: {e}")),
+        FfiResult
+    );
     let meta = try_ffi!(
-        std::fs::metadata(&cpoe_path).map_err(|e| format!("Failed to stat evidence file: {e}")),
+        file.metadata()
+            .map_err(|e| format!("Failed to stat evidence file: {e}")),
         FfiResult
     );
     if meta.len() > MAX_EVIDENCE_FILE_SIZE {
@@ -1177,7 +1201,13 @@ pub fn ffi_extract_document(cpoe_path: String, output_path: String) -> FfiResult
         ));
     }
     let data = try_ffi!(
-        std::fs::read(&cpoe_path).map_err(|e| format!("Failed to read evidence file: {e}")),
+        {
+            use std::io::Read;
+            let mut buf = Vec::with_capacity(meta.len() as usize);
+            std::io::BufReader::new(file).read_to_end(&mut buf)
+                .map(|_| buf)
+                .map_err(|e| format!("Failed to read evidence file: {e}"))
+        },
         FfiResult
     );
 

@@ -121,6 +121,13 @@ impl HwCosignScheduler {
     /// This shifts the entropy modulation component of the threshold, making
     /// the next co-sign point depend on the author's actual typing behavior.
     pub fn record_entropy(&mut self, jitter_entropy: &[u8]) {
+        const MAX_ENTROPY_BYTES: usize = 1024 * 1024;
+        if self.accumulated_entropy.len() + jitter_entropy.len() > MAX_ENTROPY_BYTES {
+            use sha2::{Digest, Sha256};
+            let digest = Sha256::digest(&self.accumulated_entropy);
+            self.accumulated_entropy.clear();
+            self.accumulated_entropy.extend_from_slice(&digest);
+        }
         self.accumulated_entropy.extend_from_slice(jitter_entropy);
     }
 

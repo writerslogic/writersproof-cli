@@ -562,12 +562,45 @@ impl Chain {
         }
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    fn acquire_lock(file: &fs::File) -> Result<()> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+        };
+        let mut overlapped = unsafe { std::mem::zeroed() };
+        let ok = unsafe {
+            LockFileEx(
+                file.as_raw_handle() as _,
+                LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                0,
+                1,
+                0,
+                &mut overlapped,
+            )
+        };
+        if ok == 0 {
+            return Err(Error::checkpoint("Concurrent commit blocked by file lock"));
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn release_lock(file: &fs::File) {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::UnlockFileEx;
+        let mut overlapped = unsafe { std::mem::zeroed() };
+        unsafe {
+            UnlockFileEx(file.as_raw_handle() as _, 0, 1, 0, &mut overlapped);
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
     fn acquire_lock(_file: &fs::File) -> Result<()> {
         Ok(())
     }
 
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     fn release_lock(_file: &fs::File) {}
 
     pub fn latest(&self) -> Option<&Checkpoint> {
@@ -684,7 +717,7 @@ impl Chain {
         document_path: impl AsRef<Path>,
         writersproof_dir: impl AsRef<Path>,
     ) -> Result<PathBuf> {
-        let abs_path = fs::canonicalize(document_path.as_ref())?;
+        let abs_path = crate::utils::fs::canonicalize_validated(document_path.as_ref())?;
         let doc_id = crate::utils::document_id_from_path(&abs_path);
         let chain_path = writersproof_dir
             .as_ref()
@@ -709,7 +742,7 @@ impl Chain {
         }
 
         let mut chain = Self::new(&document_path, vdf_params)?;
-        let abs_path = fs::canonicalize(document_path.as_ref())?;
+        let abs_path = crate::utils::fs::canonicalize_validated(document_path.as_ref())?;
         let doc_id = crate::utils::document_id_from_path(&abs_path);
         chain.storage_path = Some(
             writersproof_dir

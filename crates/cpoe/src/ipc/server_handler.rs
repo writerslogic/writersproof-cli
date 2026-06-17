@@ -167,6 +167,10 @@ pub(super) async fn handle_connection_inner<
                 }
             }
             let len = u32::from_le_bytes(len_buf) as usize;
+            if len == 0 {
+                log::debug!("IPC: zero-length message on {}, closing", transport_label);
+                break;
+            }
             if len > MAX_MESSAGE_SIZE {
                 log::warn!(
                     "IPC: message too large: {} bytes on {} (dropping)",

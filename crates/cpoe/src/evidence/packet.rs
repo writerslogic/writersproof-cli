@@ -458,8 +458,8 @@ impl Packet {
         signing_key: &SigningKey,
         author_did: Option<&str>,
     ) -> crate::error::Result<()> {
-        self.sign(signing_key)?;
         self.author_did = author_did.map(String::from);
+        self.sign(signing_key)?;
         Ok(())
     }
 
@@ -587,7 +587,9 @@ impl Packet {
             (None, 0) => {} // Genesis: no previous required
             (Some(prev), idx) if idx > 0 => {
                 let stored_prev = cosig.prev_hw_signature.as_deref().unwrap_or(&[]);
-                if stored_prev != prev.signature.as_slice() {
+                if stored_prev.len() != prev.signature.len()
+                    || !bool::from(stored_prev.ct_eq(prev.signature.as_slice()))
+                {
                     return Err(Error::signature(
                         "hardware co-signature chain broken: prev_hw_signature mismatch",
                     ));

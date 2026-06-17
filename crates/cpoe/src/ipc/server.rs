@@ -55,6 +55,7 @@ impl IpcServer {
     pub fn bind(path: PathBuf) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
+            crate::crypto::restrict_permissions(parent, 0o700)?;
         }
 
         // Try binding directly first to avoid TOCTOU between remove and bind.

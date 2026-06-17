@@ -157,6 +157,12 @@ pub struct SessionRecoveryState {
     pub export_count: u64,
 }
 
+impl Drop for SessionRecoveryState {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.last_ratchet_state);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LegacyKeyMigration {
     pub legacy_public_key: Vec<u8>,

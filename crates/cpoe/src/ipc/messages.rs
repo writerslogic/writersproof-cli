@@ -98,12 +98,14 @@ fn validate_ipc_path(path: &Path) -> Result<(), String> {
         }
     };
 
-    // Symlink check on the canonical path (not the original) to avoid a
-    // TOCTOU race where the symlink target changes between resolution and use.
-    if canonical.is_symlink() {
+    // Check for symlinks on the original path before canonicalization resolved them.
+    if std::fs::symlink_metadata(path)
+        .map(|m| m.is_symlink())
+        .unwrap_or(false)
+    {
         return Err(format!(
             "Symlink rejected at IPC boundary: '{}'",
-            canonical.display()
+            path.display()
         ));
     }
 
@@ -442,12 +444,20 @@ impl IpcMessage {
                     ));
                 }
             }
-            IpcMessage::BrowserKeystroke { key, code, .. } => {
+            IpcMessage::BrowserKeystroke {
+                key,
+                code,
+                timestamp_ms,
+                ..
+            } => {
                 if key.len() > MAX_SHORT_STRING {
                     return Err("BrowserKeystroke key too long".to_string());
                 }
                 if code.len() > MAX_SHORT_STRING {
                     return Err("BrowserKeystroke code too long".to_string());
+                }
+                if !timestamp_ms.is_finite() || *timestamp_ms < 0.0 {
+                    return Err("BrowserKeystroke timestamp_ms invalid".to_string());
                 }
             }
             IpcMessage::BrowserKeystrokeBatch { keystrokes, .. } => {
@@ -457,9 +467,12 @@ impl IpcMessage {
                         keystrokes.len()
                     ));
                 }
-                for (_, key, code) in keystrokes {
+                for (ts, key, code) in keystrokes {
                     if key.len() > MAX_SHORT_STRING || code.len() > MAX_SHORT_STRING {
                         return Err("BrowserKeystrokeBatch entry too long".to_string());
+                    }
+                    if !ts.is_finite() || *ts < 0.0 {
+                        return Err("BrowserKeystrokeBatch timestamp invalid".to_string());
                     }
                 }
             }

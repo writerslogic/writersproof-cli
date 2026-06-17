@@ -587,8 +587,11 @@ fn load_macos(account: &str) -> Result<Option<Zeroizing<Vec<u8>>>> {
         // SAFETY: result is non-null and was returned as +1 by SecItemCopyMatching;
         // wrap_under_create_rule takes ownership so it will be released on drop.
         let data_cf = unsafe { core_foundation::data::CFData::wrap_under_create_rule(result as _) };
-        let mut encoded = String::from_utf8(data_cf.bytes().to_vec())
-            .map_err(|e| anyhow!("Invalid UTF-8 in keychain data: {}", e))?;
+        let mut encoded = String::from_utf8(data_cf.bytes().to_vec()).map_err(|e| {
+            let mut leaked = e.into_bytes();
+            leaked.zeroize();
+            anyhow!("Invalid UTF-8 in keychain data")
+        })?;
         let decoded = general_purpose::STANDARD.decode(&encoded).map_err(|e| {
             encoded.zeroize();
             anyhow!("Failed to decode base64 from keychain: {}", e)
