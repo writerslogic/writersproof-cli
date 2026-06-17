@@ -15,7 +15,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime};
 use tokio::sync::{broadcast, mpsc};
-use zeroize::Zeroize;
 
 use super::core::CGEVENTTAP_VERIFIED_PID;
 
@@ -586,9 +585,13 @@ impl EventLoopCtx {
             &self.wal_dir,
             &self.session_events_tx,
         );
+        // Clone focus path out of the lock so we never hold current_focus(4)
+        // while acquiring sessions(2) or cached_store(3) (AUD-041).
+        let focus_path = self.current_focus.read_recover().clone();
+
         // Start a BundleMonitor for newly-focused bundle documents
         // (Scrivener .scriv, Ulysses .ulysses) if not already watching.
-        if let Some(ref path) = *self.current_focus.read_recover() {
+        if let Some(ref path) = focus_path {
             let bundle_path = std::path::Path::new(path.as_str());
             if super::bundle_monitor::is_bundle_document(bundle_path) {
                 let mut monitors = self.bundle_monitors.lock_recover();
@@ -619,7 +622,7 @@ impl EventLoopCtx {
         }
 
         // Register the focused document's directory for file-save correlation.
-        if let Some(ref path) = *self.current_focus.read_recover() {
+        if let Some(ref path) = focus_path {
             let doc_path = std::path::Path::new(path.as_str());
             if doc_path.is_absolute() && !path.starts_with("title://") && !path.starts_with("shadow://") {
                 {
@@ -882,19 +885,9 @@ impl EventLoopCtx {
             total_checkpoints: i64::try_from(session.checkpoint_count).unwrap_or(i64::MAX),
         };
         drop(map);
-        let sk_opt = self.signing_key_for_cp.read_recover().key();
-        if let Some(sk) = sk_opt {
-            let mut key_bytes = sk.to_bytes();
-            let hmac_key = crate::crypto::derive_hmac_key(&key_bytes);
-            key_bytes.zeroize();
-            drop(sk);
-            let db = self.writersproof_dir.join("events.db");
-            if let Ok(store) =
-                crate::store::SecureStore::open(&db, hmac_key)
-            {
-                if let Err(e) = store.save_document_stats(&stats) {
-                    log::warn!("Idle-end stats persist failed: {e}");
-                }
+        if let Some(ref store) = *self.cached_store.lock_recover() {
+            if let Err(e) = store.save_document_stats(&stats) {
+                log::warn!("Idle-end stats persist failed: {e}");
             }
         }
     }
@@ -1156,12 +1149,9 @@ impl EventLoopCtx {
         .await
         .unwrap_or_else(|e| {
             log::error!("Checkpoint task panicked for {}: {e}", path);
-            // Mark this window as checkpointed to prevent infinite retry
-            // if the panic is caused by persistent corrupt state.
             let mut map = sessions_ref.write_recover();
             if let Some(session) = map.get_mut(path) {
                 session.last_checkpoint_keystrokes = session.keystroke_count;
-                session.checkpoint_count += 1;
             }
             None
         });
