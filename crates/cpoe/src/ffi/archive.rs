@@ -215,7 +215,8 @@ pub fn ffi_export_all_events_for_identity(device_id_hex: String) -> FfiDataExpor
         crate::ffi::helpers::get_data_dir().ok_or("Data directory not found"),
         FfiDataExportResult
     );
-    let export_path = data_dir.join("dsar_export.json");
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let export_path = data_dir.join(format!("dsar_export_{timestamp}.json"));
     // SecureEvent doesn't derive Serialize; emit all fields with hex-encoded byte arrays.
     let summaries: Vec<serde_json::Value> = events
         .iter()

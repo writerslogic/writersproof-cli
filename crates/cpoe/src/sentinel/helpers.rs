@@ -793,13 +793,17 @@ pub fn handle_change_event_sync(
             ChangeEventType::Modified => {
                 session.change_count += 1;
                 if let Some(hash) = &event.hash {
-                    // Paste boundary detection: compare old/new content hashes
-                    // and timing to classify large content changes.
-                    let new_text_hash = {
+                    // Paste boundary detection: compare previous and current
+                    // content hashes plus timing to classify large changes.
+                    let prev_hash = {
                         use sha2::{Sha256, Digest};
-                        let mut h = Sha256::new();
-                        h.update(hash.as_bytes());
-                        let result: [u8; 32] = h.finalize().into();
+                        let prev = session.current_hash.as_deref().unwrap_or("");
+                        let result: [u8; 32] = Sha256::digest(prev.as_bytes()).into();
+                        result
+                    };
+                    let new_hash = {
+                        use sha2::{Sha256, Digest};
+                        let result: [u8; 32] = Sha256::digest(hash.as_bytes()).into();
                         result
                     };
                     let last_ts = session
@@ -815,8 +819,8 @@ pub fn handle_change_event_sync(
                     let (context, confidence) = detect_paste_boundary(
                         last_ts,
                         current_ts,
-                        &session.jitter_hash_state,
-                        &new_text_hash,
+                        &prev_hash,
+                        &new_hash,
                         &session.app_bundle_id,
                         &session.app_bundle_id,
                     );
@@ -883,6 +887,31 @@ pub fn handle_change_event_sync(
                     detection.original_path,
                     normalized_path,
                     &detection.original_session_id[..8],
+                );
+                // Record a WAL PathChange entry on the original session so the
+                // checkpoint chain links the original document to the new copy.
+                let key = signing_key.read_recover().key();
+                let mut payload = Vec::with_capacity(
+                    4 + detection.original_path.len() + 4 + normalized_path.len(),
+                );
+                payload.extend_from_slice(
+                    &u32::try_from(detection.original_path.len())
+                        .unwrap_or(u32::MAX)
+                        .to_le_bytes(),
+                );
+                payload.extend_from_slice(detection.original_path.as_bytes());
+                payload.extend_from_slice(
+                    &u32::try_from(normalized_path.len())
+                        .unwrap_or(u32::MAX)
+                        .to_le_bytes(),
+                );
+                payload.extend_from_slice(normalized_path.as_bytes());
+                wal_append_session_event(
+                    &detection.original_session_id,
+                    wal_dir,
+                    key,
+                    EntryType::PathChange,
+                    payload,
                 );
             }
         }
