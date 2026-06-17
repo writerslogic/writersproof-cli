@@ -479,13 +479,8 @@ impl SecureStore {
                     Ok(SyncConflict::NoConflict)
                 } else if local_ts > remote_timestamp {
                     Ok(SyncConflict::LocalNewer)
-                } else if local_ts < remote_timestamp {
-                    Ok(SyncConflict::RemoteNewer)
                 } else {
-                    Ok(SyncConflict::BothModified {
-                        local_ts,
-                        remote_ts: remote_timestamp,
-                    })
+                    Ok(SyncConflict::RemoteNewer)
                 }
             }
         }
@@ -560,8 +555,6 @@ pub enum SyncConflict {
     LocalNewer,
     /// Remote fragment is newer than local.
     RemoteNewer,
-    /// Both have been modified with different timestamps.
-    BothModified { local_ts: i64, remote_ts: i64 },
 }
 
 /// Strategy for resolving a sync conflict.
@@ -592,7 +585,7 @@ pub fn current_timestamp_ms() -> i64 {
 /// Generate a 16-byte cryptographic random nonce.
 pub fn generate_nonce() -> [u8; 16] {
     let mut nonce = [0u8; 16];
-    rand::RngCore::fill_bytes(&mut rand::rng(), &mut nonce);
+    getrandom::getrandom(&mut nonce).expect("CSPRNG failure");
     nonce
 }
 

@@ -382,7 +382,7 @@ impl SentinelIpcHandler {
         builder = builder.with_physical_context(&physics);
 
         // Attach per-document behavioral and keystroke evidence.
-        let path_str = path.to_string_lossy().to_string();
+        let path_str = validated_path.to_string_lossy().to_string();
 
         // Per-document typing samples from the active session (if any).
         let typing_samples = {
