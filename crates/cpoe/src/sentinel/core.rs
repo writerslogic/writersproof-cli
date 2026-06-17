@@ -612,7 +612,8 @@ impl Sentinel {
                             Ok(event) => ctx.handle_session_event(event),
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                                 log::warn!("Session event receiver lagged, missed {n} events");
-                                if let Some(ref path) = *ctx.current_focus.read_recover() {
+                                let focus = ctx.current_focus.read_recover().clone();
+                                if let Some(ref path) = focus {
                                     if let Some(session) = ctx.sessions.write_recover().get_mut(path.as_str()) {
                                         session.capture_gaps = session.capture_gaps.saturating_add(u32::try_from(n).unwrap_or(u32::MAX));
                                     }
@@ -775,10 +776,15 @@ impl Sentinel {
                     .await
                 });
             }
-            while let Some(result) = checkpoint_tasks.join_next().await {
-                if let Err(e) = result {
-                    log::error!("Final checkpoint task failed: {e}");
+            if tokio::time::timeout(Duration::from_secs(5), async {
+                while let Some(result) = checkpoint_tasks.join_next().await {
+                    if let Err(e) = result {
+                        log::error!("Final checkpoint task failed: {e}");
+                    }
                 }
+            }).await.is_err() {
+                log::warn!("Final checkpoint tasks timed out after 5s; aborting remaining");
+                checkpoint_tasks.abort_all();
             }
         }
 
@@ -914,6 +920,7 @@ impl Sentinel {
         // Zeroize key material. SigningKey has ZeroizeOnDrop; take() drops
         // it now rather than waiting for Arc refcount to reach zero.
         self.signing_key.write_recover().reset();
+        *self.cached_store.lock_recover() = None;
         // session_nonce is [u8; 32]; zeroize under a single lock hold.
         {
             let mut guard = self.session_nonce.write_recover();
