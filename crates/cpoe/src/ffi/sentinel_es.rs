@@ -215,12 +215,20 @@ pub fn ffi_sentinel_es_ai_tool_detected(
 pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
     catch_ffi_panic!(false, {
     log::debug!("ffi_sentinel_es_file_rename: old_path={}, new_path={}", old_path, new_path);
-    if old_path.len() > 4096 {
+    if old_path.len() > 4096 || new_path.len() > 4096 {
         return false;
     }
     let sentinel = match get_running_sentinel() {
         Some(s) => s,
         None => return false,
+    };
+
+    let old_validated = match crate::sentinel::helpers::validate_path(&old_path) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(e) => {
+            log::debug!("Rename source path rejected: {e}");
+            old_path
+        }
     };
 
     let validated = match crate::sentinel::helpers::validate_path(&new_path) {
@@ -231,14 +239,14 @@ pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
         }
     };
 
-    log::info!("ES file rename detected: {old_path} -> {validated}");
+    log::info!("ES file rename detected: {old_validated} -> {validated}");
 
     let mut sessions = sentinel.sessions.write_recover();
     if sessions.contains_key(&validated) {
-        log::warn!("Rename target already tracked, ignoring: {old_path} -> {validated}");
+        log::warn!("Rename target already tracked, ignoring: {old_validated} -> {validated}");
         return false;
     }
-    let mut session = match sessions.remove(&old_path) {
+    let mut session = match sessions.remove(&old_validated) {
         Some(s) => s,
         None => return false,
     };
@@ -248,7 +256,7 @@ pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
 
     // Update current_focus if it pointed to the old path.
     let mut focus = sentinel.current_focus.write_recover();
-    if focus.as_deref() == Some(old_path.as_str()) {
+    if focus.as_deref() == Some(old_validated.as_str()) {
         *focus = Some(validated);
     }
 
