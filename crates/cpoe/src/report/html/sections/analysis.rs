@@ -60,15 +60,22 @@ The per-dimension scores and likelihood ratios below contribute to the composite
         if d.analysis.is_empty() {
             continue;
         }
+        let color = sanitize_css_color(&d.color);
+        let circumference = 2.0 * std::f64::consts::PI * 14.0; // r=14
+        let offset = circumference * (1.0 - d.score as f64 / 100.0);
         write!(
             html,
             r#"<div class="dimension-card">
 <h3 style="color:{color}">{name}</h3>
-<div class="dimension-badge" style="background:{color}">{score}</div>
+<svg class="dimension-badge" width="36" height="36" viewBox="0 0 36 36" style="position:absolute;top:14px;right:18px">
+<circle cx="18" cy="18" r="14" fill="none" stroke="var(--border-light)" stroke-width="3"/>
+<circle cx="18" cy="18" r="14" fill="none" stroke="{color}" stroke-width="3" stroke-dasharray="{circ:.1}" stroke-dashoffset="{offset:.1}" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+<text x="18" y="22" text-anchor="middle" font-family="var(--sans)" font-size="11" font-weight="700" fill="{color}">{score}</text>
+</svg>
 "#,
             name = html_escape(&d.name),
             score = d.score,
-            color = sanitize_css_color(&d.color),
+            circ = circumference,
         )?;
         for detail in &d.analysis {
             write!(

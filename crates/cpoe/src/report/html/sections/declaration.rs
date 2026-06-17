@@ -160,9 +160,30 @@ pub(in crate::report::html) fn write_lr_interpretation(
         )
     };
 
+    // Log-scale LR bar: maps log10(LR) from -2..+5 onto a horizontal bar.
+    let log_lr = if lr > 0.0 { lr.log10() } else { -2.0 };
+    let bar_pct = ((log_lr + 2.0) / 7.0 * 100.0).clamp(2.0, 98.0); // -2..+5 range
+    let bar_color = if log_lr >= 4.0 { "var(--accent)" }
+        else if log_lr >= 2.0 { "#3d7a4a" }
+        else if log_lr >= 1.0 { "var(--caution)" }
+        else { "var(--alert)" };
     write!(
         html,
-        r#"<div class="lr-interpretation"><strong>Interpretation:</strong> {interpretation}</div>"#,
+        r#"<div class="lr-interpretation">
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+<svg viewBox="0 0 300 24" width="300" height="24" style="flex-shrink:0">
+<rect x="0" y="8" width="300" height="8" rx="4" fill="var(--border-light)"/>
+<rect x="0" y="8" width="{bar_w:.0}" height="8" rx="4" fill="{bar_color}"/>
+<circle cx="{bar_w:.0}" cy="12" r="6" fill="{bar_color}" stroke="var(--bg)" stroke-width="2"/>
+<text x="0" y="6" font-family="var(--sans)" font-size="7" fill="var(--text-muted)">&lt;1</text>
+<text x="86" y="6" font-family="var(--sans)" font-size="7" fill="var(--text-muted)">10</text>
+<text x="172" y="6" font-family="var(--sans)" font-size="7" fill="var(--text-muted)">10&#xB3;</text>
+<text x="290" y="6" font-family="var(--sans)" font-size="7" fill="var(--text-muted)" text-anchor="end">10&#x2075;</text>
+</svg>
+<span style="font-family:var(--sans);font-weight:700;font-size:13px;color:{bar_color}">log\u{{2081}}\u{{2080}} = {log_lr:.1}</span>
+</div>
+<strong>Interpretation:</strong> {interpretation}</div>"#,
+        bar_w = bar_pct * 3.0, // 300px width
     )
 }
 

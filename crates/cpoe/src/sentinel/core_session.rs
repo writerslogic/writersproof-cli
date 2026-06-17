@@ -65,11 +65,26 @@ impl Sentinel {
             self.signing_key.read_recover().key()
         };
 
+        // Load cumulative stats and file hash BEFORE acquiring the sessions
+        // write lock so store I/O and disk reads don't block other session ops.
+        let file_hash = compute_file_hash(&path_str).ok();
+        let doc_stats = {
+            let store_guard = self.get_or_open_store();
+            match store_guard {
+                Some(ref guard) if guard.is_some() => {
+                    guard.as_ref().unwrap().load_document_stats(&path_str).ok().flatten()
+                }
+                _ => {
+                    log::warn!("Failed to open store for document stats: signing key unavailable");
+                    None
+                }
+            }
+        };
+
+        // Single write lock for check+insert to avoid TOCTOU race
         #[cfg(debug_assertions)]
         let _session_guard =
             super::core::lock_order::assert_order(super::core::lock_order::SESSIONS);
-
-        // Single write lock for check+insert to avoid TOCTOU race
         let mut sessions = self.sessions.write_recover();
         if sessions.contains_key(&path_str) {
             return Err((
@@ -84,38 +99,25 @@ impl Sentinel {
             ObfuscatedString::new(&path_str),
         );
 
-        if let Ok(hash) = compute_file_hash(&path_str) {
+        if let Some(hash) = file_hash {
             session.initial_hash = Some(hash.clone());
             session.current_hash = Some(hash);
         }
 
-        // Load cumulative stats from previous sessions via cached store.
-        let store_guard = self.get_or_open_store();
-
-        match store_guard {
-            Some(ref guard) if guard.is_some() => match guard.as_ref().unwrap().load_document_stats(&path_str) {
-                Ok(Some(stats)) => {
-                    session.cumulative_keystrokes_base =
-                        u64::try_from(stats.total_keystrokes).unwrap_or(0);
-                    session.cumulative_focus_ms_base = stats.total_focus_ms;
-                    session.session_number = u32::try_from(stats.session_count).unwrap_or(0);
-                    session.first_tracked_at = Some(
-                        UNIX_EPOCH
-                            + Duration::from_secs(
-                                u64::try_from(stats.first_tracked_at).unwrap_or(0),
-                            ),
-                    );
-                }
-                Ok(None) => {
-                    session.first_tracked_at = Some(SystemTime::now());
-                }
-                Err(e) => {
-                    log::warn!("Failed to load document stats for {path_str}: {e}");
-                    session.first_tracked_at = Some(SystemTime::now());
-                }
-            },
-            _ => {
-                log::warn!("Failed to open store for document stats: signing key unavailable");
+        match doc_stats {
+            Some(stats) => {
+                session.cumulative_keystrokes_base =
+                    u64::try_from(stats.total_keystrokes).unwrap_or(0);
+                session.cumulative_focus_ms_base = stats.total_focus_ms;
+                session.session_number = u32::try_from(stats.session_count).unwrap_or(0);
+                session.first_tracked_at = Some(
+                    UNIX_EPOCH
+                        + Duration::from_secs(
+                            u64::try_from(stats.first_tracked_at).unwrap_or(0),
+                        ),
+                );
+            }
+            None => {
                 session.first_tracked_at = Some(SystemTime::now());
             }
         }
@@ -124,18 +126,7 @@ impl Sentinel {
             .config
             .wal_dir
             .join(format!("{}.wal", session.session_id));
-        // Session IDs are normally 32 random bytes hex-encoded (64 hex chars -> 32 bytes).
-        // Non-hex IDs (e.g. synthesized ones with a `rfc-` prefix) fall back to a
-        // deterministic SHA-256 digest of the ID string so the WAL is always created.
-        let mut session_id_bytes = [0u8; 32];
-        let hex_str = &session.session_id[..64.min(session.session_id.len())];
-        if hex::decode_to_slice(hex_str, &mut session_id_bytes).is_err() {
-            log::warn!(
-                "session_id not hex-encoded; falling back to SHA-256(session_id) for WAL key"
-            );
-            let digest = sha2::Sha256::digest(session.session_id.as_bytes());
-            session_id_bytes.copy_from_slice(&digest);
-        }
+        let session_id_bytes = dictation_session_id_bytes(&session.session_id);
         if let Some(ref signing_key) = key {
             // Copy key bytes for Wal::open (which takes SigningKey by value)
             // and zeroize the intermediate copy. SigningKey::from_bytes produces
@@ -334,7 +325,10 @@ impl Sentinel {
                 file_size,
                 Some("Auto-checkpoint".to_string()),
             );
-            event.size_delta = (file_size - prev_file_size) as i32;
+            event.size_delta =
+                i32::try_from(file_size - prev_file_size).unwrap_or(
+                    if file_size >= prev_file_size { i32::MAX } else { i32::MIN }
+                );
             store.add_secure_event_with_signer(&mut event, sk_cached.as_ref())?;
 
             if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title, eco_score))) =
@@ -591,13 +585,12 @@ impl Sentinel {
                 _ => {}
             }
 
-            let session_path = path_str.clone();
             if self
                 .session_events_tx
                 .send(SessionEvent {
                     event_type: SessionEventType::Ended,
                     session_id: session.session_id,
-                    document_path: path_str,
+                    document_path: path_str.clone(),
                     timestamp: SystemTime::now(),
                     hash: session.current_hash,
                 })
@@ -616,9 +609,7 @@ impl Sentinel {
                 log::error!("Failed to update baseline: {}", e);
             }
 
-            // Only clear targeted mode if the stopped session is the targeted one.
-            // Compare against the path sent in the Ended event (path_str was moved).
-            if self.targeted_path().as_deref() == Some(session_path.as_str()) {
+            if self.targeted_path().as_deref() == Some(path_str.as_str()) {
                 self.clear_targeted_mode();
             }
             Ok(())
@@ -935,7 +926,13 @@ impl Sentinel {
             end_ns,
             word_count: active.total_words,
             char_count: 0,
-            input_method: "com.apple.SpeechRecognitionCore".to_string(),
+            input_method: if cfg!(target_os = "macos") {
+                "com.apple.SpeechRecognitionCore".to_string()
+            } else if cfg!(target_os = "windows") {
+                "windows.speech.recognition".to_string()
+            } else {
+                "platform.speech.recognition".to_string()
+            },
             mic_active: true,
             words_per_minute: wpm,
             plausibility_score: 0.0,

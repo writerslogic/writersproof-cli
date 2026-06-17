@@ -281,10 +281,11 @@ fn write_evidence_revision_intensity(html: &mut String, p: &ProcessEvidence) -> 
         r#"<div class="evidence-card"><h4>Exhibit A: Revision Intensity</h4>"#
     )?;
     if let Some(ri) = p.revision_intensity.filter(|v| v.is_finite()) {
+        let pct = (ri * 100.0).min(100.0);
         write!(
             html,
-            r#"<div class="metric">{:.0}% of content revised</div>"#,
-            ri * 100.0
+            r#"<div class="metric">{pct:.0}% of content revised</div>
+<div class="forgery-bar"><div class="forgery-fill" style="width:{pct:.0}%;background:var(--accent)"></div></div>"#,
         )?;
         let note = if ri > 0.65 {
             "Heavy revision activity; consistent with careful drafting and extensive self-editing."
@@ -348,11 +349,16 @@ fn write_evidence_paste_ratio(html: &mut String, p: &ProcessEvidence) -> fmt::Re
         r#"<div class="evidence-card"><h4>Exhibit C: Paste Analysis</h4>"#
     )?;
     if let Some(pr) = p.paste_ratio_pct.filter(|v| v.is_finite()) {
+        let paste_color = if pr < 20.0 { "var(--accent)" } else if pr < 50.0 { "var(--caution)" } else { "var(--alert)" };
         write!(html, r#"<div class="metric">{:.1}% of total text"#, pr)?;
         if let Some(ops) = p.paste_operations {
             write!(html, " ({} operations)", ops)?;
         }
-        write!(html, "</div>")?;
+        write!(html, r#"</div>
+<div class="forgery-bar"><div class="forgery-fill" style="width:{pct:.0}%;background:{color}"></div></div>"#,
+            pct = pr.min(100.0),
+            color = paste_color,
+        )?;
         let note = if pr < 5.0 {
             "Minimal paste activity. Virtually all text was entered keystroke-by-keystroke, \
              strongly indicative of original composition."
@@ -387,11 +393,14 @@ fn write_evidence_keystroke_dynamics(html: &mut String, p: &ProcessEvidence) -> 
         r#"<div class="evidence-card"><h4>Exhibit D: Keystroke Dynamics</h4>"#
     )?;
     if let Some(cv) = p.iki_cv.filter(|v| v.is_finite()) {
+        let cv_color = if cv > 0.3 { "var(--accent)" } else if cv > 0.15 { "var(--caution)" } else { "var(--alert)" };
+        let cv_pct = (cv * 100.0).min(100.0);
         write!(html, r#"<div class="metric">IKI CV: {:.2}"#, cv)?;
         if let Some(bg) = p.bigram_consistency.filter(|v| v.is_finite()) {
             write!(html, " | Bigram consistency: {:.2}", bg)?;
         }
-        write!(html, "</div>")?;
+        write!(html, r#"</div>
+<div class="forgery-bar"><div class="forgery-fill" style="width:{cv_pct:.0}%;background:{cv_color}"></div></div>"#)?;
         let note = if cv > 0.4 {
             "High inter-keystroke interval variability indicates natural, human-like typing \
              rhythm with variable cognitive load throughout the session."
