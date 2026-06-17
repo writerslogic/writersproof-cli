@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
+pub(crate) mod charts;
 mod css;
 mod helpers;
 mod sections;
@@ -46,6 +47,9 @@ fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
         sections::write_footer(html, r)?;
         return write!(html, "</div></body></html>");
     }
+
+    // Visual overview — charts first, tables later (for human readers)
+    write_visual_overview(html, r)?;
 
     sections::write_enfsi_scale(html, r)?;
     sections::write_lr_interpretation(html, r)?;
@@ -132,6 +136,42 @@ fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
     sections::write_footer(html, r)?;
 
     write!(html, "</div></body></html>")
+}
+
+/// Visual overview section with SVG charts — placed early in the report
+/// so human readers see the visual summary before the detailed tables.
+fn write_visual_overview(html: &mut String, r: &WarReport) -> std::fmt::Result {
+    writeln!(html, r#"<h2>Visual Overview</h2>"#)?;
+
+    // Writing flow intensity chart
+    let flow_svg = charts::writing_flow_chart(&r.writing_flow);
+    if !flow_svg.is_empty() {
+        writeln!(html, r#"<h3>Writing Rhythm</h3>"#)?;
+        writeln!(html, r#"<p class="chart-caption">Typing intensity over time. Peaks indicate active composition; valleys indicate pauses for thought or revision.</p>"#)?;
+        writeln!(html, "{flow_svg}")?;
+    }
+
+    // Dimension score bar chart
+    let dim_svg = charts::dimension_bar_chart(&r.dimensions);
+    if !dim_svg.is_empty() {
+        writeln!(html, r#"<h3>Analysis Dimensions</h3>"#)?;
+        writeln!(html, r#"<p class="chart-caption">Per-dimension assessment scores. Green (&ge;70) indicates strong human authorship signals; amber (40&ndash;69) is mixed; red (&lt;40) is suspicious.</p>"#)?;
+        writeln!(html, "{dim_svg}")?;
+    }
+
+    // Checkpoint velocity chart
+    let cp_svg = charts::checkpoint_velocity_chart(&r.checkpoints);
+    if !cp_svg.is_empty() {
+        writeln!(html, r#"<h3>Document Growth</h3>"#)?;
+        writeln!(html, r#"<p class="chart-caption">Document size at each checkpoint. Steady growth with revision dips is characteristic of human composition.</p>"#)?;
+        writeln!(html, "{cp_svg}")?;
+    }
+
+    if flow_svg.is_empty() && dim_svg.is_empty() && cp_svg.is_empty() {
+        writeln!(html, r#"<p>Insufficient data for visual charts. See detailed tables below.</p>"#)?;
+    }
+
+    Ok(())
 }
 
 fn write_insufficient_notice(html: &mut String, r: &WarReport) -> std::fmt::Result {

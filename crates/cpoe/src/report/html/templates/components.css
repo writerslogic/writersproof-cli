@@ -546,40 +546,14 @@ table.data thead th { position: sticky; top: 0; background: var(--bg); z-index: 
   line-height: 1.6;
 }
 
-/* --- Collapsible sections --- */
-details.report-section { margin: 28px 0; }
-details.report-section > summary {
-  font-family: var(--sans);
-  font-size: clamp(11px, 1.8vw, 13px);
-  font-weight: 700;
-  color: var(--navy);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 8px 0;
-  border-top: 2px solid var(--rule);
-  border-bottom: 1px solid var(--rule-light);
-  cursor: pointer;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-details.report-section > summary::-webkit-details-marker { display: none; }
-details.report-section > summary::before {
-  content: "\25B6";
-  font-size: 8px;
-  color: var(--navy);
-  transition: transform 0.15s;
-  display: inline-block;
-}
-details.report-section[open] > summary::before { transform: rotate(90deg); }
-details.report-section > summary .section-metric {
+/* --- Section metric annotations --- */
+.section-metric {
   font-weight: 400;
   font-size: 10px;
   color: var(--text-muted);
   text-transform: none;
   letter-spacing: 0;
-  margin-left: auto;
+  margin-left: 8px;
 }
 
 /* --- Score gauge (CSS-only arc) --- */
@@ -709,4 +683,12 @@ details.report-section > summary .section-metric {
   font-size: 9px;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* Chart captions */
+.chart-caption {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0 8px 0;
+  line-height: 1.4;
 }

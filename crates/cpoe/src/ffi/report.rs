@@ -748,12 +748,33 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     let (profile, metrics, regions) = get_forensics_cached(&file_path_str, &events);
     let forensic_breakdown = super::forensic_fields::build_forensic_breakdown(&profile, &metrics);
-    let real_keystrokes = doc_stats.as_ref()
-        .map(|d| d.total_keystrokes.max(0) as u64)
+    // Prefer live sentinel session keystroke count (most accurate), then
+    // persisted document_stats, then checkpoint-based estimate as last resort.
+    let real_keystrokes = super::sentinel::get_sentinel()
+        .and_then(|s| s.session(&file_path_str).ok())
+        .map(|sess| sess.total_keystrokes())
         .filter(|&k| k > 0)
+        .or_else(|| {
+            doc_stats.as_ref()
+                .map(|d| d.total_keystrokes.max(0) as u64)
+                .filter(|&k| k > 0)
+        })
         .unwrap_or(stats.keystroke_estimate);
     populate_behavioral_fields(&mut process, &metrics, real_keystrokes);
     process.total_keystrokes = Some(real_keystrokes);
+
+    // Update the keystroke flag with the real count (flags were built with the
+    // checkpoint-based estimate before doc_stats/sentinel data was available).
+    if real_keystrokes != stats.keystroke_estimate {
+        if let Some(ks_flag) = flags.iter_mut().find(|f| f.category == "Keystroke Activity") {
+            ks_flag.flag = format!("{} Keystrokes", real_keystrokes);
+            ks_flag.signal = if real_keystrokes > 200 {
+                FlagSignal::Human
+            } else {
+                FlagSignal::Neutral
+            };
+        }
+    }
 
     let (score, verdict, lr, enfsi_tier) = blend_topology_score(
         stats.avg_forensic,
