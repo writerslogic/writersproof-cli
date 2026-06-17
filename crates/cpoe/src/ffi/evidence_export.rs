@@ -416,6 +416,7 @@ pub(crate) fn build_wire_packet(
         forensic_summary,
         export_attestation: collect_export_attestation(&path),
         document_structure: collect_document_structure(&path),
+        continuation_summary: build_continuation_summary(&path, &store),
     };
 
     let encoded = wire_packet
@@ -573,6 +574,37 @@ fn collect_document_structure(path: &str) -> Option<authorproof_protocol::rfc::w
         entries,
         source_hash: map.scrivx_hash.clone(),
         captured_at_ms,
+    })
+}
+
+fn build_continuation_summary(
+    path: &str,
+    store: &crate::store::SecureStore,
+) -> Option<authorproof_protocol::rfc::wire_types::ContinuationSummaryWire> {
+    let stats = store.load_document_stats(path).ok()??;
+    if stats.session_count <= 1 {
+        return None;
+    }
+    // Build a deterministic series ID from the document path so continuations
+    // across sessions share the same series. Uses SHA-256 truncated to UUID format.
+    let series_id = {
+        use sha2::{Sha256, Digest};
+        let hash = Sha256::digest(path.as_bytes());
+        let mut bytes = [0u8; 16];
+        bytes.copy_from_slice(&hash[..16]);
+        uuid::Uuid::from_bytes(bytes)
+    };
+    let started_ms = if stats.first_tracked_at > 0 {
+        Some(stats.first_tracked_at as u64)
+    } else {
+        None
+    };
+    Some(authorproof_protocol::rfc::wire_types::ContinuationSummaryWire {
+        series_id: series_id.to_string(),
+        total_checkpoints: u64::try_from(stats.total_checkpoints).unwrap_or(0),
+        total_chars: 0,
+        packets_in_series: u32::try_from(stats.session_count).unwrap_or(u32::MAX),
+        series_started_at_ms: started_ms,
     })
 }
 

@@ -99,10 +99,32 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
     } else {
         message
     };
+    // Build provenance metadata for the derivation link.
+    let provenance = crate::evidence::provenance::ProvenanceSection::new()
+        .add_link(crate::evidence::provenance::ProvenanceLink::new(
+            {
+                use sha2::Digest;
+                let hash = sha2::Sha256::digest(source_str.as_bytes());
+                let mut bytes = [0u8; 16];
+                bytes.copy_from_slice(&hash[..16]);
+                uuid::Uuid::from_bytes(bytes)
+            },
+            content_hash,
+            crate::evidence::provenance::DerivationType::Split,
+        ))
+        .add_claim(crate::evidence::provenance::DerivationClaim {
+            aspect: crate::evidence::provenance::DerivationAspect::Content,
+            extent: crate::evidence::provenance::DerivationExtent::Complete,
+            description: None,
+            estimated_percentage: Some(100.0),
+        });
+    let provenance_json = serde_json::to_string(&provenance).unwrap_or_default();
+
     let context_note = format!(
-        "export_hash={};export_path={};{}",
+        "export_hash={};export_path={};provenance={};{}",
         hex::encode(export_hash),
         export.to_string_lossy(),
+        provenance_json,
         note
     );
 
@@ -183,10 +205,15 @@ pub fn ffi_export_c2pa(path: String, tier: String, output: String) -> FfiResult 
     }
 
     // Build evidence packet in memory.
-    let (_packet, evidence_bytes, _is_signed) = try_ffi!(
+    let (_packet, evidence_bytes, is_signed) = try_ffi!(
         crate::ffi::evidence_export::build_wire_packet(path.clone(), tier, None, None),
         FfiResult
     );
+    if !is_signed {
+        return FfiResult::err(
+            "C2PA export requires a signed evidence payload but the signing key is unavailable".to_string(),
+        );
+    }
 
     let evidence_packet = try_ffi!(
         decode_evidence_for_c2pa(&evidence_bytes),

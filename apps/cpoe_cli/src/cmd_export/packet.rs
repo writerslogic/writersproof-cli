@@ -394,6 +394,7 @@ pub(super) fn build_wire_packet_from_events(
         forensic_summary: None,
         export_attestation: None,
         document_structure: None,
+        continuation_summary: None,
     })
 }
 

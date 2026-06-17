@@ -130,6 +130,21 @@ pub struct EvidencePacketWire {
     /// Session-level forensic metrics computed at export time.
     #[serde(rename = "25", default, skip_serializing_if = "Option::is_none")]
     pub forensic_summary: Option<ForensicSummaryWire>,
+
+    /// Compile-to-export hash chain linking a derived manuscript to its source session.
+    /// Present when a bundle app (Scrivener, Vellum, Final Draft) compiled output
+    /// within 30 seconds of the last active checkpoint.
+    #[serde(rename = "26", default, skip_serializing_if = "Option::is_none")]
+    pub export_attestation: Option<ExportAttestationWire>,
+
+    /// Binder/outline structure snapshot from the source project at checkpoint time.
+    /// Proves document structure existed without revealing content.
+    #[serde(rename = "27", default, skip_serializing_if = "Option::is_none")]
+    pub document_structure: Option<DocumentStructureWire>,
+
+    /// Multi-session continuation summary (cumulative stats across reopens).
+    #[serde(rename = "28", default, skip_serializing_if = "Option::is_none")]
+    pub continuation_summary: Option<ContinuationSummaryWire>,
 }
 
 /// Session-level behavioral metrics embedded in the evidence packet.
@@ -492,4 +507,62 @@ impl EvidencePacketWire {
 
         Ok(())
     }
+}
+
+/// Hash-chain attestation linking a compiled manuscript to its source session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportAttestationWire {
+    #[serde(rename = "1")]
+    pub source_session_id: String,
+    #[serde(rename = "2")]
+    pub bundle_hash: String,
+    #[serde(rename = "3")]
+    pub output_hash: String,
+    #[serde(rename = "4")]
+    pub output_path_hash: String,
+    #[serde(rename = "5")]
+    pub source_checkpoint_ns: i64,
+    #[serde(rename = "6")]
+    pub export_detected_ns: i64,
+}
+
+/// Snapshot of a document's binder/outline structure at checkpoint time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentStructureWire {
+    #[serde(rename = "1")]
+    pub document_path_hash: String,
+    #[serde(rename = "2")]
+    pub entries: Vec<DocumentStructureEntryWire>,
+    #[serde(rename = "3")]
+    pub source_hash: String,
+    #[serde(rename = "4")]
+    pub captured_at_ms: u64,
+}
+
+/// One entry in a document's binder/scene tree snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentStructureEntryWire {
+    #[serde(rename = "1")]
+    pub uuid: String,
+    #[serde(rename = "2")]
+    pub title: String,
+    #[serde(rename = "3")]
+    pub depth: u32,
+    #[serde(rename = "4")]
+    pub item_type: String,
+}
+
+/// Cumulative session summary for multi-session continuation chains.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContinuationSummaryWire {
+    #[serde(rename = "1")]
+    pub series_id: String,
+    #[serde(rename = "2")]
+    pub total_checkpoints: u64,
+    #[serde(rename = "3")]
+    pub total_chars: u64,
+    #[serde(rename = "4")]
+    pub packets_in_series: u32,
+    #[serde(rename = "5", default, skip_serializing_if = "Option::is_none")]
+    pub series_started_at_ms: Option<u64>,
 }

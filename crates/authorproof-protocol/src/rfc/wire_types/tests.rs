@@ -176,6 +176,7 @@ fn create_test_evidence_packet() -> EvidencePacketWire {
         forensic_summary: None,
         export_attestation: None,
         document_structure: None,
+        continuation_summary: None,
     }
 }
 
