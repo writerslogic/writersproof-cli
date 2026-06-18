@@ -1127,6 +1127,16 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
+        bundle_id: "com.eastgate.Tinderbox",
+        display_name: "Tinderbox",
+        storage: StoragePattern::DatabaseBacked,
+        container_paths: &[],
+        needs_title_inference: false,
+        default_debounce_ms: Some(300),
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::ContentLevel,
+    },
+    WritingApp {
         bundle_id: "com.devon-technologies.think3",
         display_name: "DEVONthink 3",
         storage: StoragePattern::DatabaseBacked,
