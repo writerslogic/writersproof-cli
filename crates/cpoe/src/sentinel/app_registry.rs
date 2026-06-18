@@ -421,6 +421,26 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         title_parser: TitleParserVariant::Generic,
         witnessing_mode: WitnessingMode::Auto,
     },
+    WritingApp {
+        bundle_id: "com.finaldraft.mac.fd12",
+        display_name: "Final Draft 12",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.finaldraft.mac.fd13",
+        display_name: "Final Draft 13",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+        default_debounce_ms: None,
+        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
     // ── Fade In ────────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.moviemagic.fadein",
@@ -1097,7 +1117,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     },
     // ── Opaque Container Apps (content-level witnessing) ──────────────────
     WritingApp {
-        bundle_id: "com.eastgate.Tinderbox",
+        bundle_id: "com.eastgate.Tinderbox-11",
         display_name: "Tinderbox",
         storage: StoragePattern::DatabaseBacked,
         container_paths: &[],
@@ -1880,7 +1900,10 @@ impl AppAdapter for FinalDraftAdapter {
         "com.finaldraft.mac.finaldraft10"
     }
     fn is_compile_process(&self, process_name: &str) -> bool {
-        process_name == "Final Draft" || process_name.contains("FinalDraft")
+        process_name == "Final Draft"
+            || process_name.contains("FinalDraft")
+            || process_name == "PrintToPDF"
+            || process_name == "FDCompanion"
     }
     fn internal_docs_path(&self) -> Option<&str> {
         None
@@ -1913,6 +1936,19 @@ impl AppAdapter for VellumAdapter {
     }
 }
 
+struct TinderboxAdapter;
+impl AppAdapter for TinderboxAdapter {
+    fn bundle_id(&self) -> &str {
+        "com.eastgate.Tinderbox-11"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Tinderbox 11"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
 /// Return a boxed `AppAdapter` for the given bundle ID, or `None` if no adapter exists.
 pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
     match bundle_id {
@@ -1920,12 +1956,17 @@ pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
             Some(Box::new(ScrivenerAdapter))
         }
         id if id.eq_ignore_ascii_case("com.finaldraft.mac.finaldraft10")
-            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd11") =>
+            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd11")
+            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd12")
+            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd13") =>
         {
             Some(Box::new(FinalDraftAdapter))
         }
         id if id.eq_ignore_ascii_case("com.ulyssesapp.mac") => Some(Box::new(UlyssesAdapter)),
         id if id.eq_ignore_ascii_case("com.180g.vellum") => Some(Box::new(VellumAdapter)),
+        id if id.starts_with("com.eastgate.Tinderbox") => {
+            Some(Box::new(TinderboxAdapter))
+        }
         _ => None,
     }
 }
