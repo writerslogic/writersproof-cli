@@ -37,7 +37,7 @@ const DOCUMENT_EXTENSIONS: &[&str] = &[
     "txt", "md", "markdown", "rtf", "rtfd",
     "doc", "docx", "odt", "pages",
     "tex", "latex", "bib",
-    "fountain", "fdx", "scriv",
+    "fountain", "fdx", "scriv", "tbx",
     "html", "htm", "xml",
     "json", "yaml", "yml", "toml", "ini", "cfg",
     "rs", "py", "js", "ts", "jsx", "tsx", "go", "java", "c", "cpp", "h", "hpp",

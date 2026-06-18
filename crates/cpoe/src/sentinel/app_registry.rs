@@ -1099,12 +1099,12 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     WritingApp {
         bundle_id: "com.eastgate.Tinderbox",
         display_name: "Tinderbox",
-        storage: StoragePattern::BundleBased,
+        storage: StoragePattern::DatabaseBacked,
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: Some(300),
         title_parser: TitleParserVariant::Generic,
-        witnessing_mode: WitnessingMode::Auto,
+        witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
         bundle_id: "com.devon-technologies.think3",
