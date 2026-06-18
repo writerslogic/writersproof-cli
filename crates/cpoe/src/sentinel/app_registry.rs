@@ -519,7 +519,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     },
     // ── Logseq ─────────────────────────────────────────────────────────────
     WritingApp {
-        bundle_id: "com.logseq.logseq",
+        bundle_id: "com.electron.logseq",
         display_name: "Logseq",
         storage: StoragePattern::FileBased,
         container_paths: &[],
@@ -530,7 +530,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     },
     // ── Notion ─────────────────────────────────────────────────────────────
     WritingApp {
-        bundle_id: "com.notion.id",
+        bundle_id: "notion.id",
         display_name: "Notion",
         storage: StoragePattern::ContainerBased,
         container_paths: &[
@@ -873,17 +873,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         title_parser: TitleParserVariant::Generic,
         witnessing_mode: WitnessingMode::Auto,
     },
-    // ── Warp (modern terminal — vim/emacs authors) ─────────────────────────
-    WritingApp {
-        bundle_id: "dev.warp.Warp-Stable",
-        display_name: "Warp",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: true, // title shows cwd / running command
-        default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
-        witnessing_mode: WitnessingMode::Auto,
-    },
     // ── Adobe InDesign ─────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.adobe.InDesign",
@@ -1119,7 +1108,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     WritingApp {
         bundle_id: "com.eastgate.Tinderbox-11",
         display_name: "Tinderbox",
-        storage: StoragePattern::DatabaseBacked,
+        storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: Some(300),
@@ -1129,7 +1118,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     WritingApp {
         bundle_id: "com.eastgate.Tinderbox",
         display_name: "Tinderbox",
-        storage: StoragePattern::DatabaseBacked,
+        storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: Some(300),
