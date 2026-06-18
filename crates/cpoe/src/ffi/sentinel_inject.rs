@@ -416,10 +416,13 @@ fn inject_keystroke_inner_v3(
         let mut sessions_guard = sentinel.sessions.write_recover();
         if let Some(session) = sessions_guard.get_mut(path) {
             let increment = coalesced_count.max(1);
-            session.keystroke_count = session.keystroke_count.saturating_add(increment);
+            if semantic.is_content_producing() {
+                session.keystroke_count = session.keystroke_count.saturating_add(increment);
+            }
             log::debug!(
-                "[FFI_INJECT] COUNTED {:?} total={}",
+                "[FFI_INJECT] {:?} semantic={:?} total={}",
                 path,
+                semantic,
                 session.keystroke_count
             );
             session.jitter_ring.push(sample.clone());

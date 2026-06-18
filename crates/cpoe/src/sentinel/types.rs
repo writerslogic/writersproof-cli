@@ -726,6 +726,11 @@ impl KeystrokeSemantic {
         )
     }
 
+    /// True if this semantic produces document content (characters, tab, return).
+    pub fn is_content_producing(self) -> bool {
+        matches!(self, Self::Character | Self::Tab | Self::Return)
+    }
+
     /// True if this semantic represents editing (not typing new content).
     pub fn is_editing(self) -> bool {
         matches!(

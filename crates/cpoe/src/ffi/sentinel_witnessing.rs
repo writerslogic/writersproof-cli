@@ -329,7 +329,7 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         // focus_switches is cloned here because analyze_focus_patterns needs &[FocusSwitchRecord].
         SessionSnapshot {
             path: session.path.clone(),
-            keystroke_count: session.keystroke_count,
+            keystroke_count: session.total_keystrokes(),
             elapsed_secs: session.start_time.elapsed().unwrap_or_else(|e| {
                 log::warn!("session start_time.elapsed() failed (clock went backward?): {e}");
                 std::time::Duration::ZERO
