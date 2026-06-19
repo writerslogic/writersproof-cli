@@ -45,6 +45,7 @@ pub mod types;
 pub mod process_files;
 pub mod content_fingerprint;
 pub mod document_watcher;
+pub mod remote_registry;
 pub mod terminal_editors;
 
 #[cfg(target_os = "macos")]

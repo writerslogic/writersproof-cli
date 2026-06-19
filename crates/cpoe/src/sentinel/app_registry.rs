@@ -1817,7 +1817,8 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-    
+            last_seen_at: None,
+
             witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
@@ -1835,7 +1836,8 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-    
+            last_seen_at: None,
+
             witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
@@ -1856,7 +1858,8 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Medium,
-    
+            last_seen_at: None,
+
             witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
@@ -1878,7 +1881,8 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-    
+            last_seen_at: None,
+
             witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
@@ -1915,7 +1919,8 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-    
+            last_seen_at: None,
+
             witnessing_mode: WitnessingMode::Auto,
         };
         reg.add_user_app(app()).unwrap();
