@@ -116,12 +116,16 @@ fn fetch_and_verify() -> Result<Vec<RemoteApp>, String> {
         return Err("unsupported schema version".into());
     }
 
-    verify_signature(&body, &file.signature)?;
+    // Signature is computed over the canonical JSON of the apps array, not the
+    // full response (which includes the signature field itself).
+    let apps_json = serde_json::to_vec(&file.apps)
+        .map_err(|e| format!("re-serialize apps: {e}"))?;
+    verify_signature(&apps_json, &file.signature)?;
 
     Ok(file.apps)
 }
 
-fn verify_signature(body: &[u8], hex_sig: &str) -> Result<(), String> {
+fn verify_signature(payload: &[u8], hex_sig: &str) -> Result<(), String> {
     let sig_bytes =
         hex::decode(hex_sig).map_err(|e| format!("decode signature hex: {e}"))?;
     let sig = Signature::from_slice(&sig_bytes)
@@ -130,9 +134,8 @@ fn verify_signature(body: &[u8], hex_sig: &str) -> Result<(), String> {
     let pubkey = VerifyingKey::from_bytes(&SIGNING_PUBKEY)
         .map_err(|e| format!("parse public key: {e}"))?;
 
-    // Verify over the canonical JSON (the full response body).
     pubkey
-        .verify(body, &sig)
+        .verify(payload, &sig)
         .map_err(|_| "signature verification failed".to_string())
 }
 
