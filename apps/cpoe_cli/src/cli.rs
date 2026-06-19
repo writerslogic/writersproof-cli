@@ -111,6 +111,9 @@ pub enum Commands {
         /// Beacon fetch timeout in seconds (1-300)
         #[arg(long, default_value = "5", value_parser = clap::value_parser!(u64).range(1..=300))]
         beacon_timeout: u64,
+        /// Publish evidence to WritersProof for public verification at verify.writersproof.com
+        #[arg(long)]
+        notarize: bool,
     },
 
     /// Verify an evidence packet or database

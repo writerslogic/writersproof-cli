@@ -73,6 +73,7 @@ async fn run() -> Result<()> {
             format,
             no_beacons,
             beacon_timeout,
+            notarize,
         }) => {
             cmd_export::cmd_export(
                 &file,
@@ -81,6 +82,7 @@ async fn run() -> Result<()> {
                 &format,
                 no_beacons,
                 beacon_timeout,
+                notarize,
                 &out,
             )
             .await?
@@ -269,6 +271,7 @@ async fn interactive_menu(out: &OutputMode) -> Result<()> {
                 "json",
                 false,
                 5,
+                false,
                 out,
             )
             .await?;

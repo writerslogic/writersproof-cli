@@ -82,6 +82,7 @@ pub(crate) async fn cmd_export(
     format: &str,
     no_beacons: bool,
     beacon_timeout: u64,
+    notarize: bool,
     out: &OutputMode,
 ) -> Result<()> {
     if no_beacons && !out.quiet && !out.json {
@@ -291,6 +292,23 @@ pub(crate) async fn cmd_export(
         }
     }
 
+    if notarize {
+        if let Err(e) = notarize_to_writersproof(
+            dir,
+            &latest.content_hash,
+            &latest.event_hash,
+            events.len() as u64,
+            file_path,
+            out,
+        )
+        .await
+        {
+            if !out.quiet && !out.json {
+                eprintln!("Warning: notarization failed: {e}");
+            }
+        }
+    }
+
     if out.json {
         let json_out = serde_json::json!({
             "success": true,
@@ -306,5 +324,61 @@ pub(crate) async fn cmd_export(
         println!("Recipients can verify this evidence at: https://writerslogic.com/verify");
     }
 
+    Ok(())
+}
+
+/// Publish the exported evidence to WritersProof so it resolves at
+/// verify.writersproof.com/v/<hash>. Lightweight registration (no packet upload);
+/// the server stores hash + provenance metadata.
+async fn notarize_to_writersproof(
+    dir: &Path,
+    content_hash: &[u8],
+    event_hash: &[u8],
+    checkpoint_count: u64,
+    file_path: &Path,
+    out: &OutputMode,
+) -> Result<()> {
+    use cpoe::writersproof::{PublishRequest, WritersProofClient};
+    use ed25519_dalek::Signer;
+
+    let signing_key = crate::util::load_signing_key(dir)?;
+    let did = crate::util::load_did(dir)
+        .map_err(|e| anyhow!("Author identity required to notarize. Run 'cpoe init' first: {e}"))?;
+    let api_key = crate::util::load_api_key(dir)?;
+
+    let evidence_hash = hex::encode(content_hash);
+    let signature = {
+        const DST: &[u8] = b"witnessd-publish-v1";
+        let mut payload = Vec::with_capacity(DST.len() + event_hash.len());
+        payload.extend_from_slice(DST);
+        payload.extend_from_slice(event_hash);
+        hex::encode(Signer::sign(&signing_key, &payload).to_bytes())
+    };
+    let doc_name = file_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned());
+
+    let client = WritersProofClient::new(cpoe::writersproof::client::DEFAULT_API_URL)?
+        .with_jwt(api_key.into());
+
+    let resp = tokio::time::timeout(
+        Duration::from_secs(30),
+        client.publish(PublishRequest {
+            evidence_hash,
+            author_did: did,
+            signature,
+            attestation: "Authored with WritersLogic.".to_string(),
+            checkpoint_count,
+            document_name: doc_name,
+            ai_declaration: None,
+            evidence_b64: None,
+        }),
+    )
+    .await
+    .map_err(|_| anyhow!("notarize request timed out after 30s"))??;
+
+    if !out.quiet && !out.json {
+        println!("Published to WritersProof: {}", resp.canonical_url);
+    }
     Ok(())
 }
