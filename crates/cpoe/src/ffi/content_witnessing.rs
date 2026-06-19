@@ -139,9 +139,9 @@ pub fn ffi_set_content_granularity(granularity: String) -> FfiResult {
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_resolve_witnessing_mode(bundle_id: String) -> FfiResolvedMode {
+pub fn ffi_resolve_witnessing_mode(bundle_id: String, document_path: String) -> FfiResolvedMode {
     catch_ffi_panic!(@err FfiResolvedMode, {
-    log::debug!("ffi_resolve_witnessing_mode: bundle_id={}", bundle_id);
+    log::debug!("ffi_resolve_witnessing_mode: bundle_id={} path={}", bundle_id, document_path);
 
     let data_dir = try_ffi!(
         get_data_dir().ok_or("Cannot determine data directory"),
@@ -152,23 +152,15 @@ pub fn ffi_resolve_witnessing_mode(bundle_id: String) -> FfiResolvedMode {
         FfiResolvedMode
     );
 
-    // Check app registry (user overrides + builtins)
     let registry = crate::sentinel::app_registry::AppRegistry::load(&data_dir);
     let (app_mode, storage) = if let Some(user_app) = registry.lookup_user(&bundle_id) {
         (user_app.witnessing_mode, user_app.storage)
     } else if let Some(builtin) = crate::sentinel::app_registry::lookup(&bundle_id) {
         (builtin.witnessing_mode, builtin.storage)
     } else {
-        // Unknown app: use global default
-        let global_mode = config.sentinel.default_witnessing_mode;
-        return FfiResolvedMode {
-            success: true,
-            resolved_mode: global_mode
-                .resolve(crate::sentinel::app_registry::StoragePattern::FileBased)
-                .as_str()
-                .to_string(),
-            error_message: None,
-        };
+        // Unknown app: infer from file extension, falling back to FileLevel.
+        let inferred = WitnessingMode::infer_from_extension(&document_path);
+        (inferred, crate::sentinel::app_registry::StoragePattern::FileBased)
     };
 
     // If app has Auto, check global override

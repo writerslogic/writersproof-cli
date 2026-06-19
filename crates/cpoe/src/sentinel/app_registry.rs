@@ -75,6 +75,21 @@ impl WitnessingMode {
             | StoragePattern::DatabaseBacked => WitnessingMode::ContentLevel,
         }
     }
+
+    /// Infer the best witnessing mode from a document's file extension.
+    /// Returns `ContentLevel` for monolithic container formats where file-level
+    /// hashing produces meaningless diffs on every autosave.
+    pub fn infer_from_extension(path: &str) -> Self {
+        let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        match ext.as_str() {
+            // Monolithic container formats (content-level)
+            "tbx" | "scriv" | "scrivx" | "dtBase2" | "sqlite" | "sqlite3" | "db" | "realm" => {
+                WitnessingMode::ContentLevel
+            }
+            // Standard document/text formats (file-level)
+            _ => WitnessingMode::FileLevel,
+        }
+    }
 }
 
 impl std::str::FromStr for WitnessingMode {
