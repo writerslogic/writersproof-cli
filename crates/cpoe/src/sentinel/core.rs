@@ -209,11 +209,9 @@ impl Sentinel {
         let tpm_provider = platform.get_tpm_provider();
 
         let app_registry = super::app_registry::AppRegistry::load(&config.writersproof_dir);
-        // Install a second copy as the global so static lookup()/needs_title_inference()
+        // Install a clone as the global so static lookup()/needs_title_inference()
         // functions consult user-added apps without threading the registry instance.
-        super::app_registry::install_global(
-            super::app_registry::AppRegistry::load(&config.writersproof_dir),
-        );
+        super::app_registry::install_global(app_registry.clone());
 
         let sentinel = Self {
             config: Arc::new(config),

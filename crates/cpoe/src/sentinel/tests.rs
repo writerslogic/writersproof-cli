@@ -374,6 +374,33 @@ fn test_extract_bracket_project() {
 }
 
 #[test]
+fn test_doc_extensions_sorted() {
+    use super::types::DOC_EXTENSIONS;
+    for w in DOC_EXTENSIONS.windows(2) {
+        assert!(
+            w[0] < w[1],
+            "DOC_EXTENSIONS not sorted: {:?} >= {:?}",
+            w[0],
+            w[1]
+        );
+    }
+}
+
+#[test]
+fn test_is_terminal_bundle_known_terminals() {
+    use super::types::is_terminal_bundle;
+    assert!(is_terminal_bundle("com.apple.Terminal"));
+    assert!(is_terminal_bundle("com.googlecode.iterm2"));
+    assert!(is_terminal_bundle("com.mitchellh.ghostty"));
+    assert!(is_terminal_bundle("net.kovidgoyal.kitty"));
+    assert!(is_terminal_bundle("io.alacritty"));
+    assert!(is_terminal_bundle("dev.warp.Warp-Stable"));
+    assert!(is_terminal_bundle("com.github.wez.wezterm"));
+    assert!(!is_terminal_bundle("com.microsoft.VSCode"));
+    assert!(!is_terminal_bundle("md.obsidian"));
+}
+
+#[test]
 fn test_normalize_path_existing() {
     let result = normalize_document_path("/");
     assert!(result.is_some());

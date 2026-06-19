@@ -1908,7 +1908,7 @@ pub fn parse_url_parts(url: &str) -> (String, String) {
 /// heuristics for window-title parsing, not user preferences. Adding an
 /// extension here is a code change that should be reviewed for correctness.
 /// Sorted lexicographically to enable binary search.
-const DOC_EXTENSIONS: &[&str] = &[
+pub(super) const DOC_EXTENSIONS: &[&str] = &[
     ".adoc",
     ".afdesign",
     ".afphoto",
@@ -2157,7 +2157,7 @@ pub fn infer_document_path_from_title_with_bundle(
 
 /// Known terminal emulator bundle IDs. Used to detect terminal editor title
 /// formats without relying on the app registry.
-fn is_terminal_bundle(bundle_id: &str) -> bool {
+pub(super) fn is_terminal_bundle(bundle_id: &str) -> bool {
     let lower = bundle_id.to_ascii_lowercase();
     matches!(
         lower.as_str(),

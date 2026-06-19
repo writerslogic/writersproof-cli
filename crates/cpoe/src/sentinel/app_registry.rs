@@ -1026,24 +1026,9 @@ pub fn install_global(registry: AppRegistry) {
 ///
 /// Checks user-added apps (via global registry) first, then builtins.
 pub fn lookup(bundle_id: &str) -> Option<&'static WritingApp> {
-    let exact = KNOWN_WRITING_APPS
-        .iter()
-        .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id));
-    if exact.is_some() {
-        return exact;
-    }
-    let lower = bundle_id.to_ascii_lowercase();
-    let lookup_prefix = lower.rsplit_once('.').map(|(p, _)| p)?;
     KNOWN_WRITING_APPS
         .iter()
-        .filter(|a| {
-            let app_lower = a.bundle_id.to_ascii_lowercase();
-            app_lower
-                .rsplit_once('.')
-                .map(|(p, _)| p == lookup_prefix)
-                .unwrap_or(false)
-        })
-        .max_by_key(|a| a.bundle_id.len())
+        .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
 }
 
 /// Return paths (relative to `$HOME`) of all writing-app containers that
@@ -1157,7 +1142,7 @@ mod option_system_time_serde {
 
 /// Merges built-in and user-added writing apps into a single queryable
 /// registry with JSON persistence and a precomputed title-inference set.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AppRegistry {
     builtin: &'static [WritingApp],
     user: Vec<UserWritingApp>,
