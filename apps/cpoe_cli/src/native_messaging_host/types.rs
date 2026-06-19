@@ -156,6 +156,11 @@ pub(crate) enum Response {
         /// "synthetic_suspect". Absent until enough samples have been collected.
         #[serde(skip_serializing_if = "Option::is_none")]
         evidence_quality: Option<String>,
+        /// Result of comparing the browser-supplied commitment against the
+        /// daemon's own computation: Some(true) matched, Some(false) diverged
+        /// (protocol-integrity warning), None if the browser sent no commitment.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        commitment_verified: Option<bool>,
     },
     SessionStopped {
         message: String,

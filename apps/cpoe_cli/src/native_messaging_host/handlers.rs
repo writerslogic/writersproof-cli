@@ -433,6 +433,8 @@ pub(crate) fn handle_checkpoint(
     // Browser commitment is an optional protocol-integrity check.
     // The daemon computes its own commitment (below) and signs it with Ed25519;
     // the browser's value is not security-critical against a local adversary.
+    // The match result is surfaced to the extension so it can warn the user.
+    let mut commitment_verified: Option<bool> = None;
     if let Some(ref browser_commitment) = commitment {
         let expected = compute_commitment(
             &session.prev_commitment,
@@ -454,6 +456,9 @@ pub(crate) fn handle_checkpoint(
                 "Warning: browser commitment mismatch for ordinal {} (protocol integrity check)",
                 session.expected_ordinal,
             );
+            commitment_verified = Some(false);
+        } else {
+            commitment_verified = Some(true);
         }
     }
 
@@ -557,6 +562,7 @@ pub(crate) fn handle_checkpoint(
         commitment: hex::encode(new_commitment),
         signature,
         evidence_quality,
+        commitment_verified,
     }
 }
 

@@ -86,6 +86,9 @@ let genesisReady = null;
 let checkpointOrdinal = COMMITMENT_CHAIN_INITIAL_ORDINAL;
 let devicePublicKey = null;
 let secureChannel = null;
+// True once a secure-channel handshake has failed and evidence is flowing in
+// plaintext, so the popup can warn the user the encrypted layer is degraded.
+let secureChannelFailed = false;
 
 const CHAIN_STATE_KEY = "_cpoeChainState";
 
@@ -389,6 +392,12 @@ function initiateSecureChannel() {
 		.performHandshake((msg) => nativePort.postMessage(msg))
 		.catch(() => {
 			secureChannel = null;
+			secureChannelFailed = true;
+			broadcastToPopup({
+				type: "secure_channel_degraded",
+				message:
+					"Encrypted channel unavailable; evidence is being sent in plaintext.",
+			});
 		});
 }
 
@@ -469,9 +478,16 @@ function handleNativeMessage(message) {
 					)
 					.then(() => {
 						capabilities.secureChannel = true;
+						secureChannelFailed = false;
 					})
 					.catch(() => {
 						secureChannel = null;
+						secureChannelFailed = true;
+						broadcastToPopup({
+							type: "secure_channel_degraded",
+							message:
+								"Encrypted channel unavailable; evidence is being sent in plaintext.",
+						});
 					});
 			}
 			break;
@@ -515,11 +531,18 @@ function handleNativeMessage(message) {
 								)
 								.then(() => {
 									isRehandshaking = false;
+									secureChannelFailed = false;
 									flushMessageQueue();
 								})
 								.catch(() => {
 									secureChannel = null;
 									isRehandshaking = false;
+									secureChannelFailed = true;
+									broadcastToPopup({
+										type: "secure_channel_degraded",
+										message:
+											"Encrypted channel lost; evidence is being sent in plaintext.",
+									});
 									flushMessageQueue();
 								});
 						} else if (
@@ -532,6 +555,12 @@ function handleNativeMessage(message) {
 							secureChannel = null;
 							rehandshakeAttempts = 0;
 							isRehandshaking = false;
+							secureChannelFailed = true;
+							broadcastToPopup({
+								type: "secure_channel_degraded",
+								message:
+									"Encrypted channel lost; evidence is being sent in plaintext.",
+							});
 							flushMessageQueue();
 						}
 					});
@@ -578,6 +607,17 @@ function handleNativeMessage(message) {
 			if (message.commitment) {
 				prevCommitment = message.commitment;
 			}
+			if (message.commitment_verified === false) {
+				console.warn(
+					"[CPoE] Browser commitment diverged from desktop app; evidence chain may be inconsistent.",
+				);
+				broadcastToPopup({
+					type: "error",
+					message:
+						"Commitment mismatch with the desktop app; evidence integrity could not be confirmed for this checkpoint.",
+					code: "COMMITMENT_MISMATCH",
+				});
+			}
 			if (message.document_url && message.content_hash) {
 				sendNativeMessage({
 					type: "snapshot_save",
@@ -593,6 +633,7 @@ function handleNativeMessage(message) {
 				checkpoint_count: message.checkpoint_count,
 				charCount: message.char_count || 0,
 				commitment: message.commitment,
+				commitment_verified: message.commitment_verified ?? null,
 				evidence_quality: message.evidence_quality || null,
 			});
 			break;

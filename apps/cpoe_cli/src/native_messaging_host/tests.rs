@@ -870,6 +870,8 @@ mod tests {
             message: "Created".into(),
             commitment: "b".repeat(64),
             signature: None,
+            evidence_quality: None,
+            commitment_verified: None,
         };
         let mut buf = Vec::new();
         write_message_to(&mut buf, &resp).unwrap();
@@ -895,6 +897,8 @@ mod tests {
             message: "ok".into(),
             commitment: "b".repeat(64),
             signature: Some("c".repeat(128)),
+            evidence_quality: None,
+            commitment_verified: None,
         };
         let mut buf = Vec::new();
         write_message_to(&mut buf, &resp).unwrap();
