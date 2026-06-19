@@ -245,12 +245,9 @@ make install PREFIX=$HOME/.local
    ```
 
 3. **Reduce max iterations if needed:**
-   ```json
-   {
-     "vdf": {
-       "max_iterations": 900000000
-     }
-   }
+   ```toml
+   [vdf]
+   max_iterations = 900000000
    ```
 
 ### "Checkpoint failed: HMAC verification error"
@@ -327,18 +324,15 @@ make install PREFIX=$HOME/.local
 1. **Check what's running:**
    ```bash
    cpoe status
-   CPoE sentinel status
+   cpoe track status
    ```
 
 2. **VDF computation is intentionally CPU-intensive (brief)**
 
 3. **Reduce checkpoint frequency:**
-   ```json
-   {
-     "sentinel": {
-       "checkpoint_seconds": 300
-     }
-   }
+   ```toml
+   [sentinel]
+   checkpoint_interval_secs = 300
    ```
 
 ### High Disk Usage
@@ -388,15 +382,15 @@ make install PREFIX=$HOME/.local
 
 1. **Check if app is running:**
    ```bash
-   pgrep -l CPoE
+   pgrep -l WritersProof
    ```
 
 2. **Check menu bar overflow** (click >> on right side of menu bar)
 
 3. **Restart the app:**
    ```bash
-   pkill CPoE
-   open /Applications/CPoE.app
+   pkill WritersProof
+   open /Applications/WritersProof.app
    ```
 
 ### App Crashes on Launch
@@ -499,7 +493,7 @@ Collect this before reporting issues:
 ```bash
 # System info
 uname -a
-CPoE version
+cpoe --version
 
 # Configuration
 cat ~/.writersproof/config.toml

@@ -25,6 +25,7 @@ const MAX_CHECKPOINT_INTERVAL_MS = 300_000;
 const GENESIS_COMMITMENT_PREFIX = "CPoE-Genesis-v1";
 const COMMITMENT_CHAIN_INITIAL_ORDINAL = 2;
 const MAX_REHANDSHAKE_ATTEMPTS = 3;
+const MAX_MESSAGE_QUEUE_SIZE = 100;
 
 const CONTENT_ACTIONS = new Set([
 	"start_witnessing",
@@ -85,6 +86,50 @@ let genesisReady = null;
 let checkpointOrdinal = COMMITMENT_CHAIN_INITIAL_ORDINAL;
 let devicePublicKey = null;
 let secureChannel = null;
+
+const CHAIN_STATE_KEY = "_cpoeChainState";
+
+function persistChainState() {
+	if (!sessionNonce) return;
+	const state = {
+		sessionNonce,
+		prevCommitment,
+		checkpointOrdinal,
+		activeTabId,
+		operatingMode,
+	};
+	chrome.storage.session.set({ [CHAIN_STATE_KEY]: state }).catch(() => {
+		chrome.storage.local.set({ [CHAIN_STATE_KEY]: state });
+	});
+}
+
+function clearChainState() {
+	chrome.storage.session.remove(CHAIN_STATE_KEY).catch(() => {});
+	chrome.storage.local.remove(CHAIN_STATE_KEY);
+}
+
+async function restoreChainState() {
+	let result;
+	try {
+		result = await chrome.storage.session.get(CHAIN_STATE_KEY);
+	} catch {
+		result = await chrome.storage.local.get(CHAIN_STATE_KEY);
+	}
+	const state = result?.[CHAIN_STATE_KEY];
+	if (!state || !state.sessionNonce) return false;
+	sessionNonce = state.sessionNonce;
+	prevCommitment = state.prevCommitment;
+	checkpointOrdinal =
+		state.checkpointOrdinal || COMMITMENT_CHAIN_INITIAL_ORDINAL;
+	activeTabId = state.activeTabId || null;
+	if (
+		state.operatingMode === "native" ||
+		state.operatingMode === "standalone"
+	) {
+		operatingMode = state.operatingMode;
+	}
+	return true;
+}
 
 // Pending native resume — persisted across service-worker restarts so that a
 // dormant session can be re-attached when the worker wakes up.
@@ -351,13 +396,17 @@ function sendNativeMessage(message) {
 	if (!nativePort) connectToNativeHost();
 	if (!nativePort) {
 		if (isRehandshaking && message.type !== "ping") {
-			messageQueue.push(message);
+			if (messageQueue.length < MAX_MESSAGE_QUEUE_SIZE) {
+				messageQueue.push(message);
+			}
 		}
 		return;
 	}
 
 	if (isRehandshaking && message.type !== "ping") {
-		messageQueue.push(message);
+		if (messageQueue.length < MAX_MESSAGE_QUEUE_SIZE) {
+			messageQueue.push(message);
+		}
 		return;
 	}
 
@@ -497,6 +546,7 @@ function handleNativeMessage(message) {
 				genesisReady = computeGenesisCommitment(message.session_nonce)
 					.then((genesis) => {
 						prevCommitment = genesis;
+						persistChainState();
 					})
 					.catch(() => {
 						prevCommitment = null;
@@ -541,6 +591,7 @@ function handleNativeMessage(message) {
 				type: "checkpoint_update",
 				hash: message.hash,
 				checkpoint_count: message.checkpoint_count,
+				charCount: message.char_count || 0,
 				commitment: message.commitment,
 				evidence_quality: message.evidence_quality || null,
 			});
@@ -553,6 +604,7 @@ function handleNativeMessage(message) {
 			checkpointOrdinal = COMMITMENT_CHAIN_INITIAL_ORDINAL;
 			devicePublicKey = null;
 			_pendingResumeUrl = null;
+			clearChainState();
 			chrome.storage.local.remove(["_nativePendingResume"]);
 			updateBadge("", "#95a5a6");
 			stopCheckpointTimer();
@@ -598,9 +650,36 @@ function handleNativeMessage(message) {
 			}
 			break;
 
+		case "vc_signature_result":
+			if (pendingVcSignResolve) {
+				const resolve = pendingVcSignResolve;
+				pendingVcSignResolve = null;
+				resolve(message.success ? message.vc_sig || "" : "");
+			}
+			break;
+
 		default:
 			break;
 	}
+}
+
+let pendingVcSignResolve = null;
+
+function requestVcSignature(vcClaim, timeoutMs = 3000) {
+	return new Promise((resolve) => {
+		if (!nativePort || !isConnected) {
+			resolve("");
+			return;
+		}
+		pendingVcSignResolve = resolve;
+		sendNativeMessage({ type: "sign_vc_claim", vc_claim: vcClaim });
+		setTimeout(() => {
+			if (pendingVcSignResolve === resolve) {
+				pendingVcSignResolve = null;
+				resolve("");
+			}
+		}, timeoutMs);
+	});
 }
 
 const ALLOWED_ORIGINS = [
@@ -891,6 +970,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 		case "content_changed":
 			{
+				if (!isValidContentHash(message.contentHash)) {
+					sendResponse({ ok: false, error: "Invalid content hash" });
+					break;
+				}
 				const ordinal = checkpointOrdinal;
 				const checkpointMsg = {
 					type: "checkpoint",
@@ -900,6 +983,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 					ordinal,
 					tool_category: message.toolCategory || "none",
 					tool_host: message.toolHost || "",
+					keystroke_count: message.keystrokeCount || 0,
+					paste_detected: message.pasteDetected || false,
+					paste_char_count: message.pasteCharCount || 0,
 				};
 				checkpointOrdinal++;
 				const ready = genesisReady || Promise.resolve();
@@ -913,6 +999,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 								sessionNonce,
 							).then((commitment) => {
 								checkpointMsg.commitment = commitment;
+								persistChainState();
 								sendNativeMessage(checkpointMsg);
 								sendResponse({ ok: true, mode: "native" });
 							});
@@ -1045,6 +1132,12 @@ function updateBadge(text, color) {
 
 function broadcastToPopup(message) {
 	chrome.runtime.sendMessage(message).catch(() => {});
+}
+
+const VALID_SHA256_RE = /^[0-9a-f]{64}$/;
+
+function isValidContentHash(hash) {
+	return typeof hash === "string" && VALID_SHA256_RE.test(hash);
 }
 
 function sanitizeErrorMessage(raw) {
@@ -1219,6 +1312,10 @@ async function handleStandaloneActionInner(message, sender, sendResponse) {
 
 		case "content_changed":
 			{
+				if (!isValidContentHash(message.contentHash)) {
+					sendResponse({ ok: false, error: "Invalid content hash" });
+					break;
+				}
 				if (!standaloneSessionId) {
 					sendResponse({
 						ok: false,
@@ -1238,7 +1335,13 @@ async function handleStandaloneActionInner(message, sender, sendResponse) {
 					sendResponse({ ok: false, error: result.message });
 				} else {
 					updateBadge(String(result.checkpoint_count), "#f39c12");
-					broadcastToPopup({ type: "checkpoint_update", ...result });
+					broadcastToPopup({
+						type: "checkpoint_update",
+						...result,
+						charCount: message.charCount,
+						keystrokeCount: message.keystrokeCount,
+						pasteDetected: message.pasteDetected || false,
+					});
 					if (result.quotaWarning) {
 						const mb = (
 							(result.quotaRemaining || 0) /
@@ -1301,6 +1404,13 @@ async function handleStandaloneActionInner(message, sender, sendResponse) {
 					message.sessionId || standaloneSessionId,
 				);
 				if (evidence) {
+					if (evidence.chainIntegrity !== "verified") {
+						broadcastToPopup({
+							type: "error",
+							message:
+								"Warning: Evidence chain integrity is broken. Some checkpoints may have been tampered with or corrupted.",
+						});
+					}
 					sendResponse({ ok: true, mode: "standalone", evidence });
 				} else {
 					sendResponse({ ok: false, error: "Session not found" });
@@ -1319,6 +1429,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 detectNativeHost();
 
+restoreChainState().catch(() => {});
+
 chrome.storage.local.get(
 	["_standaloneSessionId", "_standaloneTabId"],
 	(result) => {
@@ -1335,14 +1447,18 @@ chrome.storage.local.get(
 // Gracefully stop active sessions before extension update takes effect.
 chrome.runtime.onUpdateAvailable.addListener(() => {
 	if (standaloneSessionId) {
-		standaloneStopSession(standaloneSessionId).then(() => {
-			chrome.storage.local.remove([
-				"_standaloneSessionId",
-				"_standaloneTabId",
-				"_sessionStartTime",
-			]);
-			chrome.runtime.reload();
-		});
+		standaloneStopSession(standaloneSessionId)
+			.then(() => {
+				chrome.storage.local.remove([
+					"_standaloneSessionId",
+					"_standaloneTabId",
+					"_sessionStartTime",
+				]);
+			})
+			.catch(() => {})
+			.finally(() => {
+				chrome.runtime.reload();
+			});
 	} else if (operatingMode === "native" && activeTabId) {
 		sendNativeMessage({ type: "stop_session" });
 		chrome.runtime.reload();
@@ -1365,6 +1481,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 		sessionNonce = null;
 		prevCommitment = null;
 		checkpointOrdinal = COMMITMENT_CHAIN_INITIAL_ORDINAL;
+		clearChainState();
 		stopCheckpointTimer();
 		chrome.storage.local.remove([
 			"_standaloneSessionId",
@@ -1478,10 +1595,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 		declared: "Signed author declaration.",
 	};
 
+	let vcSigLine = "";
+	if (operatingMode === "native" && isConnected) {
+		const vcClaim = `${tier}:${hash}:${timestamp}`;
+		const sig = await requestVcSignature(vcClaim);
+		if (sig) {
+			vcSigLine = `\nVC-Sig: ${sig}`;
+		}
+	}
+
 	const attestationBlock =
 		`WritersProof ${tierLabels[tier]} | ID: ${wpId} | ${timestamp}\n` +
-		`${tierDescs[tier]}\n` +
-		`verify.writersproof.com`;
+		`${tierDescs[tier]}` +
+		vcSigLine +
+		`\nverify.writersproof.com`;
 
 	// Copy attestation block to clipboard via content script.
 	let clipboardOk = false;

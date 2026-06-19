@@ -1,18 +1,20 @@
 .\" cpoe - Cryptographic Proof-of-Process Authorship Witnessing
 .\" Generated from clap CLI definition. Re-generate with: cargo run -p cpoe_cli -- man > docs/man/cpoe.1
-.TH CPOE 1 "May 2026" "cpoe" "User Commands"
+.TH CPOE 1 "June 2026" "writersproof-cli" "User Commands"
 .SH NAME
-cpoe \- cryptographic proof-of-process authorship witnessing
+writersproof\-cli \- cryptographic proof-of-process authorship witnessing
 .SH SYNOPSIS
-.B cpoe
+.B writersproof\-cli
 .RI [ command ]
 .RI [ options ]
 .RI [ arguments ]
 .PP
-.B cpoe
+.B writersproof\-cli
 .I file
 .SH DESCRIPTION
-.B cpoe
+.B writersproof\-cli
+(also invoked as
+.BR cpoe )
 captures behavioral evidence during document creation and packages it into
 cryptographically signed packets that prove a human authored content over time.
 It provides an offline-verifiable alternative to AI detection by proving
@@ -20,7 +22,7 @@ It provides an offline-verifiable alternative to AI detection by proving
 something was written, not just what was written.
 .PP
 If invoked with a bare file path and no subcommand,
-.B cpoe
+.B writersproof\-cli
 starts tracking that file.
 .SH COMMANDS
 .SS Core Workflow
@@ -36,7 +38,7 @@ View checkpoint history for a document, or list all tracked files.
 Aliases:
 .BR history ", " ls .
 .TP
-.BI "export " file " [-t " tier "] [-f " format "] [-o " output ]
+.BI "export " file " [-t " tier "] [-f " format "] [-o " output "] [--no-beacons] [--beacon-timeout " secs ]
 Export evidence packet with declaration for verification.
 Alias:
 .BR prove .
@@ -50,8 +52,9 @@ Alias:
 Show current tracking status and configuration.
 .SS Document Management
 .TP
-.BI "track " [action] " " [file]
-Track activity on a file or project. Actions: start, stop, status.
+.BI "track " action " " [file]
+Track activity on a file or project. Actions:
+.BR start ", " stop ", " status ", " list ", " show ", " export .
 If called with just a file path, starts tracking.
 .TP
 .BI "link " source " " export " [-m " message ]
@@ -60,7 +63,8 @@ Creates a cryptographic binding between the source evidence chain and
 the derivative.
 .TP
 .BI "snapshot " action
-Manage document snapshots. Actions: save, list, diff, restore.
+Manage document snapshots. Actions:
+.BR save ", " list ", " get ", " diff .
 .SS Identity and Security
 .TP
 .BI "identity " [options]
@@ -71,32 +75,48 @@ Alias:
 .BR id .
 .TP
 .BI "fingerprint " action
-Manage behavioral typing fingerprints. Actions: status, export, reset.
+Manage behavioral typing fingerprints. Actions:
+.BR status ", " show ", " compare ", " list ", " delete .
 Alias:
 .BR fp .
 .TP
 .BI "credential " action
-Manage authorship credentials and verifiable presentations.
+Manage authorship credentials. Actions:
+.BR create ", " verify ", " info .
 .SS Analysis and Reporting
 .TP
 .BI "forensics " action
-Detailed forensic analysis of writing sessions.
-Actions: analyze, compare, timeline.
+Detailed forensic analysis of writing sessions. Actions:
+.BR breakdown ", " score ", " provenance .
 .TP
 .BI "report " file " [-f " format ]
 Generate a Written Authorship Report (WAR). Formats: html, json.
 .TP
 .BI "beacon " action
-Temporal beacon attestation. Actions: fetch, status, anchors.
+Temporal beacon attestation. Actions:
+.BR submit ", " status ", " list .
 .SS Configuration
 .TP
 .BI "config " action
-Manage configuration. Actions: show, edit, reset, path.
+Manage configuration. Actions:
+.BR show ", " set ", " edit ", " reset ", " app .
 Alias:
 .BR cfg .
 .TP
 .B calibrate
-Re-calibrate VDF performance for this machine (hidden).
+Re-calibrate VDF performance for this machine.
+.SS Daemon Management
+.TP
+.BI "start " [--foreground]
+Start the background sentinel daemon.
+.TP
+.B stop
+Stop the background sentinel daemon.
+.SS Presence Verification
+.TP
+.BI "presence " action
+Interactive presence challenges. Actions:
+.BR start ", " stop ", " status ", " challenge .
 .SS Utility
 .TP
 .BI "completions " shell
@@ -104,6 +124,8 @@ Generate shell completions (bash, zsh, fish, powershell, elvish).
 .TP
 .B man
 Display the user manual.
+Alias:
+.BR manual .
 .SH EVIDENCE TIERS
 Per draft-condrey-rats-pop:
 .TP
@@ -133,35 +155,35 @@ Signed PDF with anti-forgery security features
 C2PA Content Credentials manifest with embedded VC
 .SH BASIC WORKFLOW
 .IP 1. 4
-.B cpoe essay.txt
+.B writersproof\-cli essay.txt
 \- Start tracking a file
 .IP 2. 4
 Write your document
 .IP 3. 4
-.B cpoe commit essay.txt -m "first draft"
+.B writersproof\-cli commit essay.txt \-m "first draft"
 \- Create checkpoint
 .IP 4. 4
 Continue writing
 .IP 5. 4
-.B cpoe commit essay.txt -m "revisions"
+.B writersproof\-cli commit essay.txt \-m "revisions"
 \- More checkpoints
 .IP 6. 4
-.B cpoe export essay.txt -t standard
+.B writersproof\-cli export essay.txt \-t standard
 \- Export evidence
 .IP 7. 4
-.B cpoe verify evidence.json
+.B writersproof\-cli verify evidence.json
 \- Verify evidence
 .SH ENHANCED WORKFLOW
 For strongest evidence with keystroke tracking and PDF reports:
 .PP
 .RS
 .nf
-$ cpoe track start paper.tex
+$ writersproof\-cli track start paper.tex
 $ # ... write for several hours ...
-$ cpoe commit paper.tex -m "Final version"
-$ cpoe track stop
-$ cpoe export paper.tex -t enhanced -f pdf -o paper-proof.pdf
-$ cpoe link paper.tex paper.pdf -m "Published PDF"
+$ writersproof\-cli commit paper.tex \-m "Final version"
+$ writersproof\-cli track stop
+$ writersproof\-cli export paper.tex \-t enhanced \-f pdf \-o paper\-proof.pdf
+$ writersproof\-cli link paper.tex paper.pdf \-m "Published PDF"
 .fi
 .RE
 .SH FILES
@@ -199,7 +221,7 @@ Enable/disable temporal beacons (true/false)
 .TP
 .B EDITOR
 Editor for
-.B cpoe config edit
+.B writersproof\-cli config edit
 .SH PRIVACY
 The keystroke tracking feature counts keystrokes but does NOT capture which
 keys are pressed. This is NOT a keylogger. Only event counts, inter-key
@@ -207,7 +229,7 @@ intervals, and timing jitter are recorded. Content is never stored.
 .SH TEMPORAL BEACONS
 Beacons (drand + NIST) are enabled by default via WritersProof. They anchor
 checkpoints to independent, publicly verifiable time sources. Use
-.B --no-beacons
+.B \-\-no\-beacons
 on export to disable (caps security level at T2).
 .SH EXIT STATUS
 .TP
@@ -217,7 +239,6 @@ Success
 .B 1
 Error occurred
 .SH SEE ALSO
-.BR writersproof (1),
 .BR c2patool (1)
 .PP
 WritersProof documentation:
@@ -226,7 +247,7 @@ WritersProof documentation:
 IETF draft:
 .I draft-condrey-rats-pop
 .SH BUGS
-Report bugs at https://github.com/writerslogic/writerslogic/issues
+Report bugs at https://github.com/writerslogic/cpoe/issues
 .SH AUTHOR
 David Condrey <david@writerslogic.com>
 .SH COPYRIGHT

@@ -69,8 +69,8 @@ When integrating CPoE, vendors should be aware of the following external domain 
 - **Verification:** Verification of evidence packets typically occurs at `writerslogic.com/verify`, which uses a client-side (WASM) engine to maintain privacy.
 - **Attestation:** Enhanced evidence (Tiers 3/4) periodically interacts with `writerslogic.com/api` for nonces and attestation certificates.
 
-Vendors are encouraged to link to the **[[Privacy & External Interactions]]** page in their own documentation to provide transparency to users.
+Vendors are encouraged to link to the **[Privacy & External Interactions](https://github.com/writerslogic/cpoe/wiki/Privacy-&-External-Interactions)** page in their own documentation to provide transparency to users.
 
 ---
 
-*For interpreting the resulting evidence, see [[Evidence Interpretation Guide]].*
+*For interpreting the resulting evidence, see [Evidence Interpretation Guide](evidence-interpretation.md).*

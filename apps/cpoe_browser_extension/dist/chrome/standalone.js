@@ -33,7 +33,8 @@ const DST_JITTER_BIND = "CPoE-StandaloneJitterBind-v1";
 const MIN_CHECKPOINT_INTERVAL_MS = 5000;
 const MAX_PLAUSIBLE_DELTA = 50000;
 const QUOTA_WARNING_BYTES = 5 * 1024 * 1024; // Warn at 5 MB remaining
-const QUOTA_CHECK_INTERVAL = 50; // Check every N checkpoints
+const QUOTA_CHECK_INTERVAL = 10; // Check every N checkpoints
+const MAX_MESSAGE_QUEUE_SIZE = 100;
 
 // Pre-allocated hex lookup table
 const SA_HEX = [];
@@ -377,6 +378,83 @@ async function standaloneGetStatus(sessionId) {
 	};
 }
 
+function computeEvidenceQuality(
+	session,
+	checkpoints,
+	jitterBatches,
+	chainValid,
+) {
+	const cpCount = checkpoints.length;
+	const jitterCount = jitterBatches.length;
+	const durationMs =
+		(session.endedAt || Date.now()) - (session.startedAt || Date.now());
+	const durationMin = durationMs / 60000;
+
+	let score = 0;
+	const signals = [];
+
+	// Checkpoint density
+	if (cpCount >= 20) {
+		score += 25;
+		signals.push("rich_checkpoints");
+	} else if (cpCount >= 5) {
+		score += 15;
+		signals.push("adequate_checkpoints");
+	} else if (cpCount >= 1) {
+		score += 5;
+		signals.push("minimal_checkpoints");
+	}
+
+	// Jitter coverage
+	if (jitterCount >= 10) {
+		score += 25;
+		signals.push("rich_jitter");
+	} else if (jitterCount >= 3) {
+		score += 15;
+		signals.push("some_jitter");
+	} else if (jitterCount >= 1) {
+		score += 5;
+		signals.push("minimal_jitter");
+	}
+
+	// Session duration
+	if (durationMin >= 30) {
+		score += 15;
+		signals.push("sustained_session");
+	} else if (durationMin >= 5) {
+		score += 10;
+		signals.push("moderate_session");
+	} else if (durationMin >= 1) {
+		score += 5;
+		signals.push("brief_session");
+	}
+
+	// Chain integrity
+	if (chainValid) {
+		score += 20;
+		signals.push("chain_verified");
+	}
+
+	// Delta consistency (not all bulk pastes)
+	if (cpCount >= 3) {
+		const deltas = checkpoints.map((cp) => Math.abs(cp.delta));
+		const avgDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+		const smallDeltas = deltas.filter((d) => d < avgDelta * 3).length;
+		if (smallDeltas / cpCount >= 0.6) {
+			score += 15;
+			signals.push("consistent_deltas");
+		}
+	}
+
+	let grade;
+	if (score >= 80) grade = "strong";
+	else if (score >= 50) grade = "moderate";
+	else if (score >= 25) grade = "weak";
+	else grade = "insufficient";
+
+	return { score, grade, signals };
+}
+
 async function standaloneExportEvidence(sessionId) {
 	const d = await openDB();
 	const tx = d.transaction([STORE_SESSIONS, STORE_CHECKPOINTS, STORE_JITTER]);
@@ -397,6 +475,26 @@ async function standaloneExportEvidence(sessionId) {
 	const jitterBatches = allJitterRecords.filter((r) => !r.type);
 	const aiCopyEvents = allJitterRecords.filter((r) => r.type === "ai_copy");
 
+	// Verify jitter hash chain integrity
+	jitterBatches.sort((a, b) => a.timestamp - b.timestamp);
+	let jitterChainValid = true;
+	let expectedJitterHash = "0".repeat(64);
+	for (const jb of jitterBatches) {
+		if (jb.jitterHash) {
+			const combined = await sha256Hex(
+				`${expectedJitterHash}:${jb.jitterHash}`,
+			);
+			expectedJitterHash = combined;
+		}
+	}
+	if (
+		session.lastJitterHash &&
+		jitterBatches.length > 0 &&
+		expectedJitterHash !== session.lastJitterHash
+	) {
+		jitterChainValid = false;
+	}
+
 	// Verify chain integrity before export
 	checkpoints.sort((a, b) => a.ordinal - b.ordinal);
 	let chainValid = true;
@@ -409,13 +507,22 @@ async function standaloneExportEvidence(sessionId) {
 		expectedPrev = cp.checkpointHash;
 	}
 
+	const overallChainValid = chainValid && jitterChainValid;
+	const quality = computeEvidenceQuality(
+		session,
+		checkpoints,
+		jitterBatches,
+		overallChainValid,
+	);
+
 	const evidence = {
 		version: 2,
 		mode: "standalone",
 		trustLevel: "browser-attestation",
 		trustDescription:
 			"Browser-based authorship attestation using SHA-256 hash chain with HMAC integrity and keystroke timing entropy. For hardware-backed attestation with Ed25519 signatures and VDF time-proofs, install the WritersProof desktop app.",
-		chainIntegrity: chainValid ? "verified" : "broken",
+		chainIntegrity: overallChainValid ? "verified" : "broken",
+		evidenceQuality: quality,
 		session: {
 			id: session.id,
 			url: session.url,

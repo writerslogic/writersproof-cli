@@ -16,7 +16,7 @@ The engine utilizes tiered memory protection to ensure that sensitive cryptograp
 
 To prevent the operating system from swapping sensitive keys to disk (where they could be recovered via forensic analysis of the swap file), `cpoe` utilizes the `mlock` system call.
 
-- **Mechanism:** The `ProtectedKey<N>` wrapper (see `crates/cpoe_engine/src/crypto/mem.rs`) calls `libc::mlock` on its internal buffer during initialization.
+- **Mechanism:** The `ProtectedKey<N>` wrapper (see `crates/cpoe/src/crypto/mem.rs`) calls `libc::mlock` on its internal buffer during initialization.
 - **Scope:** Applied to all `RatchetState` keys, HMAC keys, and master seeds.
 - **Cleanup:** Memory is unlocked using `libc::munlock` and immediately overwritten with zeros via the `Zeroize` trait upon `Drop`.
 

@@ -30,4 +30,4 @@ CPoE is built on the belief that human authors have a moral and intellectual rig
 
 ---
 
-*For technical details on how we detect these patterns, see [[Behavioral Metrics]].*
+*For technical details on how we detect these patterns, see [Behavioral Metrics](../specs/behavioral-metrics.md).*

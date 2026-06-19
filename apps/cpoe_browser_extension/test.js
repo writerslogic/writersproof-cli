@@ -729,6 +729,62 @@ async function runTests() {
 		"quality: uniform large deltas → passes consistency",
 	);
 
+	console.log("--- NMH key schedule (cross-language KAT) ---");
+	// Pins the native-messaging-host key schedule to the exact bytes the Rust
+	// host derives (crates/cpoe/src/ipc/crypto.rs nmh_handshake_known_answer_vector).
+	// If these drift, the encrypted channel silently falls back to plaintext.
+	{
+		const salt = new TextEncoder().encode("cpoe-nmh-v1");
+		const shared = new Uint8Array(32);
+		for (let i = 0; i < 32; i++) shared[i] = i;
+		const cpk = new Uint8Array(65);
+		cpk[0] = 4;
+		for (let i = 1; i < 65; i++) cpk[i] = (i * 7) & 0xff;
+		const spk = new Uint8Array(65);
+		spk[0] = 4;
+		for (let i = 1; i < 65; i++) spk[i] = (i * 13 + 5) & 0xff;
+		const ikm = await subtle.importKey("raw", shared, "HKDF", false, [
+			"deriveBits",
+		]);
+		const derive = async (info, bits) =>
+			new Uint8Array(
+				await subtle.deriveBits(
+					{ name: "HKDF", hash: "SHA-256", salt, info },
+					ikm,
+					bits,
+				),
+			);
+		const keyInfo = concatBytes(
+			new TextEncoder().encode("aes-256-gcm-key"),
+			cpk,
+			spk,
+		);
+		const key = await derive(keyInfo, 256);
+		const clientPrefix = await derive(
+			new TextEncoder().encode("nonce-prefix-client"),
+			32,
+		);
+		const serverPrefix = await derive(
+			new TextEncoder().encode("nonce-prefix-server"),
+			32,
+		);
+		assertEq(
+			bytesToHex(key),
+			"330d251aa35c36d9ca87909f4afc8cdce8034ff861dead7e1cb25a2ae342d45a",
+			"nmh KAT: session key matches Rust",
+		);
+		assertEq(
+			bytesToHex(clientPrefix),
+			"7d5be8c2",
+			"nmh KAT: client nonce prefix matches Rust",
+		);
+		assertEq(
+			bytesToHex(serverPrefix),
+			"ead0179f",
+			"nmh KAT: server nonce prefix matches Rust",
+		);
+	}
+
 	// ═══════════════════════════════════════════════════════════════════════
 	// Report
 	// ═══════════════════════════════════════════════════════════════════════

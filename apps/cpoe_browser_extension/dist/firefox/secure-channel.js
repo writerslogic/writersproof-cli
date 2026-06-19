@@ -20,6 +20,11 @@ const DST_KEY_CONFIRM = "cpoe-key-confirm-ok";
 const DST_KEY_RATCHET = "cpoe-key-ratchet";
 const DST_JITTER_BINDING = "cpoe-jitter-binding";
 const DST_BROWSER_COMMIT = "cpoe-browser-commit";
+// HKDF info strings for the 4-byte AES-GCM nonce prefixes. The extension is the
+// client, so it encrypts with the client prefix and expects the server prefix on
+// inbound messages. Must match the Rust SecureSession::from_shared_secret derivation.
+const DST_NONCE_PREFIX_CLIENT = "nonce-prefix-client";
+const DST_NONCE_PREFIX_SERVER = "nonce-prefix-server";
 
 // M-081: Expected sizes for public key validation
 const P256_UNCOMPRESSED_PUBKEY_LEN = 65; // 0x04 || X(32) || Y(32)
@@ -45,6 +50,8 @@ class SecureChannel {
 		this.rawKeyBytes = null; // Uint8Array(32) for ratcheting
 		this.txSequence = 0; // Client sends even: 0, 2, 4, ...
 		this.rxSequence = 1; // Server sends odd: 1, 3, 5, ...
+		this.txNoncePrefix = null; // Uint8Array(4), client prefix (outbound)
+		this.rxNoncePrefix = null; // Uint8Array(4), server prefix (inbound)
 		this.ratchetCount = 0;
 		this.handshakeComplete = false;
 		this.canarySeed = null; // Uint8Array(32)
@@ -177,14 +184,19 @@ class SecureChannel {
 
 			// Derive session key + canary seed via multi-output HKDF
 			const clientPubKeyBytes = await this.getPublicKeyBytes();
-			const { sessionKeyBytes, canarySeed } = await this.deriveKeys(
-				sharedSecret,
-				clientPubKeyBytes,
-				serverPubKeyBytes,
-			);
+			const { sessionKeyBytes, canarySeed, clientPrefix, serverPrefix } =
+				await this.deriveKeys(
+					sharedSecret,
+					clientPubKeyBytes,
+					serverPubKeyBytes,
+				);
 
 			this.rawKeyBytes = sessionKeyBytes;
 			this.canarySeed = canarySeed;
+			// Client encrypts with the client prefix; server replies use the
+			// server prefix. Mirrors the Rust direction-split nonce derivation.
+			this.txNoncePrefix = clientPrefix;
+			this.rxNoncePrefix = serverPrefix;
 
 			// Import as AES-256-GCM CryptoKey
 			this.sessionKey = await crypto.subtle.importKey(
@@ -281,7 +293,32 @@ class SecureChannel {
 		);
 		const canarySeed = new Uint8Array(canarySeedBits);
 
-		return { sessionKeyBytes, canarySeed };
+		// Direction-split nonce prefixes. Rust expands these from the same PRK
+		// using the bare info strings (no pubkeys appended), 4 bytes each.
+		const clientPrefixBits = await crypto.subtle.deriveBits(
+			{
+				name: "HKDF",
+				hash: "SHA-256",
+				salt,
+				info: new TextEncoder().encode(DST_NONCE_PREFIX_CLIENT),
+			},
+			ikm,
+			32,
+		);
+		const serverPrefixBits = await crypto.subtle.deriveBits(
+			{
+				name: "HKDF",
+				hash: "SHA-256",
+				salt,
+				info: new TextEncoder().encode(DST_NONCE_PREFIX_SERVER),
+			},
+			ikm,
+			32,
+		);
+		const clientPrefix = new Uint8Array(clientPrefixBits);
+		const serverPrefix = new Uint8Array(serverPrefixBits);
+
+		return { sessionKeyBytes, canarySeed, clientPrefix, serverPrefix };
 	}
 
 	/**
@@ -292,7 +329,13 @@ class SecureChannel {
 		const seq = this.txSequence;
 		this.txSequence += 2;
 
+		if (!this.txNoncePrefix) {
+			throw new Error(
+				"encryptRaw: nonce prefix not derived (no handshake)",
+			);
+		}
 		const nonceBytes = new Uint8Array(12);
+		nonceBytes.set(this.txNoncePrefix, 0); // nonce[0..4] = direction prefix
 		const seqBytes = uint64ToLE(seq);
 		nonceBytes.set(seqBytes, 4); // nonce[4..12] = seq LE
 
@@ -327,7 +370,20 @@ class SecureChannel {
 			);
 		}
 
+		// Reconstruct the expected nonce (rx prefix || seq) and reject any wire
+		// nonce that does not match, mirroring the Rust decrypt tamper guard.
+		if (!this.rxNoncePrefix) {
+			throw new Error(
+				"decryptRaw: nonce prefix not derived (no handshake)",
+			);
+		}
+		const expectedNonce = new Uint8Array(12);
+		expectedNonce.set(this.rxNoncePrefix, 0);
+		expectedNonce.set(uint64ToLE(seq), 4);
 		const nonce = data.subarray(8, 20);
+		if (!constantTimeEqual(nonce, expectedNonce)) {
+			throw new Error("Nonce mismatch (possible tampering)");
+		}
 		const ciphertext = data.subarray(20);
 
 		this.rxSequence += 2;

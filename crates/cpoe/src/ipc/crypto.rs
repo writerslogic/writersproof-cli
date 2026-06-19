@@ -40,6 +40,15 @@ pub const P256_PUBLIC_KEY_SIZE: usize = 65;
 
 pub const IPC_HKDF_SALT: &[u8] = b"cpoe-ipc-v1";
 
+/// HKDF salt for the browser native-messaging-host (NMH) channel.
+///
+/// Distinct from [`IPC_HKDF_SALT`] so the browser channel and the Unix-socket
+/// IPC channel derive independent keys even from an identical ECDH secret
+/// (domain separation). This value MUST match `DST_HKDF_SALT` in the browser
+/// extension's `secure-channel.js`; the two are covered by a shared
+/// known-answer test (see `tests::nmh_handshake_known_answer_vector`).
+pub const NMH_HKDF_SALT: &[u8] = b"cpoe-nmh-v1";
+
 /// Timeout for the ECDH handshake phase.
 pub(crate) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -86,6 +95,25 @@ impl SecureSession {
         server_pubkey: &[u8],
         is_server: bool,
     ) -> Result<Self> {
+        Self::from_shared_secret_with_salt(
+            shared_secret,
+            client_pubkey,
+            server_pubkey,
+            is_server,
+            IPC_HKDF_SALT,
+        )
+    }
+
+    /// Like [`Self::from_shared_secret`] but with a caller-supplied HKDF salt
+    /// for domain separation between channels (e.g. [`NMH_HKDF_SALT`] for the
+    /// browser native-messaging-host channel vs [`IPC_HKDF_SALT`] for Unix IPC).
+    pub fn from_shared_secret_with_salt(
+        shared_secret: &[u8],
+        client_pubkey: &[u8],
+        server_pubkey: &[u8],
+        is_server: bool,
+        salt: &[u8],
+    ) -> Result<Self> {
         if shared_secret.len() < 32 {
             anyhow::bail!(
                 "shared secret too short: {} bytes (expected 32)",
@@ -111,7 +139,7 @@ impl SecureSession {
         info.extend_from_slice(client_pubkey);
         info.extend_from_slice(server_pubkey);
 
-        let hk = Hkdf::<Sha256>::new(Some(IPC_HKDF_SALT), shared_secret);
+        let hk = Hkdf::<Sha256>::new(Some(salt), shared_secret);
         let mut key_bytes = [0u8; 32];
         hk.expand(&info, &mut key_bytes)
             .map_err(|_| anyhow!("HKDF expand failed"))?;
@@ -487,5 +515,60 @@ pub(crate) fn decode_for_protocol(bytes: &[u8], protocol: WireProtocol) -> Resul
 impl std::fmt::Debug for SecureSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SecureSession").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Cross-language known-answer test pinning the browser native-messaging-host
+    /// key schedule. The expected vectors were produced by the extension's
+    /// `secure-channel.js` deriveKeys() under `NMH_HKDF_SALT`. If this fails, the
+    /// Rust host and browser extension have drifted and the encrypted channel will
+    /// silently fall back to plaintext. The JS side pins the same vectors in
+    /// `apps/cpoe_browser_extension/test.js`.
+    #[test]
+    fn nmh_handshake_known_answer_vector() {
+        let shared: Vec<u8> = (0u8..32).collect();
+        let mut cpk = [0u8; P256_PUBLIC_KEY_SIZE];
+        cpk[0] = 4;
+        for i in 1..P256_PUBLIC_KEY_SIZE {
+            cpk[i] = ((i * 7) & 0xff) as u8;
+        }
+        let mut spk = [0u8; P256_PUBLIC_KEY_SIZE];
+        spk[0] = 4;
+        for i in 1..P256_PUBLIC_KEY_SIZE {
+            spk[i] = ((i * 13 + 5) & 0xff) as u8;
+        }
+
+        // is_server = false → client view: tx prefix = client, rx prefix = server.
+        let session =
+            SecureSession::from_shared_secret_with_salt(&shared, &cpk, &spk, false, NMH_HKDF_SALT)
+                .expect("session derivation");
+
+        assert_eq!(
+            hex::encode(session.key_bytes),
+            "330d251aa35c36d9ca87909f4afc8cdce8034ff861dead7e1cb25a2ae342d45a",
+            "session key drifted from secure-channel.js"
+        );
+        assert_eq!(
+            hex::encode(session.tx_nonce_prefix),
+            "7d5be8c2",
+            "client nonce prefix drifted from secure-channel.js"
+        );
+        assert_eq!(
+            hex::encode(session.rx_nonce_prefix),
+            "ead0179f",
+            "server nonce prefix drifted from secure-channel.js"
+        );
+    }
+
+    /// The NMH salt must differ from the Unix-IPC salt so the two channels never
+    /// derive the same key from an identical ECDH secret (domain separation).
+    #[test]
+    fn nmh_salt_distinct_from_ipc_salt() {
+        assert_ne!(NMH_HKDF_SALT, IPC_HKDF_SALT);
+        assert_eq!(NMH_HKDF_SALT, b"cpoe-nmh-v1");
     }
 }

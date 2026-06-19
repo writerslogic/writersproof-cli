@@ -4,7 +4,7 @@
 
 ### What is CPoE?
 
-CPoE (Cryptographic Proof of Effort) is an authorship witnessing system that creates tamper-evident records proving you created a document over time. It captures:
+CPoE (Cryptographic Proof of Authorship Engine) is an authorship witnessing system that creates tamper-evident records proving you created a document over time. It captures:
 - **What**: Content hashes at each checkpoint
 - **When**: VDF-based timing proofs that cannot be backdated
 - **How**: Optional keystroke metrics showing real writing activity
@@ -37,7 +37,7 @@ The project uses a multi-license structure:
 - **CLI**: AGPL-3.0-only
 - **macOS/Windows apps**: Proprietary
 
-Source: https://github.com/writerslogic/writerslogic
+Source: https://github.com/writerslogic/cpoe
 
 ---
 
@@ -199,5 +199,5 @@ Upload to [writerslogic.com/verify](https://writerslogic.com/verify) for browser
 
 ## More Questions?
 
-- **Issues**: https://github.com/writerslogic/writerslogic/issues
+- **Issues**: https://github.com/writerslogic/cpoe/issues
 - **Website**: https://writerslogic.com

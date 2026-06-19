@@ -21,7 +21,7 @@ CPoE is a cryptographic authorship witnessing system that creates tamper-evident
 
 ### macOS App (Recommended)
 
-1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/writerslogic/releases)
+1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/cpoe/releases)
 2. Drag **WritersProof** to Applications
 3. Launch and follow the onboarding prompts
 
@@ -30,8 +30,7 @@ The app includes menu bar integration, automatic keystroke tracking, visual chec
 ### macOS CLI (Homebrew)
 
 ```bash
-brew tap writerslogic/cpoe
-brew install writerslogic
+brew install writerslogic/tap/writerslogic
 ```
 
 ### Linux CLI
@@ -43,10 +42,10 @@ curl -fsSL https://writerslogic.com/install.sh | bash
 ### Building from Source
 
 ```bash
-git clone https://github.com/writerslogic/writerslogic.git
+git clone https://github.com/writerslogic/cpoe.git
 cd writerslogic
 cargo build --release -p cpoe_cli
-# Binary at target/release/cpoe
+# Binary at target/release/writersproof-cli
 ```
 
 ### Verify Installation
@@ -197,5 +196,5 @@ Verification checks:
 
 ## Getting Help
 
-- **Issues**: https://github.com/writerslogic/writerslogic/issues
+- **Issues**: https://github.com/writerslogic/cpoe/issues
 - **Website**: https://writerslogic.com

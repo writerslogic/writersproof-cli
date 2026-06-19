@@ -8,7 +8,7 @@
 
 This specification defines the behavioral forensic metrics used by CPoE to analyze edit patterns for consistency with human authorship. These metrics examine the spatial distribution and timing of document edits without capturing actual content.
 
-**Important:** This specification covers edit topology and timing pattern analysis. For jitter seal keystroke watermarking (HMAC-based timing injection), see the research paper `paper/jitter-seal.md` and evidence format `specs/evidence-format.md`.
+**Important:** This specification covers edit topology and timing pattern analysis. For jitter seal keystroke watermarking (HMAC-based timing injection), see the [Evidence Format](evidence-format.md) specification and the [arXiv paper](https://arxiv.org/abs/2602.01663).
 
 ### Distinction from Jitter Seal
 

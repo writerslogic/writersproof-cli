@@ -165,6 +165,6 @@
     "128": "icons/icon-128.png"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; style-src 'self'; img-src 'self'; font-src 'none'; object-src 'none'; base-uri 'none'"
+    "extension_pages": "script-src 'self'; style-src 'self'; img-src 'self'; font-src 'none'; object-src 'none'; base-uri 'none'; connect-src 'self' https://auth.writerslogic.com"
   }
 }

@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WritersProof Evidence and Reliability White Paper</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #111827;
+    line-height: 1.6;
+    font-size: 10.5pt;
+  }
+  .page {
+    width: 8.5in;
+    min-height: 11in;
+    margin: 0 auto;
+    padding: 0;
+    position: relative;
+    page-break-after: always;
+  }
+
+  /* Letterhead header */
+  .letterhead-header {
+    padding: 0.6in 0.75in 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .logo-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-icon {
+    width: 48px;
+    height: 48px;
+  }
+  .logo-icon svg { width: 100%; height: 100%; }
+  .logo-text {
+    font-size: 22pt;
+    font-weight: 300;
+    color: #5a7a8a;
+    letter-spacing: -0.5px;
+  }
+  .header-right {
+    text-align: right;
+  }
+  .tagline-1 {
+    font-size: 13pt;
+    font-style: italic;
+    color: #333;
+  }
+  .tagline-2 {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #111;
+  }
+  .contact-info {
+    font-size: 8pt;
+    color: #666;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  .header-rule {
+    margin: 0.25in 0.75in 0;
+    border: none;
+    border-top: 1.5px solid #5a7a8a;
+  }
+
+  /* Content area */
+  .content {
+    padding: 0.4in 0.75in 1.2in;
+  }
+
+  /* Footer */
+  .letterhead-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, #3d5a6e 0%, #2d4452 100%);
+    color: #fff;
+    padding: 8px 0.75in;
+    font-size: 6.5pt;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .footer-left { font-weight: 600; text-decoration: underline; }
+  .footer-center { color: #b0c4ce; }
+  .footer-right { color: #e0e8ec; }
+
+  /* Typography */
+  h1 {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 0.15in 0 0.08in;
+    letter-spacing: -0.3px;
+  }
+  .subtitle {
+    font-size: 11pt;
+    color: #5a7a8a;
+    margin-bottom: 0.25in;
+    font-style: italic;
+  }
+  .doc-meta {
+    font-size: 8pt;
+    color: #888;
+    margin-bottom: 0.3in;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 8px;
+  }
+  h2 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #2d4452;
+    margin: 0.22in 0 0.08in;
+    border-bottom: 1px solid #d1d5db;
+    padding-bottom: 3px;
+  }
+  h3 {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #3d5a6e;
+    margin: 0.15in 0 0.05in;
+  }
+  p { margin-bottom: 0.1in; }
+  ul, ol {
+    margin: 0.05in 0 0.1in 0.25in;
+  }
+  li { margin-bottom: 3px; }
+  .callout {
+    background: #f0f4f7;
+    border-left: 3px solid #5a7a8a;
+    padding: 10px 14px;
+    margin: 0.12in 0;
+    font-size: 10pt;
+  }
+  .callout strong { color: #2d4452; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.1in 0;
+    font-size: 9.5pt;
+  }
+  th {
+    background: #3d5a6e;
+    color: #fff;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  td {
+    padding: 5px 10px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  tr:nth-child(even) td { background: #f9fafb; }
+  .verify-link {
+    display: inline-block;
+    background: #3d5a6e;
+    color: #fff;
+    padding: 8px 20px;
+    text-decoration: none;
+    font-size: 10pt;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin: 0.1in 0;
+  }
+  .page-number {
+    position: absolute;
+    bottom: 36px;
+    right: 0.75in;
+    font-size: 8pt;
+    color: #999;
+  }
+  @media print {
+    .page { margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1 -->
+<div class="page">
+  <div class="letterhead-header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="40" height="40" rx="4" fill="#5a7a8a" opacity="0.15"/>
+          <rect x="8" y="8" width="12" height="32" rx="2" fill="#5a7a8a"/>
+          <rect x="24" y="8" width="8" height="24" rx="2" fill="#5a7a8a" opacity="0.7"/>
+          <rect x="36" y="8" width="4" height="16" rx="2" fill="#5a7a8a" opacity="0.4"/>
+        </svg>
+      </div>
+      <span class="logo-text">writerslogic</span>
+    </div>
+    <div class="header-right">
+      <div class="tagline-1">Detection is a guess.</div>
+      <div class="tagline-2">This is a receipt.</div>
+      <div class="contact-info">
+        955 11th Ave, Suite 3101 &middot; San Diego, CA 92101<br>
+        david@writerslogic.com &middot; (619) 609-9959 &middot; writerslogic.com
+      </div>
+    </div>
+  </div>
+  <hr class="header-rule">
+
+  <div class="content">
+    <h1>WritersProof Evidence and Reliability</h1>
+    <div class="subtitle">How cryptographic witnessing produces verifiable proof of human authorship</div>
+    <div class="doc-meta">
+      White Paper &middot; Version 1.0 &middot; June 2026 &middot; WritersLogic Inc.<br>
+      Patent Pending: USPTO Application No. 19/460,364
+    </div>
+
+    <h2>1. The Problem with Detection</h2>
+    <p>
+      AI-generated text detectors operate by statistical inference: they estimate the probability that a
+      given text was produced by a language model based on token distributions, perplexity scores, and
+      stylometric features. These approaches share a fundamental limitation: they analyze the output
+      without any knowledge of the process that produced it.
+    </p>
+    <p>
+      Detection accuracy degrades with every advance in language model capability. As models produce
+      more human-like text, the statistical distance between human and machine output narrows, and
+      detector false-positive rates climb. A student accused of cheating based on a detector score has
+      no reliable way to prove the accusation wrong, because the detector's confidence is not evidence
+      of anything except its own model's opinion.
+    </p>
+    <div class="callout">
+      <strong>The core asymmetry:</strong> Detection asks "does this text look like it was written by a human?"
+      WritersProof asks "was this text observably written by a human, and can we prove it?"
+    </div>
+
+    <h2>2. Proof of Process: A Different Approach</h2>
+    <p>
+      WritersProof inverts the detection paradigm. Instead of analyzing finished text for statistical
+      artifacts, it captures behavioral evidence <em>during</em> document creation and packages that
+      evidence into cryptographically signed, independently verifiable packets.
+    </p>
+    <p>
+      The system implements the <strong>Proof-of-Process (PoP)</strong> protocol, specified in
+      draft-condrey-rats-pop, an IETF Remote Attestation Procedures (RATS) architecture document.
+      PoP treats authorship as an attestable claim backed by observable evidence, not a statistical
+      inference from the text itself.
+    </p>
+    <h3>What is captured</h3>
+    <ul>
+      <li><strong>Keystroke timing</strong> &mdash; inter-key intervals at nanosecond resolution, revealing the
+        rhythm, cadence, hesitation patterns, and acceleration curves unique to each writer</li>
+      <li><strong>Editing behavior</strong> &mdash; insertions, deletions, cursor movements, undo/redo sequences,
+        and revision patterns that distinguish composition from transcription</li>
+      <li><strong>Focus events</strong> &mdash; application switching, window focus changes, and document
+        engagement duration, establishing continuous attention to the writing process</li>
+      <li><strong>Mouse dynamics</strong> &mdash; movement patterns, micro-corrections, and scroll behavior
+        that correlate with reading, reviewing, and editing phases</li>
+      <li><strong>Temporal anchors</strong> &mdash; cryptographic checkpoints with verifiable delay function (VDF)
+        proofs that bind evidence to wall-clock time, preventing backdating</li>
+    </ul>
+    <h3>What is never captured</h3>
+    <ul>
+      <li>The content of keystrokes (which keys were pressed)</li>
+      <li>The text of the document</li>
+      <li>Screenshots, clipboard contents, or screen recordings</li>
+      <li>Browsing history or activity in other applications</li>
+    </ul>
+  </div>
+  <div class="page-number">1</div>
+  <div class="letterhead-footer">
+    <span class="footer-left">WritersLogic Inc.</span>
+    <span class="footer-center">CRYPTOGRAPHIC PROOF OF EFFORT &middot; CAGE 9N4V7 &middot; UEI KBALFVHT6FB9</span>
+    <span class="footer-right">Delaware C-Corp &middot; SDVOSB</span>
+  </div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page">
+  <div class="letterhead-header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="40" height="40" rx="4" fill="#5a7a8a" opacity="0.15"/>
+          <rect x="8" y="8" width="12" height="32" rx="2" fill="#5a7a8a"/>
+          <rect x="24" y="8" width="8" height="24" rx="2" fill="#5a7a8a" opacity="0.7"/>
+          <rect x="36" y="8" width="4" height="16" rx="2" fill="#5a7a8a" opacity="0.4"/>
+        </svg>
+      </div>
+      <span class="logo-text">writerslogic</span>
+    </div>
+    <div class="header-right">
+      <div class="tagline-1">Detection is a guess.</div>
+      <div class="tagline-2">This is a receipt.</div>
+      <div class="contact-info">
+        955 11th Ave, Suite 3101 &middot; San Diego, CA 92101<br>
+        david@writerslogic.com &middot; (619) 609-9959 &middot; writerslogic.com
+      </div>
+    </div>
+  </div>
+  <hr class="header-rule">
+
+  <div class="content">
+    <h2>3. The Evidence Architecture</h2>
+    <p>
+      WritersProof evidence is structured in three layers, each independently verifiable and
+      progressively harder to forge.
+    </p>
+
+    <h3>Layer 1: Behavioral Signals</h3>
+    <p>
+      Raw behavioral data is captured by the WritersProof sentinel, a background process that
+      monitors keystroke timing, mouse dynamics, and application focus events. Signals are stored
+      in a write-ahead log (WAL) with HMAC-SHA256 integrity tags, ensuring that entries cannot be
+      modified after capture without detection.
+    </p>
+    <p>
+      Each event is signed using an Ed25519 key that is behaviorally gated: the signing key
+      remains available only while the user is actively typing. After 30 seconds of inactivity,
+      the key material is zeroized from memory and must be re-derived from accumulated keystroke
+      entropy. This creates a cryptographic binding between the signing key and the physical act
+      of writing.
+    </p>
+
+    <h3>Layer 2: Forensic Analysis</h3>
+    <p>
+      The forensic engine performs multi-dimensional analysis of captured behavioral signals to
+      produce quantified assessments:
+    </p>
+    <table>
+      <tr>
+        <th>Analysis Module</th>
+        <th>What It Measures</th>
+        <th>Forgery Resistance</th>
+      </tr>
+      <tr>
+        <td>Velocity profiling</td>
+        <td>Typing speed distribution, acceleration curves, fatigue signatures</td>
+        <td>Requires real-time keystroke generation matching target profile</td>
+      </tr>
+      <tr>
+        <td>Cadence analysis</td>
+        <td>Rhythm regularity, burst/pause patterns, digraph timing</td>
+        <td>Statistical fingerprint unique to each writer</td>
+      </tr>
+      <tr>
+        <td>Cognitive load detection</td>
+        <td>Hesitation clustering, revision depth, editing complexity</td>
+        <td>Reflects genuine thought processes, not reproducible by replay</td>
+      </tr>
+      <tr>
+        <td>Transcription detection</td>
+        <td>Unnaturally uniform timing, absence of revision, copy-paste ratios</td>
+        <td>Distinguishes original composition from dictation or paste</td>
+      </tr>
+      <tr>
+        <td>Cross-modal consistency</td>
+        <td>Correlation between keystroke timing, mouse behavior, and focus patterns</td>
+        <td>Validates that all behavioral channels tell the same story</td>
+      </tr>
+      <tr>
+        <td>Jitter entropy analysis</td>
+        <td>Hardware-level timing noise from CPU scheduling and interrupt jitter</td>
+        <td>Cannot be reproduced in software; proves physical hardware involvement</td>
+      </tr>
+    </table>
+
+    <h3>Layer 3: Cryptographic Packaging</h3>
+    <p>
+      Evidence is packaged into <strong>PoP Evidence Packets</strong> (.cpop files), serialized
+      as CBOR (RFC 8949) with COSE_Sign1 signatures (RFC 9052). Each packet contains:
+    </p>
+    <ul>
+      <li>A Merkle Mountain Range (MMR) root committing to all checkpoint hashes</li>
+      <li>VDF proof binding the evidence to elapsed wall-clock time</li>
+      <li>The forensic assessment scores and the raw signal summaries that produced them</li>
+      <li>The signing public key and checkpoint chain for independent verification</li>
+      <li>An EAT (Entity Attestation Token) profile identifier per RFC 9711</li>
+    </ul>
+    <p>
+      The wire format uses IANA-registered CBOR tag 1129336656 (0x43504F50) and media type
+      <code>application/vnd.writersproof.cpop+cbor</code>.
+    </p>
+
+    <h2>4. Verification: Trust Without Authority</h2>
+    <p>
+      WritersProof evidence is designed for independent verification. Any party with the evidence
+      packet can confirm its integrity without contacting WritersLogic or any central authority.
+      Verification checks:
+    </p>
+    <ol>
+      <li><strong>Signature validity</strong> &mdash; COSE_Sign1 Ed25519 signature over the CBOR payload</li>
+      <li><strong>Checkpoint chain integrity</strong> &mdash; MMR proof connecting all checkpoints to the root hash</li>
+      <li><strong>Temporal consistency</strong> &mdash; VDF proof confirming minimum elapsed time between checkpoints</li>
+      <li><strong>Behavioral plausibility</strong> &mdash; forensic scores within human-normal ranges</li>
+      <li><strong>Cross-modal agreement</strong> &mdash; keystroke, mouse, and focus signals corroborate each other</li>
+    </ol>
+  </div>
+  <div class="page-number">2</div>
+  <div class="letterhead-footer">
+    <span class="footer-left">WritersLogic Inc.</span>
+    <span class="footer-center">CRYPTOGRAPHIC PROOF OF EFFORT &middot; CAGE 9N4V7 &middot; UEI KBALFVHT6FB9</span>
+    <span class="footer-right">Delaware C-Corp &middot; SDVOSB</span>
+  </div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page">
+  <div class="letterhead-header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="40" height="40" rx="4" fill="#5a7a8a" opacity="0.15"/>
+          <rect x="8" y="8" width="12" height="32" rx="2" fill="#5a7a8a"/>
+          <rect x="24" y="8" width="8" height="24" rx="2" fill="#5a7a8a" opacity="0.7"/>
+          <rect x="36" y="8" width="4" height="16" rx="2" fill="#5a7a8a" opacity="0.4"/>
+        </svg>
+      </div>
+      <span class="logo-text">writerslogic</span>
+    </div>
+    <div class="header-right">
+      <div class="tagline-1">Detection is a guess.</div>
+      <div class="tagline-2">This is a receipt.</div>
+      <div class="contact-info">
+        955 11th Ave, Suite 3101 &middot; San Diego, CA 92101<br>
+        david@writerslogic.com &middot; (619) 609-9959 &middot; writerslogic.com
+      </div>
+    </div>
+  </div>
+  <hr class="header-rule">
+
+  <div class="content">
+    <h2>5. Attestation Tiers</h2>
+    <p>
+      Not all evidence carries the same weight. WritersProof classifies evidence into three tiers
+      based on the depth and corroborability of the captured signals:
+    </p>
+    <table>
+      <tr>
+        <th>Tier</th>
+        <th>Label</th>
+        <th>Requirements</th>
+        <th>Confidence</th>
+      </tr>
+      <tr>
+        <td style="font-weight:700;color:#16a34a;">1</td>
+        <td><strong>Verified</strong></td>
+        <td>Full behavioral capture, VDF temporal proofs, multiple checkpoints,
+          cross-modal consistency, hardware jitter entropy</td>
+        <td>Highest. Evidence is independently verifiable with no reliance on
+          trust in the author or platform.</td>
+      </tr>
+      <tr>
+        <td style="font-weight:700;color:#ca8a04;">2</td>
+        <td><strong>Corroborated</strong></td>
+        <td>Partial behavioral capture (e.g., keystroke timing without mouse),
+          fewer checkpoints, temporal anchors present but reduced signal depth</td>
+        <td>Moderate. Consistent with human authorship but lacks full
+          cross-modal corroboration.</td>
+      </tr>
+      <tr>
+        <td style="font-weight:700;color:#9ca3af;">3</td>
+        <td><strong>Declared</strong></td>
+        <td>Author self-attestation with cryptographic signature but limited
+          or no behavioral evidence (e.g., retroactive attestation of
+          existing documents)</td>
+        <td>Lowest. Proves the author claims authorship and signed the claim,
+          but does not independently demonstrate the writing process.</td>
+      </tr>
+    </table>
+
+    <h2>6. Forgery Cost Analysis</h2>
+    <p>
+      The security of WritersProof evidence rests not on any single mechanism but on the
+      combined cost of simultaneously defeating multiple independent verification channels.
+      An attacker attempting to forge evidence must:
+    </p>
+    <ol>
+      <li><strong>Generate plausible keystroke timing</strong> at nanosecond resolution that matches
+        a target writer's velocity profile, cadence fingerprint, and cognitive load signature.
+        This requires modeling the target's typing behavior across thousands of data points.</li>
+      <li><strong>Produce consistent mouse dynamics</strong> that correlate with the forged keystroke
+        timing in ways that reflect genuine reading and editing behavior.</li>
+      <li><strong>Simulate application focus patterns</strong> that match the temporal structure of
+        the forged typing sessions, including realistic pause-and-return behavior.</li>
+      <li><strong>Generate valid VDF proofs</strong> for each checkpoint, which requires sequential
+        computation that cannot be parallelized, binding the evidence to real elapsed time.</li>
+      <li><strong>Produce hardware-level jitter entropy</strong> that passes statistical tests for
+        genuine CPU scheduling noise, which cannot be generated in software.</li>
+      <li><strong>Maintain cross-modal consistency</strong> across all of the above simultaneously,
+        ensuring that no pair of signal channels contradicts any other.</li>
+    </ol>
+    <div class="callout">
+      <strong>The key insight:</strong> Each individual channel might be forgeable in isolation
+      with sufficient effort. The requirement to forge all channels simultaneously and
+      consistently raises the cost beyond practical feasibility. WritersProof's security is
+      multiplicative, not additive.
+    </div>
+
+    <h2>7. What WritersProof Evidence Is (and Is Not)</h2>
+    <p>
+      WritersProof evidence is a factual record of observed behavioral signals during document
+      creation, packaged with cryptographic integrity guarantees. It is:
+    </p>
+    <ul>
+      <li><strong>Evidence, not a verdict.</strong> A WritersProof report presents observed data with
+        quantified confidence. It does not declare that someone did or did not write something.
+        Like a fingerprint analysis or DNA report, it provides data for a qualified
+        decision-maker to evaluate.</li>
+      <li><strong>Probabilistic, not absolute.</strong> Forensic scores reflect the statistical
+        consistency of observed behavior with human writing patterns. A high score means the
+        evidence strongly suggests human authorship; it does not guarantee it.</li>
+      <li><strong>Tamper-evident, not tamper-proof.</strong> The cryptographic packaging ensures that
+        any modification to the evidence after capture is detectable. It does not prevent an
+        attacker from attempting to generate fraudulent evidence from scratch (though the forgery
+        cost analysis above addresses the feasibility of that attack).</li>
+      <li><strong>Privacy-preserving by design.</strong> WritersProof captures behavioral timing
+        patterns, not content. The evidence proves <em>how</em> something was written without
+        revealing <em>what</em> was written.</li>
+    </ul>
+  </div>
+  <div class="page-number">3</div>
+  <div class="letterhead-footer">
+    <span class="footer-left">WritersLogic Inc.</span>
+    <span class="footer-center">CRYPTOGRAPHIC PROOF OF EFFORT &middot; CAGE 9N4V7 &middot; UEI KBALFVHT6FB9</span>
+    <span class="footer-right">Delaware C-Corp &middot; SDVOSB</span>
+  </div>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page">
+  <div class="letterhead-header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="40" height="40" rx="4" fill="#5a7a8a" opacity="0.15"/>
+          <rect x="8" y="8" width="12" height="32" rx="2" fill="#5a7a8a"/>
+          <rect x="24" y="8" width="8" height="24" rx="2" fill="#5a7a8a" opacity="0.7"/>
+          <rect x="36" y="8" width="4" height="16" rx="2" fill="#5a7a8a" opacity="0.4"/>
+        </svg>
+      </div>
+      <span class="logo-text">writerslogic</span>
+    </div>
+    <div class="header-right">
+      <div class="tagline-1">Detection is a guess.</div>
+      <div class="tagline-2">This is a receipt.</div>
+      <div class="contact-info">
+        955 11th Ave, Suite 3101 &middot; San Diego, CA 92101<br>
+        david@writerslogic.com &middot; (619) 609-9959 &middot; writerslogic.com
+      </div>
+    </div>
+  </div>
+  <hr class="header-rule">
+
+  <div class="content">
+    <h2>8. Standards Alignment</h2>
+    <p>
+      WritersProof is built on open standards to ensure interoperability and long-term verifiability:
+    </p>
+    <table>
+      <tr><th>Standard</th><th>Role in WritersProof</th></tr>
+      <tr>
+        <td>IETF RATS (RFC 9334)</td>
+        <td>Architecture for remote attestation; WritersProof implements the Attester/Verifier/Relying Party model</td>
+      </tr>
+      <tr>
+        <td>draft-condrey-rats-pop</td>
+        <td>Proof-of-Process protocol specification defining evidence structure and verification procedures</td>
+      </tr>
+      <tr>
+        <td>CBOR (RFC 8949)</td>
+        <td>Binary serialization for evidence packets, chosen for compactness and deterministic encoding</td>
+      </tr>
+      <tr>
+        <td>COSE (RFC 9052)</td>
+        <td>Cryptographic signature envelope for evidence integrity and authenticity</td>
+      </tr>
+      <tr>
+        <td>EAT (RFC 9711)</td>
+        <td>Entity Attestation Token profile for standardized evidence claims</td>
+      </tr>
+      <tr>
+        <td>C2PA (Coalition for Content Provenance)</td>
+        <td>Content authenticity manifests for interoperability with media provenance ecosystems</td>
+      </tr>
+      <tr>
+        <td>W3C Verifiable Credentials</td>
+        <td>Attestation results expressed as VCs for integration with decentralized identity systems</td>
+      </tr>
+    </table>
+
+    <h2>9. Reliability Considerations</h2>
+    <h3>False positives and false negatives</h3>
+    <p>
+      WritersProof does not produce binary "human" or "AI" classifications and therefore does not
+      have a false-positive rate in the detector sense. Instead, it produces a forensic confidence
+      score reflecting the strength of observed behavioral evidence. A low score does not mean the
+      text was AI-generated; it means the behavioral evidence captured during writing was insufficient
+      to make a strong attestation. This can occur when:
+    </p>
+    <ul>
+      <li>The writer uses dictation software (captured and labeled as dictation, not penalized)</li>
+      <li>The writer pastes content from external sources (paste events are detected and recorded)</li>
+      <li>The monitoring session was too short to accumulate meaningful behavioral data</li>
+      <li>The writer's typing style is unusually uniform (rare but possible)</li>
+    </ul>
+
+    <h3>Adversarial robustness</h3>
+    <p>
+      The system treats the user as a potential adversary. The behavioral key mechanism, VDF temporal
+      proofs, hardware jitter entropy, and cross-modal consistency checks are all designed to resist
+      forgery even by the document's author. This is essential for contexts where the author has an
+      incentive to fabricate evidence of human authorship.
+    </p>
+
+    <h3>Long-term verifiability</h3>
+    <p>
+      Evidence packets are self-contained. They include all data and cryptographic material needed
+      for verification, with no dependency on WritersLogic servers, APIs, or continued operation.
+      A packet created today can be verified ten years from now by anyone with a CBOR parser and
+      an Ed25519 signature verifier.
+    </p>
+
+    <h2>10. Verify Evidence Online</h2>
+    <p>
+      Any WritersProof evidence packet can be independently verified using the public verification
+      portal. Upload a .cpop evidence file or paste attestation text to confirm its cryptographic
+      integrity, review forensic scores, and inspect the checkpoint chain.
+    </p>
+    <p>
+      <a href="https://verify.writersproof.com" class="verify-link">verify.writersproof.com</a>
+    </p>
+    <p style="font-size:9pt;color:#666;margin-top:0.05in;">
+      The verification portal performs all cryptographic checks client-side in the browser.
+      Evidence files are never uploaded to a server.
+    </p>
+
+    <div style="margin-top:0.3in;border-top:1px solid #d1d5db;padding-top:0.15in;">
+      <p style="font-size:8.5pt;color:#888;line-height:1.5;">
+        <strong>Document version:</strong> 1.0 &middot; June 2026<br>
+        <strong>Classification:</strong> Public<br>
+        <strong>Contact:</strong> david@writerslogic.com<br>
+        <strong>Verify this document:</strong>
+        <a href="https://verify.writersproof.com" style="color:#5a7a8a;">https://verify.writersproof.com</a><br>
+        <strong>Protocol specification:</strong> draft-condrey-rats-pop (IETF RATS Working Group)
+      </p>
+    </div>
+  </div>
+  <div class="page-number">4</div>
+  <div class="letterhead-footer">
+    <span class="footer-left">WritersLogic Inc.</span>
+    <span class="footer-center">CRYPTOGRAPHIC PROOF OF EFFORT &middot; CAGE 9N4V7 &middot; UEI KBALFVHT6FB9</span>
+    <span class="footer-right">Delaware C-Corp &middot; SDVOSB</span>
+  </div>
+</div>
+
+</body>
+</html>

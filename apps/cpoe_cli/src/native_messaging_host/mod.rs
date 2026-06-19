@@ -154,7 +154,9 @@ fn main() {
 
 fn handle_hello(client_pubkey_b64: &str) -> Response {
     use base64::Engine;
-    use cpoe::ipc::crypto::{SecureSession, KEY_CONFIRM_PLAINTEXT, P256_PUBLIC_KEY_SIZE};
+    use cpoe::ipc::crypto::{
+        SecureSession, KEY_CONFIRM_PLAINTEXT, NMH_HKDF_SALT, P256_PUBLIC_KEY_SIZE,
+    };
     use p256::{ecdh::EphemeralSecret, elliptic_curve::sec1::ToEncodedPoint, PublicKey};
 
     let client_pubkey_bytes =
@@ -184,11 +186,12 @@ fn handle_hello(client_pubkey_b64: &str) -> Response {
 
     let shared_secret = server_secret.diffie_hellman(&client_pubkey);
 
-    let session = match SecureSession::from_shared_secret(
+    let session = match SecureSession::from_shared_secret_with_salt(
         shared_secret.raw_secret_bytes().as_slice(),
         &client_pubkey_bytes,
         server_pubkey_bytes,
         true,
+        NMH_HKDF_SALT,
     ) {
         Ok(s) => s,
         Err(e) => {

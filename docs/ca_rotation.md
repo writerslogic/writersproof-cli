@@ -210,8 +210,8 @@ attestations (validity window is checked), but are needed to verify old ones.
 After updating and deploying:
 
 ```sh
-cargo test -p cpoe-engine --lib war::
-cargo test -p cpoe-engine --lib war::trust_bundle
+cargo test -p cpoe --lib war::
+cargo test -p cpoe --lib war::trust_bundle
 ```
 
 All `test_find_ca_key_*` and `test_find_in_bundle_*` tests must pass.

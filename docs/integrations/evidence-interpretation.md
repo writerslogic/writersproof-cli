@@ -77,4 +77,4 @@ Extremely fast or consistent typists (e.g., stenographers) may trigger the robot
 
 ---
 
-*For technical schema details, see [[Evidence Format]].*
+*For technical schema details, see [Evidence Format](../specs/evidence-format.md).*

@@ -32,18 +32,19 @@ This monorepo contains the full CPoE ecosystem:
 
 | Component | Path | Target | Description | License |
 |:----------|:-----|:-------|:------------|:--------|
-| **cpoe-engine** | [`crates/cpoe-engine`](crates/cpoe-engine) | Native | Cryptographic engine, FFI, platform captures, storage | SSPL-1.0 |
-| **cpoe-protocol** | [`crates/cpoe-protocol`](crates/cpoe-protocol) | Native + **WASM** | Wire format (CBOR/COSE), forensic models, RFC types | Apache-2.0 |
+| **cpoe** (lib: `cpoe_engine`) | [`crates/cpoe`](crates/cpoe) | Native | Cryptographic engine, FFI, platform captures, storage | SSPL-1.0 |
+| **authorproof-protocol** | [`crates/authorproof-protocol`](crates/authorproof-protocol) | Native + **WASM** | Wire format (CBOR/COSE), forensic models, RFC types | Apache-2.0 |
 | **cpoe-jitter** | [`crates/cpoe-jitter`](crates/cpoe-jitter) | Native + **no_std** | Timing entropy primitive for embedded and desktop use | Apache-2.0 |
 | **cpoe_cli** | [`apps/cpoe_cli`](apps/cpoe_cli) | Native | CLI (`cpoe`) | AGPL-3.0-only |
 | **cpoe_macos** | [`apps/cpoe_macos`](apps/cpoe_macos) | macOS | macOS desktop app (submodule) | Proprietary |
 | **cpoe_windows** | [`apps/cpoe_windows`](apps/cpoe_windows) | Windows | Windows desktop app (submodule) | Proprietary |
+| **browser extension** | [`extensions`](extensions) | Chrome/Firefox/Edge | Browser extension for in-browser witnessing | Proprietary |
 
 The three library crates are split by **compilation target**:
 
 - **cpoe-jitter** compiles to `no_std` (bare-metal, embedded microcontrollers with no OS)
-- **cpoe-protocol** compiles to `wasm32` (browser extensions for client-side evidence verification)
-- **cpoe-engine** compiles to native only (requires OS APIs: CGEventTap, TPM, SQLite, Unix sockets)
+- **authorproof-protocol** compiles to `wasm32` (browser extensions for client-side evidence verification)
+- **cpoe** compiles to native only (requires OS APIs: CGEventTap, TPM, SQLite, Unix sockets)
 
 Dependencies flow one direction: `engine -> protocol -> jitter`. Merging them would break WASM and embedded compilation.
 
@@ -67,7 +68,7 @@ curl -sSf https://raw.githubusercontent.com/writerslogic/cpoe/main/apps/cpoe_cli
 
 **From source:**
 ```bash
-cargo install --git https://github.com/writerslogic/cpoe --bin cpoe
+cargo install --git https://github.com/writerslogic/cpoe --bin writersproof-cli
 ```
 
 ## Quick Start
@@ -105,7 +106,16 @@ Run `cpoe` with no arguments for an interactive menu, or `cpoe --help` for full 
 | `cpoe identity` | Identity management (alias: `id`) |
 | `cpoe config` | Configuration (alias: `cfg`) |
 | `cpoe fingerprint` | Behavioral fingerprinting (alias: `fp`) |
+| `cpoe forensics` | Detailed forensic analysis (breakdown/score/provenance) |
+| `cpoe report` | Generate a Written Authorship Report (WAR) |
+| `cpoe attest` | Submit evidence for WritersProof attestation |
+| `cpoe beacon` | Temporal beacon attestation |
+| `cpoe credential` | Manage authorship credentials |
+| `cpoe snapshot` | Document snapshot management |
 | `cpoe presence` | Physical presence verification |
+| `cpoe start` | Start the sentinel daemon |
+| `cpoe stop` | Stop the sentinel daemon |
+| `cpoe link` | Link an export to a source document |
 
 All commands support `--json` for machine-readable output and `--quiet` for silent operation.
 
@@ -122,45 +132,49 @@ cpoe_engine = { git = "https://github.com/writerslogic/cpoe", branch = "main" }
 
 | Feature | Description |
 |:--------|:------------|
-| `default` | Core library without optional features |
+| `default` | Includes `cpoe_jitter` and `ffi` |
 | `cpoe_jitter` | Hardware entropy via PhysJitter |
-| `secure-enclave` | macOS Secure Enclave support |
 | `x11` | X11 focus detection on Linux |
+| `wayland` | Wayland focus detection on Linux |
+| `dbus` | DBus focus detection on Linux (GNOME/KDE) |
 | `ffi` | UniFFI bindings for Swift/Kotlin |
+| `did-webvh` | did:webvh decentralized identity |
+| `posme` | Proof of Sequential Memory-bound Effort |
 
 ## Architecture
 
 ```
 writerslogic/
 ├── crates/
-│   ├── cpoe_engine/    High-performance cryptographic engine
+│   ├── cpoe/                      Core cryptographic engine (lib: cpoe_engine)
 │   │   └── src/
-│   │       ├── analysis/   Signal analysis and behavioral metrics
-│   │       ├── anchors/    Blockchain and timestamp anchoring
-│   │       ├── crypto/     Cryptographic primitives
-│   │       ├── evidence/   Evidence export/verify
-│   │       ├── forensics/  Authorship analysis
-│   │       ├── ipc/        Inter-process communication
-│   │       ├── keyhierarchy/ Key derivation and ratcheting
-│   │       ├── platform/   OS-specific code (macOS, Linux, Windows)
-│   │       ├── sentinel/   Real-time monitoring
-│   │       ├── rfc/        RFC wire types
-│   │       ├── tpm/        TPM 2.0 / Secure Enclave
-│   │       └── vdf/        Verifiable Delay Functions
-│   ├── cpoe_protocol/  PoP wire format (CBOR/COSE)
-│   └── cpoe_jitter/    Hardware timing entropy
+│   │       ├── analysis/          Signal analysis and behavioral metrics
+│   │       ├── anchors/           Blockchain and timestamp anchoring
+│   │       ├── crypto/            Cryptographic primitives
+│   │       ├── evidence/          Evidence export/verify
+│   │       ├── forensics/         Authorship analysis
+│   │       ├── ipc/               Inter-process communication
+│   │       ├── keyhierarchy/      Key derivation and ratcheting
+│   │       ├── platform/          OS-specific code (macOS, Linux, Windows)
+│   │       ├── sentinel/          Real-time monitoring
+│   │       ├── rfc/               RFC wire types
+│   │       ├── tpm/               TPM 2.0 / Secure Enclave
+│   │       └── vdf/               Verifiable Delay Functions
+│   ├── authorproof-protocol/      PoP wire format (CBOR/COSE)
+│   └── cpoe-jitter/               Hardware timing entropy
 ├── apps/
-│   ├── cpoe_cli/       Command-line interface
-│   ├── cpoe_macos/     Native macOS app (submodule)
-│   └── cpoe_windows/   Native Windows app (submodule)
-└── docs/              Schemas, specs, and user guides
+│   ├── cpoe_cli/                  Command-line interface
+│   ├── cpoe_macos/                Native macOS app (submodule)
+│   └── cpoe_windows/              Native Windows app (submodule)
+├── extensions/                    Browser extension (Chrome/Firefox/Edge)
+└── docs/                          Schemas, specs, and user guides
 ```
 
 ## Development
 
 ```bash
 cargo test --workspace           # Run all tests
-cargo test -p cpoe-engine --lib   # Fast engine tests (~1020 tests)
+cargo test -p cpoe --lib          # Fast engine tests (~1255 tests)
 cargo clippy --workspace -- -D warnings  # Lint (zero warnings maintained)
 cargo fmt --all -- --check       # Format check
 cargo audit && cargo deny check  # Security audit

@@ -108,7 +108,7 @@ cpoe verify <file> [-k <key>] [--output-war <path>]
 | `-k <key>` | Public key file (optional) |
 | `--output-war <path>` | Write WAR appraisal result to disk |
 
-Accepts `.json`, `.c2pa` packets or `.db` files.
+Accepts `.json`, `.c2pa`, `.cpoe`, `.cwar` packets or `.db` files.
 
 ---
 
@@ -199,17 +199,17 @@ cpoe fingerprint status
 cpoe fingerprint show [--id <id>]
 cpoe fingerprint compare <id1> <id2>
 cpoe fingerprint list
-cpoe fingerprint delete [--force]
+cpoe fingerprint delete <id> [--force]
 ```
 
 ---
 
 #### credential
 
-Manage authorship credentials and verifiable presentations.
+Manage authorship credentials.
 
 ```bash
-cpoe credential create <path> [--session <id>]
+cpoe credential create <path> --session <id>
 cpoe credential verify <file>
 cpoe credential info
 ```
@@ -252,6 +252,49 @@ cpoe beacon status <path>
 cpoe beacon list <path>
 ```
 
+#### attest
+
+One-shot text attestation via ephemeral sessions.
+
+```bash
+cpoe attest [-f <format>] [-i <input>] [-o <output>] [--non-interactive]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-f <format>` | Output format (default: json) |
+| `-i <input>` | Input file (reads from stdin if omitted) |
+| `-o <output>` | Output file (writes to stdout if omitted) |
+| `--non-interactive` | Skip interactive prompts |
+
+---
+
+### Daemon Management
+
+#### start
+
+Start the sentinel daemon.
+
+```bash
+cpoe start [--foreground]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--foreground` | Run in foreground instead of daemonizing |
+
+---
+
+#### stop
+
+Stop the sentinel daemon.
+
+```bash
+cpoe stop
+```
+
+---
+
 ### Configuration
 
 #### config
@@ -263,8 +306,7 @@ cpoe config show
 cpoe config set <key> <value>
 cpoe config edit
 cpoe config reset [--force]
-cpoe config path
-cpoe config app add <name>
+cpoe config app add [<name>]
 cpoe config app list
 cpoe config app remove <name>
 ```
