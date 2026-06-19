@@ -502,89 +502,12 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
 
         witnessing_mode: WitnessingMode::Auto,
     },
-    // ── Marked 2 (preview app; writers use it with other editors) ──────────
-    WritingApp {
-        bundle_id: "com.brettterpstra.marked2",
-        display_name: "Marked 2",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Taskpaper ──────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.hogbaysoftware.TaskPaper3",
-        display_name: "TaskPaper",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── FoldingText ────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.foldingtext.FoldingText",
-        display_name: "FoldingText",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
     // ── Byword ─────────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.metaclassy.byword",
         display_name: "Byword",
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~metaclassy~byword/Documents"],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Markdown Editor ────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.markdowneditor.mac",
-        display_name: "Markdown Editor",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Coppice ────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.mekentosj.coppice",
-        display_name: "Coppice",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Bike Outliner ──────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.hogbaysoftware.Bike",
-        display_name: "Bike Outliner",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── OmniOutliner ───────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.omnigroup.OmniOutliner5",
-        display_name: "OmniOutliner",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
 
@@ -615,60 +538,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
 
         witnessing_mode: WitnessingMode::Auto,
     },
-    // ── Sublime Text ───────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.sublimetext.4",
-        display_name: "Sublime Text",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
-        bundle_id: "com.sublimetext.3",
-        display_name: "Sublime Text 3",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Nova ───────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.panic.Nova",
-        display_name: "Nova",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Storyist ───────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.storyist.mac",
-        display_name: "Storyist",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── WriteRoom ──────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.hogbaysoftware.WriteRoom",
-        display_name: "WriteRoom",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
     // ── OmmWriter ──────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.ommwriter.ommwriter",
@@ -680,34 +549,12 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
 
         witnessing_mode: WitnessingMode::Auto,
     },
-    // ── Adobe InDesign ─────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.adobe.InDesign",
-        display_name: "Adobe InDesign",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
     // ── Keynote ────────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.apple.iWork.Keynote",
         display_name: "Keynote",
         storage: StoragePattern::CloudLibrary,
         container_paths: &["Library/Mobile Documents/com~apple~Keynote/Documents"],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── PowerPoint ─────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.microsoft.Powerpoint",
-        display_name: "Microsoft PowerPoint",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
 
@@ -731,28 +578,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &["Library/Group Containers/UBF8T346G9.Office/Outlook"],
         needs_title_inference: true, // compose windows only expose subject
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── TeXShop ────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "TeXShop",
-        display_name: "TeXShop",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Texpad ─────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.vallettaventures.Texpad",
-        display_name: "Texpad",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
         default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
@@ -783,17 +608,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
 
         witnessing_mode: WitnessingMode::Auto,
     },
-    // ── MacDown ────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.uranusjr.macdown",
-        display_name: "MacDown",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
     // ── GoodNotes ──────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.goodnotesapp.x",
@@ -803,28 +617,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/iCloud~com~goodnotesapp~x/Documents",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── CotEditor ──────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.coteditor.CotEditor",
-        display_name: "CotEditor",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── MacVim ─────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "org.vim.MacVim",
-        display_name: "MacVim",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
         default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
@@ -1808,13 +1600,6 @@ pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
         id if id.eq_ignore_ascii_case("com.literatureandlatte.scrivener3") => {
             Some(Box::new(ScrivenerAdapter))
         }
-        id if id.eq_ignore_ascii_case("com.finaldraft.mac.finaldraft10")
-            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd11")
-            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd12")
-            || id.eq_ignore_ascii_case("com.finaldraft.mac.fd13") =>
-        {
-            Some(Box::new(FinalDraftAdapter))
-        }
         id if id.eq_ignore_ascii_case("com.ulyssesapp.mac") => Some(Box::new(UlyssesAdapter)),
         id if id.eq_ignore_ascii_case("co.180g.Vellum")
             || id.eq_ignore_ascii_case("com.180g.vellum") =>
@@ -1856,32 +1641,19 @@ mod tests {
     fn test_lookup_known_apps() {
         assert!(lookup("com.ulyssesapp.mac").is_some());
         assert!(lookup("net.shinyfrog.bear").is_some());
-        assert!(lookup("com.microsoft.Word").is_some());
-        assert!(lookup("com.seriflabs.affinitypublisher").is_some());
         // Case-insensitive
         assert!(lookup("COM.ULYSSESAPP.MAC").is_some());
         // Newly added apps
         assert!(lookup("com.apple.Notes").is_some());
-        assert!(lookup("com.sublimetext.4").is_some());
-        assert!(lookup("com.panic.Nova").is_some());
-        assert!(lookup("com.storyist.mac").is_some());
-        assert!(lookup("com.hogbaysoftware.WriteRoom").is_some());
         assert!(lookup("com.ommwriter.ommwriter").is_some());
         assert!(lookup("dev.warp.Warp-Stable").is_some());
-        assert!(lookup("com.adobe.InDesign").is_some());
         assert!(lookup("com.apple.iWork.Keynote").is_some());
-        assert!(lookup("com.microsoft.Powerpoint").is_some());
         assert!(lookup("com.apple.mail").is_some());
         assert!(lookup("com.microsoft.Outlook").is_some());
-        assert!(lookup("TeXShop").is_some());
-        assert!(lookup("com.vallettaventures.Texpad").is_some());
         assert!(lookup("com.lukilabs.lukiapp").is_some());
         assert!(lookup("com.bloombuilt.dayone-mac").is_some());
-        assert!(lookup("com.uranusjr.macdown").is_some());
         assert!(lookup("com.agiletortoise.Drafts-OSX").is_some());
         assert!(lookup("com.goodnotesapp.x").is_some());
-        assert!(lookup("com.coteditor.CotEditor").is_some());
-        assert!(lookup("org.vim.MacVim").is_some());
         assert!(lookup("dev.zed.Zed").is_some());
         assert!(lookup("dev.zed.Zed-Preview").is_some());
     }
@@ -1895,7 +1667,6 @@ mod tests {
     fn test_needs_title_inference() {
         assert!(needs_title_inference("net.shinyfrog.bear"));
         assert!(needs_title_inference("com.ulyssesapp.mac"));
-        assert!(!needs_title_inference("com.microsoft.Word"));
         assert!(!needs_title_inference("com.apple.iWork.Pages"));
         // New title-inferred apps
         assert!(needs_title_inference("com.apple.Notes"));
@@ -1911,16 +1682,8 @@ mod tests {
         // Zed
         assert!(needs_title_inference("dev.zed.Zed"));
         assert!(needs_title_inference("dev.zed.Zed-Preview"));
-        // New file-based apps (should NOT need inference)
-        assert!(!needs_title_inference("com.sublimetext.4"));
-        assert!(!needs_title_inference("com.panic.Nova"));
-        assert!(!needs_title_inference("com.adobe.InDesign"));
+        // File-based apps (should NOT need inference)
         assert!(!needs_title_inference("com.apple.iWork.Keynote"));
-        assert!(!needs_title_inference("TeXShop"));
-        assert!(!needs_title_inference("com.vallettaventures.Texpad"));
-        assert!(!needs_title_inference("com.uranusjr.macdown"));
-        assert!(!needs_title_inference("com.coteditor.CotEditor"));
-        assert!(!needs_title_inference("org.vim.MacVim"));
     }
 
     #[test]
@@ -1966,7 +1729,7 @@ mod tests {
         let reg = AppRegistry::load(tmp.path());
         assert!(reg.user_apps().is_empty());
         // Builtins still present
-        assert!(reg.lookup_builtin("com.microsoft.Word").is_some());
+        assert!(reg.lookup_builtin("com.microsoft.onenote.mac").is_some());
     }
 
     #[test]
@@ -2054,12 +1817,12 @@ mod tests {
     fn test_registry_user_overrides_builtin() {
         let tmp = tempfile::tempdir().unwrap();
         let mut reg = AppRegistry::load(tmp.path());
-        // Word is builtin with needs_title_inference: false
-        assert!(!reg.needs_title_inference("com.microsoft.Word"));
+        // Pages is builtin with needs_title_inference: false
+        assert!(!reg.needs_title_inference("com.apple.iWork.Pages"));
 
         reg.add_user_app(UserWritingApp {
-            bundle_id: "com.microsoft.Word".into(),
-            display_name: "Word (custom)".into(),
+            bundle_id: "com.apple.iWork.Pages".into(),
+            display_name: "Pages (custom)".into(),
             storage: StoragePattern::FileBased,
             container_paths: vec![],
             needs_title_inference: true,
@@ -2071,8 +1834,8 @@ mod tests {
         })
         .unwrap();
 
-        assert!(reg.needs_title_inference("com.microsoft.Word"));
-        assert!(reg.lookup_user("com.microsoft.Word").is_some());
+        assert!(reg.needs_title_inference("com.apple.iWork.Pages"));
+        assert!(reg.lookup_user("com.apple.iWork.Pages").is_some());
     }
 
     #[test]
