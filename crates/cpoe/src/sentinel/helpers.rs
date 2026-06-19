@@ -822,7 +822,7 @@ pub fn handle_change_event_sync(
                         &prev_hash,
                         &new_hash,
                         &session.app_bundle_id,
-                        "",
+                        &session.app_bundle_id,
                     );
                     if matches!(context, super::types::KeystrokeContext::PastedContent)
                         && confidence >= 0.92
@@ -2517,13 +2517,19 @@ fn extract_word_count_fountain(path: &Path) -> Option<u64> {
     }
     let contents = std::fs::read_to_string(path).ok()?;
 
-    let mut counting = false;
+    // Title page: key-value lines (e.g. "Title: My Script") before the first
+    // blank line. If the first line isn't key-value format, there's no title page.
+    let has_title_page = contents
+        .lines()
+        .next()
+        .map(|l| l.contains(':') && !l.trim().is_empty())
+        .unwrap_or(false);
+    let mut counting = !has_title_page;
     let mut word_count: u64 = 0;
     let mut in_boneyard = false;
     let mut in_notes = false;
 
     for line in contents.lines() {
-        // Skip title page (key-value lines before first blank line).
         if !counting {
             if line.trim().is_empty() {
                 counting = true;
@@ -3011,9 +3017,9 @@ pub fn detect_export_event(
         .map(|e| e.to_ascii_lowercase());
     let ext_str = ext.as_deref()?;
 
-    let is_tier1 = EXPORT_TIER1.contains(&ext_str);
-    let is_tier2 = EXPORT_TIER2.contains(&ext_str);
-    let is_tier3 = EXPORT_TIER3_IMAGE.contains(&ext_str);
+    let is_tier1 = EXPORT_TIER1.binary_search(&ext_str).is_ok();
+    let is_tier2 = EXPORT_TIER2.binary_search(&ext_str).is_ok();
+    let is_tier3 = EXPORT_TIER3_IMAGE.binary_search(&ext_str).is_ok();
 
     if !is_tier1 && !is_tier2 && !is_tier3 {
         return None;
@@ -3276,8 +3282,13 @@ fn parse_fountain_scene_fingerprint(path: &Path) -> Option<String> {
     }
     let contents = std::fs::read_to_string(path).ok()?;
 
+    let has_title_page = contents
+        .lines()
+        .next()
+        .map(|l| l.contains(':') && !l.trim().is_empty())
+        .unwrap_or(false);
     let mut headings: Vec<String> = Vec::new();
-    let mut past_title_page = false;
+    let mut past_title_page = !has_title_page;
 
     for line in contents.lines() {
         let trimmed = line.trim();

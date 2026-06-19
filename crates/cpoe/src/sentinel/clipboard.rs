@@ -44,8 +44,6 @@ const CLIPBOARD_DEBOUNCE_MS: u64 = 100;
 /// Maximum monitored apps to prevent resource exhaustion.
 const MAX_MONITORED_APPS: usize = 50;
 
-use crate::forensics::constants::KNOWN_AI_APP_BUNDLE_IDS;
-
 /// Default monitored applications (writing apps).
 fn default_monitored_apps() -> Vec<String> {
     vec![
@@ -138,7 +136,7 @@ pub struct EvidenceEvent {
 
 /// Returns `true` if the given bundle ID matches a known AI assistant app.
 pub fn is_ai_tool_bundle_id(bundle_id: &str) -> bool {
-    KNOWN_AI_APP_BUNDLE_IDS.contains(&bundle_id)
+    crate::forensics::constants::is_likely_ai_tool(bundle_id, "")
 }
 
 /// Clipboard monitor for detecting copy events and generating evidence.
