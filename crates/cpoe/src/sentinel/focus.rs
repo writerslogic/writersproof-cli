@@ -115,6 +115,16 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
             let mut last_window_number: Option<u32> = None;
             let mut interval_timer = interval(poll_interval);
 
+            // Adaptive debounce: increase after rapid focus bounces, return to
+            // baseline after stable focus.
+            const BOUNCE_WINDOW: Duration = Duration::from_millis(500);
+            const BOUNCE_THRESHOLD: u32 = 3;
+            const ELEVATED_DEBOUNCE: Duration = Duration::from_millis(300);
+            const STABLE_THRESHOLD: Duration = Duration::from_secs(5);
+            let mut bounce_count: u32 = 0;
+            let mut last_focus_change = Instant::now();
+            let mut elevated_since: Option<Instant> = None;
+
             // Pending focus-loss state: (app_bundle_id, when_detected).
             // FocusLost is only emitted once the debounce timer expires, which
             // suppresses spurious losses during Mission Control, Stage Manager,
@@ -204,6 +214,8 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     // to avoid merging distinct window-switch events.
                     let effective_debounce = if is_stage_manager_active() {
                         Duration::from_millis(30)
+                    } else if elevated_since.is_some() {
+                        ELEVATED_DEBOUNCE
                     } else {
                         debounce_dur
                     };
@@ -354,6 +366,8 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
 
                     let effective_debounce = if is_stage_manager_active() {
                         Duration::from_millis(30)
+                    } else if elevated_since.is_some() {
+                        ELEVATED_DEBOUNCE
                     } else {
                         debounce_dur
                     };
@@ -428,6 +442,25 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                             } else {
                                 log::trace!("[POLL] app NOT allowed, clearing last_path");
                                 last_path = None;
+                            }
+
+                            // Track focus bounces for adaptive debounce.
+                            let now = Instant::now();
+                            if now.duration_since(last_focus_change) < BOUNCE_WINDOW {
+                                bounce_count += 1;
+                                if bounce_count >= BOUNCE_THRESHOLD {
+                                    elevated_since = Some(now);
+                                }
+                            } else {
+                                bounce_count = 1;
+                            }
+                            last_focus_change = now;
+                            // Return to baseline after stable focus.
+                            if let Some(since) = elevated_since {
+                                if now.duration_since(since) >= STABLE_THRESHOLD {
+                                    elevated_since = None;
+                                    bounce_count = 0;
+                                }
                             }
 
                             last_app = current_app;

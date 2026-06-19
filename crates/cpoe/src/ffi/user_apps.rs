@@ -100,7 +100,6 @@ pub fn ffi_add_user_writing_app(
         needs_title_inference,
         added_at: std::time::SystemTime::now(),
         probe_confidence,
-        default_debounce_ms: None,
         witnessing_mode: crate::sentinel::app_registry::WitnessingMode::default(),
     };
     let mut registry = crate::sentinel::app_registry::AppRegistry::load(&data_dir);

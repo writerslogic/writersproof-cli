@@ -194,13 +194,6 @@ pub struct WritingApp {
     /// When `true`, the sentinel will accept bare document names from the
     /// window title even without a recognised file extension.
     pub needs_title_inference: bool,
-    /// Override the default debounce interval (in milliseconds) for this app.
-    ///
-    /// `None` means use the global sentinel default. `DatabaseBacked` apps
-    /// benefit from a shorter debounce (≈50 ms) because their storage events
-    /// fire at high frequency; `BundleBased` apps need a longer window (≈300 ms)
-    /// to avoid triggering on intermediate compile/save operations.
-    pub default_debounce_ms: Option<u64>,
     /// How the engine witnesses content for this app. `Auto` selects based on
     /// `storage`. Users can override per-app in settings.
     pub witnessing_mode: WitnessingMode,
@@ -214,8 +207,6 @@ pub struct UserWritingApp {
     pub storage: StoragePattern,
     pub container_paths: Vec<String>,
     pub needs_title_inference: bool,
-    #[serde(default)]
-    pub default_debounce_ms: Option<u64>,
     #[serde(default)]
     pub witnessing_mode: WitnessingMode,
     /// When this entry was added (Unix timestamp in JSON).
@@ -237,7 +228,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.microsoft.onenote.mac/Data/Library/Application Support",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -248,7 +238,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::CloudLibrary,
         container_paths: &["Library/Mobile Documents/com~apple~Pages/Documents"],
         needs_title_inference: false,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -262,7 +251,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.ulyssesapp.mac/Data/Library/Application Support/Ulysses",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -275,7 +263,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/9K33E3U3T4.com.shinyfrog.bear/Application Data",
         ],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -286,7 +273,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/pro~writer~mac/Documents"],
         needs_title_inference: false,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -297,7 +283,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::BundleBased,
         container_paths: &[],
         needs_title_inference: false,
-        default_debounce_ms: Some(300),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -308,7 +293,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
-        default_debounce_ms: Some(300),
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -317,7 +301,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
-        default_debounce_ms: Some(300),
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Drafts ─────────────────────────────────────────────────────────────
@@ -330,7 +313,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/iCloud~com~agiletortoise~Drafts5/Documents",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -343,7 +325,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.luki.paper.mac/Data/Library/Application Support/Craft",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -354,7 +335,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true, // Electron; exposes limited AX info
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -364,7 +344,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -375,7 +354,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -386,7 +364,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -397,7 +374,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -408,7 +384,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -419,7 +394,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -432,7 +406,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Application Support/Notion",
         ],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -444,7 +417,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.notion.Notion/Data/Library/Application Support/Notion",
         ],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -455,7 +427,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -466,7 +437,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -477,7 +447,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -487,7 +456,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -498,7 +466,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~alfonsschmid~Notebooks/Documents"],
         needs_title_inference: false,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -509,7 +476,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~metaclassy~byword/Documents"],
         needs_title_inference: false,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -520,7 +486,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -534,7 +499,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.apple.Notes/Data/Library/Notes",
         ],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -545,7 +509,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true, // limited AX support
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -556,7 +519,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::CloudLibrary,
         container_paths: &["Library/Mobile Documents/com~apple~Keynote/Documents"],
         needs_title_inference: false,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -567,7 +529,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true, // compose windows only expose subject
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -578,7 +539,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &["Library/Group Containers/UBF8T346G9.Office/Outlook"],
         needs_title_inference: true, // compose windows only expose subject
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -591,7 +551,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/group.com.lukilabs.lukiapp",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -604,7 +563,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/5U8NS4GX82.com.bloombuilt.dayone",
         ],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -617,7 +575,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/iCloud~com~goodnotesapp~x/Documents",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -628,7 +585,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -638,7 +594,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -649,7 +604,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -659,7 +613,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -669,7 +622,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -679,7 +631,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -689,7 +640,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -699,7 +649,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -710,7 +659,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
-        default_debounce_ms: Some(300),
 
         witnessing_mode: WitnessingMode::ContentLevel,
     },
@@ -720,7 +668,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
-        default_debounce_ms: Some(300),
 
         witnessing_mode: WitnessingMode::ContentLevel,
     },
@@ -732,7 +679,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Application Support/DEVONthink 3",
         ],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::ContentLevel,
     },
@@ -743,7 +689,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -753,7 +698,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -763,7 +707,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -773,7 +716,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -783,7 +725,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::DatabaseBacked,
         container_paths: &["Library/Reminders"],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -795,7 +736,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/group.com.goodnotesapp.x",
         ],
         needs_title_inference: true,
-        default_debounce_ms: Some(100),
 
         witnessing_mode: WitnessingMode::ContentLevel,
     },
@@ -805,7 +745,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::DatabaseBacked,
         container_paths: &["Library/Containers/com.apple.freeform/Data"],
         needs_title_inference: true,
-        default_debounce_ms: Some(100),
 
         witnessing_mode: WitnessingMode::ContentLevel,
     },
@@ -815,7 +754,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -825,7 +763,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -835,7 +772,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -845,7 +781,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -855,7 +790,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -865,7 +799,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -875,7 +808,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -885,7 +817,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -895,7 +826,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -907,7 +837,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/27N4MQEA55~pro~writer/Documents",
         ],
         needs_title_inference: false,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -917,7 +846,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-        default_debounce_ms: Some(50),
 
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -1080,7 +1008,6 @@ pub fn flush_discovered_apps() {
             storage: app.storage,
             container_paths: Vec::new(),
             needs_title_inference: app.needs_title_inference,
-            default_debounce_ms: None,
     
             witnessing_mode: WitnessingMode::Auto,
             added_at: SystemTime::now(),
@@ -1702,7 +1629,6 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::High,
-            default_debounce_ms: None,
     
             witnessing_mode: WitnessingMode::Auto,
         };
@@ -1787,7 +1713,6 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-            default_debounce_ms: None,
     
             witnessing_mode: WitnessingMode::Auto,
         });
@@ -1806,7 +1731,6 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-            default_debounce_ms: None,
     
             witnessing_mode: WitnessingMode::Auto,
         });
@@ -1828,7 +1752,6 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Medium,
-            default_debounce_ms: None,
     
             witnessing_mode: WitnessingMode::Auto,
         })
@@ -1851,7 +1774,6 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-            default_debounce_ms: None,
     
             witnessing_mode: WitnessingMode::Auto,
         })
@@ -1889,7 +1811,6 @@ mod tests {
             needs_title_inference: false,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
-            default_debounce_ms: None,
     
             witnessing_mode: WitnessingMode::Auto,
         };
