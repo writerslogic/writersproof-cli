@@ -319,7 +319,7 @@ async fn cmd_anchor(file_path: &Path) -> Result<()> {
         .await
         .context("anchor I/O task")??;
 
-    let client = WritersProofClient::new("https://api.writerslogic.com")?.with_jwt(api_key.into());
+    let client = WritersProofClient::new("https://api.writersproof.com")?.with_jwt(api_key.into());
 
     print!("Anchoring to transparency log...");
     io::stdout().flush()?;
