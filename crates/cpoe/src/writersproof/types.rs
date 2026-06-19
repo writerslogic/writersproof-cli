@@ -66,16 +66,6 @@ impl TryFrom<String> for Hex64 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NonceResponse {
-    /// 32-byte hex-encoded random nonce
-    pub nonce: String,
-    /// ISO 8601 expiration timestamp
-    pub expires_at: String,
-    pub nonce_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct EnrollRequest {
     /// Hex-encoded master public key
     pub public_key: String,
@@ -96,18 +86,6 @@ pub struct EnrollResponse {
     /// Trust tier: T1, T2, or T3
     pub assurance_tier: String,
     pub enrolled: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AttestResponse {
-    pub attestation_id: String,
-    /// e.g. "accepted"
-    pub status: String,
-    /// One of: `pending`, `verified`, `failed`
-    pub verification_status: String,
-    /// Position in the hardware key's evidence chain
-    pub chain_position: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,50 +151,6 @@ pub struct PublishResponse {
     pub published_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyResponse {
-    pub verdict: String,
-    pub confidence: f64,
-    pub tier: String,
-    pub anchored: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub anchor_timestamp: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transparency_log: Option<TransparencyLogInfo>,
-    pub evidence_summary: EvidenceSummary,
-    /// Base64-encoded WAR (CBOR EAT Attestation Result).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub war: Option<String>,
-}
-
-impl VerifyResponse {
-    /// Clamp fields to their valid ranges after deserialization.
-    /// `confidence` must be in [0.0, 1.0]; values outside this range indicate
-    /// a malformed or tampered server response.
-    pub fn sanitize(&mut self) {
-        self.confidence = crate::utils::Probability::clamp(self.confidence).get();
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TransparencyLogInfo {
-    pub log_index: u64,
-    pub inclusion_verified: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EvidenceSummary {
-    pub duration: String,
-    pub keystrokes: u64,
-    pub sessions: u64,
-    pub behavioral_plausibility: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cross_modal_consistency: Option<String>,
-}
-
 /// Request body for `/v1/beacon` -- fetch temporal beacon attestation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -260,28 +194,6 @@ pub struct ChallengeResponse {
     pub issued_at: String,
     pub expires_at: String,
     pub ttl_seconds: u32,
-}
-
-/// Queued attestation for offline submission.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueuedAttestation {
-    pub id: String,
-    /// Base64-encoded CBOR evidence packet
-    pub evidence_b64: String,
-    /// Hex-encoded pre-fetched nonce, if available
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nonce: Option<String>,
-    pub hardware_key_id: String,
-    /// Hex-encoded Ed25519 signature over DST + queue_nonce + evidence
-    pub signature: String,
-    /// Hex-encoded random nonce included in signature to prevent replay (EH-015)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub queue_nonce: Option<String>,
-    pub retry_count: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_error: Option<String>,
-    pub created_at: String,
 }
 
 /// Request body for `POST /v1/sessions/:id/pulse` -- real-time hash attestation.

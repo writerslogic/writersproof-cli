@@ -5,27 +5,16 @@
 //! Abstracts over REST and gRPC transports so callers (sentinel, FFI, queue)
 //! can swap implementations at runtime via `Arc<dyn WritersProofApi>`.
 
-use ed25519_dalek::SigningKey;
-
 use super::types::{
-    AnchorRequest, AnchorResponse, AttestResponse, BeaconResponse, ChallengeResponse,
-    CredentialIssueRequest, CredentialIssueResponse, CredentialStatusResponse, EnrollRequest,
-    EnrollResponse, Hex64, NonceResponse, PublishRequest, PublishResponse, PulseResponse,
-    TextAttestationRequest, TextAttestationResponse, VerifyResponse,
+    AnchorRequest, AnchorResponse, BeaconResponse, ChallengeResponse, CredentialIssueRequest,
+    CredentialIssueResponse, CredentialStatusResponse, EnrollRequest, EnrollResponse, Hex64,
+    PublishRequest, PublishResponse, PulseResponse, TextAttestationRequest, TextAttestationResponse,
 };
 use crate::error::Result;
 
 #[async_trait::async_trait]
 pub trait WritersProofApi: Send + Sync {
-    async fn request_nonce(&self, hardware_key_id: &str) -> Result<NonceResponse>;
     async fn enroll(&self, req: EnrollRequest) -> Result<EnrollResponse>;
-    async fn attest(
-        &self,
-        evidence_cbor: &[u8],
-        nonce: &[u8; 32],
-        hardware_key_id: &str,
-        signing_key: &SigningKey,
-    ) -> Result<AttestResponse>;
     async fn get_certificate(&self, id: &str) -> Result<Vec<u8>>;
     async fn get_crl(&self) -> Result<Vec<u8>>;
     async fn anchor(&self, req: AnchorRequest) -> Result<AnchorResponse>;
@@ -44,7 +33,6 @@ pub trait WritersProofApi: Send + Sync {
     async fn end_session(&self, session_id: &Hex64, final_hash: &Hex64) -> Result<()>;
     async fn request_challenge(&self, session_id: &Hex64) -> Result<ChallengeResponse>;
     async fn pulse(&self, session_id: &Hex64, current_hash: &Hex64) -> Result<PulseResponse>;
-    async fn verify(&self, evidence_cbor: &[u8]) -> Result<VerifyResponse>;
     async fn confirm_nonce(
         &self,
         session_id: &Hex64,
@@ -62,21 +50,8 @@ pub trait WritersProofApi: Send + Sync {
 
 #[async_trait::async_trait]
 impl WritersProofApi for super::WritersProofClient {
-    async fn request_nonce(&self, hardware_key_id: &str) -> Result<NonceResponse> {
-        self.request_nonce(hardware_key_id).await
-    }
     async fn enroll(&self, req: EnrollRequest) -> Result<EnrollResponse> {
         self.enroll(req).await
-    }
-    async fn attest(
-        &self,
-        evidence_cbor: &[u8],
-        nonce: &[u8; 32],
-        hardware_key_id: &str,
-        signing_key: &SigningKey,
-    ) -> Result<AttestResponse> {
-        self.attest(evidence_cbor, nonce, hardware_key_id, signing_key)
-            .await
     }
     async fn get_certificate(&self, id: &str) -> Result<Vec<u8>> {
         self.get_certificate(id).await
@@ -117,9 +92,6 @@ impl WritersProofApi for super::WritersProofClient {
     }
     async fn pulse(&self, session_id: &Hex64, current_hash: &Hex64) -> Result<PulseResponse> {
         self.pulse(session_id, current_hash).await
-    }
-    async fn verify(&self, evidence_cbor: &[u8]) -> Result<VerifyResponse> {
-        self.verify(evidence_cbor).await
     }
     async fn confirm_nonce(
         &self,

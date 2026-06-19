@@ -2,15 +2,13 @@
 
 //! HTTP client for the WritersProof attestation API.
 
-use ed25519_dalek::{Signer, SigningKey};
 use reqwest::Client;
 use zeroize::Zeroizing;
 
 use super::types::{
-    AnchorRequest, AnchorResponse, AttestResponse, BeaconRequest, BeaconResponse,
-    ChallengeResponse, ConfirmNonceRequest, CredentialIssueRequest, CredentialIssueResponse,
-    CredentialStatusResponse, EnrollRequest, EnrollResponse, Hex64, NonceResponse, PulseRequest,
-    PulseResponse, VerifyResponse,
+    AnchorRequest, AnchorResponse, BeaconRequest, BeaconResponse, ChallengeResponse,
+    ConfirmNonceRequest, CredentialIssueRequest, CredentialIssueResponse, CredentialStatusResponse,
+    EnrollRequest, EnrollResponse, Hex64, PulseRequest, PulseResponse,
 };
 use crate::error::{Error, Result};
 
@@ -54,40 +52,6 @@ impl WritersProofClient {
         self
     }
 
-    /// Request a fresh nonce from the verifier.
-    ///
-    /// `POST /v1/nonce`
-    pub async fn request_nonce(&self, hardware_key_id: &str) -> Result<NonceResponse> {
-        log::debug!("request_nonce: hardware_key_id={hardware_key_id}");
-        let url = format!("{}/v1/nonce", self.base_url);
-        let body = serde_json::json!({ "hardwareKeyId": hardware_key_id });
-        let mut req = self.client.post(&url).json(&body);
-        if let Some(ref jwt) = self.jwt {
-            req = req.bearer_auth(jwt.as_str());
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("request_nonce: failed: {e}");
-                Error::crypto(format!("nonce request failed: {e}"))
-            })?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            log::warn!("request_nonce: failed: HTTP {status}");
-            return Err(Error::crypto(format!(
-                "nonce request failed: HTTP {}",
-                status
-            )));
-        }
-
-        let result = Self::json_response::<NonceResponse>(resp).await?;
-        log::debug!("request_nonce: success");
-        Ok(result)
-    }
-
     /// Enroll a device with WritersProof.
     ///
     /// `POST /v1/enroll`
@@ -118,74 +82,6 @@ impl WritersProofClient {
 
         let result = Self::json_response::<EnrollResponse>(resp).await?;
         log::debug!("enroll: success");
-        Ok(result)
-    }
-
-    /// Submit evidence for attestation.
-    ///
-    /// `POST /v1/attest`
-    ///
-    /// The evidence CBOR is sent as the request body. Nonce, hardware key ID,
-    /// and signature are sent as custom headers.
-    pub async fn attest(
-        &self,
-        evidence_cbor: &[u8],
-        nonce: &[u8; 32],
-        hardware_key_id: &str,
-        signing_key: &SigningKey,
-    ) -> Result<AttestResponse> {
-        log::debug!(
-            "attest: session evidence_len={}, hardware_key_id={hardware_key_id}",
-            evidence_cbor.len()
-        );
-        let hkid_bytes = hardware_key_id.as_bytes();
-        let mut sign_payload = zeroize::Zeroizing::new(Vec::with_capacity(
-            4 + nonce.len() + 4 + hkid_bytes.len() + 4 + evidence_cbor.len(),
-        ));
-        sign_payload.extend_from_slice(&(nonce.len() as u32).to_be_bytes());
-        sign_payload.extend_from_slice(nonce);
-        sign_payload.extend_from_slice(&(hkid_bytes.len() as u32).to_be_bytes());
-        sign_payload.extend_from_slice(hkid_bytes);
-        sign_payload.extend_from_slice(&(evidence_cbor.len() as u32).to_be_bytes());
-        sign_payload.extend_from_slice(evidence_cbor);
-        let signature = signing_key.sign(&sign_payload);
-        let url = format!("{}/v1/attest", self.base_url);
-
-        let mut req = self
-            .client
-            .post(&url)
-            .header("Content-Type", "application/cbor")
-            .header("X-CPoE-Nonce", hex::encode(nonce))
-            .header("X-CPoE-Hardware-Key-Id", hardware_key_id)
-            .header(
-                "X-CPoE-Signature",
-                crate::utils::crypto_types::Ed25519Sig::from(signature).to_hex(),
-            )
-            .body(evidence_cbor.to_vec());
-
-        if let Some(ref jwt) = self.jwt {
-            req = req.bearer_auth(jwt.as_str());
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("attest: failed: {e}");
-                Error::crypto(format!("attest request failed: {e}"))
-            })?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            log::warn!("attest: failed: HTTP {status}");
-            return Err(Error::crypto(format!(
-                "attest request failed: HTTP {}",
-                status
-            )));
-        }
-
-        let result = Self::json_response::<AttestResponse>(resp).await?;
-        log::debug!("attest: success");
         Ok(result)
     }
 
@@ -631,45 +527,6 @@ impl WritersProofClient {
         let result = Self::json_response::<PulseResponse>(resp).await?;
         log::debug!("pulse: success");
         Ok(result)
-    }
-
-    /// Verify an evidence packet.
-    ///
-    /// `POST /v1/verify`
-    pub async fn verify(&self, evidence_cbor: &[u8]) -> Result<VerifyResponse> {
-        log::debug!("verify: evidence_len={}", evidence_cbor.len());
-        let url = format!("{}/v1/verify", self.base_url);
-        let mut req = self
-            .client
-            .post(&url)
-            .header("Content-Type", crate::rats::C2PA_MEDIA_TYPE)
-            .body(evidence_cbor.to_vec());
-
-        if let Some(ref jwt) = self.jwt {
-            req = req.bearer_auth(jwt.as_str());
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("verify: failed: {e}");
-                Error::crypto(format!("verify request failed: {e}"))
-            })?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            log::warn!("verify: failed: HTTP {status}");
-            return Err(Error::crypto(format!(
-                "verify request failed: HTTP {}",
-                status
-            )));
-        }
-
-        let mut response = Self::json_response::<VerifyResponse>(resp).await?;
-        response.sanitize();
-        log::debug!("verify: success");
-        Ok(response)
     }
 
     /// Close the nonce handshake loop after a checkpoint commit.
