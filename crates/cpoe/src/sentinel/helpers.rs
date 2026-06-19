@@ -518,6 +518,10 @@ pub fn focus_document_sync(
                     &event.app_bundle_id,
                     &event.app_name,
                 );
+                super::app_registry::enrich_discovered_app(
+                    &event.app_bundle_id,
+                    path,
+                );
             }
             Some((
                 session.session_id.clone(),

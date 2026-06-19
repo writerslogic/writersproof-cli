@@ -232,7 +232,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.microsoft.onenote.mac/Data/Library/Application Support",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple iWork ────────────────────────────────────────────────────────
@@ -242,7 +241,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::CloudLibrary,
         container_paths: &["Library/Mobile Documents/com~apple~Pages/Documents"],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Ulysses ────────────────────────────────────────────────────────────
@@ -255,7 +253,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.ulyssesapp.mac/Data/Library/Application Support/Ulysses",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Bear ────────────────────────────────────────────────────────────────
@@ -267,7 +264,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/9K33E3U3T4.com.shinyfrog.bear/Application Data",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── iA Writer ──────────────────────────────────────────────────────────
@@ -277,7 +273,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/pro~writer~mac/Documents"],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Scrivener ──────────────────────────────────────────────────────────
@@ -287,7 +282,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::BundleBased,
         container_paths: &[],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Vellum ─────────────────────────────────────────────────────────────
@@ -317,7 +311,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/iCloud~com~agiletortoise~Drafts5/Documents",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
@@ -329,7 +322,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.luki.paper.mac/Data/Library/Application Support/Craft",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Hemingway Editor ───────────────────────────────────────────────────
@@ -339,7 +331,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true, // Electron; exposes limited AX info
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -348,7 +339,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── MarkText ───────────────────────────────────────────────────────────
@@ -358,7 +348,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Obsidian ────────────────────────────────────────────────────────────
@@ -368,7 +357,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Typora ─────────────────────────────────────────────────────────────
@@ -378,7 +366,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Zettlr ─────────────────────────────────────────────────────────────
@@ -388,7 +375,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Logseq ─────────────────────────────────────────────────────────────
@@ -398,7 +384,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Notion ─────────────────────────────────────────────────────────────
@@ -410,7 +395,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Application Support/Notion",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -421,7 +405,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.notion.Notion/Data/Library/Application Support/Notion",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Figma ──────────────────────────────────────────────────────────────
@@ -431,7 +414,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Cursor ─────────────────────────────────────────────────────────────
@@ -441,7 +423,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── VS Code ────────────────────────────────────────────────────────────
@@ -451,7 +432,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -460,7 +440,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Notebooks ──────────────────────────────────────────────────────────
@@ -470,7 +449,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~alfonsschmid~Notebooks/Documents"],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Byword ─────────────────────────────────────────────────────────────
@@ -480,7 +458,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~metaclassy~byword/Documents"],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Celtx (web, but has a desktop wrapper) ─────────────────────────────
@@ -490,7 +467,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple Notes ────────────────────────────────────────────────────────
@@ -503,7 +479,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.apple.Notes/Data/Library/Notes",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── OmmWriter ──────────────────────────────────────────────────────────
@@ -513,7 +488,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true, // limited AX support
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Keynote ────────────────────────────────────────────────────────────
@@ -523,7 +497,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::CloudLibrary,
         container_paths: &["Library/Mobile Documents/com~apple~Keynote/Documents"],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple Mail ─────────────────────────────────────────────────────────
@@ -533,7 +506,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true, // compose windows only expose subject
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Microsoft Outlook ──────────────────────────────────────────────────
@@ -543,7 +515,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &["Library/Group Containers/UBF8T346G9.Office/Outlook"],
         needs_title_inference: true, // compose windows only expose subject
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
@@ -555,7 +526,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/group.com.lukilabs.lukiapp",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Day One ────────────────────────────────────────────────────────────
@@ -567,7 +537,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/5U8NS4GX82.com.bloombuilt.dayone",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── GoodNotes ──────────────────────────────────────────────────────────
@@ -579,7 +548,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/iCloud~com~goodnotesapp~x/Documents",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Zed ────────────────────────────────────────────────────────────────
@@ -589,7 +557,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -598,7 +565,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Terminal Emulators ────────────────────────────────────────────────
@@ -608,7 +574,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -617,7 +582,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -626,7 +590,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -635,7 +598,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -644,7 +606,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -653,7 +614,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Opaque Container Apps (content-level witnessing) ──────────────────
@@ -663,7 +623,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -672,7 +631,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -683,7 +641,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Application Support/DEVONthink 3",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     // ── Additional Writing & Note Apps ────────────────────────────────────
@@ -693,7 +650,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -702,7 +658,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -711,7 +666,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -720,7 +674,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -729,7 +682,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::DatabaseBacked,
         container_paths: &["Library/Reminders"],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -740,7 +692,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Group Containers/group.com.goodnotesapp.x",
         ],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -749,7 +700,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::DatabaseBacked,
         container_paths: &["Library/Containers/com.apple.freeform/Data"],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -758,7 +708,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -767,7 +716,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -776,7 +724,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -785,7 +732,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -794,7 +740,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -803,7 +748,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -812,7 +756,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -821,7 +764,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -830,7 +772,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -841,7 +782,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Mobile Documents/27N4MQEA55~pro~writer/Documents",
         ],
         needs_title_inference: false,
-
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -850,7 +790,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         storage: StoragePattern::ContainerBased,
         container_paths: &[],
         needs_title_inference: true,
-
         witnessing_mode: WitnessingMode::Auto,
     },
 ];
@@ -927,6 +866,7 @@ struct AutoDiscoveredApp {
     storage: StoragePattern,
     needs_title_inference: bool,
     probe_confidence: ProbeConfidence,
+    witnessing_mode: WitnessingMode,
 }
 
 const MAX_PROBES_PER_CHECKPOINT: u32 = 3;
@@ -990,7 +930,26 @@ pub fn probe_and_cache(bundle_id: &str, app_name: &str) {
         storage: probe.storage,
         needs_title_inference: probe.needs_title_inference,
         probe_confidence: probe.confidence,
+        witnessing_mode: WitnessingMode::Auto,
     });
+}
+
+/// Enrich an auto-discovered app with witnessing mode inferred from its
+/// document path. Called after successful path resolution for unknown apps.
+pub fn enrich_discovered_app(bundle_id: &str, doc_path: &str) {
+    let key = bundle_id.to_lowercase();
+    if let Some(mut entry) = auto_discovered().get_mut(&key) {
+        if entry.witnessing_mode == WitnessingMode::Auto {
+            let inferred = WitnessingMode::infer_from_extension(doc_path);
+            if inferred != WitnessingMode::Auto {
+                entry.witnessing_mode = inferred;
+                log::debug!(
+                    "Enriched discovered app {} witnessing_mode={:?} from path {}",
+                    bundle_id, inferred, doc_path,
+                );
+            }
+        }
+    }
 }
 
 /// Check if a bundle ID is in the builtin or user-added registry
@@ -1038,8 +997,7 @@ pub fn flush_discovered_apps() {
             storage: app.storage,
             container_paths: Vec::new(),
             needs_title_inference: app.needs_title_inference,
-    
-            witnessing_mode: WitnessingMode::Auto,
+            witnessing_mode: app.witnessing_mode,
             added_at: SystemTime::now(),
             probe_confidence: app.probe_confidence,
             last_seen_at: Some(SystemTime::now()),
@@ -1733,7 +1691,6 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::High,
             last_seen_at: None,
-
             witnessing_mode: WitnessingMode::Auto,
         };
         let json = serde_json::to_string(&app).unwrap();
@@ -1818,7 +1775,6 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             last_seen_at: None,
-
             witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
@@ -1837,7 +1793,6 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             last_seen_at: None,
-
             witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
@@ -1859,7 +1814,6 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Medium,
             last_seen_at: None,
-
             witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
@@ -1882,7 +1836,6 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             last_seen_at: None,
-
             witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
@@ -1920,7 +1873,6 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             last_seen_at: None,
-
             witnessing_mode: WitnessingMode::Auto,
         };
         reg.add_user_app(app()).unwrap();

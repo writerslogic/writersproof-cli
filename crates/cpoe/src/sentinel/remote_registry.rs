@@ -19,7 +19,10 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Ed25519 public key for verifying the remote registry signature.
-/// This is the WritersLogic update-signing key.
+///
+/// **PLACEHOLDER** -- replace with the real production update-signing key
+/// before deployment. Generate with `wld keygen --purpose update-signing`
+/// and store the private half in the CI signing HSM.
 const SIGNING_PUBKEY: [u8; 32] = [
     0x8a, 0x3b, 0x5c, 0x7d, 0x9e, 0x1f, 0x2a, 0x4b,
     0x6c, 0x8d, 0xae, 0xcf, 0xe0, 0x11, 0x32, 0x53,
@@ -49,35 +52,40 @@ pub struct RemoteApp {
     pub witnessing_mode: WitnessingMode,
 }
 
-/// Load the remote registry from cache or fetch a fresh copy.
+/// Load the remote registry from cache, spawning a background refresh if stale.
 ///
-/// Returns an empty vec if the registry is unavailable or invalid.
-/// Never blocks the caller for more than `FETCH_TIMEOUT`.
+/// Always returns the cached copy immediately (may be empty on first run).
+/// If the cache is stale, a background thread fetches and writes the updated
+/// cache to disk; the next call to `load_remote_apps` (e.g. on sentinel
+/// restart) will pick up the refreshed data.
 pub fn load_remote_apps(data_dir: &Path) -> Vec<RemoteApp> {
     let cache_path = data_dir.join(CACHE_FILENAME);
+    let cached = load_from_cache(&cache_path);
 
     if should_refresh(&cache_path) {
-        match fetch_and_verify() {
-            Ok(apps) => {
-                if let Ok(json) = serde_json::to_string_pretty(&serde_json::json!({
-                    "fetched_at": SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                    "apps": apps,
-                })) {
-                    let _ = crate::crypto::atomic_write(&cache_path, json.as_bytes());
+        let bg_cache_path = cache_path.clone();
+        std::thread::spawn(move || {
+            match fetch_and_verify() {
+                Ok(apps) => {
+                    if let Ok(json) = serde_json::to_string_pretty(&serde_json::json!({
+                        "fetched_at": SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                        "apps": apps,
+                    })) {
+                        let _ = crate::crypto::atomic_write(&bg_cache_path, json.as_bytes());
+                    }
+                    log::info!("Remote app registry refreshed: {} entries", apps.len());
                 }
-                log::info!("Remote app registry refreshed: {} entries", apps.len());
-                return apps;
+                Err(e) => {
+                    log::warn!("Remote registry background fetch failed: {e}");
+                }
             }
-            Err(e) => {
-                log::warn!("Remote registry fetch failed, using cache: {e}");
-            }
-        }
+        });
     }
 
-    load_from_cache(&cache_path)
+    cached
 }
 
 fn should_refresh(cache_path: &Path) -> bool {
@@ -198,6 +206,30 @@ mod tests {
         let path = tmp.path().join("cache.json");
         std::fs::write(&path, "not json").unwrap();
         let apps = load_from_cache(&path);
+        assert!(apps.is_empty());
+    }
+
+    #[test]
+    fn test_load_remote_apps_returns_cache_immediately() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache_path = tmp.path().join(CACHE_FILENAME);
+        std::fs::write(
+            &cache_path,
+            r#"{"fetched_at": 1700000000, "apps": [
+                {"bundle_id": "com.example.Cached", "display_name": "Cached"}
+            ]}"#,
+        )
+        .unwrap();
+        // Even with a stale cache, load_remote_apps returns instantly from cache.
+        let apps = load_remote_apps(tmp.path());
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].bundle_id, "com.example.Cached");
+    }
+
+    #[test]
+    fn test_load_remote_apps_empty_on_first_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let apps = load_remote_apps(tmp.path());
         assert!(apps.is_empty());
     }
 

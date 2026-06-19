@@ -208,13 +208,8 @@ pub fn derive_hmac_key_for_purpose(
     signing_key: &ed25519_dalek::SigningKey,
     purpose: &str,
 ) -> Zeroizing<Vec<u8>> {
-    let mut key_bytes = Zeroizing::new(signing_key.to_bytes().to_vec());
-    let hk = Hkdf::<Sha256>::new(Some(b"cpoe-hmac-key-derive-v2"), &key_bytes);
-    let mut okm = Zeroizing::new(vec![0u8; 32]);
-    hk.expand(purpose.as_bytes(), &mut okm)
-        .expect("32 bytes is a valid HKDF-SHA256 output length");
-    key_bytes.zeroize();
-    okm
+    let key_bytes = Zeroizing::new(signing_key.to_bytes());
+    crate::utils::key_derivation::derive_hmac_key(key_bytes.as_slice(), purpose)
 }
 
 /// Derive PRK per draft-condrey-rats-pop §5.3:
