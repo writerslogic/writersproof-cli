@@ -2158,14 +2158,20 @@ pub fn infer_document_path_from_title_with_bundle(
 /// Known terminal emulator bundle IDs. Used to detect terminal editor title
 /// formats without relying on the app registry.
 fn is_terminal_bundle(bundle_id: &str) -> bool {
-    bundle_id.eq_ignore_ascii_case("com.apple.Terminal")
-        || bundle_id.eq_ignore_ascii_case("com.googlecode.iterm2")
-        || bundle_id.eq_ignore_ascii_case("com.github.wez.wezterm")
-        || bundle_id.eq_ignore_ascii_case("net.kovidgoyal.kitty")
-        || bundle_id.eq_ignore_ascii_case("io.alacritty")
-        || bundle_id
-            .to_ascii_lowercase()
-            .starts_with("dev.warp.")
+    let lower = bundle_id.to_ascii_lowercase();
+    matches!(
+        lower.as_str(),
+        "com.apple.terminal"
+            | "com.googlecode.iterm2"
+            | "com.github.wez.wezterm"
+            | "net.kovidgoyal.kitty"
+            | "io.alacritty"
+            | "com.mitchellh.ghostty"
+            | "co.zeit.hyper"
+            | "org.tabby"
+            | "com.raphael.rio"
+            | "org.contourterminal.contour"
+    ) || lower.starts_with("dev.warp.")
 }
 
 /// Editor suffix markers stripped from terminal window titles before parsing.

@@ -67,6 +67,7 @@ pub fn load_remote_apps(data_dir: &Path) -> Vec<RemoteApp> {
         std::thread::spawn(move || {
             match fetch_and_verify() {
                 Ok(apps) => {
+                    let count = apps.len();
                     if let Ok(json) = serde_json::to_string_pretty(&serde_json::json!({
                         "fetched_at": SystemTime::now()
                             .duration_since(UNIX_EPOCH)
@@ -74,9 +75,15 @@ pub fn load_remote_apps(data_dir: &Path) -> Vec<RemoteApp> {
                             .as_secs(),
                         "apps": apps,
                     })) {
-                        let _ = crate::crypto::atomic_write(&bg_cache_path, json.as_bytes());
+                        match crate::crypto::atomic_write(&bg_cache_path, json.as_bytes()) {
+                            Ok(()) => log::info!(
+                                "Remote app registry refreshed: {count} entries"
+                            ),
+                            Err(e) => log::warn!(
+                                "Remote registry fetched but cache write failed: {e}"
+                            ),
+                        }
                     }
-                    log::info!("Remote app registry refreshed: {} entries", apps.len());
                 }
                 Err(e) => {
                     log::warn!("Remote registry background fetch failed: {e}");
@@ -115,7 +122,17 @@ fn fetch_and_verify() -> Result<Vec<RemoteApp>, String> {
         return Err(format!("HTTP {}", response.status()));
     }
 
+    const MAX_BODY_SIZE: u64 = 1024 * 1024; // 1 MiB
+    if let Some(len) = response.content_length() {
+        if len > MAX_BODY_SIZE {
+            return Err(format!("response too large: {len} bytes"));
+        }
+    }
+
     let body = response.bytes().map_err(|e| format!("read body: {e}"))?;
+    if body.len() as u64 > MAX_BODY_SIZE {
+        return Err(format!("response too large: {} bytes", body.len()));
+    }
 
     let file: RemoteRegistryFile =
         serde_json::from_slice(&body).map_err(|e| format!("parse: {e}"))?;

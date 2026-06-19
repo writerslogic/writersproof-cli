@@ -381,6 +381,7 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         }
                     } else {
                         bounce_count = 1;
+                        elevated_since = None;
                     }
                     last_focus_change = now;
 

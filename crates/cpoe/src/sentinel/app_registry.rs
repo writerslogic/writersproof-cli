@@ -83,7 +83,7 @@ impl WitnessingMode {
         let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
         match ext.as_str() {
             // Monolithic container formats (content-level)
-            "tbx" | "scriv" | "scrivx" | "dtBase2" | "sqlite" | "sqlite3" | "db" | "realm" => {
+            "tbx" | "scriv" | "scrivx" | "dtbase2" | "sqlite" | "sqlite3" | "db" | "realm" => {
                 WitnessingMode::ContentLevel
             }
             // Standard document/text formats (file-level)
@@ -1594,7 +1594,7 @@ pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
         {
             Some(Box::new(VellumAdapter))
         }
-        id if id.starts_with("com.eastgate.Tinderbox") => {
+        id if id.to_ascii_lowercase().starts_with("com.eastgate.tinderbox") => {
             Some(Box::new(TinderboxAdapter))
         }
         id if id.eq_ignore_ascii_case("com.quoteunquoteapps.highland2") => {
