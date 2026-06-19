@@ -60,7 +60,7 @@ pub struct CaBundleManifest {
 /// keys. Rotating this key requires a binary update (intentional — it is a root
 /// of trust, not subject to remote rotation).
 const MANIFEST_SIGNING_PUBKEY_HEX: &str =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+    "73a3439b6fc939b12241f5f797960001918dcf19c017937cedb534e6b90b1e3f";
 
 /// Verify the Ed25519 manifest signature over `payload`.
 fn verify_manifest_signature(manifest: &CaBundleManifest) -> bool {
@@ -143,13 +143,7 @@ fn parse_and_validate(json: &str) -> Result<Vec<CaBundleEntry>, TrustBundleError
     if manifest.version == 0 {
         return Err(TrustBundleError::VersionMismatch(manifest.version));
     }
-    // When the manifest signing key is the all-zeros placeholder, skip signature
-    // verification (development / testing mode). In production the key is non-zero
-    // and signature verification is enforced.
-    let key_is_placeholder = MANIFEST_SIGNING_PUBKEY_HEX
-        .bytes()
-        .all(|b| b == b'0');
-    if !key_is_placeholder && !verify_manifest_signature(&manifest) {
+    if !verify_manifest_signature(&manifest) {
         log::warn!("trust_bundle: manifest signature verification failed");
         return Err(TrustBundleError::InvalidSignature);
     }
@@ -191,11 +185,11 @@ pub fn pinned_bundle() -> Vec<CaBundleEntry> {
     // Mirrors CA_KEY_RING in verification.rs. Must be kept in sync manually;
     // the rotation runbook (docs/ca_rotation.md) documents the update procedure.
     vec![CaBundleEntry {
-        kid: "e58a2aacaad69b37".to_string(),
-        pubkey_hex: "b48f36054b9160dff06ac4329898523f441914442958a01e84b719ac539ca053"
+        kid: "a77d85cc10cc677d".to_string(),
+        pubkey_hex: "c7ff2220542bd8c130355580c14666e786111b97beae142003ceeb4a51084575"
             .to_string(),
-        not_before: "2026-03-19T00:00:00Z".to_string(),
-        not_after: "2036-03-18T23:59:59Z".to_string(),
+        not_before: "2026-06-18T00:00:00Z".to_string(),
+        not_after: "2036-06-17T23:59:59Z".to_string(),
     }]
 }
 
@@ -306,9 +300,9 @@ mod tests {
     #[test]
     fn test_find_in_bundle_by_kid() {
         let bundle = pinned_bundle();
-        let entry = find_in_bundle(Some("e58a2aacaad69b37"), "2030-01-01T00:00:00Z", &bundle);
+        let entry = find_in_bundle(Some("a77d85cc10cc677d"), "2030-01-01T00:00:00Z", &bundle);
         assert!(entry.is_ok());
-        assert_eq!(entry.unwrap().kid, "e58a2aacaad69b37");
+        assert_eq!(entry.unwrap().kid, "a77d85cc10cc677d");
     }
 
     #[test]
@@ -343,7 +337,7 @@ mod tests {
     #[test]
     fn test_find_in_bundle_kid_expired() {
         let bundle = pinned_bundle();
-        let entry = find_in_bundle(Some("e58a2aacaad69b37"), "2037-01-01T00:00:00Z", &bundle);
+        let entry = find_in_bundle(Some("a77d85cc10cc677d"), "2037-01-01T00:00:00Z", &bundle);
         assert!(entry.is_err());
         assert!(entry.unwrap_err().contains("expired or not yet valid"));
     }

@@ -513,10 +513,10 @@ struct CaKeyEntry {
 /// evidence continues to verify. Remove a key only after its `not_after` has
 /// passed AND all evidence signed by it has been re-anchored or expired.
 const CA_KEY_RING: &[CaKeyEntry] = &[CaKeyEntry {
-    kid: "e58a2aacaad69b37",
-    pubkey_hex: "b48f36054b9160dff06ac4329898523f441914442958a01e84b719ac539ca053",
-    not_before: "2026-03-19T00:00:00Z",
-    not_after: "2036-03-18T23:59:59Z",
+    kid: "a77d85cc10cc677d",
+    pubkey_hex: "c7ff2220542bd8c130355580c14666e786111b97beae142003ceeb4a51084575",
+    not_before: "2026-06-18T00:00:00Z",
+    not_after: "2036-06-17T23:59:59Z",
 }];
 
 /// Find the CA key for a given attestation, using `wp_key_id` if present,
@@ -704,16 +704,16 @@ mod ca_key_ring_tests {
 
     #[test]
     fn test_find_ca_key_by_kid() {
-        let entry = find_ca_key(Some("e58a2aacaad69b37"), "2026-06-01T12:00:00Z");
+        let entry = find_ca_key(Some("a77d85cc10cc677d"), "2026-06-01T12:00:00Z");
         assert!(entry.is_ok());
-        assert_eq!(entry.unwrap().kid, "e58a2aacaad69b37");
+        assert_eq!(entry.unwrap().kid, "a77d85cc10cc677d");
     }
 
     #[test]
     fn test_find_ca_key_by_timestamp() {
         let entry = find_ca_key(None, "2030-01-01T00:00:00Z");
         assert!(entry.is_ok());
-        assert_eq!(entry.unwrap().kid, "e58a2aacaad69b37");
+        assert_eq!(entry.unwrap().kid, "a77d85cc10cc677d");
     }
 
     #[test]
@@ -739,20 +739,20 @@ mod ca_key_ring_tests {
 
     #[test]
     fn test_find_ca_key_kid_expired() {
-        let entry = find_ca_key(Some("e58a2aacaad69b37"), "2037-01-01T00:00:00Z");
+        let entry = find_ca_key(Some("a77d85cc10cc677d"), "2037-01-01T00:00:00Z");
         assert!(entry.is_err());
         assert!(entry.unwrap_err().contains("expired or not yet valid"));
     }
 
     #[test]
     fn test_find_ca_key_at_boundary_start() {
-        let entry = find_ca_key(None, "2026-03-19T00:00:00Z");
+        let entry = find_ca_key(None, "2026-06-18T00:00:00Z");
         assert!(entry.is_ok());
     }
 
     #[test]
     fn test_find_ca_key_at_boundary_end() {
-        let entry = find_ca_key(None, "2036-03-18T23:59:59Z");
+        let entry = find_ca_key(None, "2036-06-17T23:59:59Z");
         assert!(entry.is_ok());
     }
 
