@@ -40,7 +40,7 @@ Part of the CPoE monorepo:
 
 **macOS (Homebrew):**
 ```bash
-brew install writerslogic/tap/writerslogic
+brew install writerslogic/tap/writersproof-cli
 ```
 
 **Windows (Scoop):**
