@@ -513,6 +513,12 @@ pub fn focus_document_sync(
 
         if was_new {
             log::debug!("focus_document_sync: new session created for {}", path);
+            if !super::app_registry::is_known(&event.app_bundle_id) {
+                super::app_registry::probe_and_cache(
+                    &event.app_bundle_id,
+                    &event.app_name,
+                );
+            }
             Some((
                 session.session_id.clone(),
                 create_session_start_payload(session),
