@@ -394,21 +394,33 @@ fn build_c2pa_zip(
     let cursor = Cursor::new(buf);
     let mut zip = zip::ZipWriter::new(cursor);
 
-    let options = zip::write::SimpleFileOptions::default()
+    // The JUMBF manifest and the JSON credential are structured text/CBOR and
+    // compress well; the original asset may already be compressed (image,
+    // video, PDF, office doc), in which case DEFLATE wastes CPU for ~0 gain and
+    // the zip crate does not auto-fall-back to Stored. So pick per entry.
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .compression_level(Some(9));
+    let stored = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Stored);
+    let asset_options = if is_precompressed(asset_name) {
+        stored
+    } else {
+        deflated
+    };
 
-    zip.start_file(asset_name, options)
+    zip.start_file(asset_name, asset_options)
         .map_err(|e| format!("ZIP: failed to add asset: {e}"))?;
     zip.write_all(asset_bytes)
         .map_err(|e| format!("ZIP: failed to write asset: {e}"))?;
 
-    zip.start_file(c2pa_name, options)
+    zip.start_file(c2pa_name, deflated)
         .map_err(|e| format!("ZIP: failed to add manifest: {e}"))?;
     zip.write_all(c2pa_bytes)
         .map_err(|e| format!("ZIP: failed to write manifest: {e}"))?;
 
     if let Some(vc) = vc_json {
-        zip.start_file(vc_name, options)
+        zip.start_file(vc_name, deflated)
             .map_err(|e| format!("ZIP: failed to add VC: {e}"))?;
         zip.write_all(vc.as_bytes())
             .map_err(|e| format!("ZIP: failed to write VC: {e}"))?;
@@ -417,6 +429,28 @@ fn build_c2pa_zip(
     let cursor = zip.finish()
         .map_err(|e| format!("ZIP: failed to finalize: {e}"))?;
     Ok(cursor.into_inner())
+}
+
+/// Whether an asset filename indicates an already-compressed format, for which
+/// re-running DEFLATE adds CPU cost with negligible (or negative) size benefit.
+fn is_precompressed(name: &str) -> bool {
+    let ext = name
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        // Images
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "heic" | "heif" | "avif"
+        // Audio / video
+        | "mp4" | "mov" | "m4v" | "webm" | "mkv" | "avi" | "mp3" | "aac"
+        | "m4a" | "ogg" | "opus" | "flac"
+        // Already-compressed archives / containers
+        | "zip" | "gz" | "bz2" | "xz" | "zst" | "7z" | "rar"
+        // Container formats that are zip/deflate under the hood
+        | "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp" | "epub"
+    )
 }
 
 /// Export a C2PA sidecar manifest (.c2pa) for an evidence packet.
@@ -1055,5 +1089,77 @@ pub fn ffi_check_manifest_stripping(document_path: String) -> FfiStrippingResult
         status: status.to_string(),
         original_manifest_hash: Some(manifest_hash),
         document_path: Some(reg_doc_path),
+    }
+}
+
+#[cfg(test)]
+mod zip_tests {
+    use super::{build_c2pa_zip, is_precompressed};
+    use std::io::Read;
+
+    #[test]
+    fn c2pa_zip_round_trips_and_compresses_text() {
+        // Highly compressible asset + structured VC: DEFLATE should shrink both.
+        let asset = vec![b'A'; 10_000];
+        let manifest = vec![b'M'; 2_000];
+        let vc = format!("{{\"credential\":\"{}\"}}", "x".repeat(5_000));
+
+        let bytes = build_c2pa_zip(
+            "doc.txt",
+            &asset,
+            "doc.txt.c2pa",
+            &manifest,
+            "doc.vc.json",
+            Some(&vc),
+        )
+        .expect("zip build");
+
+        let mut archive =
+            zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("valid zip");
+        assert_eq!(archive.len(), 3, "asset + manifest + vc");
+
+        // The text asset is deflated, smaller than raw, and round-trips byte-exact.
+        let (method, compressed, size, mut reader) = {
+            let f = archive.by_name("doc.txt").expect("asset entry");
+            (f.compression(), f.compressed_size(), f.size(), f)
+        };
+        assert_eq!(method, zip::CompressionMethod::Deflated);
+        assert!(compressed < size, "compressed {compressed} !< raw {size}");
+        let mut out = Vec::new();
+        reader.read_to_end(&mut out).expect("decompress");
+        assert_eq!(out, asset, "asset must round-trip losslessly");
+    }
+
+    #[test]
+    fn c2pa_zip_stores_precompressed_asset() {
+        let asset = vec![0u8; 1_000];
+        let bytes = build_c2pa_zip(
+            "photo.jpg",
+            &asset,
+            "photo.jpg.c2pa",
+            b"m",
+            "photo.vc.json",
+            None,
+        )
+        .expect("zip build");
+
+        let mut archive =
+            zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("valid zip");
+        let f = archive.by_name("photo.jpg").expect("asset entry");
+        assert_eq!(
+            f.compression(),
+            zip::CompressionMethod::Stored,
+            "already-compressed assets must not be re-deflated"
+        );
+    }
+
+    #[test]
+    fn precompressed_classification() {
+        for name in ["a.jpg", "a.PNG", "clip.mp4", "report.pdf", "deck.pptx", "x.zip"] {
+            assert!(is_precompressed(name), "{name} should be treated as compressed");
+        }
+        for name in ["notes.txt", "data.json", "manifest.c2pa", "noext"] {
+            assert!(!is_precompressed(name), "{name} should be deflated");
+        }
     }
 }

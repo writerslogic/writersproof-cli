@@ -133,7 +133,7 @@ affinidi-data-integrity = { version = "0.5", optional = true }
 affinidi-secrets-resolver = { version = "0.5", optional = true }
 
 tempfile = "3"
-zip = { version = "8", default-features = false }
+zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
 
 # PDF report generation
 printpdf = "0.7"
