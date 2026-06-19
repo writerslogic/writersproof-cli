@@ -118,6 +118,9 @@ pub(crate) enum Request {
         #[serde(default)]
         tab_id: u32,
     },
+    SignVcClaim {
+        vc_claim: String,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -196,6 +199,13 @@ pub(crate) enum Response {
     },
     BrowserKeystrokesReceived {
         count: usize,
+    },
+    VcSignatureResult {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        vc_sig: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     Error {
         message: String,

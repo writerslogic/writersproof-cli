@@ -650,9 +650,36 @@ function handleNativeMessage(message) {
 			}
 			break;
 
+		case "vc_signature_result":
+			if (pendingVcSignResolve) {
+				const resolve = pendingVcSignResolve;
+				pendingVcSignResolve = null;
+				resolve(message.success ? message.vc_sig || "" : "");
+			}
+			break;
+
 		default:
 			break;
 	}
+}
+
+let pendingVcSignResolve = null;
+
+function requestVcSignature(vcClaim, timeoutMs = 3000) {
+	return new Promise((resolve) => {
+		if (!nativePort || !isConnected) {
+			resolve("");
+			return;
+		}
+		pendingVcSignResolve = resolve;
+		sendNativeMessage({ type: "sign_vc_claim", vc_claim: vcClaim });
+		setTimeout(() => {
+			if (pendingVcSignResolve === resolve) {
+				pendingVcSignResolve = null;
+				resolve("");
+			}
+		}, timeoutMs);
+	});
 }
 
 const ALLOWED_ORIGINS = [
@@ -1568,10 +1595,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 		declared: "Signed author declaration.",
 	};
 
+	let vcSigLine = "";
+	if (operatingMode === "native" && isConnected) {
+		const vcClaim = `${tier}:${hash}:${timestamp}`;
+		const sig = await requestVcSignature(vcClaim);
+		if (sig) {
+			vcSigLine = `\nVC-Sig: ${sig}`;
+		}
+	}
+
 	const attestationBlock =
 		`WritersProof ${tierLabels[tier]} | ID: ${wpId} | ${timestamp}\n` +
-		`${tierDescs[tier]}\n` +
-		`verify.writersproof.com`;
+		`${tierDescs[tier]}` +
+		vcSigLine +
+		`\nverify.writersproof.com`;
 
 	// Copy attestation block to clipboard via content script.
 	let clipboardOk = false;

@@ -28,6 +28,7 @@ pub(crate) fn request_type_name(req: &Request) -> &'static str {
         Request::TextAttestation { .. } => "TextAttestation",
         Request::ResumeSession { .. } => "ResumeSession",
         Request::BrowserKeystrokeBatch { .. } => "BrowserKeystrokeBatch",
+        Request::SignVcClaim { .. } => "SignVcClaim",
     }
 }
 

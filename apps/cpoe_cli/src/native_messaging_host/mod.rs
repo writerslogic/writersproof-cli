@@ -20,7 +20,7 @@ pub(crate) mod types;
 use handlers::{
     handle_ai_content_copied, handle_browser_keystroke_batch, handle_checkpoint,
     handle_get_status, handle_inject_jitter, handle_open_view, handle_snapshot_save,
-    handle_start_session, handle_stop_session, handle_text_attestation,
+    handle_sign_vc_claim, handle_start_session, handle_stop_session, handle_text_attestation,
 };
 use protocol::{read_message, request_type_name, write_message, PROTOCOL_VERSION};
 use types::{Request, Response};
@@ -130,6 +130,7 @@ fn main() {
             Request::BrowserKeystrokeBatch { keystrokes, tab_id } => {
                 handle_browser_keystroke_batch(keystrokes, tab_id)
             }
+            Request::SignVcClaim { vc_claim } => handle_sign_vc_claim(vc_claim),
             Request::Ping { protocol_version } => {
                 if let Some(v) = protocol_version {
                     if v != PROTOCOL_VERSION {
@@ -314,6 +315,7 @@ fn decrypt_and_dispatch(payload_b64: &str) -> anyhow::Result<Response> {
         Request::BrowserKeystrokeBatch { keystrokes, tab_id } => {
             handle_browser_keystroke_batch(keystrokes, tab_id)
         }
+        Request::SignVcClaim { vc_claim } => handle_sign_vc_claim(vc_claim),
         Request::Ping { .. } => Response::Pong {
             version: env!("CARGO_PKG_VERSION").into(),
         },

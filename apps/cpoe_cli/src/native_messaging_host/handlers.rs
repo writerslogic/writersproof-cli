@@ -1119,6 +1119,52 @@ pub(crate) fn handle_text_attestation(
     }
 }
 
+pub(crate) fn handle_sign_vc_claim(vc_claim: String) -> Response {
+    use ed25519_dalek::Signer;
+
+    if vc_claim.is_empty() || vc_claim.len() > 4096 {
+        return Response::VcSignatureResult {
+            success: false,
+            vc_sig: None,
+            error: Some("vc_claim must be 1-4096 bytes".into()),
+        };
+    }
+
+    let sk = match load_device_signing_key() {
+        Some(k) => k,
+        None => {
+            return Response::VcSignatureResult {
+                success: false,
+                vc_sig: None,
+                error: Some("No signing key available".into()),
+            };
+        }
+    };
+
+    // Enrich the claim with nonce and author DID to match the engine format:
+    // tier:hash:timestamp:nonce:did
+    let mut nonce = [0u8; 16];
+    getrandom::getrandom(&mut nonce).ok();
+    let nonce_hex = hex::encode(nonce);
+    let author_did = cpoe::identity::did_key_from_public(
+        sk.verifying_key().as_bytes(),
+    )
+    .unwrap_or_default();
+    let full_claim = format!("{vc_claim}:{nonce_hex}:{author_did}");
+
+    let mut payload = Vec::with_capacity(25 + full_claim.len());
+    payload.extend_from_slice(b"witnessd-vc-attest-v1:");
+    payload.extend_from_slice(full_claim.as_bytes());
+    let sig = sk.sign(&payload);
+    drop(sk);
+
+    Response::VcSignatureResult {
+        success: true,
+        vc_sig: Some(format!("f{}", hex::encode(sig.to_bytes()))),
+        error: None,
+    }
+}
+
 const ALLOWED_VIEWS: &[&str] = &[
     "dashboard", "settings", "versionHistory", "history", "export", "checkpoint",
 ];
