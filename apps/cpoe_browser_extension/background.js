@@ -670,6 +670,15 @@ function handleNativeMessage(message) {
 			break;
 
 		case "error":
+			if (message.code === "ORDINAL_MISMATCH") {
+				// Host rejected our checkpoint ordinal (likely a desync after a
+				// host crash/restart). Surface it; recovery is a fresh session.
+				console.warn(
+					`[CPoE] Checkpoint ordinal desync with desktop app (sent ${
+						checkpointOrdinal - 1
+					}): ${message.message}`,
+				);
+			}
 			if (message.code === "SESSION_EXPIRED" && activeTabId) {
 				chrome.tabs.get(activeTabId, (tab) => {
 					if (tab?.url && isAllowedOrigin(tab.url)) {
@@ -1111,6 +1120,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 				connected: isConnected,
 				mode: "native",
 				capabilities,
+				secureChannelFailed,
 			});
 			break;
 

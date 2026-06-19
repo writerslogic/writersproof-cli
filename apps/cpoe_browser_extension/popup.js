@@ -137,8 +137,13 @@ function updateUI(state) {
 	} else if (state.connected) {
 		elements.modeBadge.textContent = "Desktop";
 		elements.modeBadge.className = "badge connected";
-		elements.connectionBadge.textContent = "Connected";
-		elements.connectionBadge.className = "badge connected";
+		if (state.secureChannelFailed) {
+			elements.connectionBadge.textContent = "Plaintext";
+			elements.connectionBadge.className = "badge degraded";
+		} else {
+			elements.connectionBadge.textContent = "Connected";
+			elements.connectionBadge.className = "badge connected";
+		}
 	} else if (currentMode === "detecting") {
 		elements.modeBadge.textContent = "";
 		elements.connectionBadge.textContent = "Detecting...";
@@ -565,6 +570,14 @@ chrome.runtime.onMessage.addListener((message) => {
 			}
 			break;
 
+		case "secure_channel_degraded":
+			elements.connectionBadge.textContent = "Plaintext";
+			elements.connectionBadge.className = "badge degraded";
+			if (message.message) {
+				showError(message.message);
+			}
+			break;
+
 		case "error":
 			showError(message.message);
 			break;
@@ -590,6 +603,7 @@ async function init() {
 		connected: response?.connected || false,
 		activeSession: false,
 		mode: currentMode,
+		secureChannelFailed: response?.secureChannelFailed || false,
 	});
 
 	// Show welcome card on first use

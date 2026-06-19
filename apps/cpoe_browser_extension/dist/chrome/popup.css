@@ -141,6 +141,11 @@ header {
   color: var(--warning);
 }
 
+.badge.degraded {
+  background: rgba(255, 167, 38, 0.15);
+  color: var(--warning);
+}
+
 /* Cards */
 .card {
   background: var(--surface);
