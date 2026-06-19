@@ -141,6 +141,11 @@ pub struct PublishRequest {
     pub document_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_declaration: Option<String>,
+    /// Base64-encoded evidence packet CBOR, sent for paid full notarization
+    /// (R2 storage + CA counter-signature). Omitted when the packet is too
+    /// large to fit the request body limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence_b64: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

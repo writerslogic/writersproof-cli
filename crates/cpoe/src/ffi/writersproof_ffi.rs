@@ -230,6 +230,34 @@ pub fn ffi_publish_evidence(
         .and_then(|n| n.to_str())
         .map(|s| s.to_string());
 
+    // Build the evidence packet for paid full notarization. Include it only when
+    // it fits comfortably under the request body limit; otherwise the server
+    // registers the evidence lightweight (hash + metadata only).
+    const MAX_NOTARIZATION_PACKET: usize = 700_000;
+    let evidence_b64 = match crate::ffi::evidence_export::build_wire_packet_with_ai(
+        doc_path_str.clone(),
+        "standard".to_string(),
+        None,
+        None,
+        ai_declaration.clone(),
+    ) {
+        Ok((_, cbor, _)) if cbor.len() <= MAX_NOTARIZATION_PACKET => Some(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &cbor,
+        )),
+        Ok((_, cbor, _)) => {
+            log::info!(
+                "publish: evidence packet {} bytes exceeds notarization cap; registering lightweight",
+                cbor.len()
+            );
+            None
+        }
+        Err(e) => {
+            log::warn!("publish: could not build evidence packet for notarization: {e}");
+            None
+        }
+    };
+
     let rt = try_ffi!(
         crate::ffi::beacon::beacon_runtime()
             .map_err(|e| format!("Failed to get async runtime: {e}")),
@@ -254,6 +282,7 @@ pub fn ffi_publish_evidence(
                 checkpoint_count,
                 document_name: doc_name,
                 ai_declaration,
+                evidence_b64,
             }),
         )
         .await
