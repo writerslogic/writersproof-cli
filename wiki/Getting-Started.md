@@ -45,7 +45,7 @@ brew install writerslogic
 
 #### Using the macOS App
 
-1. Download `CPoE.dmg` from the [releases page](https://github.com/writerslogic/cpoe/releases)
+1. Download `CPoE.dmg` from the [releases page](https://github.com/writerslogic/writersproof-cli/releases)
 2. Open the DMG file
 3. Drag **CPoE** to your Applications folder
 4. Launch the app and follow the **Onboarding Guide** to initialize your identity and calibrate your machine.
@@ -61,13 +61,13 @@ The macOS app includes:
 #### Using the Install Script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/writerslogic/cpoe/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/writerslogic/writersproof-cli/main/install.sh | bash
 ```
 
 #### Building from Source
 
 ```bash
-git clone https://github.com/writerslogic/cpoe.git
+git clone https://github.com/writerslogic/writersproof-cli.git
 cd writerslogic
 make build
 sudo make install
@@ -88,7 +88,7 @@ CPoE version
 Before creating checkpoints, you must initialize CPoE:
 
 ```bash
-cpoe init
+writersproof-cli init
 ```
 
 This creates your unique cryptographic identity bound to your device hardware via [[Glossary#PUF|Physically Unclonable Functions (PUF)]].
@@ -98,7 +98,7 @@ This creates your unique cryptographic identity bound to your device hardware vi
 Calibrate the [[Glossary#VDF|Verifiable Delay Function (VDF)]] to ensure accurate timing proofs for your specific CPU:
 
 ```bash
-cpoe calibrate
+writersproof-cli calibrate
 ```
 
 ### 3. Register Browser Extension (Optional)
@@ -128,7 +128,7 @@ Create a checkpoint for any file:
 echo "My first witnessed document" > mydoc.txt
 
 # Create a checkpoint
-cpoe commit mydoc.txt -m "Initial version"
+writersproof-cli commit mydoc.txt -m "Initial version"
 ```
 
 ### Enhanced Workflow with Keystroke Tracking
@@ -137,15 +137,15 @@ For stronger evidence, track keystrokes during writing:
 
 ```bash
 # Start tracking
-cpoe track start mydoc.txt
+writersproof-cli track start mydoc.txt
 
 # ... write your document ...
 
 # Create checkpoint with keystroke evidence
-cpoe commit mydoc.txt -m "Draft with tracked keystrokes"
+writersproof-cli commit mydoc.txt -m "Draft with tracked keystrokes"
 
 # Stop tracking
-cpoe track stop
+writersproof-cli track stop
 ```
 
 ---
@@ -157,7 +157,7 @@ cpoe track stop
 When you need to prove authorship:
 
 ```bash
-cpoe export mydoc.txt
+writersproof-cli export mydoc.txt
 ```
 
 This creates `mydoc.c2pa` containing your evidence.
@@ -167,7 +167,7 @@ This creates `mydoc.c2pa` containing your evidence.
 Anyone can verify the evidence:
 
 ```bash
-cpoe verify mydoc.c2pa
+writersproof-cli verify mydoc.c2pa
 ```
 
 ---

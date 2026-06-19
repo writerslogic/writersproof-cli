@@ -27,7 +27,7 @@ you are expected to uphold this code.
 
 2. **Clone and Setup**
    ```bash
-   git clone https://github.com/writerslogic/cpoe.git
+   git clone https://github.com/writerslogic/writersproof-cli.git
    cd writerslogic
    ```
 
@@ -114,7 +114,7 @@ Releases are managed by maintainers:
 
 ## Getting Help
 
-- [GitHub Discussions](https://github.com/writerslogic/cpoe/discussions)
+- [GitHub Discussions](https://github.com/writerslogic/writersproof-cli/discussions)
 - Documentation in [writerslogic-docs](https://github.com/writerslogic/cpoe-docs)
 - Test files for usage examples
 

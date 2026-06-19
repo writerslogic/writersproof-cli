@@ -4,7 +4,7 @@ version = "0.3.0"
 authors = ["David Condrey <david@writerslogic.com>"]
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/writerslogic/cpoe"
+repository = "https://github.com/writerslogic/writersproof-cli"
 description = "AuthorProof Record protocol and wire types"
 readme = "README.md"
 

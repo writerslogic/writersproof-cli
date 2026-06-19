@@ -102,10 +102,10 @@ chmod 600 /var/lib/writerslogic/config.toml
 chmod 400 /var/lib/writerslogic/signing.key
 
 # Use TPM-sealed keys (recommended)
-cpoe init --tpm-sealed
+writersproof-cli init --tpm-sealed
 
 # Enable audit logging
-cpoe start --foreground  # daemon logs to ~/.writersproof/logs/daemon.log
+writersproof-cli start --foreground  # daemon logs to ~/.writersproof/logs/daemon.log
 ```
 
 ### Linux Capabilities
@@ -114,7 +114,7 @@ Instead of running as root, grant specific capabilities:
 
 ```bash
 # Required for TPM access
-sudo setcap cap_sys_admin+ep /usr/local/bin/cpoe
+sudo setcap cap_sys_admin+ep /usr/local/bin/writersproof-cli
 
 # Or use the provided udev rules for non-root TPM access
 sudo cp rules.d/99-writerslogic-tpm.rules /etc/udev/rules.d/

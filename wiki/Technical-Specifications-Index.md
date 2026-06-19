@@ -17,9 +17,9 @@ CPoE is built on several core cryptographic and architectural protocols. These d
 
 ## Schemas (JSON)
 
-- [evidence-v1.json](https://github.com/writerslogic/cpoe/blob/main/docs/schemas/evidence-v1.json)
-- [declaration-v1.json](https://github.com/writerslogic/cpoe/blob/main/docs/schemas/declaration-v1.json)
-- [war-block-v1.json](https://github.com/writerslogic/cpoe/blob/main/docs/schemas/war-block-v1.json)
+- [evidence-v1.json](https://github.com/writerslogic/writersproof-cli/blob/main/docs/schemas/evidence-v1.json)
+- [declaration-v1.json](https://github.com/writerslogic/writersproof-cli/blob/main/docs/schemas/declaration-v1.json)
+- [war-block-v1.json](https://github.com/writerslogic/writersproof-cli/blob/main/docs/schemas/war-block-v1.json)
 
 ---
 

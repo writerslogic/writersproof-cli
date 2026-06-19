@@ -11,7 +11,7 @@ CPoE can be configured through a TOML configuration file, environment variables,
 
 Override with:
 ```bash
-CPOE_DATA_DIR=/custom/path cpoe status
+CPOE_DATA_DIR=/custom/path writersproof-cli status
 ```
 
 ## Configuration File Format
@@ -71,11 +71,11 @@ The Verifiable Delay Function provides timing proofs that cannot be backdated.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `iterations_per_second` | `1000000` | Calibrated speed (run `cpoe calibrate`) |
+| `iterations_per_second` | `1000000` | Calibrated speed (run `writersproof-cli calibrate`) |
 | `min_iterations` | `100000` | Minimum iterations per checkpoint (~0.1s) |
 | `max_iterations` | `3600000000` | Maximum iterations (~1 hour at 1M/s) |
 
-Run `cpoe calibrate` after installation to measure your CPU's actual VDF speed. This takes ~30 seconds and only needs to be done once.
+Run `writersproof-cli calibrate` after installation to measure your CPU's actual VDF speed. This takes ~30 seconds and only needs to be done once.
 
 ## Sentinel Settings
 
@@ -182,30 +182,30 @@ Behavioral typing fingerprints provide author identity verification.
 |----------|-------------|
 | `CPOE_DATA_DIR` | Override data directory (~/.writersproof) |
 | `CPOE_BEACONS_ENABLED` | Override beacon setting (true/false) |
-| `EDITOR` | Editor for `cpoe config edit` |
+| `EDITOR` | Editor for `writersproof-cli config edit` |
 
 ## CLI Configuration Commands
 
 ```bash
 # Show current configuration
-cpoe config show
+writersproof-cli config show
 
 # Edit configuration in $EDITOR
-cpoe config edit
+writersproof-cli config edit
 
 # Set a specific value
-cpoe config set sentinel.checkpoint_interval_secs 120
+writersproof-cli config set sentinel.checkpoint_interval_secs 120
 
 # Reset to defaults
-cpoe config reset --force
+writersproof-cli config reset --force
 
 # Show config file path
-cpoe config path
+writersproof-cli config path
 
 # Manage monitored apps
-cpoe config app add "Scrivener"
-cpoe config app list
-cpoe config app remove "TextEdit"
+writersproof-cli config app add "Scrivener"
+writersproof-cli config app list
+writersproof-cli config app remove "TextEdit"
 ```
 
 ## Configuration Examples

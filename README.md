@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/writerslogic/cpoe/actions"><img src="https://github.com/writerslogic/cpoe/workflows/CI/badge.svg" alt="Build Status"></a>
-  <a href="https://github.com/writerslogic/cpoe/attestations"><img src="https://img.shields.io/badge/SLSA-Build_Provenance-blue" alt="SLSA Build Provenance"></a>
+  <a href="https://github.com/writerslogic/writersproof-cli/actions"><img src="https://github.com/writerslogic/writersproof-cli/workflows/CI/badge.svg" alt="Build Status"></a>
+  <a href="https://github.com/writerslogic/writersproof-cli/attestations"><img src="https://img.shields.io/badge/SLSA-Build_Provenance-blue" alt="SLSA Build Provenance"></a>
   <img src="https://img.shields.io/badge/rust-1.75%2B-orange" alt="Rust">
-  <a href="https://github.com/writerslogic/cpoe/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="License"></a>
+  <a href="https://github.com/writerslogic/writersproof-cli/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="License"></a>
   <img src="https://img.shields.io/badge/Patent-US%2019%2F460%2C364%20Pending-blue" alt="Patent Pending">
 </p>
 
@@ -52,7 +52,7 @@ Dependencies flow one direction: `engine -> protocol -> jitter`. Merging them wo
 
 **macOS (Homebrew):**
 ```bash
-brew install writerslogic/tap/writerslogic
+brew install writerslogic/tap/writersproof-cli
 ```
 
 **Windows (Scoop):**
@@ -63,59 +63,59 @@ scoop install writerslogic
 
 **Linux / macOS (script):**
 ```bash
-curl -sSf https://raw.githubusercontent.com/writerslogic/cpoe/main/apps/cpoe_cli/install.sh | sh
+curl -sSf https://raw.githubusercontent.com/writerslogic/writersproof-cli/main/apps/cpoe_cli/install.sh | sh
 ```
 
 **From source:**
 ```bash
-cargo install --git https://github.com/writerslogic/cpoe --bin writersproof-cli
+cargo install --git https://github.com/writerslogic/writersproof-cli --bin writersproof-cli
 ```
 
 ## Quick Start
 
 ```bash
 # Start tracking a document
-cpoe essay.md
+writersproof-cli essay.md
 
 # Create a checkpoint
-cpoe commit essay.md -m "first draft complete"
+writersproof-cli commit essay.md -m "first draft complete"
 
 # View history
-cpoe log essay.md
+writersproof-cli log essay.md
 
 # Export cryptographic evidence (.c2pa)
-cpoe export essay.md -t 2
+writersproof-cli export essay.md -t 2
 
 # Verify evidence
-cpoe verify essay.c2pa
+writersproof-cli verify essay.c2pa
 ```
 
-Run `cpoe` with no arguments for an interactive menu, or `cpoe --help` for full command reference.
+Run `writersproof-cli` with no arguments for an interactive menu, or `writersproof-cli --help` for full command reference.
 
 ## CLI Commands
 
 | Command | Description |
 |:--------|:------------|
-| `cpoe <path>` | Start tracking a file or directory |
-| `cpoe commit` | Create a checkpoint (alias: `checkpoint`) |
-| `cpoe log` | View history or list tracked documents (alias: `history`, `ls`) |
-| `cpoe export` | Export evidence packet (alias: `prove`) |
-| `cpoe verify` | Verify evidence packet (alias: `check`) |
-| `cpoe status` | Show current tracking status |
-| `cpoe track` | Session management (start/stop/status/list/show/export) |
-| `cpoe identity` | Identity management (alias: `id`) |
-| `cpoe config` | Configuration (alias: `cfg`) |
-| `cpoe fingerprint` | Behavioral fingerprinting (alias: `fp`) |
-| `cpoe forensics` | Detailed forensic analysis (breakdown/score/provenance) |
-| `cpoe report` | Generate a Written Authorship Report (WAR) |
-| `cpoe attest` | Submit evidence for WritersProof attestation |
-| `cpoe beacon` | Temporal beacon attestation |
-| `cpoe credential` | Manage authorship credentials |
-| `cpoe snapshot` | Document snapshot management |
-| `cpoe presence` | Physical presence verification |
-| `cpoe start` | Start the sentinel daemon |
-| `cpoe stop` | Stop the sentinel daemon |
-| `cpoe link` | Link an export to a source document |
+| `writersproof-cli <path>` | Start tracking a file or directory |
+| `writersproof-cli commit` | Create a checkpoint (alias: `checkpoint`) |
+| `writersproof-cli log` | View history or list tracked documents (alias: `history`, `ls`) |
+| `writersproof-cli export` | Export evidence packet (alias: `prove`) |
+| `writersproof-cli verify` | Verify evidence packet (alias: `check`) |
+| `writersproof-cli status` | Show current tracking status |
+| `writersproof-cli track` | Session management (start/stop/status/list/show/export) |
+| `writersproof-cli identity` | Identity management (alias: `id`) |
+| `writersproof-cli config` | Configuration (alias: `cfg`) |
+| `writersproof-cli fingerprint` | Behavioral fingerprinting (alias: `fp`) |
+| `writersproof-cli forensics` | Detailed forensic analysis (breakdown/score/provenance) |
+| `writersproof-cli report` | Generate a Written Authorship Report (WAR) |
+| `writersproof-cli attest` | Submit evidence for WritersProof attestation |
+| `writersproof-cli beacon` | Temporal beacon attestation |
+| `writersproof-cli credential` | Manage authorship credentials |
+| `writersproof-cli snapshot` | Document snapshot management |
+| `writersproof-cli presence` | Physical presence verification |
+| `writersproof-cli start` | Start the sentinel daemon |
+| `writersproof-cli stop` | Stop the sentinel daemon |
+| `writersproof-cli link` | Link an export to a source document |
 
 All commands support `--json` for machine-readable output and `--quiet` for silent operation.
 
@@ -125,7 +125,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cpoe_engine = { git = "https://github.com/writerslogic/cpoe", branch = "main" }
+cpoe_engine = { git = "https://github.com/writerslogic/writersproof-cli", branch = "main" }
 ```
 
 ## Features
@@ -185,7 +185,7 @@ cargo audit && cargo deny check  # Security audit
 Anyone can verify `.c2pa` evidence packets — no account or software required:
 
 - **Web**: Upload at [writerslogic.com/verify](https://writerslogic.com/verify)
-- **CLI**: `cpoe verify proof.c2pa`
+- **CLI**: `writersproof-cli verify proof.c2pa`
 
 Verification checks the checkpoint chain, Ed25519 signatures, VDF timing proofs, and behavioral consistency. It runs entirely client-side — your evidence is never uploaded to our servers.
 
@@ -204,7 +204,7 @@ The applications interact with the following external domains for specific enhan
 *   **Attestation API (`writerslogic.com/api`):** Used for Tier 3 and Tier 4 evidence to request anti-replay nonces and receive cloud-signed attestation certificates.
 *   **Schema Registry (`protocol.writerslogic.com`):** Hosts JSON schemas and DID resolution data for protocol compliance.
 
-For a detailed breakdown, see the **[Privacy & External Interactions Wiki](https://github.com/writerslogic/cpoe/wiki/Privacy-&-External-Interactions)**.
+For a detailed breakdown, see the **[Privacy & External Interactions Wiki](https://github.com/writerslogic/writersproof-cli/wiki/Privacy-&-External-Interactions)**.
 
 See [SECURITY.md](SECURITY.md) for the security policy.
 

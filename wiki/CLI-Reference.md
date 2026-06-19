@@ -17,31 +17,31 @@ The `cpoe` command-line tool is the primary interface for managing authorship ev
 ### `init`
 Initialize CPoE and generate your cryptographic identity.
 ```bash
-cpoe init
+writersproof-cli init
 ```
 
 ### `calibrate`
 Measure your CPU performance for VDF timing proofs. Run this once after installation.
 ```bash
-cpoe calibrate
+writersproof-cli calibrate
 ```
 
 ### `commit`
 Create a checkpoint for a file.
 ```bash
-cpoe commit <file> [-m "message"]
+writersproof-cli commit <file> [-m "message"]
 ```
 
 ### `log`
 Show the checkpoint history for a file.
 ```bash
-cpoe log <file>
+writersproof-cli log <file>
 ```
 
 ### `status`
 Show the current status of CPoE, including your identity and configuration.
 ```bash
-cpoe status
+writersproof-cli status
 ```
 
 ---
@@ -51,13 +51,13 @@ cpoe status
 ### `export`
 Export a `.c2pa` evidence packet containing the full chain of authorship proof.
 ```bash
-cpoe export <file> [-o output.c2pa]
+writersproof-cli export <file> [-o output.c2pa]
 ```
 
 ### `verify`
 Verify an evidence packet or a local file's checkpoint chain.
 ```bash
-cpoe verify <file_or_packet>
+writersproof-cli verify <file_or_packet>
 ```
 
 ---
@@ -67,9 +67,9 @@ cpoe verify <file_or_packet>
 ### `track`
 Manage real-time activity tracking for a document.
 ```bash
-cpoe track start <file>
-cpoe track status
-cpoe track stop
+writersproof-cli track start <file>
+writersproof-cli track status
+writersproof-cli track stop
 ```
 
 ### `sentinel`

@@ -1,12 +1,12 @@
 #!/bin/bash
 # CPoE installer
-# Usage: curl -sSf https://raw.githubusercontent.com/writerslogic/cpoe/main/apps/cpoe_cli/install.sh | sh
+# Usage: curl -sSf https://raw.githubusercontent.com/writerslogic/writersproof-cli/main/apps/cpoe_cli/install.sh | sh
 #        CPoE_VERSION=v1.0.0 curl -sSf ... | sh
 
 set -e
 
-REPO="writerslogic/cpoe"
-BINARY_NAME="cpoe"
+REPO="writerslogic/writersproof-cli"
+BINARY_NAME="writersproof-cli"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # Colors
@@ -147,16 +147,16 @@ install_cpop() {
     # Check if we need sudo
     if [ -w "$INSTALL_DIR" ]; then
         info "Installing to $INSTALL_DIR..."
-        mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/cpoe"
-        chmod +x "${INSTALL_DIR}/cpoe"
+        mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/writersproof-cli"
+        chmod +x "${INSTALL_DIR}/writersproof-cli"
         if [ -f "${tmp_dir}/writerslogic-native-messaging-host" ]; then
             mv "${tmp_dir}/writerslogic-native-messaging-host" "${INSTALL_DIR}/writerslogic-native-messaging-host"
             chmod +x "${INSTALL_DIR}/writerslogic-native-messaging-host"
         fi
     else
         info "Installing to $INSTALL_DIR (requires sudo)..."
-        sudo mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/cpoe"
-        sudo chmod +x "${INSTALL_DIR}/cpoe"
+        sudo mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/writersproof-cli"
+        sudo chmod +x "${INSTALL_DIR}/writersproof-cli"
         if [ -f "${tmp_dir}/writerslogic-native-messaging-host" ]; then
             sudo mv "${tmp_dir}/writerslogic-native-messaging-host" "${INSTALL_DIR}/writerslogic-native-messaging-host"
             sudo chmod +x "${INSTALL_DIR}/writerslogic-native-messaging-host"
@@ -166,18 +166,18 @@ install_cpop() {
     info "CPoE installed successfully!"
     echo ""
 
-    if command -v cpoe &> /dev/null; then
-        info "Installed version: $(cpoe --version)"
+    if command -v writersproof-cli &> /dev/null; then
+        info "Installed version: $(writersproof-cli --version)"
         echo ""
         echo "Get started:"
-        echo "  cpoe --help      # Show all commands"
-        echo "  cpoe essay.md    # Start tracking a document"
+        echo "  writersproof-cli --help      # Show all commands"
+        echo "  writersproof-cli essay.md    # Start tracking a document"
     else
-        warn "cpoe installed but not in PATH. Add $INSTALL_DIR to your PATH."
+        warn "writersproof-cli installed but not in PATH. Add $INSTALL_DIR to your PATH."
         echo ""
         echo "After adding to PATH, run:"
-        echo "  cpoe --help      # Show all commands"
-        echo "  cpoe essay.md    # Start tracking a document"
+        echo "  writersproof-cli --help      # Show all commands"
+        echo "  writersproof-cli essay.md    # Start tracking a document"
     fi
 }
 

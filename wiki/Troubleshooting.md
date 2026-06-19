@@ -4,13 +4,13 @@ Solutions to common issues with CPoE.
 
 ## Installation & Setup
 
-### "Command not found: cpoe"
+### "Command not found: writersproof-cli"
 - **Cause**: CPoE is not in your PATH.
 - **Solution**: Ensure `/usr/local/bin` or your custom install directory is in your shell's PATH.
 
 ### "Error deriving master identity"
 - **Cause**: Hardware identity ([[Glossary#PUF|PUF]]) initialization failed.
-- **Solution**: Check file permissions for `~/.writersproof/`. Run `cpoe init` again.
+- **Solution**: Check file permissions for `~/.writersproof/`. Run `writersproof-cli init` again.
 
 ---
 
@@ -26,7 +26,7 @@ Solutions to common issues with CPoE.
 
 ### [[Glossary#VDF|VDF]] computation timeout
 - **Cause**: Your CPU speed has changed or was never calibrated.
-- **Solution**: Run `cpoe calibrate` to update your performance parameters.
+- **Solution**: Run `writersproof-cli calibrate` to update your performance parameters.
 
 ---
 
@@ -34,7 +34,7 @@ Solutions to common issues with CPoE.
 
 ### "Invalid checkpoint chain"
 - **Cause**: The cryptographic links between checkpoints are broken.
-- **Solution**: Ensure you haven't deleted intermediate checkpoints from your database. Run `cpoe verify <file> --verbose` for more details.
+- **Solution**: Ensure you haven't deleted intermediate checkpoints from your database. Run `writersproof-cli verify <file> --verbose` for more details.
 
 ### "VDF proof invalid"
 - **Cause**: The timing proof doesn't match the expected iterations.
@@ -56,4 +56,4 @@ Solutions to common issues with CPoE.
 
 ---
 
-*For more help, please open an **[Issue on GitHub](https://github.com/writerslogic/cpoe/issues)**.*
+*For more help, please open an **[Issue on GitHub](https://github.com/writerslogic/writersproof-cli/issues)**.*

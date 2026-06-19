@@ -5,8 +5,8 @@ Complete reference for the `cpoe` command-line interface.
 ## Synopsis
 
 ```
-cpoe [command] [options] [arguments]
-cpoe <file>                         # Start tracking a file (shorthand)
+writersproof-cli [command] [options] [arguments]
+writersproof-cli <file>                         # Start tracking a file (shorthand)
 ```
 
 ## Global Options
@@ -37,10 +37,10 @@ Each evidence export is assigned a security level based on available temporal wi
 Initialize CPoE environment (keys, database, configuration).
 
 ```bash
-cpoe init
+writersproof-cli init
 ```
 
-Safe to run multiple times (idempotent). Run `cpoe calibrate` after first initialization.
+Safe to run multiple times (idempotent). Run `writersproof-cli calibrate` after first initialization.
 
 ---
 
@@ -49,7 +49,7 @@ Safe to run multiple times (idempotent). Run `cpoe calibrate` after first initia
 Create a cryptographic checkpoint. Alias: `checkpoint`.
 
 ```bash
-cpoe commit <file> [-m <message>] [--anchor]
+writersproof-cli commit <file> [-m <message>] [--anchor]
 ```
 
 | Option | Description |
@@ -64,7 +64,7 @@ cpoe commit <file> [-m <message>] [--anchor]
 View checkpoint history. Aliases: `history`, `ls`.
 
 ```bash
-cpoe log [file]
+writersproof-cli log [file]
 ```
 
 Without a file argument, lists all tracked files.
@@ -76,7 +76,7 @@ Without a file argument, lists all tracked files.
 Export evidence packet with declaration. Alias: `prove`.
 
 ```bash
-cpoe export <file> [options]
+writersproof-cli export <file> [options]
 ```
 
 | Option | Description |
@@ -100,7 +100,7 @@ cpoe export <file> [options]
 Verify an evidence packet or database. Alias: `check`.
 
 ```bash
-cpoe verify <file> [-k <key>] [--output-war <path>]
+writersproof-cli verify <file> [-k <key>] [--output-war <path>]
 ```
 
 | Option | Description |
@@ -117,7 +117,7 @@ Accepts `.json`, `.c2pa`, `.cpoe`, `.cwar` packets or `.db` files.
 Show current tracking status and configuration.
 
 ```bash
-cpoe status
+writersproof-cli status
 ```
 
 ### Document Management
@@ -127,12 +127,12 @@ cpoe status
 Track activity on a file or project.
 
 ```bash
-cpoe track start <path> [--patterns <globs>]
-cpoe track stop
-cpoe track status
-cpoe track list
-cpoe track show <id>
-cpoe track export <session_id>
+writersproof-cli track start <path> [--patterns <globs>]
+writersproof-cli track stop
+writersproof-cli track status
+writersproof-cli track list
+writersproof-cli track show <id>
+writersproof-cli track export <session_id>
 ```
 
 | Action | Description |
@@ -153,7 +153,7 @@ The `--patterns` flag accepts glob filters for directory-mode tracking.
 Link an export/derivative to a tracked source document.
 
 ```bash
-cpoe link <source> <export> [-m <message>]
+writersproof-cli link <source> <export> [-m <message>]
 ```
 
 Creates a cryptographic binding between the source evidence chain and a derivative (PDF, EPUB, DOCX).
@@ -165,10 +165,10 @@ Creates a cryptographic binding between the source evidence chain and a derivati
 Manage document snapshots.
 
 ```bash
-cpoe snapshot save <path>
-cpoe snapshot list <path>
-cpoe snapshot get <id>
-cpoe snapshot diff <id> <path>
+writersproof-cli snapshot save <path>
+writersproof-cli snapshot list <path>
+writersproof-cli snapshot get <id>
+writersproof-cli snapshot diff <id> <path>
 ```
 
 ### Identity and Security
@@ -178,7 +178,7 @@ cpoe snapshot diff <id> <path>
 Show or recover your cryptographic identity. Alias: `id`.
 
 ```bash
-cpoe identity [options]
+writersproof-cli identity [options]
 ```
 
 | Option | Description |
@@ -195,11 +195,11 @@ cpoe identity [options]
 Manage behavioral typing fingerprints. Alias: `fp`.
 
 ```bash
-cpoe fingerprint status
-cpoe fingerprint show [--id <id>]
-cpoe fingerprint compare <id1> <id2>
-cpoe fingerprint list
-cpoe fingerprint delete <id> [--force]
+writersproof-cli fingerprint status
+writersproof-cli fingerprint show [--id <id>]
+writersproof-cli fingerprint compare <id1> <id2>
+writersproof-cli fingerprint list
+writersproof-cli fingerprint delete <id> [--force]
 ```
 
 ---
@@ -209,9 +209,9 @@ cpoe fingerprint delete <id> [--force]
 Manage authorship credentials.
 
 ```bash
-cpoe credential create <path> --session <id>
-cpoe credential verify <file>
-cpoe credential info
+writersproof-cli credential create <path> --session <id>
+writersproof-cli credential verify <file>
+writersproof-cli credential info
 ```
 
 ### Analysis and Reporting
@@ -221,9 +221,9 @@ cpoe credential info
 Detailed forensic analysis of writing sessions.
 
 ```bash
-cpoe forensics breakdown <path>
-cpoe forensics score <path>
-cpoe forensics provenance <path>
+writersproof-cli forensics breakdown <path>
+writersproof-cli forensics score <path>
+writersproof-cli forensics provenance <path>
 ```
 
 ---
@@ -233,7 +233,7 @@ cpoe forensics provenance <path>
 Generate a Written Authorship Report (WAR).
 
 ```bash
-cpoe report <file> [-f <format>]
+writersproof-cli report <file> [-f <format>]
 ```
 
 | Option | Description |
@@ -247,9 +247,9 @@ cpoe report <file> [-f <format>]
 Temporal beacon attestation.
 
 ```bash
-cpoe beacon submit <path> [--timeout <secs>]
-cpoe beacon status <path>
-cpoe beacon list <path>
+writersproof-cli beacon submit <path> [--timeout <secs>]
+writersproof-cli beacon status <path>
+writersproof-cli beacon list <path>
 ```
 
 #### attest
@@ -257,7 +257,7 @@ cpoe beacon list <path>
 One-shot text attestation via ephemeral sessions.
 
 ```bash
-cpoe attest [-f <format>] [-i <input>] [-o <output>] [--non-interactive]
+writersproof-cli attest [-f <format>] [-i <input>] [-o <output>] [--non-interactive]
 ```
 
 | Option | Description |
@@ -276,7 +276,7 @@ cpoe attest [-f <format>] [-i <input>] [-o <output>] [--non-interactive]
 Start the sentinel daemon.
 
 ```bash
-cpoe start [--foreground]
+writersproof-cli start [--foreground]
 ```
 
 | Option | Description |
@@ -290,7 +290,7 @@ cpoe start [--foreground]
 Stop the sentinel daemon.
 
 ```bash
-cpoe stop
+writersproof-cli stop
 ```
 
 ---
@@ -302,13 +302,13 @@ cpoe stop
 Manage configuration. Alias: `cfg`.
 
 ```bash
-cpoe config show
-cpoe config set <key> <value>
-cpoe config edit
-cpoe config reset [--force]
-cpoe config app add [<name>]
-cpoe config app list
-cpoe config app remove <name>
+writersproof-cli config show
+writersproof-cli config set <key> <value>
+writersproof-cli config edit
+writersproof-cli config reset [--force]
+writersproof-cli config app add [<name>]
+writersproof-cli config app list
+writersproof-cli config app remove <name>
 ```
 
 ---
@@ -318,7 +318,7 @@ cpoe config app remove <name>
 Re-calibrate VDF performance for this machine.
 
 ```bash
-cpoe calibrate
+writersproof-cli calibrate
 ```
 
 Takes ~30 seconds. Only needed once per machine.
@@ -330,10 +330,10 @@ Takes ~30 seconds. Only needed once per machine.
 Interactive presence challenges.
 
 ```bash
-cpoe presence start
-cpoe presence stop
-cpoe presence status
-cpoe presence challenge
+writersproof-cli presence start
+writersproof-cli presence stop
+writersproof-cli presence status
+writersproof-cli presence challenge
 ```
 
 ### Utility
@@ -343,7 +343,7 @@ cpoe presence challenge
 Generate shell completions.
 
 ```bash
-cpoe completions <shell>
+writersproof-cli completions <shell>
 ```
 
 Shells: bash, zsh, fish, powershell, elvish.
@@ -355,7 +355,7 @@ Shells: bash, zsh, fish, powershell, elvish.
 Display the user manual. Alias: `manual`.
 
 ```bash
-cpoe man
+writersproof-cli man
 ```
 
 ## Evidence Tiers
@@ -372,13 +372,13 @@ Per `draft-condrey-rats-pop`:
 ## Basic Workflow
 
 ```bash
-cpoe essay.txt                              # Start tracking
+writersproof-cli essay.txt                              # Start tracking
 # ... write your document ...
-cpoe commit essay.txt -m "first draft"      # Create checkpoint
+writersproof-cli commit essay.txt -m "first draft"      # Create checkpoint
 # ... continue writing ...
-cpoe commit essay.txt -m "revisions"        # More checkpoints
-cpoe export essay.txt -t standard           # Export evidence
-cpoe verify evidence.json                   # Verify evidence
+writersproof-cli commit essay.txt -m "revisions"        # More checkpoints
+writersproof-cli export essay.txt -t standard           # Export evidence
+writersproof-cli verify evidence.json                   # Verify evidence
 ```
 
 ## Enhanced Workflow
@@ -386,12 +386,12 @@ cpoe verify evidence.json                   # Verify evidence
 For strongest evidence with keystroke tracking and PDF reports:
 
 ```bash
-cpoe track start paper.tex
+writersproof-cli track start paper.tex
 # ... write for several hours ...
-cpoe commit paper.tex -m "Final version"
-cpoe track stop
-cpoe export paper.tex -t enhanced -f pdf -o paper-proof.pdf
-cpoe link paper.tex paper.pdf -m "Published PDF"
+writersproof-cli commit paper.tex -m "Final version"
+writersproof-cli track stop
+writersproof-cli export paper.tex -t enhanced -f pdf -o paper-proof.pdf
+writersproof-cli link paper.tex paper.pdf -m "Published PDF"
 ```
 
 ## Files
@@ -413,7 +413,7 @@ cpoe link paper.tex paper.pdf -m "Published PDF"
 |----------|-------------|
 | `CPOE_DATA_DIR` | Override data directory |
 | `CPOE_BEACONS_ENABLED` | Enable/disable beacons (true/false) |
-| `EDITOR` | Editor for `cpoe config edit` |
+| `EDITOR` | Editor for `writersproof-cli config edit` |
 
 ## Privacy
 

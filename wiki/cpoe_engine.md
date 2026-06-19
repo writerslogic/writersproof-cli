@@ -3,7 +3,7 @@
 **cpoe_engine** is the high-performance cryptographic engine at the heart of the CPoE ecosystem. It produces independently verifiable, tamper-evident process evidence constraining when and how a document could have been created.
 
 **License:** Apache-2.0
-**Path:** [`crates/cpoe_engine`](https://github.com/writerslogic/cpoe/tree/main/crates/cpoe_engine)
+**Path:** [`crates/cpoe_engine`](https://github.com/writerslogic/writersproof-cli/tree/main/crates/cpoe_engine)
 
 ---
 
@@ -58,7 +58,7 @@ cpoe_engine/src/
 
 ```toml
 [dependencies]
-cpoe_engine = { git = "https://github.com/writerslogic/cpoe", branch = "main" }
+cpoe_engine = { git = "https://github.com/writerslogic/writersproof-cli", branch = "main" }
 ```
 
 ## Dependencies

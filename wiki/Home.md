@@ -13,7 +13,7 @@
 
 | Engine | Protocol | Jitter |
 |:---:|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/writerslogic/cpoe/main/crates/cpoe_engine/assets/logo.png" width="200"> | <img src="https://raw.githubusercontent.com/writerslogic/cpoe/main/crates/cpoe_protocol/assets/logo.png" width="200"> | <img src="https://raw.githubusercontent.com/writerslogic/cpoe/main/crates/cpoe_jitter/assets/logo.png" width="200"> |
+| <img src="https://raw.githubusercontent.com/writerslogic/writersproof-cli/main/crates/cpoe_engine/assets/logo.png" width="200"> | <img src="https://raw.githubusercontent.com/writerslogic/writersproof-cli/main/crates/cpoe_protocol/assets/logo.png" width="200"> | <img src="https://raw.githubusercontent.com/writerslogic/writersproof-cli/main/crates/cpoe_jitter/assets/logo.png" width="200"> |
 | **[[cpoe_engine]]** | **[[cpoe_protocol]]** | **[[cpoe_jitter]]** |
 
 ## 🚀 Getting Started
@@ -49,10 +49,10 @@ For developers and researchers interested in the underlying protocol:
 
 ## 🤝 Community & Support
 
-- **[GitHub Issues](https://github.com/writerslogic/cpoe/issues)**: Report bugs or request features.
-- **[Discussions](https://github.com/writerslogic/cpoe/discussions)**: Ask questions and share your experiences.
+- **[GitHub Issues](https://github.com/writerslogic/writersproof-cli/issues)**: Report bugs or request features.
+- **[Discussions](https://github.com/writerslogic/writersproof-cli/discussions)**: Ask questions and share your experiences.
 - **[Official Website](https://writerslogic.com)**: Learn more about the project mission.
 
 ---
 
-*Licensed under the [Apache License, Version 2.0](https://github.com/writerslogic/cpoe/blob/main/LICENSE).*
+*Licensed under the [Apache License, Version 2.0](https://github.com/writerslogic/writersproof-cli/blob/main/LICENSE).*

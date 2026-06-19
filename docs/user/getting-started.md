@@ -21,7 +21,7 @@ CPoE is a cryptographic authorship witnessing system that creates tamper-evident
 
 ### macOS App (Recommended)
 
-1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/cpoe/releases)
+1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/writersproof-cli/releases)
 2. Drag **WritersProof** to Applications
 3. Launch and follow the onboarding prompts
 
@@ -30,7 +30,7 @@ The app includes menu bar integration, automatic keystroke tracking, visual chec
 ### macOS CLI (Homebrew)
 
 ```bash
-brew install writerslogic/tap/writerslogic
+brew install writerslogic/tap/writersproof-cli
 ```
 
 ### Linux CLI
@@ -42,7 +42,7 @@ curl -fsSL https://writerslogic.com/install.sh | bash
 ### Building from Source
 
 ```bash
-git clone https://github.com/writerslogic/cpoe.git
+git clone https://github.com/writerslogic/writersproof-cli.git
 cd writerslogic
 cargo build --release -p cpoe_cli
 # Binary at target/release/writersproof-cli
@@ -51,7 +51,7 @@ cargo build --release -p cpoe_cli
 ### Verify Installation
 
 ```bash
-cpoe --help
+writersproof-cli --help
 ```
 
 ## Initial Setup
@@ -59,7 +59,7 @@ cpoe --help
 ### Initialize
 
 ```bash
-cpoe init
+writersproof-cli init
 ```
 
 This creates:
@@ -74,7 +74,7 @@ This creates:
 The Verifiable Delay Function provides timing proofs. Calibration measures your CPU speed:
 
 ```bash
-cpoe calibrate
+writersproof-cli calibrate
 ```
 
 Takes ~30 seconds. Only needs to be done once per machine.
@@ -106,13 +106,13 @@ See [Configuration Guide](configuration.md) for all options.
 echo "My first witnessed document" > mydoc.txt
 
 # Create a checkpoint
-cpoe commit mydoc.txt -m "Initial version"
+writersproof-cli commit mydoc.txt -m "Initial version"
 ```
 
 ### View Checkpoint History
 
 ```bash
-cpoe log mydoc.txt
+writersproof-cli log mydoc.txt
 ```
 
 ### Enhanced Workflow with Keystroke Tracking
@@ -121,16 +121,16 @@ For stronger evidence, track keystrokes during writing:
 
 ```bash
 # Start tracking
-cpoe track start mydoc.txt
+writersproof-cli track start mydoc.txt
 
 # ... write your document ...
 # The system counts keystrokes (not content!) in the background
 
 # Create checkpoint with keystroke evidence
-cpoe commit mydoc.txt -m "Draft with tracked keystrokes"
+writersproof-cli commit mydoc.txt -m "Draft with tracked keystrokes"
 
 # Stop tracking
-cpoe track stop
+writersproof-cli track stop
 ```
 
 ## Exporting Evidence
@@ -138,7 +138,7 @@ cpoe track stop
 When you need to prove authorship:
 
 ```bash
-cpoe export mydoc.txt -o mydoc.c2pa
+writersproof-cli export mydoc.txt -o mydoc.c2pa
 ```
 
 This creates a self-contained evidence packet containing:
@@ -150,10 +150,10 @@ This creates a self-contained evidence packet containing:
 ### Export Formats
 
 ```bash
-cpoe export mydoc.txt -f json     # Human-readable JSON
-cpoe export mydoc.txt -f html     # Self-contained HTML report
-cpoe export mydoc.txt -f pdf      # Signed PDF with anti-forgery features
-cpoe export mydoc.txt -f c2pa     # C2PA Content Credentials manifest with embedded VC
+writersproof-cli export mydoc.txt -f json     # Human-readable JSON
+writersproof-cli export mydoc.txt -f html     # Self-contained HTML report
+writersproof-cli export mydoc.txt -f pdf      # Signed PDF with anti-forgery features
+writersproof-cli export mydoc.txt -f c2pa     # C2PA Content Credentials manifest with embedded VC
 ```
 
 ## Verifying Evidence
@@ -161,7 +161,7 @@ cpoe export mydoc.txt -f c2pa     # C2PA Content Credentials manifest with embed
 ### For Authors: Sharing Your Evidence
 
 ```bash
-cpoe export mydoc.txt -o mydoc.c2pa
+writersproof-cli export mydoc.txt -o mydoc.c2pa
 # Share mydoc.c2pa with the recipient
 ```
 
@@ -176,7 +176,7 @@ Upload at [writerslogic.com/verify](https://writerslogic.com/verify). Verificati
 **Option 2 -- CLI:**
 
 ```bash
-cpoe verify mydoc.c2pa
+writersproof-cli verify mydoc.c2pa
 ```
 
 Verification checks:
@@ -196,5 +196,5 @@ Verification checks:
 
 ## Getting Help
 
-- **Issues**: https://github.com/writerslogic/cpoe/issues
+- **Issues**: https://github.com/writerslogic/writersproof-cli/issues
 - **Website**: https://writerslogic.com

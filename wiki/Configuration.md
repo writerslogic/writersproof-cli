@@ -45,7 +45,7 @@ CPoE can be customized via a JSON configuration file. By default, this file is l
 - `iterations_per_second`: Calibrated speed of your CPU.
 - `min_iterations`: Minimum delay for any single checkpoint.
 - `max_iterations`: Maximum allowable delay (safety limit).
-- `calibrated`: Whether `cpoe calibrate` has been run.
+- `calibrated`: Whether `writersproof-cli calibrate` has been run.
 
 ### [[Glossary#Sentinel|Sentinel (Background Daemon)]]
 

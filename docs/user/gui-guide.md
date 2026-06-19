@@ -10,7 +10,7 @@ The WritersProof macOS app provides a graphical interface for cryptographic auth
 
 ## Installation
 
-1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/cpoe/releases)
+1. Download `WritersProof.dmg` from the [releases page](https://github.com/writerslogic/writersproof-cli/releases)
 2. Open the DMG and drag **WritersProof** to Applications
 3. Launch from Applications or Spotlight
 

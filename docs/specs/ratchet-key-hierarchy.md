@@ -122,7 +122,7 @@ This ensures that the OS kernel cannot move the sensitive key bytes to the disk,
 
 ### 2. Anti-Debugging (Deny Attach)
 
-On macOS, the engine utilizes `ptrace(PT_DENY_ATTACH)` to prevent unauthorized process inspection. If a debugger attempts to attach to the cpoe daemon while keys are in memory, the daemon will immediately self-terminate, protecting the integrity of the key hierarchy.
+On macOS, the engine utilizes `ptrace(PT_DENY_ATTACH)` to prevent unauthorized process inspection. If a debugger attempts to attach to the writersproof-cli daemon while keys are in memory, the daemon will immediately self-terminate, protecting the integrity of the key hierarchy.
 
 ## Data Structures
 

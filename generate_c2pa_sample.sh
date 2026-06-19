@@ -37,7 +37,7 @@ cd "$SCRIPT_DIR"
 cargo test --test c2pa_conformance -- --nocapture 2>&1 | tail -5
 
 # Generate via the CLI if available
-if [ -f "/Volumes/C/rust-target/release/cpoe" ] || [ -f "/Volumes/C/rust-target/debug/cpoe" ]; then
+if [ -f "/Volumes/C/rust-target/release/writersproof-cli" ] || [ -f "/Volumes/C/rust-target/debug/writersproof-cli" ]; then
     echo "CLI binary found"
 fi
 

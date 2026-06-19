@@ -12,7 +12,7 @@ keywords = ["cryptography", "authorship", "witnessing", "attestation", "proof-of
 categories = ["cryptography", "authentication"]
 rust-version = "1.75.0"
 
-homepage = "https://github.com/writerslogic/cpoe"
+homepage = "https://github.com/writerslogic/writersproof-cli"
 documentation = "https://docs.rs/cpoe"
 exclude = ["tests/", "fuzz/", "benches/"]
 

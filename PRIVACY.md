@@ -158,7 +158,7 @@ CHANGELOG and git history. Continued use after changes constitutes acceptance.
 ## Contact
 
 For privacy inquiries:
-- GitHub Issues: https://github.com/writerslogic/cpoe/issues
+- GitHub Issues: https://github.com/writerslogic/writersproof-cli/issues
 - Email: privacy@writerslogic.com
 
 ## Technical Appendix: Data Minimization

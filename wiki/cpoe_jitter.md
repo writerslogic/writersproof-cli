@@ -3,7 +3,7 @@
 **cpoe_jitter** (formerly `physjitter`) is the hardware timing entropy foundation for the CPoE ecosystem. It provides cryptographic proof-of-process through timing jitter, enabling verification that content was created through a human typing process.
 
 **License:** Apache-2.0
-**Path:** [`crates/cpoe_jitter`](https://github.com/writerslogic/cpoe/tree/main/crates/cpoe_jitter)
+**Path:** [`crates/cpoe_jitter`](https://github.com/writerslogic/writersproof-cli/tree/main/crates/cpoe_jitter)
 
 ---
 
@@ -68,7 +68,7 @@ The `HumanModel` validates jitter sequences against statistical patterns from th
 
 ```toml
 [dependencies]
-cpoe_jitter = { git = "https://github.com/writerslogic/cpoe", branch = "main" }
+cpoe_jitter = { git = "https://github.com/writerslogic/writersproof-cli", branch = "main" }
 ```
 
 ## Related Pages

@@ -29,7 +29,7 @@ Statistical measurements of typing patterns (keystroke dynamics) used to disting
 A cryptographic mechanism ensuring that evidence records are causally ordered -- each record depends on all previous records, making it impossible to insert, delete, or reorder entries without detection.
 
 ### Checkpoint
-A snapshot of a document's state at a specific point in time, cryptographically bound to VDF proofs and the Merkle Mountain Range. Created via `cpoe commit`.
+A snapshot of a document's state at a specific point in time, cryptographically bound to VDF proofs and the Merkle Mountain Range. Created via `writersproof-cli commit`.
 
 ### COSE (CBOR Object Signing and Encryption)
 The encoding format used for CPoE evidence packets, as specified in RFC 9052. Provides compact, binary-safe serialization with built-in signature support.

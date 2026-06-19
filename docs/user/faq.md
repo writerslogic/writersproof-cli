@@ -37,7 +37,7 @@ The project uses a multi-license structure:
 - **CLI**: AGPL-3.0-only
 - **macOS/Windows apps**: Proprietary
 
-Source: https://github.com/writerslogic/cpoe
+Source: https://github.com/writerslogic/writersproof-cli
 
 ---
 
@@ -171,7 +171,7 @@ It cannot prove you didn't copy from elsewhere, but keystroke evidence, VDF timi
 
 **Web (easiest):** Go to [writerslogic.com/verify](https://writerslogic.com/verify) and upload the file. Verification runs in your browser; nothing is sent to a server.
 
-**CLI:** `cpoe verify proof.c2pa`
+**CLI:** `writersproof-cli verify proof.c2pa`
 
 ### How often should I create checkpoints?
 
@@ -186,7 +186,7 @@ It cannot prove you didn't copy from elsewhere, but keystroke evidence, VDF timi
 
 Yes:
 ```bash
-cpoe export manuscript.txt -f pdf
+writersproof-cli export manuscript.txt -f pdf
 ```
 
 PDF reports include anti-forgery security features (guilloche patterns, microtext) cryptographically bound to the evidence packet, plus verdict, forensic score, writing flow visualization, and an embedded WAR block for independent verification.
@@ -199,5 +199,5 @@ Upload to [writerslogic.com/verify](https://writerslogic.com/verify) for browser
 
 ## More Questions?
 
-- **Issues**: https://github.com/writerslogic/cpoe/issues
+- **Issues**: https://github.com/writerslogic/writersproof-cli/issues
 - **Website**: https://writerslogic.com

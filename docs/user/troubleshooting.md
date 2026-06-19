@@ -16,7 +16,7 @@ Solutions to common issues with CPoE.
 
 ## Installation Issues
 
-### "Command not found: cpoe"
+### "Command not found: writersproof-cli"
 
 **Cause:** CPoE is not in your PATH.
 
@@ -87,7 +87,7 @@ make install PREFIX=$HOME/.local
    ```bash
    mkdir -p ~/.writersproof
    chmod 700 ~/.writersproof
-   cpoe init
+   writersproof-cli init
    ```
 
 ### "Error generating key"
@@ -105,7 +105,7 @@ make install PREFIX=$HOME/.local
 2. **Regenerate key manually:**
    ```bash
    rm ~/.writersproof/signing_key*
-   cpoe init
+   writersproof-cli init
    ```
 
 ### "Error deriving master identity"
@@ -117,7 +117,7 @@ make install PREFIX=$HOME/.local
 1. **Remove PUF seed and reinitialize:**
    ```bash
    rm ~/.writersproof/puf_seed
-   cpoe init
+   writersproof-cli init
    ```
 
 2. **Check file permissions:**
@@ -135,7 +135,7 @@ make install PREFIX=$HOME/.local
 
 1. **Check if CPoE is initialized:**
    ```bash
-   cpoe status
+   writersproof-cli status
    ```
 
 2. **Verify file exists:**
@@ -145,10 +145,10 @@ make install PREFIX=$HOME/.local
 
 3. **Check for existing tracking session:**
    ```bash
-   cpoe track status
+   writersproof-cli track status
    # If stuck, stop and restart
-   cpoe track stop
-   cpoe track start document.md
+   writersproof-cli track stop
+   writersproof-cli track start document.md
    ```
 
 ### "Keystroke count always zero"
@@ -174,7 +174,7 @@ make install PREFIX=$HOME/.local
 1. **Check if running in terminal with input:**
    ```bash
    # Must run in terminal that receives keyboard input
-   cpoe track start document.md
+   writersproof-cli track start document.md
    ```
 
 2. **Verify input group membership:**
@@ -193,7 +193,7 @@ make install PREFIX=$HOME/.local
 
 1. **Stop tracking and check WAL:**
    ```bash
-   cpoe track stop
+   writersproof-cli track stop
    ls -la ~/.writersproof/tracking/
    ```
 
@@ -236,7 +236,7 @@ make install PREFIX=$HOME/.local
 
 1. **Calibrate VDF:**
    ```bash
-   cpoe calibrate
+   writersproof-cli calibrate
    ```
 
 2. **Check VDF settings:**
@@ -275,12 +275,12 @@ make install PREFIX=$HOME/.local
 
 1. **Verify with verbose output:**
    ```bash
-   cpoe verify document.md --verbose
+   writersproof-cli verify document.md --verbose
    ```
 
 2. **Check for gaps in sequence:**
    ```bash
-   cpoe log document.md --json | jq '.[].number'
+   writersproof-cli log document.md --json | jq '.[].number'
    ```
 
 ### "VDF proof invalid"
@@ -291,8 +291,8 @@ make install PREFIX=$HOME/.local
 
 1. **Re-verify with current VDF parameters:**
    ```bash
-   cpoe calibrate
-   cpoe verify document.c2pa
+   writersproof-cli calibrate
+   writersproof-cli verify document.c2pa
    ```
 
 2. **VDF proofs are deterministic - if fails, evidence may be invalid**
@@ -305,7 +305,7 @@ make install PREFIX=$HOME/.local
 
 1. **Check certificate chain:**
    ```bash
-   cpoe verify document.c2pa --verbose 2>&1 | grep -i cert
+   writersproof-cli verify document.c2pa --verbose 2>&1 | grep -i cert
    ```
 
 2. **Verify master identity matches:**
@@ -323,8 +323,8 @@ make install PREFIX=$HOME/.local
 
 1. **Check what's running:**
    ```bash
-   cpoe status
-   cpoe track status
+   writersproof-cli status
+   writersproof-cli track status
    ```
 
 2. **VDF computation is intentionally CPU-intensive (brief)**
@@ -364,7 +364,7 @@ make install PREFIX=$HOME/.local
 
 1. **Calibrate VDF:**
    ```bash
-   cpoe calibrate
+   writersproof-cli calibrate
    ```
 
 2. **For large files, checkpointing takes longer due to hashing**
@@ -448,7 +448,7 @@ make install PREFIX=$HOME/.local
 
 2. **If no backup, generate new key:**
    ```bash
-   cpoe init
+   writersproof-cli init
    ```
 
 3. **Previous evidence remains valid but new evidence will have different identity**
@@ -479,8 +479,8 @@ Before complete reset:
 
 ```bash
 # Export all evidence packets
-for file in $(cpoe log --all --files); do
-  cpoe export "$file" -o "backup_${file}.c2pa"
+for file in $(writersproof-cli log --all --files); do
+  writersproof-cli export "$file" -o "backup_${file}.c2pa"
 done
 ```
 
@@ -493,13 +493,13 @@ Collect this before reporting issues:
 ```bash
 # System info
 uname -a
-cpoe --version
+writersproof-cli --version
 
 # Configuration
 cat ~/.writersproof/config.toml
 
 # Status
-cpoe status
+writersproof-cli status
 
 # Recent logs (if available)
 tail -100 ~/.writersproof/cpoe.log
@@ -507,7 +507,7 @@ tail -100 ~/.writersproof/cpoe.log
 
 ### Reporting Issues
 
-1. Search [existing issues](https://github.com/writerslogic/cpoe/issues)
+1. Search [existing issues](https://github.com/writerslogic/writersproof-cli/issues)
 2. Create new issue with:
    - CPoE version
    - Operating system and version
@@ -517,7 +517,7 @@ tail -100 ~/.writersproof/cpoe.log
 
 ### Community Support
 
-- GitHub Discussions: https://github.com/writerslogic/cpoe/discussions
+- GitHub Discussions: https://github.com/writerslogic/writersproof-cli/discussions
 - Discord: https://discord.gg/writerslogic
 
 ---

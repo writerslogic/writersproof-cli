@@ -31,7 +31,7 @@ requirements.
 
 **Clap structure:**
 ```
-cpoe forensics <SUBCOMMAND>
+writersproof-cli forensics <SUBCOMMAND>
     breakdown <path>       Detailed forensic breakdown
     live <path>            Live polling scores (--watch for 1Hz loop)
     score <path>           Compute process score
@@ -49,7 +49,7 @@ cpoe forensics <SUBCOMMAND>
 
 **Clap structure:**
 ```
-cpoe beacon <SUBCOMMAND>
+writersproof-cli beacon <SUBCOMMAND>
     submit <path>          Submit temporal beacon
     status <path>          Check beacon status
     list <path>            List all beacons
@@ -70,7 +70,7 @@ cpoe beacon <SUBCOMMAND>
 
 **Clap structure:**
 ```
-cpoe ephemeral <SUBCOMMAND>
+writersproof-cli ephemeral <SUBCOMMAND>
     start <label>          Start ephemeral session
     checkpoint <id>        Create checkpoint (--content, --message)
     finalize <id>          Finalize and export
@@ -97,7 +97,7 @@ cpoe ephemeral <SUBCOMMAND>
 
 **Clap structure:**
 ```
-cpoe fragment <SUBCOMMAND>
+writersproof-cli fragment <SUBCOMMAND>
     store                  Store text fragment (--text, --session)
     lookup <hash>          Lookup fragment by hash
     list                   List fragments (--session <id>)
@@ -125,7 +125,7 @@ cpoe fragment <SUBCOMMAND>
 
 **Clap structure:**
 ```
-cpoe credential <SUBCOMMAND>
+writersproof-cli credential <SUBCOMMAND>
     create <path>          Create authorship credential
     sign <hex>             Sign credential CBOR
     verify <file>          Verify credential
@@ -146,7 +146,7 @@ cpoe credential <SUBCOMMAND>
 
 **Clap structure:**
 ```
-cpoe snapshot <SUBCOMMAND>
+writersproof-cli snapshot <SUBCOMMAND>
     save <path>            Save snapshot (--stdin for piped content)
     list <path>            List snapshots
     get <id>               Get snapshot content

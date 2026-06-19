@@ -3,7 +3,7 @@
 **cpoe_protocol** is the core Rust implementation of the **[[Glossary#PoP|Proof-of-Process (PoP)]]** protocol wire format, currently being socialized in the **[[Glossary#RATS|IETF RATS]]** working group.
 
 **License:** Apache-2.0
-**Path:** [`crates/cpoe_protocol`](https://github.com/writerslogic/cpoe/tree/main/crates/cpoe_protocol)
+**Path:** [`crates/cpoe_protocol`](https://github.com/writerslogic/writersproof-cli/tree/main/crates/cpoe_protocol)
 
 ---
 
@@ -50,7 +50,7 @@ The protocol implements types defined in [draft-condrey-rats-pop](https://github
 
 ```toml
 [dependencies]
-cpoe_protocol = { git = "https://github.com/writerslogic/cpoe", branch = "main" }
+cpoe_protocol = { git = "https://github.com/writerslogic/writersproof-cli", branch = "main" }
 ```
 
 ## Dependencies
