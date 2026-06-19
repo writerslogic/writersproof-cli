@@ -283,7 +283,14 @@ impl Chain {
         let lock_file = fs::File::open(&self.metadata.document_path)?;
         Self::acquire_lock(&lock_file)?;
         let _guard = scopeguard::guard(&lock_file, Self::release_lock);
-        self.commit_internal_locked(message, vdf_duration, vdf_cost_multiplier)
+        // H-009: Hash from the locked fd to prevent TOCTOU between lock and hash.
+        let doc_path = Path::new(&self.metadata.document_path);
+        let (content_hash, content_size) = if doc_path.is_dir() {
+            crate::crypto::hash_file_with_size(doc_path)?
+        } else {
+            crate::crypto::hash_file_handle(&lock_file)?
+        };
+        self.commit_internal_locked(message, vdf_duration, vdf_cost_multiplier, content_hash, content_size)
     }
 
     fn commit_internal_locked(
@@ -291,10 +298,10 @@ impl Chain {
         message: Option<String>,
         vdf_duration: Option<Duration>,
         vdf_cost_multiplier: u32,
+        content_hash: [u8; 32],
+        content_size: u64,
     ) -> Result<Checkpoint> {
         log::debug!("checkpoint commit_internal: path={}", self.metadata.document_path);
-        let (content_hash, content_size) =
-            crate::crypto::hash_file_with_size(Path::new(&self.metadata.document_path))?;
 
         let ordinal = u64::try_from(self.checkpoints.len()).map_err(|_| {
             Error::checkpoint(format!(
@@ -377,10 +384,22 @@ impl Chain {
             let mut vdf_params = self.metadata.vdf_params;
             if vdf_cost_multiplier > 1 {
                 let m = u64::from(vdf_cost_multiplier);
-                vdf_params.min_iterations =
-                    vdf_params.min_iterations.saturating_mul(m);
-                vdf_params.iterations_per_second =
-                    vdf_params.iterations_per_second.saturating_mul(m);
+                vdf_params.min_iterations = vdf_params.min_iterations.checked_mul(m)
+                    .unwrap_or_else(|| {
+                        log::warn!(
+                            "VDF min_iterations overflow: {} * {m}, clamped to u64::MAX",
+                            vdf_params.min_iterations
+                        );
+                        u64::MAX
+                    });
+                vdf_params.iterations_per_second = vdf_params.iterations_per_second.checked_mul(m)
+                    .unwrap_or_else(|| {
+                        log::warn!(
+                            "VDF iterations_per_second overflow: {} * {m}, clamped to u64::MAX",
+                            vdf_params.iterations_per_second
+                        );
+                        u64::MAX
+                    });
             }
             checkpoint.vdf = Some(vdf::compute(vdf_input, duration, vdf_params)?);
         }

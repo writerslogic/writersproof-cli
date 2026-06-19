@@ -255,6 +255,12 @@ impl Packet {
 
         if let Some(bv) = &self.baseline_verification {
             if let Some(digest) = &bv.digest {
+                // H-012: digest present but signature missing is an error, not a silent pass.
+                if bv.digest_signature.is_none() {
+                    return Err(Error::evidence(
+                        "baseline digest present but digest_signature is missing",
+                    ));
+                }
                 if let Some(sig) = &bv.digest_signature {
                     // H-012: Prefer trusted external key; fall back to self-signed with warning.
                     let public_key_bytes = if let Some(tk) = trusted_public_key {

@@ -75,7 +75,7 @@ impl SecureStore {
                 e.vdf_input.as_ref().map(|h| &h[..]),
                 e.vdf_output.as_ref().map(|h| &h[..]),
                 i64::try_from(e.vdf_iterations).unwrap_or_else(|_| {
-                    log::warn!(
+                    log::error!(
                         "vdf_iterations {} exceeds i64::MAX, clamped",
                         e.vdf_iterations
                     );
@@ -85,7 +85,7 @@ impl SecureStore {
                 e.is_paste as i32,
                 e.hardware_counter.map(|c| {
                     i64::try_from(c).unwrap_or_else(|_| {
-                        log::warn!("hardware_counter {} exceeds i64::MAX, clamped", c);
+                        log::error!("hardware_counter {} exceeds i64::MAX, clamped", c);
                         i64::MAX
                     })
                 }),
@@ -98,7 +98,7 @@ impl SecureStore {
                 e.hw_cosign_salt_commitment.as_deref(),
                 e.hw_cosign_chain_index.map(|c| {
                     i64::try_from(c).unwrap_or_else(|_| {
-                        log::warn!("hw_cosign_chain_index {} exceeds i64::MAX, clamped", c);
+                        log::error!("hw_cosign_chain_index {} exceeds i64::MAX, clamped", c);
                         i64::MAX
                     })
                 }),
@@ -106,7 +106,7 @@ impl SecureStore {
                 e.hw_cosign_entropy_digest.as_deref(),
                 e.hw_cosign_entropy_bytes.map(|v| {
                     i64::try_from(v).unwrap_or_else(|_| {
-                        log::warn!("hw_cosign_entropy_bytes {} exceeds i64::MAX, clamped", v);
+                        log::error!("hw_cosign_entropy_bytes {} exceeds i64::MAX, clamped", v);
                         i64::MAX
                     })
                 }),
@@ -154,7 +154,8 @@ impl SecureStore {
         start_ns: i64,
         end_ns: i64,
     ) -> anyhow::Result<Vec<SecureEvent>> {
-        let path = path.as_ref().to_string_lossy();
+        let path = path.as_ref().to_str()
+            .ok_or_else(|| anyhow::anyhow!("non-UTF-8 file path: {:?}", path.as_ref()))?;
         let query = "SELECT id, device_id, machine_id, timestamp_ns, file_path, \
                 content_hash, file_size, size_delta, previous_hash, event_hash, hmac, \
                 context_type, context_note, vdf_input, vdf_output, vdf_iterations, \
@@ -170,7 +171,7 @@ impl SecureStore {
         let mut stmt = self.conn.prepare(query)?;
         let mut events = Vec::new();
         let rows = stmt.query_map(
-            params![path.as_ref(), start_ns, end_ns],
+            params![path, start_ns, end_ns],
             Self::row_to_event_with_hmac,
         )?;
         for row in rows {
@@ -187,7 +188,8 @@ impl SecureStore {
         path: impl AsRef<Path>,
         limit: Option<u32>,
     ) -> anyhow::Result<Vec<SecureEvent>> {
-        let path = path.as_ref().to_string_lossy();
+        let path = path.as_ref().to_str()
+            .ok_or_else(|| anyhow::anyhow!("non-UTF-8 file path: {:?}", path.as_ref()))?;
         let base_query = "SELECT id, device_id, machine_id, timestamp_ns, file_path, \
                 content_hash, file_size, size_delta, previous_hash, event_hash, hmac, \
                 context_type, context_note, vdf_input, vdf_output, vdf_iterations, \
@@ -207,9 +209,9 @@ impl SecureStore {
         let mut events = Vec::new();
         let rows: Box<dyn Iterator<Item = rusqlite::Result<(SecureEvent, Vec<u8>)>>> = match limit {
             Some(n) => {
-                Box::new(stmt.query_map(params![path.as_ref(), n], Self::row_to_event_with_hmac)?)
+                Box::new(stmt.query_map(params![path, n], Self::row_to_event_with_hmac)?)
             }
-            None => Box::new(stmt.query_map(params![path.as_ref()], Self::row_to_event_with_hmac)?),
+            None => Box::new(stmt.query_map(params![path], Self::row_to_event_with_hmac)?),
         };
         for row in rows {
             let (event, stored_hmac) = row?;

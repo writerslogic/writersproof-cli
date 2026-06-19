@@ -42,12 +42,14 @@ impl Wal {
             fs::create_dir_all(parent)?;
         }
 
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path)?;
+        let mut opts = OpenOptions::new();
+        opts.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let file = opts.open(path)?;
 
         // Restrict WAL to owner-only access (contains signed evidence entries)
         crate::crypto::restrict_permissions(path, 0o600)?;

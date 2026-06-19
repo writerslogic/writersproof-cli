@@ -255,7 +255,13 @@ impl MerkleVdfBuilder {
         MerkleVdfProof {
             root_hash,
             total_iterations: self.total_iterations,
-            checkpoint_count: u32::try_from(self.leaf_hashes.len()).unwrap_or(u32::MAX),
+            checkpoint_count: u32::try_from(self.leaf_hashes.len()).unwrap_or_else(|_| {
+                log::warn!(
+                    "checkpoint_count overflow: {} exceeds u32::MAX, clamped",
+                    self.leaf_hashes.len()
+                );
+                u32::MAX
+            }),
             sampled_proofs: Vec::new(),
             aggregator_signature: None,
         }

@@ -38,16 +38,16 @@ impl Sentinel {
             ));
         }
 
-        if !file_path.exists() {
-            return Err((
-                IpcErrorCode::FileNotFound,
-                format!("File not found: {}", file_path.display()),
-            ));
-        }
-
-        // H-004: Canonicalize to resolve symlinks before using as session key.
+        // H-028: Use canonicalize() directly, handling NotFound from it to avoid
+        // TOCTOU between exists() and canonicalize().
         let canonical = match file_path.canonicalize() {
             Ok(p) => p,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err((
+                    IpcErrorCode::FileNotFound,
+                    format!("File not found: {}", file_path.display()),
+                ));
+            }
             Err(e) => {
                 return Err((
                     IpcErrorCode::InvalidMessage,

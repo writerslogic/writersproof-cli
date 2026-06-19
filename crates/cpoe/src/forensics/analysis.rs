@@ -777,7 +777,7 @@ pub fn per_checkpoint_flags(
     let mut flags = Vec::with_capacity(checkpoints.len());
 
     for (idx, cp) in checkpoints.iter().enumerate() {
-        let cp_ts = cp.timestamp.timestamp_nanos_opt().unwrap_or(i64::MAX);
+        let cp_ts = cp.timestamp.timestamp_nanos_opt().unwrap_or(0);
         let prev_ts = if idx > 0 {
             checkpoints[idx - 1]
                 .timestamp

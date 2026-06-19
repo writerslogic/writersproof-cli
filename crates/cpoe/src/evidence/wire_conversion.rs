@@ -170,7 +170,10 @@ fn checkpoint_to_wire(
             } else {
                 ProofAlgorithm::SwfPosme
             }),
-            Err(_) => Some(ProofAlgorithm::SwfPosme),
+            Err(e) => {
+                log::warn!("PoSME CBOR decode failed, defaulting to SwfPosme: {e}");
+                Some(ProofAlgorithm::SwfPosme)
+            }
         }
     } else {
         None
@@ -249,7 +252,7 @@ fn checkpoint_to_wire(
                 recursion_depth: None,
             },
             input: vec![0u8; 32],
-            merkle_root: vec![0u8; 32],
+            merkle_root: vec![],
             sampled_proofs: vec![],
             claimed_duration: 0,
         }

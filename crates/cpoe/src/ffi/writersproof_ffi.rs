@@ -191,6 +191,7 @@ pub fn ffi_publish_evidence(
         .windows(2)
         .all(|w| w[1].previous_hash == w[0].event_hash);
     if !chain_valid {
+        log::warn!("Evidence chain verification failed for publish: previous_hash mismatch detected");
         return FfiPublishResult {
             success: false,
             canonical_url: None,

@@ -101,12 +101,24 @@ impl SecureStore {
         // A leftover .tmp file from a crash means DELETE never committed — safe to remove.
         let archive_tmp_path = db_dir.join(format!("events_archive_{archive_date}.db.tmp"));
 
-        // Don't overwrite existing archives from the same day.
-        if archive_path.exists() {
-            anyhow::bail!(
-                "Archive file already exists: {}. Only one archive per day is supported.",
-                archive_path.display()
-            );
+        // H-068: Atomically check+create to avoid TOCTOU race on archive_path.
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&archive_path)
+        {
+            Ok(_) => {
+                // Created successfully; remove the zero-byte placeholder so
+                // create_archive_schema can open it fresh.
+                std::fs::remove_file(&archive_path)?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                anyhow::bail!(
+                    "Archive file already exists: {}. Only one archive per day is supported.",
+                    archive_path.display()
+                );
+            }
+            Err(e) => return Err(e.into()),
         }
         // Clean up a leftover .tmp from a previous crash (DELETE never committed).
         if archive_tmp_path.exists() {
@@ -310,7 +322,14 @@ impl SecureStore {
 
         // On failure, clean up the tmp archive file.
         if let Err(e) = atomic_result {
-            let _ = std::fs::remove_file(&archive_tmp_path);
+            if let Err(rm_err) = std::fs::remove_file(&archive_tmp_path) {
+                if archive_tmp_path.exists() {
+                    return Err(anyhow!(
+                        "archive failed ({e}) and tmp cleanup also failed ({rm_err}): {}",
+                        archive_tmp_path.display()
+                    ));
+                }
+            }
             return Err(e);
         }
 
@@ -329,7 +348,9 @@ impl SecureStore {
 
         if let Some(parent) = archive_path.parent() {
             if let Ok(dir) = std::fs::File::open(parent) {
-                let _ = dir.sync_all();
+                if let Err(e) = dir.sync_all() {
+                    log::warn!("archive: parent directory fsync failed after rename: {e}");
+                }
             }
         }
 

@@ -275,7 +275,7 @@ fn find_dominant_frequencies(psd: &[f64], freq_step: f64) -> Vec<f64> {
     }
 
     let mean_power: f64 = psd[1..nyquist_idx].iter().sum::<f64>() / (nyquist_idx - 1) as f64;
-    if !mean_power.is_finite() {
+    if !mean_power.is_finite() || mean_power < f64::EPSILON {
         return Vec::new();
     }
     let threshold = mean_power * PEAK_DETECTION_MULTIPLIER;

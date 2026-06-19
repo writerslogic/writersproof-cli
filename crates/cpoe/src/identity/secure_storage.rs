@@ -31,7 +31,7 @@ static HMAC_CACHE: Mutex<Option<ProtectedBuf>> = Mutex::new(None);
 /// Mutex instead of OnceLock so the cache can be invalidated after delete.
 static FINGERPRINT_KEY_CACHE: Mutex<Option<ProtectedBuf>> = Mutex::new(None);
 /// Mutex instead of OnceLock so the cache can be invalidated after re-generation.
-static MNEMONIC_CACHE: Mutex<Option<Zeroizing<String>>> = Mutex::new(None);
+static MNEMONIC_CACHE: Mutex<Option<ProtectedBuf>> = Mutex::new(None);
 /// Mutex instead of OnceLock so the cache can be invalidated after delete.
 #[allow(clippy::type_complexity)]
 static IDENTITY_CACHE: Mutex<Option<(Zeroizing<[u8; 16]>, Zeroizing<String>)>> = Mutex::new(None);
@@ -332,7 +332,7 @@ impl SecureStorage {
     /// Store the mnemonic phrase in the platform keychain.
     pub fn save_mnemonic(phrase: &str) -> Result<()> {
         Self::save(MNEMONIC_ACCOUNT, phrase.as_bytes())?;
-        *MNEMONIC_CACHE.lock_recover() = Some(Zeroizing::new(phrase.to_string()));
+        *MNEMONIC_CACHE.lock_recover() = Some(ProtectedBuf::new(phrase.as_bytes().to_vec()));
         Ok(())
     }
 
@@ -341,7 +341,11 @@ impl SecureStorage {
     pub fn load_mnemonic() -> Result<Option<Zeroizing<String>>> {
         let mut guard = MNEMONIC_CACHE.lock_recover();
         if let Some(ref cached) = *guard {
-            return Ok(Some(Zeroizing::new(cached.as_str().to_owned())));
+            let s = match std::str::from_utf8(cached.as_slice()) {
+                Ok(s) => Zeroizing::new(s.to_owned()),
+                Err(_) => return Err(anyhow!("Invalid UTF-8 in cached mnemonic")),
+            };
+            return Ok(Some(s));
         }
         let bytes = Self::load(MNEMONIC_ACCOUNT)?;
         if let Some(mut b) = bytes {
@@ -353,7 +357,7 @@ impl SecureStorage {
                     return Err(anyhow!("Invalid UTF-8 in mnemonic"));
                 }
             };
-            *guard = Some(Zeroizing::new(s.as_str().to_owned()));
+            *guard = Some(ProtectedBuf::new(s.as_bytes().to_vec()));
             Ok(Some(s))
         } else {
             Ok(None)

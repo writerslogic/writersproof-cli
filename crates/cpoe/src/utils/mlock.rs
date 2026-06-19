@@ -6,7 +6,11 @@
 pub fn mlock(ptr: *const u8, len: usize) {
     #[cfg(unix)]
     unsafe {
-        let result = libc::mlock(ptr as *const _, len);
+        let page_size = libc::sysconf(libc::_SC_PAGESIZE) as usize;
+        let addr = ptr as usize;
+        let aligned_addr = addr & !(page_size - 1);
+        let aligned_len = len + (addr - aligned_addr);
+        let result = libc::mlock(aligned_addr as *const _, aligned_len);
         if result != 0 {
             log::warn!("mlock failed: {}", std::io::Error::last_os_error());
         }
@@ -19,7 +23,11 @@ pub fn mlock(ptr: *const u8, len: usize) {
 pub fn munlock(ptr: *const u8, len: usize) {
     #[cfg(unix)]
     unsafe {
-        let _ = libc::munlock(ptr as *const _, len);
+        let page_size = libc::sysconf(libc::_SC_PAGESIZE) as usize;
+        let addr = ptr as usize;
+        let aligned_addr = addr & !(page_size - 1);
+        let aligned_len = len + (addr - aligned_addr);
+        let _ = libc::munlock(aligned_addr as *const _, aligned_len);
     }
     #[cfg(not(unix))]
     let _ = (ptr, len);

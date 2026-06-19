@@ -250,7 +250,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
 
     // Batch-fetch all events in one query to avoid O(n) DB round-trips per file.
     let mut all_events = store.get_all_events_grouped().unwrap_or_else(|e| {
-        log::warn!("store get_all_events_grouped failed: {e}");
+        log::error!("store get_all_events_grouped failed: {e}");
         Default::default()
     });
 

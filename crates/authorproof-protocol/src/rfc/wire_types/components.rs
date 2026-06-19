@@ -155,7 +155,7 @@ pub struct EditDelta {
 /// Max edit positions per delta.
 /// Per CDDL `edit-delta`: `positions` is `[* [uint, int]]` with practical
 /// upper bound to prevent resource exhaustion during validation.
-const MAX_EDIT_POSITIONS: usize = 100_000;
+const MAX_EDIT_POSITIONS: usize = 10_000;
 
 impl EditDelta {
     /// Validate edit-delta constraints per CDDL schema.

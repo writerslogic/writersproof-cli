@@ -869,14 +869,19 @@ fn enrich_checkpoints(
                 .map(|s| s.duration_since_last_ns / 1_000_000) // ns → ms
                 .collect();
             let entropy_centibits = estimate_entropy_centibits(&intervals);
-            cp.jitter_binding = compute_jitter_seal(&intervals, ev.content_hash)
-                .map(|jitter_seal| {
-                    authorproof_protocol::rfc::wire_types::JitterBindingWire {
-                        intervals,
-                        entropy_estimate: entropy_centibits,
-                        jitter_seal,
-                    }
-                });
+            let seal = compute_jitter_seal(&intervals, ev.content_hash);
+            if seal.is_none() {
+                log::warn!(
+                    "checkpoint {i}: jitter seal omitted (HMAC init failed); evidence weakened"
+                );
+            }
+            cp.jitter_binding = seal.map(|jitter_seal| {
+                authorproof_protocol::rfc::wire_types::JitterBindingWire {
+                    intervals,
+                    entropy_estimate: entropy_centibits,
+                    jitter_seal,
+                }
+            });
         }
 
         // Edit graph hash: SHA-256 of cumulative edit positions up to this checkpoint.

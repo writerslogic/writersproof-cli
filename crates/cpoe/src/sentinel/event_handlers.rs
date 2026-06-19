@@ -276,6 +276,7 @@ impl EventLoopCtx {
         // timestamp-based dedup cannot work).
         let was_buffered = session.keystroke_count == 0;
         if was_buffered {
+            // clone() required: sample is used below for validation (zone, etc.)
             session.jitter_ring.push(sample.clone());
         }
         let validation = crate::forensics::validate_keystroke_event(

@@ -138,7 +138,7 @@ pub fn analyze_error_topology(
     }
 
     let gap_correlation = compute_gap_correlation(events, &error_indices);
-    let error_hurst = compute_error_hurst(events, &error_indices);
+    let error_hurst = compute_error_hurst(events, &error_indices).unwrap_or(0.5);
     let adjacency_correlation = compute_adjacency_correlation(events, &error_indices);
 
     let score = ErrorTopology::compute_score(gap_correlation, error_hurst, adjacency_correlation);
@@ -227,9 +227,9 @@ fn compute_gap_correlation(events: &[TopologyEvent], error_indices: &[usize]) ->
     ((pre_ratio - 1.0).max(0.0) * 0.5 + (post_ratio - 1.0).max(0.0) * 0.5).min(1.0)
 }
 
-fn compute_error_hurst(events: &[TopologyEvent], error_indices: &[usize]) -> f64 {
+fn compute_error_hurst(events: &[TopologyEvent], error_indices: &[usize]) -> Option<f64> {
     if error_indices.len() < 5 {
-        return 0.5;
+        return None;
     }
 
     // Pre-allocate to prevent dynamic heap resizing
@@ -247,7 +247,7 @@ fn compute_error_hurst(events: &[TopologyEvent], error_indices: &[usize]) -> f64
     }
 
     if intervals.len() < 4 {
-        return 0.5;
+        return None;
     }
 
     let n = intervals.len();
@@ -271,12 +271,12 @@ fn compute_error_hurst(events: &[TopologyEvent], error_indices: &[usize]) -> f64
         // H ~ log(R/S) / log(n)
         let nf = n as f64;
         if nf.ln() < f64::EPSILON {
-            0.5
+            Some(0.5)
         } else {
-            crate::utils::Probability::clamp(crate::utils::finite_or(rs.ln() / nf.ln(), 0.5)).get()
+            Some(crate::utils::Probability::clamp(crate::utils::finite_or(rs.ln() / nf.ln(), 0.5)).get())
         }
     } else {
-        0.5
+        Some(0.5)
     }
 }
 

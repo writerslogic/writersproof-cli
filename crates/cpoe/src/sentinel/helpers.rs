@@ -84,7 +84,7 @@ pub fn handle_focus_event_sync(
                 let belongs_to_blocked = sessions.read_recover()
                     .get(path.as_str())
                     .map(|s| {
-                        s.app_bundle_id.eq_ignore_ascii_case(&event.app_bundle_id)
+                        s.app_bundle_id == event.app_bundle_id
                     })
                     .unwrap_or(false);
                 if belongs_to_blocked {
@@ -332,7 +332,7 @@ pub fn handle_focus_event_sync(
                 if let Some(ref current) = prev_path {
                     sessions.read_recover()
                         .get(current.as_str())
-                        .map(|s| s.app_bundle_id.eq_ignore_ascii_case(&event.app_bundle_id))
+                        .map(|s| s.app_bundle_id == event.app_bundle_id)
                         .unwrap_or(true)
                 } else {
                     false
@@ -3114,7 +3114,7 @@ pub fn detect_export_event(
             return None;
         }
         let process_bid = signing_id.split(':').next_back().unwrap_or(signing_id);
-        if !process_bid.eq_ignore_ascii_case(&session.app_bundle_id) {
+        if process_bid != session.app_bundle_id {
             return None;
         }
     }

@@ -355,7 +355,12 @@ impl OfflineQueue {
                     Self::validate_id(&entry.id)?;
                     let path = self.text_dir()?.join(format!("{}.json", entry.id));
                     if path.exists() {
-                        fs::remove_file(&path)?;
+                        if let Err(e) = fs::remove_file(&path) {
+                            log::warn!(
+                                "text attestation {} submitted but queue file removal failed: {e}",
+                                entry.id
+                            );
+                        }
                     }
                     success_count += 1;
                 }
