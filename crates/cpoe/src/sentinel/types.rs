@@ -926,6 +926,8 @@ pub struct PasteContext {
     pub source: PasteSource,
     /// Semantic type of the pasted content (prose, table, image, etc.).
     pub content_kind: PasteContentKind,
+    /// Number of characters in the pasted content (for scaled domestication).
+    pub paste_char_count: usize,
 }
 
 /// How an AI tool detection was established.
@@ -1157,8 +1159,8 @@ pub struct DocumentSession {
     pub(crate) last_hw_cosign_signature: Option<Vec<u8>>,
     /// Chain index counter for hardware co-signatures.
     pub(crate) hw_cosign_chain_index: u64,
-    /// Paste context window for keystroke classification (Phase 2.3).
-    pub paste_context: Option<PasteContext>,
+    /// Paste context history for composition mode analysis (capped at 100).
+    pub paste_context: Vec<PasteContext>,
     /// Number of times the user skipped a mandatory paste checkpoint.
     pub paste_checkpoint_skips: u32,
     /// Per-session keystroke semantic counts for evidence enrichment.
@@ -1624,7 +1626,7 @@ impl DocumentSession {
             hw_cosign_scheduler: None,
             last_hw_cosign_signature: None,
             hw_cosign_chain_index: 0,
-            paste_context: None,
+            paste_context: Vec::new(),
             paste_checkpoint_skips: 0,
             semantic_counts: SemanticAccumulator::default(),
             device_keystroke_counts: HashMap::new(),
@@ -1912,11 +1914,15 @@ const DOC_EXTENSIONS: &[&str] = &[
     ".afphoto",
     ".afpub",
     ".asciidoc",
+    ".ass",
     ".bat",
+    ".bear",
     ".c",
     ".cpp",
+    ".creole",
     ".css",
     ".csv",
+    ".djot",
     ".doc",
     ".docx",
     ".draft",
@@ -1927,9 +1933,12 @@ const DOC_EXTENSIONS: &[&str] = &[
     ".fountain",
     ".go",
     ".h",
+    ".highland",
     ".html",
     ".idml",
     ".indd",
+    ".ink",
+    ".ipynb",
     ".java",
     ".jl",
     ".js",
@@ -1939,7 +1948,10 @@ const DOC_EXTENSIONS: &[&str] = &[
     ".kt",
     ".latex",
     ".lua",
+    ".lyx",
+    ".markua",
     ".md",
+    ".mermaid",
     ".mmd",
     ".odt",
     ".opml",
@@ -1951,8 +1963,10 @@ const DOC_EXTENSIONS: &[&str] = &[
     ".ppt",
     ".pptx",
     ".ps1",
+    ".qmd",
     ".r",
     ".rb",
+    ".rmd",
     ".rs",
     ".rst",
     ".rtf",
@@ -1960,14 +1974,22 @@ const DOC_EXTENSIONS: &[&str] = &[
     ".scriv",
     ".scrivx",
     ".sh",
+    ".srt",
     ".story",
     ".swift",
+    ".tbx",
     ".tex",
+    ".textile",
     ".toml",
     ".ts",
     ".tsx",
+    ".tw",
+    ".twee",
     ".txt",
+    ".typ",
     ".ulysses",
+    ".ulyz",
+    ".vtt",
     ".wpd",
     ".wri",
     ".xls",
@@ -2061,162 +2083,114 @@ pub fn infer_document_path_from_title_with_bundle(
         .map(super::app_registry::needs_title_inference)
         .unwrap_or(false);
 
-    let title_parser = bundle_id
-        .map(super::app_registry::title_parser_for)
-        .unwrap_or(super::app_registry::TitleParserVariant::Generic);
+    let is_terminal = bundle_id.map(is_terminal_bundle).unwrap_or(false);
 
-    // App-specific parsers for apps with known stable title formats.
-    match title_parser {
-        super::app_registry::TitleParserVariant::BBEdit => {
-            // "filename — /full/path/to/file" — the right segment is the absolute path.
-            const EM_DASH_SEP: &str = " \u{2014} ";
-            if let Some(idx) = title.find(EM_DASH_SEP) {
-                let right = title[idx + EM_DASH_SEP.len()..].trim();
-                if looks_like_file_path(right) {
-                    return Some(right.to_string());
-                }
+    // For terminal emulators, strip editor suffixes before parsing.
+    // These markers (" - VIM", " - GNU Emacs", etc.) only appear in terminal
+    // titles, so applying them only to detected terminals avoids false positives
+    // with GUI apps whose names partially overlap (e.g. "Visual" vs "Vis").
+    let mut working: &str = title;
+    if is_terminal {
+        for marker in EDITOR_TITLE_MARKERS {
+            if let Some(idx) = working.find(marker) {
+                working = &working[..idx];
+                break;
             }
         }
-        super::app_registry::TitleParserVariant::Obsidian => {
-            // "Note Title - Vault Name" — left is the note, right is vault (not a path).
-            for sep in &[" - ", " \u{2014} "] {
-                if let Some(idx) = title.find(sep) {
-                    let left = title[..idx].trim();
-                    if looks_like_document_name(left) {
-                        return Some(left.to_string());
-                    }
-                }
-            }
-        }
-        super::app_registry::TitleParserVariant::VSCode
-        | super::app_registry::TitleParserVariant::Nova => {
-            // VS Code: "filename - folder - Visual Studio Code" → first segment.
-            // Nova: "filename · Nova" → split on " · ", take left.
-            let separators: &[&str] = &[" \u{00B7} ", " - ", " \u{2014} "];
-            for sep in separators {
-                if let Some(idx) = title.find(sep) {
-                    let left = title[..idx].trim();
-                    if looks_like_file_path(left)
-                        || (is_title_inferred && looks_like_document_name(left))
-                    {
-                        return Some(left.to_string());
-                    }
-                }
-            }
-        }
-        super::app_registry::TitleParserVariant::TerminalEditor => {
-            // Terminal editors set titles in various formats:
-            // vim:   "filename (+) - VIM" or "filename - Vi IMproved"
-            // nano:  "filename - GNU nano 8.0"
-            // emacs: "filename - GNU Emacs at host"
-            // Terminal.app wraps: "vim — filename — 80×24"
-            //
-            // Strategy: strip known editor suffixes and dimension strings,
-            // then look for a file path or document name in what remains.
-            // Work on &str slices to avoid intermediate String allocations.
-            let editor_markers = [
-                // Vi family
-                " - VIM", " - Vi IMproved", " - GVIM", " - NVIM", " - NeoVim",
-                // Emacs family
-                " - GNU Emacs", " - Emacs", " - XEmacs",
-                // Nano/pico
-                " - GNU nano", " - Pico", " - tilde",
-                // Modern terminal editors
-                " - Helix", " - hx",
-                " - Kakoune", " - kak",
-                " - Micro",
-                " - Amp",
-                " - Vis",
-                // Classic editors
-                " - Joe", " - JOE",
-                " - ne",
-                " - mcedit",
-                " - ed",
-                // GUI editors (when launched from terminal)
-                " - Sublime Text",
-                " - TextMate",
-            ];
-            let mut cleaned: &str = title;
-            for marker in &editor_markers {
-                if let Some(idx) = cleaned.find(marker) {
-                    cleaned = &cleaned[..idx];
-                    break;
-                }
-            }
-            // Strip vim's modified marker: "filename (+)" → "filename"
-            cleaned = cleaned
-                .trim_end_matches(" (+)")
-                .trim_end_matches(" [+]");
-
-            // Terminal.app format: "editor — filename — 80×24"
-            // Split on em-dash, look for file paths in middle segments.
-            const EM_DASH: &str = " \u{2014} ";
-            if cleaned.contains(EM_DASH) {
-                for part in cleaned.split(EM_DASH) {
-                    let part = part.trim();
-                    if looks_like_file_path(part) {
-                        return Some(part.to_string());
-                    }
-                }
-                // Skip dimension-like segments (e.g. "80×24") and editor names
-                for part in cleaned.split(EM_DASH) {
-                    let part = part.trim();
-                    if !part.is_empty()
-                        && !part.contains('\u{00D7}') // × dimension separator
-                        && looks_like_document_name(part)
-                        && !is_terminal_noise(part)
-                    {
-                        return Some(part.to_string());
-                    }
-                }
-            }
-
-            let cleaned = cleaned.trim();
-            if looks_like_file_path(cleaned) {
-                return Some(cleaned.to_string());
-            }
-            if looks_like_document_name(cleaned) {
-                return Some(cleaned.to_string());
-            }
-        }
-        super::app_registry::TitleParserVariant::Generic => {}
+        working = working
+            .trim_end_matches(" (+)")
+            .trim_end_matches(" [+]");
     }
 
-    // Try standard separator-based extraction first.
-    let separators = [" \u{2014} ", " - ", " | "];
+    let accept_bare = is_title_inferred || is_terminal;
+
+    // Split on common separators and evaluate segments.
+    let separators = [" \u{2014} ", " \u{00B7} ", " - ", " | "];
     for sep in &separators {
-        if let Some(idx) = title.find(sep) {
-            let left = title[..idx].trim();
+        if let Some(idx) = working.find(sep) {
+            let left = working[..idx].trim();
             if looks_like_file_path(left) {
                 return Some(left.to_string());
             }
-            // For apps without AXDocument, accept the left segment as a document
-            // name even without a recognised extension, unless it's a skip-title.
-            if is_title_inferred && looks_like_document_name(left) {
+            if accept_bare
+                && looks_like_document_name(left)
+                && !is_terminal_noise(left)
+                && !left.contains('\u{00D7}')
+            {
                 return Some(left.to_string());
             }
-            // Also check remaining segments (right side, further splits).
-            let rest = &title[idx + sep.len()..];
+            // Check remaining segments for absolute paths.
+            let rest = &working[idx + sep.len()..];
             for segment in rest.split(sep) {
                 let segment = segment.trim();
                 if looks_like_file_path(segment) {
                     return Some(segment.to_string());
                 }
             }
+            // For terminal editors: remaining segments may contain the document
+            // name (e.g. "vim — filename — 80×24").
+            if is_terminal {
+                for segment in rest.split(sep) {
+                    let segment = segment.trim();
+                    if !segment.contains('\u{00D7}')
+                        && looks_like_document_name(segment)
+                        && !is_terminal_noise(segment)
+                    {
+                        return Some(segment.to_string());
+                    }
+                }
+            }
         }
     }
 
-    // No separator found — check the whole title.
-    let trimmed = title.trim();
+    // No separator found — check the whole working title.
+    let trimmed = working.trim();
     if looks_like_file_path(trimmed) {
         return Some(trimmed.to_string());
     }
-    if is_title_inferred && looks_like_document_name(trimmed) {
+    if accept_bare && looks_like_document_name(trimmed) {
         return Some(trimmed.to_string());
     }
 
     None
 }
+
+/// Known terminal emulator bundle IDs. Used to detect terminal editor title
+/// formats without relying on the app registry.
+fn is_terminal_bundle(bundle_id: &str) -> bool {
+    bundle_id.eq_ignore_ascii_case("com.apple.Terminal")
+        || bundle_id.eq_ignore_ascii_case("com.googlecode.iterm2")
+        || bundle_id.eq_ignore_ascii_case("com.github.wez.wezterm")
+        || bundle_id.eq_ignore_ascii_case("net.kovidgoyal.kitty")
+        || bundle_id.eq_ignore_ascii_case("io.alacritty")
+        || bundle_id
+            .to_ascii_lowercase()
+            .starts_with("dev.warp.")
+}
+
+/// Editor suffix markers stripped from terminal window titles before parsing.
+const EDITOR_TITLE_MARKERS: &[&str] = &[
+    // Vi family
+    " - VIM", " - Vi IMproved", " - GVIM", " - NVIM", " - NeoVim",
+    // Emacs family
+    " - GNU Emacs", " - Emacs", " - XEmacs",
+    // Nano/pico
+    " - GNU nano", " - Pico", " - tilde",
+    // Modern terminal editors
+    " - Helix", " - hx",
+    " - Kakoune", " - kak",
+    " - Micro",
+    " - Amp",
+    " - Vis",
+    // Classic editors
+    " - Joe", " - JOE",
+    " - ne",
+    " - mcedit",
+    " - ed",
+    // GUI editors (when launched from terminal)
+    " - Sublime Text",
+    " - TextMate",
+];
 
 /// Segments extracted from an Electron-style window title.
 ///
@@ -2253,9 +2227,9 @@ pub fn extract_title_path_hint(
         return None;
     }
 
-    let title_parser = bundle_id
-        .map(super::app_registry::title_parser_for)
-        .unwrap_or(super::app_registry::TitleParserVariant::Generic);
+    let is_title_inferred = bundle_id
+        .map(super::app_registry::needs_title_inference)
+        .unwrap_or(false);
 
     // Collect all segments by splitting on the known separators in order of
     // specificity.  We try em-dash first, then middot (Nova), then hyphen.
@@ -2317,17 +2291,11 @@ pub fn extract_title_path_hint(
             if is_app_suffix(right) {
                 filename = left;
             } else {
-                // Could be "filename — folder" if the app name was already
-                // stripped or this parser variant uses a known structure.
-                match title_parser {
-                    super::app_registry::TitleParserVariant::Obsidian => {
-                        // "Note - Vault": left=note, right=vault (folder hint)
-                        filename = left;
-                        project_folder = Some(right.to_string());
-                    }
-                    _ => {
-                        filename = left;
-                    }
+                filename = left;
+                // For title-inferred apps, the right segment is likely a
+                // project/vault name (e.g. Obsidian "Note - Vault").
+                if is_title_inferred {
+                    project_folder = Some(right.to_string());
                 }
             }
         }

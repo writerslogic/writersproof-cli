@@ -421,7 +421,6 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
                 added_at: std::time::SystemTime::now(),
                 probe_confidence: probe.confidence,
                 default_debounce_ms: None,
-                title_parser: Default::default(),
                 witnessing_mode: Default::default(),
             };
             let mut registry = AppRegistry::load(data_dir);

@@ -163,7 +163,7 @@ fn test_infer_non_electron_app_no_extension() {
 fn test_infer_logseq_title() {
     let result = infer_document_path_from_title_with_bundle(
         "Project Plan - Logseq",
-        Some("com.logseq.logseq"),
+        Some("com.electron.logseq"),
     );
     assert_eq!(result, Some("Project Plan".to_string()));
 }

@@ -167,34 +167,6 @@ pub enum StoragePattern {
     BundleBased,
 }
 
-/// Variant of title-format parser to use for a specific app.
-///
-/// Each variant encodes app-specific knowledge about how the app formats its
-/// window title so the sentinel can extract the document name or path without
-/// falling through to the generic separator loop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
-#[serde(rename_all = "snake_case")]
-pub enum TitleParserVariant {
-    /// Generic separator-based extraction (default).
-    #[default]
-    Generic,
-    /// BBEdit: `"filename — /full/path/to/file"` — the right segment is the absolute path.
-    BBEdit,
-    /// Obsidian: `"Note Title - Vault Name"` — left is the note, right is vault (not a path).
-    Obsidian,
-    /// VS Code / VS Code Insiders: `"filename - folder - Visual Studio Code"` — first segment only.
-    VSCode,
-    /// Nova: `"filename · Nova"` — split on `" · "`, take left.
-    Nova,
-    /// Terminal emulators running editors. Parses titles like:
-    /// - `"filename (+) - VIM"`, `"filename - GNU nano 8.0"`
-    /// - `"vim — filename — 80×24"` (Terminal.app format)
-    /// - `"filename - GNU Emacs at host"`
-    TerminalEditor,
-}
-
-
 /// Confidence level from auto-discovery probing.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -229,10 +201,6 @@ pub struct WritingApp {
     /// fire at high frequency; `BundleBased` apps need a longer window (≈300 ms)
     /// to avoid triggering on intermediate compile/save operations.
     pub default_debounce_ms: Option<u64>,
-    /// Which title-format parser to use when inferring the document path from
-    /// the window title. `Generic` covers the common `"name - App"` pattern;
-    /// app-specific variants handle known stable formats.
-    pub title_parser: TitleParserVariant,
     /// How the engine witnesses content for this app. `Auto` selects based on
     /// `storage`. Users can override per-app in settings.
     pub witnessing_mode: WitnessingMode,
@@ -248,8 +216,6 @@ pub struct UserWritingApp {
     pub needs_title_inference: bool,
     #[serde(default)]
     pub default_debounce_ms: Option<u64>,
-    #[serde(default)]
-    pub title_parser: TitleParserVariant,
     #[serde(default)]
     pub witnessing_mode: WitnessingMode,
     /// When this entry was added (Unix timestamp in JSON).
@@ -270,7 +236,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -282,7 +248,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple iWork ────────────────────────────────────────────────────────
@@ -293,7 +259,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Mobile Documents/com~apple~Pages/Documents"],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Ulysses ────────────────────────────────────────────────────────────
@@ -307,7 +273,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Bear ────────────────────────────────────────────────────────────────
@@ -320,7 +286,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── iA Writer ──────────────────────────────────────────────────────────
@@ -331,7 +297,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Mobile Documents/pro~writer~mac/Documents"],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Scrivener ──────────────────────────────────────────────────────────
@@ -342,18 +308,26 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: Some(300),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Vellum ─────────────────────────────────────────────────────────────
     WritingApp {
-        bundle_id: "com.180g.vellum",
+        bundle_id: "co.180g.Vellum",
         display_name: "Vellum",
-        storage: StoragePattern::BundleBased,
+        storage: StoragePattern::FileBased,
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: Some(300),
-        title_parser: TitleParserVariant::Generic,
+        witnessing_mode: WitnessingMode::Auto,
+    },
+    WritingApp {
+        bundle_id: "com.180g.vellum",
+        display_name: "Vellum",
+        storage: StoragePattern::FileBased,
+        container_paths: &[],
+        needs_title_inference: false,
+        default_debounce_ms: Some(300),
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Affinity Publisher ─────────────────────────────────────────────────
@@ -364,7 +338,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -374,7 +348,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Drafts ─────────────────────────────────────────────────────────────
@@ -388,7 +362,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
@@ -401,7 +375,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Highland 2 ─────────────────────────────────────────────────────────
@@ -412,7 +386,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Final Draft ────────────────────────────────────────────────────────
@@ -423,7 +397,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -433,7 +407,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -443,7 +417,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -453,7 +427,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Fade In ────────────────────────────────────────────────────────────
@@ -464,7 +438,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Hemingway Editor ───────────────────────────────────────────────────
@@ -475,7 +449,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true, // Electron; exposes limited AX info
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -485,7 +459,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── MarkText ───────────────────────────────────────────────────────────
@@ -496,7 +470,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Obsidian ────────────────────────────────────────────────────────────
@@ -507,7 +481,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Obsidian,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Typora ─────────────────────────────────────────────────────────────
@@ -518,7 +492,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Zettlr ─────────────────────────────────────────────────────────────
@@ -529,7 +503,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Logseq ─────────────────────────────────────────────────────────────
@@ -540,7 +514,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Notion ─────────────────────────────────────────────────────────────
@@ -553,7 +527,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -565,7 +539,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Figma ──────────────────────────────────────────────────────────────
@@ -576,7 +550,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Cursor ─────────────────────────────────────────────────────────────
@@ -587,7 +561,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── VS Code ────────────────────────────────────────────────────────────
@@ -598,7 +572,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -608,7 +582,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Noteship ───────────────────────────────────────────────────────────
@@ -619,7 +593,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Notebooks ──────────────────────────────────────────────────────────
@@ -630,7 +604,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Mobile Documents/com~alfonsschmid~Notebooks/Documents"],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Mellel ─────────────────────────────────────────────────────────────
@@ -641,7 +615,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Nisus Writer ───────────────────────────────────────────────────────
@@ -652,7 +626,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── TextEdit (built-in) ────────────────────────────────────────────────
@@ -663,7 +637,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── BBEdit ─────────────────────────────────────────────────────────────
@@ -674,7 +648,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::BBEdit,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Ghostwriter ────────────────────────────────────────────────────────
@@ -685,7 +659,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Manuskript ─────────────────────────────────────────────────────────
@@ -696,7 +670,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── LibreOffice Writer ─────────────────────────────────────────────────
@@ -707,7 +681,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Marked 2 (preview app; writers use it with other editors) ──────────
@@ -718,7 +692,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Taskpaper ──────────────────────────────────────────────────────────
@@ -729,7 +703,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── FoldingText ────────────────────────────────────────────────────────
@@ -740,7 +714,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Byword ─────────────────────────────────────────────────────────────
@@ -751,7 +725,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Mobile Documents/com~metaclassy~byword/Documents"],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Markdown Editor ────────────────────────────────────────────────────
@@ -762,7 +736,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Coppice ────────────────────────────────────────────────────────────
@@ -773,7 +747,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Bike Outliner ──────────────────────────────────────────────────────
@@ -784,7 +758,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── OmniOutliner ───────────────────────────────────────────────────────
@@ -795,7 +769,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Celtx (web, but has a desktop wrapper) ─────────────────────────────
@@ -806,7 +780,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple Notes ────────────────────────────────────────────────────────
@@ -820,7 +794,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Sublime Text ───────────────────────────────────────────────────────
@@ -831,7 +805,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -841,7 +815,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Nova ───────────────────────────────────────────────────────────────
@@ -852,7 +826,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Nova,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Storyist ───────────────────────────────────────────────────────────
@@ -863,7 +837,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── WriteRoom ──────────────────────────────────────────────────────────
@@ -874,7 +848,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── OmmWriter ──────────────────────────────────────────────────────────
@@ -885,7 +859,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true, // limited AX support
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Adobe InDesign ─────────────────────────────────────────────────────
@@ -896,7 +870,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Keynote ────────────────────────────────────────────────────────────
@@ -907,7 +881,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Mobile Documents/com~apple~Keynote/Documents"],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── PowerPoint ─────────────────────────────────────────────────────────
@@ -918,7 +892,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Apple Mail ─────────────────────────────────────────────────────────
@@ -929,7 +903,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true, // compose windows only expose subject
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Microsoft Outlook ──────────────────────────────────────────────────
@@ -940,7 +914,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Group Containers/UBF8T346G9.Office/Outlook"],
         needs_title_inference: true, // compose windows only expose subject
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── TeXShop ────────────────────────────────────────────────────────────
@@ -951,7 +925,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Texpad ─────────────────────────────────────────────────────────────
@@ -962,7 +936,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Craft ──────────────────────────────────────────────────────────────
@@ -975,7 +949,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Day One ────────────────────────────────────────────────────────────
@@ -988,7 +962,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── MacDown ────────────────────────────────────────────────────────────
@@ -999,7 +973,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── GoodNotes ──────────────────────────────────────────────────────────
@@ -1012,7 +986,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── CotEditor ──────────────────────────────────────────────────────────
@@ -1023,7 +997,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── MacVim ─────────────────────────────────────────────────────────────
@@ -1034,7 +1008,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Zed ────────────────────────────────────────────────────────────────
@@ -1045,7 +1019,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1055,7 +1029,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Terminal Emulators ────────────────────────────────────────────────
@@ -1066,7 +1040,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::TerminalEditor,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1076,7 +1050,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::TerminalEditor,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1086,7 +1060,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::TerminalEditor,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1096,7 +1070,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::TerminalEditor,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1106,7 +1080,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::TerminalEditor,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1116,7 +1090,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::TerminalEditor,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     // ── Opaque Container Apps (content-level witnessing) ──────────────────
@@ -1127,7 +1101,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: Some(300),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -1137,7 +1111,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: Some(300),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -1149,7 +1123,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     // ── Additional Writing & Note Apps ────────────────────────────────────
@@ -1160,7 +1134,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1170,7 +1144,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1180,7 +1154,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1190,7 +1164,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1200,7 +1174,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Reminders"],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1212,7 +1186,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: true,
         default_debounce_ms: Some(100),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -1222,7 +1196,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &["Library/Containers/com.apple.freeform/Data"],
         needs_title_inference: true,
         default_debounce_ms: Some(100),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::ContentLevel,
     },
     WritingApp {
@@ -1232,7 +1206,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1242,7 +1216,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1252,7 +1226,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1262,7 +1236,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1272,7 +1246,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1282,7 +1256,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1292,7 +1266,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::VSCode,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1302,7 +1276,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1312,7 +1286,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1322,7 +1296,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1334,7 +1308,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         ],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1344,7 +1318,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
@@ -1354,7 +1328,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
-        title_parser: TitleParserVariant::Generic,
+
         witnessing_mode: WitnessingMode::Auto,
     },
 ];
@@ -1413,6 +1387,16 @@ const NON_WRITING_BUNDLES: &[&str] = &[
     "com.lastpass.LastPass",
     "com.vmware.fusion",
     "com.parallels.desktop.console",
+    "com.apple.TV",
+    "com.apple.podcasts",
+    "com.apple.Preview",
+    "com.apple.FaceTime",
+    "us.zoom.xos",
+    "com.microsoft.teams2",
+    "com.tinyspeck.slackmacgap",
+    "com.apple.ScreenSharing",
+    "com.apple.QuickTimePlayerX",
+    "com.apple.Image_Capture",
 ];
 
 #[derive(Debug, Clone)]
@@ -1507,7 +1491,7 @@ pub fn flush_discovered_apps() {
             container_paths: Vec::new(),
             needs_title_inference: app.needs_title_inference,
             default_debounce_ms: None,
-            title_parser: TitleParserVariant::Generic,
+    
             witnessing_mode: WitnessingMode::Auto,
             added_at: SystemTime::now(),
             probe_confidence: app.probe_confidence,
@@ -1536,21 +1520,24 @@ pub fn install_global(registry: AppRegistry) {
 ///
 /// Checks user-added apps (via global registry) first, then builtins.
 pub fn lookup(bundle_id: &str) -> Option<&'static WritingApp> {
+    let exact = KNOWN_WRITING_APPS
+        .iter()
+        .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id));
+    if exact.is_some() {
+        return exact;
+    }
+    let lower = bundle_id.to_ascii_lowercase();
+    let lookup_prefix = lower.rsplit_once('.').map(|(p, _)| p)?;
     KNOWN_WRITING_APPS
         .iter()
-        .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
-}
-
-/// Return the `TitleParserVariant` for a bundle ID.
-///
-/// Checks the global registry (user overrides) first, then builtins.
-pub fn title_parser_for(bundle_id: &str) -> TitleParserVariant {
-    if let Some(reg) = GLOBAL_REGISTRY.get() {
-        return reg.title_parser_for(bundle_id);
-    }
-    lookup(bundle_id)
-        .map(|a| a.title_parser)
-        .unwrap_or(TitleParserVariant::Generic)
+        .filter(|a| {
+            let app_lower = a.bundle_id.to_ascii_lowercase();
+            app_lower
+                .rsplit_once('.')
+                .map(|(p, _)| p == lookup_prefix)
+                .unwrap_or(false)
+        })
+        .max_by_key(|a| a.bundle_id.len())
 }
 
 /// Return paths (relative to `$HOME`) of all writing-app containers that
@@ -1747,17 +1734,6 @@ impl AppRegistry {
             .find(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
     }
 
-    /// Return the `TitleParserVariant` for a bundle ID, checking user apps
-    /// first (user overrides builtin) then builtins.
-    pub fn title_parser_for(&self, bundle_id: &str) -> TitleParserVariant {
-        if let Some(user_app) = self.lookup_user(bundle_id) {
-            return user_app.title_parser;
-        }
-        self.lookup_builtin(bundle_id)
-            .map(|a| a.title_parser)
-            .unwrap_or(TitleParserVariant::Generic)
-    }
-
     /// Container watch paths from both built-in and user apps.
     pub fn auto_watch_paths(&self) -> Vec<PathBuf> {
         let Some(home) = dirs::home_dir() else {
@@ -1930,7 +1906,7 @@ impl AppAdapter for UlyssesAdapter {
         "com.ulyssesapp.mac"
     }
     fn is_compile_process(&self, process_name: &str) -> bool {
-        process_name == "Ulysses"
+        process_name == "Ulysses" || process_name == "Ulysses Publishing"
     }
     fn internal_docs_path(&self) -> Option<&str> {
         None
@@ -1963,9 +1939,74 @@ impl AppAdapter for TinderboxAdapter {
     }
 }
 
+struct Highland2Adapter;
+impl AppAdapter for Highland2Adapter {
+    fn bundle_id(&self) -> &str {
+        "com.quoteunquoteapps.highland2"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Highland 2"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
+struct PagesAdapter;
+impl AppAdapter for PagesAdapter {
+    fn bundle_id(&self) -> &str {
+        "com.apple.iWork.Pages"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Pages"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
+struct ObsidianAdapter;
+impl AppAdapter for ObsidianAdapter {
+    fn bundle_id(&self) -> &str {
+        "md.obsidian"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Obsidian" || process_name == "Obsidian Helper"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
+struct BearAdapter;
+impl AppAdapter for BearAdapter {
+    fn bundle_id(&self) -> &str {
+        "net.shinyfrog.bear"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "Bear"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
+struct DEVONthinkAdapter;
+impl AppAdapter for DEVONthinkAdapter {
+    fn bundle_id(&self) -> &str {
+        "com.devon-technologies.think3"
+    }
+    fn is_compile_process(&self, process_name: &str) -> bool {
+        process_name == "DEVONthink 3" || process_name == "DEVONagent"
+    }
+    fn internal_docs_path(&self) -> Option<&str> {
+        None
+    }
+}
+
 /// Return a boxed `AppAdapter` for the given bundle ID, or `None` if no adapter exists.
 pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
-    match bundle_id {
+    let exact: Option<Box<dyn AppAdapter>> = match bundle_id {
         id if id.eq_ignore_ascii_case("com.literatureandlatte.scrivener3") => {
             Some(Box::new(ScrivenerAdapter))
         }
@@ -1977,12 +2018,36 @@ pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
             Some(Box::new(FinalDraftAdapter))
         }
         id if id.eq_ignore_ascii_case("com.ulyssesapp.mac") => Some(Box::new(UlyssesAdapter)),
-        id if id.eq_ignore_ascii_case("com.180g.vellum") => Some(Box::new(VellumAdapter)),
+        id if id.eq_ignore_ascii_case("co.180g.Vellum")
+            || id.eq_ignore_ascii_case("com.180g.vellum") =>
+        {
+            Some(Box::new(VellumAdapter))
+        }
         id if id.starts_with("com.eastgate.Tinderbox") => {
             Some(Box::new(TinderboxAdapter))
         }
+        id if id.eq_ignore_ascii_case("com.quoteunquoteapps.highland2") => {
+            Some(Box::new(Highland2Adapter))
+        }
+        id if id.eq_ignore_ascii_case("com.apple.iWork.Pages") => {
+            Some(Box::new(PagesAdapter))
+        }
+        id if id.eq_ignore_ascii_case("md.obsidian") => Some(Box::new(ObsidianAdapter)),
+        id if id.eq_ignore_ascii_case("net.shinyfrog.bear") => Some(Box::new(BearAdapter)),
+        id if id.eq_ignore_ascii_case("com.devon-technologies.think3") => {
+            Some(Box::new(DEVONthinkAdapter))
+        }
         _ => None,
+    };
+    if exact.is_some() {
+        return exact;
     }
+
+    let lower = bundle_id.to_ascii_lowercase();
+    if lower.starts_with("com.finaldraft.mac.") {
+        return Some(Box::new(FinalDraftAdapter));
+    }
+    None
 }
 
 #[cfg(test)]
@@ -2077,7 +2142,7 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::High,
             default_debounce_ms: None,
-            title_parser: TitleParserVariant::Generic,
+    
             witnessing_mode: WitnessingMode::Auto,
         };
         let json = serde_json::to_string(&app).unwrap();
@@ -2162,7 +2227,7 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
-            title_parser: TitleParserVariant::Generic,
+    
             witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
@@ -2181,7 +2246,7 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
-            title_parser: TitleParserVariant::Generic,
+    
             witnessing_mode: WitnessingMode::Auto,
         });
         assert!(result.is_err());
@@ -2203,7 +2268,7 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Medium,
             default_debounce_ms: None,
-            title_parser: TitleParserVariant::Generic,
+    
             witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
@@ -2226,7 +2291,7 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
-            title_parser: TitleParserVariant::Generic,
+    
             witnessing_mode: WitnessingMode::Auto,
         })
         .unwrap();
@@ -2264,7 +2329,7 @@ mod tests {
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::Low,
             default_debounce_ms: None,
-            title_parser: TitleParserVariant::Generic,
+    
             witnessing_mode: WitnessingMode::Auto,
         };
         reg.add_user_app(app()).unwrap();
@@ -2305,7 +2370,7 @@ mod tests {
     fn test_vellum_registered() {
         assert!(lookup("com.180g.vellum").is_some());
         let app = lookup("com.180g.vellum").unwrap();
-        assert_eq!(app.storage, StoragePattern::BundleBased);
+        assert_eq!(app.storage, StoragePattern::FileBased);
         assert!(!app.needs_title_inference);
     }
 
