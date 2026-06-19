@@ -419,6 +419,13 @@ fn inject_keystroke_inner_v3(
             if semantic.is_content_producing() {
                 session.keystroke_count = session.keystroke_count.saturating_add(increment);
             }
+            if let Some(ctx) = session.paste_context.last_mut() {
+                if timestamp_ns < ctx.context_window_end {
+                    ctx.keystroke_count_after_paste = ctx
+                        .keystroke_count_after_paste
+                        .saturating_add(increment as usize);
+                }
+            }
             log::debug!(
                 "[FFI_INJECT] {:?} semantic={:?} total={}",
                 path,

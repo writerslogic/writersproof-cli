@@ -50,13 +50,13 @@ use crate::forensics::constants::KNOWN_AI_APP_BUNDLE_IDS;
 fn default_monitored_apps() -> Vec<String> {
     vec![
         "com.apple.Notes".to_string(),
-        "com.apple.Pages".to_string(),
+        "com.apple.iWork.Pages".to_string(),
         "com.microsoft.Word".to_string(),
-        "com.google.docs".to_string(),
-        "com.ulysses".to_string(),
+        "com.ulyssesapp.mac".to_string(),
         "com.literatureandlatte.scrivener3".to_string(),
-        "com.dayoneapp".to_string(),
-        "com.bear".to_string(),
+        "net.shinyfrog.bear".to_string(),
+        "com.bloombuilt.dayone-mac".to_string(),
+        "md.obsidian".to_string(),
     ]
 }
 
@@ -478,8 +478,7 @@ impl ClipboardMonitor {
         if bundle_id.is_empty() {
             return Ok(false);
         }
-        let apps = self.monitored_apps.read_recover();
-        Ok(apps.iter().any(|app| app == bundle_id))
+        Ok(crate::sentinel::app_registry::is_known(bundle_id))
     }
 }
 

@@ -64,6 +64,33 @@ pub const KNOWN_AI_APP_BUNDLE_IDS: &[&str] = &[
     "com.cohere.coral",
 ];
 
+const AI_HEURISTIC_SIGNALS: &[&str] = &[
+    "openai", "chatgpt", "claude", "anthropic", "gemini", "copilot",
+    "gpt", "llm", "perplexity", "mistral", "cohere", "bard",
+];
+
+pub fn is_likely_ai_tool(bundle_id: &str, window_title: &str) -> bool {
+    if KNOWN_AI_APP_BUNDLE_IDS
+        .iter()
+        .any(|id| id.eq_ignore_ascii_case(bundle_id))
+    {
+        return true;
+    }
+    let lower_bid = bundle_id.to_ascii_lowercase();
+    let lower_title = window_title.to_ascii_lowercase();
+    let matched = AI_HEURISTIC_SIGNALS
+        .iter()
+        .any(|s| lower_bid.contains(s) || lower_title.contains(s));
+    if matched {
+        log::info!(
+            "Heuristic AI tool match: {} (window: {})",
+            bundle_id,
+            window_title
+        );
+    }
+    matched
+}
+
 /// Browser bundle IDs that may host AI chat interfaces.
 pub const BROWSER_BUNDLE_IDS: &[&str] = &[
     "com.apple.Safari",

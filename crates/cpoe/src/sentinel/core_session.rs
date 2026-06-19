@@ -267,7 +267,7 @@ impl Sentinel {
             sessions.get(path).map(|s| {
                 (
                     s.session_id.clone(),
-                    s.paste_context.is_some(),
+                    !s.paste_context.is_empty(),
                     s.app_bundle_id.clone(),
                     s.window_title.reveal().to_string(),
                     s.transcription_suspicion.ecology_score,

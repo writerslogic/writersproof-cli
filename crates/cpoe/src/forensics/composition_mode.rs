@@ -110,6 +110,7 @@ pub struct PasteContentBreakdown {
     pub media_count: usize,
     pub formatting_only_count: usize,
     pub mixed_count: usize,
+    pub total_chars_pasted: usize,
 }
 
 /// Complete composition mode analysis.
@@ -184,7 +185,12 @@ fn classify_paste(paste: &PasteContext) -> (PasteClass, f64) {
         return (PasteClass::Domesticated, 0.0);
     }
 
-    let class = if paste.keystroke_count_after_paste >= 20 {
+    let domestication_threshold = if paste.paste_char_count > 0 {
+        (paste.paste_char_count / 50).max(20).min(200)
+    } else {
+        20
+    };
+    let class = if paste.keystroke_count_after_paste >= domestication_threshold {
         PasteClass::Domesticated
     } else if paste.keystroke_count_after_paste <= 5 {
         PasteClass::Veneer
@@ -306,6 +312,7 @@ pub fn analyze_composition_mode(
             PasteContentKind::FormattingOnly => breakdown.formatting_only_count += 1,
             PasteContentKind::Mixed => breakdown.mixed_count += 1,
         }
+        breakdown.total_chars_pasted += paste.paste_char_count;
 
         if ai_consumed_paste.get(i).copied().unwrap_or(false) {
             continue;
@@ -424,6 +431,7 @@ mod tests {
             keystroke_count_after_paste: keystroke_count,
             source,
             content_kind,
+            paste_char_count: 0,
         }
     }
 
@@ -465,6 +473,7 @@ mod tests {
                 keystroke_count_after_paste: 3,
                 source: PasteSource::External,
                 content_kind: PasteContentKind::Prose,
+                paste_char_count: 0,
             },
             PasteContext {
                 paste_time: (SystemTime::UNIX_EPOCH + Duration::from_secs(1045))
@@ -476,6 +485,7 @@ mod tests {
                 keystroke_count_after_paste: 2,
                 source: PasteSource::External,
                 content_kind: PasteContentKind::Prose,
+                paste_char_count: 0,
             },
         ];
 
@@ -553,6 +563,7 @@ mod tests {
             keystroke_count_after_paste: 3,
             source: PasteSource::External,
             content_kind: PasteContentKind::Prose,
+            paste_char_count: 0,
         }];
         let (cycles, consumed) = count_ai_cycles(&switches, &pastes);
         assert_eq!(cycles, 1, "one paste should match at most one cycle");
@@ -589,6 +600,7 @@ mod tests {
                     keystroke_count_after_paste: 1, // veneer-level
                     source: PasteSource::External,
                     content_kind: PasteContentKind::Prose,
+                    paste_char_count: 0,
                 }
             })
             .collect();
@@ -690,6 +702,7 @@ mod tests {
                     keystroke_count_after_paste: 1,
                     source: PasteSource::External,
                     content_kind: PasteContentKind::StructuredData,
+                    paste_char_count: 0,
                 }
             })
             .collect();

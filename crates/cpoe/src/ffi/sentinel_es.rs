@@ -53,64 +53,108 @@ pub fn ffi_sentinel_es_file_write(path: String, pid: i32, signing_id: String) ->
         .unwrap_or_default()
         .as_nanos() as i64;
 
+    let process_name = signing_id.split(':').next_back().unwrap_or(&signing_id);
+
+    // Two-tier export detection:
+    // 1. High-confidence: adapter confirms this process is a compile/export process.
+    // 2. Standard: any session focused within the correlation window.
+    let mut standard_candidates: Vec<(String, String, String)> = Vec::new();
+
     for session in sentinel.sessions() {
-        // Only bundle sessions can produce compile exports
-        if session.segment_counts.is_empty() && session.scrivener_project_map.is_none() {
-            continue;
+        let session_bid = session.app_bundle_id.as_str();
+
+        // High-confidence path: bundle session with adapter match
+        if let Some(adapter) = crate::sentinel::app_registry::adapter_for_bundle(session_bid) {
+            if adapter.is_compile_process(process_name) {
+                let bundle_hash = session
+                    .scrivener_project_map
+                    .as_ref()
+                    .map(|m| m.scrivx_hash.clone())
+                    .or_else(|| session.current_hash.clone())
+                    .unwrap_or_default();
+
+                let file_hash = crate::sentinel::helpers::compute_file_hash(&path)
+                    .unwrap_or_default();
+
+                if let Some(mut attestation) = crate::sentinel::helpers::detect_export_event(
+                    &session,
+                    &path,
+                    &file_hash,
+                    &bundle_hash,
+                    now_ns,
+                    &signing_id,
+                ) {
+                    attestation.correlation_method = "high".to_string();
+                    log::info!(
+                        "Manuscript export detected (adapter match): {} -> {} (session {})",
+                        session.path,
+                        path,
+                        session.session_id
+                    );
+                    let session_path = session.path.clone();
+                    let session_id = session.session_id.clone();
+                    sentinel.record_export_attestation(&session_path, attestation);
+                    let _ = sentinel.session_events_tx().send(
+                        crate::sentinel::types::SessionEvent {
+                            event_type: crate::sentinel::types::SessionEventType::ExportDetected,
+                            session_id,
+                            document_path: session_path,
+                            timestamp: SystemTime::now(),
+                            hash: Some(file_hash),
+                        },
+                    );
+                    return true;
+                }
+            }
         }
 
-        // Check if the writing process matches this session's app
-        let session_bid = session.app_bundle_id.as_str();
-        if let Some(adapter) = crate::sentinel::app_registry::adapter_for_bundle(session_bid) {
-            // signing_id format from ES is "teamID:bundleID" or just the process name
-            let process_name = signing_id.split(':').next_back().unwrap_or(&signing_id);
-            if !adapter.is_compile_process(process_name) {
-                continue;
-            }
+        // Collect for standard path (all sessions regardless of adapter/bundle)
+        let bundle_hash = session
+            .scrivener_project_map
+            .as_ref()
+            .map(|m| m.scrivx_hash.clone())
+            .or_else(|| session.current_hash.clone())
+            .unwrap_or_default();
+        standard_candidates.push((
+            session.path.clone(),
+            session.session_id.clone(),
+            bundle_hash,
+        ));
+    }
 
-            let bundle_hash = session
-                .scrivener_project_map
-                .as_ref()
-                .map(|m| m.scrivx_hash.clone())
-                .or_else(|| session.current_hash.clone())
-                .unwrap_or_default();
-
-            let file_hash = crate::sentinel::helpers::compute_file_hash(&path)
-                .unwrap_or_default();
-
-            if let Some(attestation) = crate::sentinel::helpers::detect_export_event(
-                &session,
-                &path,
-                &file_hash,
-                &bundle_hash,
-                now_ns,
-            ) {
-                log::info!(
-                    "Manuscript export detected: {} -> {} (session {})",
-                    session.path,
-                    path,
-                    session.session_id
-                );
-
-                let session_path = session.path.clone();
-                let session_id = session.session_id.clone();
-
-                // Store the attestation in the session under lock
-                sentinel.record_export_attestation(&session_path, attestation);
-
-                // Emit ExportDetected session event
-                let _ = sentinel.session_events_tx().send(
-                    crate::sentinel::types::SessionEvent {
-                        event_type: crate::sentinel::types::SessionEventType::ExportDetected,
-                        session_id,
-                        document_path: session_path,
-                        timestamp: SystemTime::now(),
-                        hash: Some(file_hash),
-                    },
-                );
-
-                return true;
-            }
+    // Standard path: try all sessions without requiring an adapter
+    let file_hash = crate::sentinel::helpers::compute_file_hash(&path)
+        .unwrap_or_default();
+    for (session_path, session_id, bundle_hash) in standard_candidates {
+        let session = match sentinel.session(&session_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if let Some(attestation) = crate::sentinel::helpers::detect_export_event(
+            &session,
+            &path,
+            &file_hash,
+            &bundle_hash,
+            now_ns,
+            &signing_id,
+        ) {
+            log::info!(
+                "Manuscript export detected: {} -> {} (session {})",
+                session_path,
+                path,
+                session_id
+            );
+            sentinel.record_export_attestation(&session_path, attestation);
+            let _ = sentinel.session_events_tx().send(
+                crate::sentinel::types::SessionEvent {
+                    event_type: crate::sentinel::types::SessionEventType::ExportDetected,
+                    session_id,
+                    document_path: session_path,
+                    timestamp: SystemTime::now(),
+                    hash: Some(file_hash),
+                },
+            );
+            return true;
         }
     }
 

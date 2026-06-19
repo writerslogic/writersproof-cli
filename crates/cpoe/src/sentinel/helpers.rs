@@ -822,10 +822,10 @@ pub fn handle_change_event_sync(
                         &prev_hash,
                         &new_hash,
                         &session.app_bundle_id,
-                        &session.app_bundle_id,
+                        "",
                     );
                     if matches!(context, super::types::KeystrokeContext::PastedContent)
-                        && confidence >= 0.80
+                        && confidence >= 0.92
                     {
                         log::info!(
                             "Paste boundary detected for {}: confidence={:.2}",
@@ -837,7 +837,8 @@ pub fn handle_change_event_sync(
                             current_ts,
                             5000,
                             super::types::PasteSource::Unknown,
-                            super::types::PasteContentKind::Prose,
+                            super::types::PasteContentKind::default(),
+                            0,
                         );
                     }
                     session.current_hash = Some(hash.clone());
@@ -1127,11 +1128,46 @@ fn extract_bundle_package_root(path: &str) -> Option<String> {
     None
 }
 
+pub fn is_icloud_placeholder(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    name.starts_with('.') && name.ends_with(".icloud")
+}
+
+pub fn is_icloud_conflict_copy(path: &Path) -> bool {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    if let Some(paren_start) = stem.rfind(" (") {
+        let inside = &stem[paren_start + 2..];
+        if let Some(close) = inside.rfind(')') {
+            let content = &inside[..close];
+            if let Some(dash_pos) = content.rfind(" - ") {
+                let date_part = &content[dash_pos + 3..];
+                return date_part.len() == 10
+                    && date_part.as_bytes().get(4) == Some(&b'-')
+                    && date_part.as_bytes().get(7) == Some(&b'-')
+                    && date_part.bytes().filter(|b| b.is_ascii_digit()).count() == 8;
+            }
+        }
+    }
+    false
+}
+
 /// SHA-256 hash of a file, returned as a hex string.
 ///
 /// Uses `O_NOFOLLOW` to prevent symlink-following TOCTOU attacks.
 /// For general-purpose hashing (follows symlinks), use [`crate::crypto::hash_file`].
 pub fn compute_file_hash(path: &str) -> std::io::Result<String> {
+    if is_icloud_placeholder(Path::new(path)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "iCloud placeholder file, not real document content",
+        ));
+    }
     let file = open_nofollow(path)?;
     let meta = file.metadata()?;
     if meta.len() > MAX_HASH_FILE_SIZE {
@@ -1499,17 +1535,46 @@ pub fn update_keystroke_context_window(
     context_window_ms: u64,
     source: super::types::PasteSource,
     content_kind: super::types::PasteContentKind,
+    paste_char_count: usize,
 ) {
     let window_nanos = context_window_ms
         .checked_mul(1_000_000)
         .and_then(|w| i64::try_from(w).ok())
         .unwrap_or(i64::MAX);
-    session.paste_context = Some(super::types::PasteContext {
+    let window_end = paste_time.saturating_add(window_nanos);
+
+    // Merge with the most recent paste if within 2 seconds (dedup Rust + FFI paths).
+    if let Some(existing) = session.paste_context.last_mut() {
+        let delta_ns = paste_time
+            .saturating_sub(existing.paste_time)
+            .unsigned_abs();
+        if delta_ns < 2_000_000_000 {
+            if source != super::types::PasteSource::Unknown {
+                existing.source = source;
+            }
+            if content_kind != super::types::PasteContentKind::Prose
+                || existing.content_kind == super::types::PasteContentKind::Prose
+            {
+                existing.content_kind = content_kind;
+            }
+            existing.context_window_end = existing.context_window_end.max(window_end);
+            if paste_char_count > 0 {
+                existing.paste_char_count = paste_char_count;
+            }
+            return;
+        }
+    }
+
+    if session.paste_context.len() >= 100 {
+        session.paste_context.remove(0);
+    }
+    session.paste_context.push(super::types::PasteContext {
         paste_time,
-        context_window_end: paste_time.saturating_add(window_nanos),
+        context_window_end: window_end,
         keystroke_count_after_paste: 0,
         source,
         content_kind,
+        paste_char_count,
     });
 }
 
@@ -1547,10 +1612,11 @@ pub fn classify_paste_source(
 
 /// Check if current keystroke is within paste context window.
 pub fn is_within_paste_window(session: &super::types::DocumentSession, current_time: i64) -> bool {
-    match &session.paste_context {
-        Some(ctx) => current_time < ctx.context_window_end,
-        None => false,
-    }
+    session
+        .paste_context
+        .last()
+        .map(|ctx| current_time < ctx.context_window_end)
+        .unwrap_or(false)
 }
 
 /// Maximum time allowed for git context capture before abandoning.
@@ -1882,14 +1948,19 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     let context_note = if !path.starts_with("shadow://") && !path.starts_with("title://") {
         let file_path = Path::new(path);
         let mut extra = Vec::new();
-        if let Some(wc) = extract_word_count(file_path) {
-            extra.push(format!("wc:{wc}"));
+        if !is_icloud_placeholder(file_path) {
+            if let Some(wc) = extract_word_count(file_path) {
+                extra.push(format!("wc:{wc}"));
+            }
+            if has_track_changes(file_path) {
+                extra.push("track_changes:true".to_string());
+            }
+            if let Some((key, fp)) = structural_fingerprint(file_path) {
+                extra.push(format!("{key}:{fp}"));
+            }
         }
-        if has_track_changes(file_path) {
-            extra.push("track_changes:true".to_string());
-        }
-        if let Some(fp) = parse_fdx_scene_fingerprint(file_path) {
-            extra.push(format!("fdx_scene_fp:{fp}"));
+        if is_icloud_conflict_copy(file_path) {
+            extra.push("icloud_conflict:true".to_string());
         }
         if extra.is_empty() {
             context_note
@@ -2280,6 +2351,14 @@ pub fn extract_word_count(path: &Path) -> Option<u64> {
         "txt" | "md" => extract_word_count_plaintext(path),
         "rtf" => extract_word_count_rtf(path),
         "docx" => extract_word_count_docx(path),
+        "fdx" => extract_word_count_fdx(path),
+        "odt" => extract_word_count_odt(path),
+        "fountain" => extract_word_count_fountain(path),
+        "tex" | "latex" => extract_word_count_tex(path),
+        "opml" => extract_word_count_opml(path),
+        "org" => extract_word_count_org(path),
+        "rst" => extract_word_count_rst(path),
+        "adoc" | "asciidoc" => extract_word_count_asciidoc(path),
         _ => None,
     }
 }
@@ -2407,10 +2486,292 @@ fn strip_rtf(rtf: &str) -> String {
 /// Extract word count from a `.docx` file by reading `word/document.xml` from
 /// the zip archive.
 fn extract_word_count_docx(path: &Path) -> Option<u64> {
-    let xml = read_docx_entry(path, "word/document.xml")?;
+    let xml = read_zip_entry_as_str(path, "word/document.xml")?;
     let text = strip_xml_tags(&xml);
     let count = text.split_whitespace().count();
     Some(count as u64)
+}
+
+/// Count words in a Final Draft `.fdx` file (ZIP-wrapped or plain XML).
+///
+/// Extracts text content from `<Text>` elements inside `<Paragraph>` blocks,
+/// which covers dialogue, action, and scene headings.
+fn extract_word_count_fdx(path: &Path) -> Option<u64> {
+    let xml = read_xml_content(path, ".fdx")?;
+    let text = strip_xml_tags(&xml);
+    let count = text.split_whitespace().count();
+    Some(count as u64)
+}
+
+fn extract_word_count_odt(path: &Path) -> Option<u64> {
+    let xml = read_zip_entry_as_str(path, "content.xml")?;
+    let text = strip_xml_tags(&xml);
+    let count = text.split_whitespace().count();
+    Some(count as u64)
+}
+
+fn extract_word_count_fountain(path: &Path) -> Option<u64> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+
+    let mut counting = false;
+    let mut word_count: u64 = 0;
+    let mut in_boneyard = false;
+    let mut in_notes = false;
+
+    for line in contents.lines() {
+        // Skip title page (key-value lines before first blank line).
+        if !counting {
+            if line.trim().is_empty() {
+                counting = true;
+            }
+            continue;
+        }
+
+        // Boneyard blocks: /* ... */
+        if in_boneyard {
+            if line.contains("*/") {
+                in_boneyard = false;
+            }
+            continue;
+        }
+        if line.contains("/*") {
+            in_boneyard = true;
+            continue;
+        }
+
+        // Notes: [[ ... ]]
+        if in_notes {
+            if line.contains("]]") {
+                in_notes = false;
+            }
+            continue;
+        }
+        if line.contains("[[") {
+            in_notes = true;
+            continue;
+        }
+
+        let trimmed = line.trim();
+        // Skip synopsis lines, section headers, centering markers.
+        if trimmed.starts_with('=')
+            || trimmed.starts_with('#')
+            || (trimmed.starts_with('>') && trimmed.ends_with('<'))
+        {
+            continue;
+        }
+
+        word_count += trimmed.split_whitespace().count() as u64;
+    }
+    Some(word_count)
+}
+
+fn extract_word_count_tex(path: &Path) -> Option<u64> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+
+    let body = if let Some(pos) = contents.find("\\begin{document}") {
+        &contents[pos + "\\begin{document}".len()..]
+    } else {
+        &contents
+    };
+
+    let mut word_count: u64 = 0;
+    let mut in_math = false;
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('%') {
+            continue;
+        }
+        if trimmed.contains("\\end{document}") {
+            break;
+        }
+        let mut cleaned = String::with_capacity(trimmed.len());
+        let mut chars = trimmed.chars().peekable();
+        while let Some(ch) = chars.next() {
+            match ch {
+                '$' => in_math = !in_math,
+                '\\' if chars.peek() == Some(&'[') => {
+                    in_math = true;
+                    chars.next();
+                }
+                '\\' if chars.peek() == Some(&']') => {
+                    in_math = false;
+                    chars.next();
+                }
+                '\\' if !in_math => {
+                    let mut cmd = String::new();
+                    while let Some(&c) = chars.peek() {
+                        if c.is_ascii_alphabetic() {
+                            cmd.push(c);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    if matches!(
+                        cmd.as_str(),
+                        "textbf" | "textit" | "emph" | "underline" | "text"
+                    ) {
+                        if chars.peek() == Some(&'{') {
+                            chars.next();
+                        }
+                    }
+                }
+                '{' | '}' if !in_math => {}
+                _ if !in_math => cleaned.push(ch),
+                _ => {}
+            }
+        }
+        word_count += cleaned.split_whitespace().count() as u64;
+    }
+    Some(word_count)
+}
+
+fn extract_word_count_opml(path: &Path) -> Option<u64> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+    let mut word_count: u64 = 0;
+    let mut search_from = 0;
+    while let Some(pos) = contents[search_from..].find("text=\"") {
+        let abs = search_from + pos + "text=\"".len();
+        if let Some(end) = contents[abs..].find('"') {
+            let value = &contents[abs..abs + end];
+            let text = strip_xml_tags(value);
+            word_count += text.split_whitespace().count() as u64;
+            search_from = abs + end + 1;
+        } else {
+            break;
+        }
+    }
+    Some(word_count)
+}
+
+fn extract_word_count_org(path: &Path) -> Option<u64> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+    let mut word_count: u64 = 0;
+    let mut in_drawer = false;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("#+") || trimmed.starts_with('#') && trimmed.len() > 1 && trimmed.as_bytes()[1] == b'+' {
+            continue;
+        }
+        if trimmed == ":PROPERTIES:" {
+            in_drawer = true;
+            continue;
+        }
+        if trimmed == ":END:" {
+            in_drawer = false;
+            continue;
+        }
+        if in_drawer {
+            continue;
+        }
+        if trimmed.starts_with("# ") {
+            continue;
+        }
+        // Strip link syntax: [[url][text]] → text
+        let mut cleaned = String::with_capacity(trimmed.len());
+        let mut chars = trimmed.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if ch == '[' && chars.peek() == Some(&'[') {
+                chars.next();
+                let mut link = String::new();
+                for c in chars.by_ref() {
+                    if c == ']' {
+                        break;
+                    }
+                    link.push(c);
+                }
+                if chars.peek() == Some(&']') {
+                    chars.next();
+                }
+                if let Some(text_start) = link.find("][") {
+                    cleaned.push_str(&link[text_start + 2..]);
+                } else {
+                    cleaned.push_str(&link);
+                }
+            } else {
+                cleaned.push(ch);
+            }
+        }
+        word_count += cleaned.split_whitespace().count() as u64;
+    }
+    Some(word_count)
+}
+
+fn extract_word_count_rst(path: &Path) -> Option<u64> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+    let mut word_count: u64 = 0;
+    let mut in_block = false;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(".. ") && trimmed.ends_with("::") {
+            in_block = true;
+            continue;
+        }
+        if in_block {
+            if trimmed.is_empty() || line.starts_with(' ') || line.starts_with('\t') {
+                continue;
+            }
+            in_block = false;
+        }
+        if trimmed.starts_with(':') && trimmed.contains(": ") {
+            continue;
+        }
+        word_count += trimmed.split_whitespace().count() as u64;
+    }
+    Some(word_count)
+}
+
+fn extract_word_count_asciidoc(path: &Path) -> Option<u64> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+    let mut word_count: u64 = 0;
+    let mut in_comment = false;
+    let mut in_block = false;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed == "////" {
+            in_comment = !in_comment;
+            continue;
+        }
+        if in_comment {
+            continue;
+        }
+        if trimmed == "----" || trimmed == "====" || trimmed == "...." {
+            in_block = !in_block;
+            continue;
+        }
+        if in_block {
+            continue;
+        }
+        if trimmed.starts_with(':') && trimmed.contains(": ") {
+            continue;
+        }
+        word_count += trimmed.split_whitespace().count() as u64;
+    }
+    Some(word_count)
 }
 
 /// Strip all XML tags from a string, inserting spaces between elements.
@@ -2437,13 +2798,6 @@ fn strip_xml_tags(xml: &str) -> String {
     result
 }
 
-/// Read a single entry from a `.docx` (ZIP) file without external zip dependencies.
-///
-/// Delegates to [`read_zip_entry_bytes`] and converts the result to UTF-8.
-fn read_docx_entry(path: &Path, entry_name: &str) -> Option<String> {
-    String::from_utf8(read_zip_entry_bytes(path, entry_name)?).ok()
-}
-
 /// Detect whether a `.docx` file contains Track Changes (revisions).
 ///
 /// Checks `word/document.xml` for `<w:ins` or `<w:del` elements, which
@@ -2455,11 +2809,42 @@ pub fn has_track_changes(path: &Path) -> bool {
         Some(e) => e.to_lowercase(),
         None => return false,
     };
-    if ext != "docx" {
-        return false;
+    match ext.as_str() {
+        "docx" => match read_zip_entry_as_str(path, "word/document.xml") {
+            Some(xml) => xml.contains("<w:ins") || xml.contains("<w:del"),
+            None => false,
+        },
+        "fdx" => has_fdx_revisions(path),
+        "odt" => match read_zip_entry_as_str(path, "content.xml") {
+            Some(xml) => {
+                xml.contains("<text:tracked-changes") || xml.contains("<text:change")
+            }
+            None => false,
+        },
+        "fountain" => {
+            let contents = std::fs::read_to_string(path).unwrap_or_default();
+            contents.contains("[[") || contents.contains("/*")
+        }
+        "tex" | "latex" => {
+            let contents = std::fs::read_to_string(path).unwrap_or_default();
+            contents.contains("\\todo{")
+                || contents.contains("\\fixme{")
+                || contents.contains("\\added{")
+                || contents.contains("\\deleted{")
+                || contents.contains("\\replaced{")
+                || contents.contains("\\hl{")
+        }
+        _ => false,
     }
-    match read_docx_entry(path, "word/document.xml") {
-        Some(xml) => xml.contains("<w:ins") || xml.contains("<w:del"),
+}
+
+/// Detect Final Draft revision marks in an `.fdx` file.
+///
+/// FDX uses `Revision` attributes on `<Paragraph>` and `<Text>` elements and
+/// `<ScriptNote>` elements to track changes across revision drafts.
+fn has_fdx_revisions(path: &Path) -> bool {
+    match read_xml_content(path, ".fdx") {
+        Some(xml) => xml.contains("Revision=\"") || xml.contains("<ScriptNote"),
         None => false,
     }
 }
@@ -2475,8 +2860,20 @@ const MAX_SEGMENT_ENTRIES: usize = 10_000;
 /// a direct compile/export of the associated session's bundle.
 const EXPORT_CORRELATION_WINDOW_NS: i64 = 30 * 1_000_000_000;
 
-/// File extensions that indicate a manuscript export output.
-const EXPORT_EXTENSIONS: &[&str] = &["docx", "pdf", "epub", "rtf", "odt"];
+/// Formats almost exclusively created by deliberate export.
+/// Guard: 30s window + keystrokes > 0 (no process match needed).
+const EXPORT_TIER1: &[&str] = &["docx", "epub", "mobi", "odt", "pages", "rtf"];
+
+/// Formats commonly created by many processes.
+/// Guard: 30s window + keystrokes > 0 + signing_id must match session app.
+const EXPORT_TIER2: &[&str] = &[
+    "doc", "dvi", "fdx", "fountain", "html", "md", "mmd", "opml", "pdf", "ps",
+    "tex", "txt",
+];
+
+/// Image formats — only attested when the writing app itself wrote the file.
+/// Guard: 30s window + keystrokes > 0 + signing_id must match session app.
+const EXPORT_TIER3_IMAGE: &[&str] = &["jpeg", "jpg", "png", "tiff"];
 
 /// Parse all `<BinderItem>` entries from a Scrivener `.scriv` package into a
 /// [`ScrivenerProjectMap`].
@@ -2584,13 +2981,16 @@ pub fn attribute_change_to_segment(
 }
 
 /// Check whether `new_file_path` looks like a manuscript export derived from
-/// the given session's bundle.
+/// the given session.
 ///
-/// Conditions that must all be true:
-/// - `new_file_path` has one of the [`EXPORT_EXTENSIONS`].
-/// - The export was created within [`EXPORT_CORRELATION_WINDOW_NS`] of the
-///   session's last focused time.
-/// - The session has recorded at least one keystroke (not a stale re-open).
+/// Uses tiered extension matching:
+/// - Tier 1 (docx, epub, etc.): time window + keystrokes only.
+/// - Tier 2/3 (pdf, txt, html, images): additionally requires `signing_id` to
+///   match the session's bundle ID (prevents false positives from other apps).
+///
+/// `signing_id` is the ES process signing identity (format "teamID:bundleID"
+/// or bare process name). Pass an empty string to skip process matching
+/// (only tier 1 extensions will match).
 ///
 /// Returns a [`ManuscriptExportAttestation`] on match, `None` otherwise.
 pub fn detect_export_event(
@@ -2599,6 +2999,7 @@ pub fn detect_export_event(
     new_file_hash: &str,
     bundle_hash: &str,
     now_ns: i64,
+    signing_id: &str,
 ) -> Option<crate::evidence::ManuscriptExportAttestation> {
     if session.keystroke_count == 0 {
         return None;
@@ -2608,9 +3009,25 @@ pub fn detect_export_event(
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase());
-    let is_export_ext = ext.as_deref().map(|e| EXPORT_EXTENSIONS.contains(&e)).unwrap_or(false);
-    if !is_export_ext {
+    let ext_str = ext.as_deref()?;
+
+    let is_tier1 = EXPORT_TIER1.contains(&ext_str);
+    let is_tier2 = EXPORT_TIER2.contains(&ext_str);
+    let is_tier3 = EXPORT_TIER3_IMAGE.contains(&ext_str);
+
+    if !is_tier1 && !is_tier2 && !is_tier3 {
         return None;
+    }
+
+    // Tier 2/3 require the writing process to match the session's app.
+    if is_tier2 || is_tier3 {
+        if signing_id.is_empty() {
+            return None;
+        }
+        let process_bid = signing_id.split(':').next_back().unwrap_or(signing_id);
+        if !process_bid.eq_ignore_ascii_case(&session.app_bundle_id) {
+            return None;
+        }
     }
 
     let last_focus_ns = session
@@ -2627,6 +3044,12 @@ pub fn detect_export_event(
         blake3::hash(new_file_path.as_bytes()).as_bytes(),
     );
 
+    let correlation_method = if is_tier1 {
+        "time_window"
+    } else {
+        "process_match"
+    };
+
     Some(crate::evidence::ManuscriptExportAttestation {
         source_session_id: session.session_id.clone(),
         bundle_hash: bundle_hash.to_string(),
@@ -2634,8 +3057,12 @@ pub fn detect_export_event(
         output_path_hash,
         source_checkpoint_ns: last_focus_ns,
         export_detected_ns: now_ns,
+        export_format: ext_str.to_string(),
+        correlation_method: correlation_method.to_string(),
     })
 }
+
+const ZIP_LOCAL_HEADER_SIG: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
 
 /// Read a named entry from a ZIP archive as raw bytes.
 ///
@@ -2647,8 +3074,6 @@ fn read_zip_entry_bytes(path: &Path, entry_name: &str) -> Option<Vec<u8>> {
     use std::io::{Read, Seek, SeekFrom};
 
     let mut file = std::fs::File::open(path).ok()?;
-
-    const LOCAL_HEADER_SIG: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
     const MAX_ENTRIES: usize = 500;
     const MAX_DECOMPRESSED: u64 = 16 * 1024 * 1024;
 
@@ -2667,7 +3092,7 @@ fn read_zip_entry_bytes(path: &Path, entry_name: &str) -> Option<Vec<u8>> {
         if file.read_exact(&mut sig).is_err() {
             break;
         }
-        if sig != LOCAL_HEADER_SIG {
+        if sig != ZIP_LOCAL_HEADER_SIG {
             break;
         }
 
@@ -2716,6 +3141,93 @@ fn read_zip_entry_bytes(path: &Path, entry_name: &str) -> Option<Vec<u8>> {
     None
 }
 
+/// Find the first ZIP entry whose name ends with `suffix`.
+///
+/// Returns the entry name, or `None` if the file is not a ZIP or no entry
+/// matches within the first 500 entries.
+fn find_zip_entry_by_suffix(path: &Path, suffix: &str) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let file_len = file.metadata().ok()?.len();
+    if file_len > 100 * 1024 * 1024 {
+        return None;
+    }
+
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic).ok()?;
+    if magic != ZIP_LOCAL_HEADER_SIG {
+        return None;
+    }
+    file.seek(SeekFrom::Start(0)).ok()?;
+
+    for _ in 0..500 {
+        let pos = file.stream_position().ok()?;
+        if pos >= file_len {
+            break;
+        }
+        let mut sig = [0u8; 4];
+        if file.read_exact(&mut sig).is_err() {
+            break;
+        }
+        if sig != ZIP_LOCAL_HEADER_SIG {
+            break;
+        }
+        let mut header = [0u8; 26];
+        file.read_exact(&mut header).ok()?;
+        let compressed_size =
+            u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
+        let name_len = u16::from_le_bytes([header[22], header[23]]) as usize;
+        let extra_len = u16::from_le_bytes([header[24], header[25]]) as usize;
+        let mut name_buf = vec![0u8; name_len];
+        file.read_exact(&mut name_buf).ok()?;
+        if extra_len > 0 {
+            file.seek(SeekFrom::Current(extra_len as i64)).ok()?;
+        }
+        let name = String::from_utf8_lossy(&name_buf).into_owned();
+        if name.ends_with(suffix) {
+            return Some(name);
+        }
+        if compressed_size > 0 {
+            file.seek(SeekFrom::Current(compressed_size as i64)).ok()?;
+        }
+    }
+    None
+}
+
+/// Read XML from a file that may be ZIP-wrapped or plain text.
+///
+/// If the file starts with the ZIP signature, finds an entry matching
+/// `inner_suffix` and extracts it via [`read_zip_entry_bytes`].
+/// If not ZIP, reads the file directly (capped at [`MAX_HASH_FILE_SIZE`]).
+fn read_xml_content(path: &Path, inner_suffix: &str) -> Option<String> {
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic).ok()?;
+    drop(file);
+
+    if magic == ZIP_LOCAL_HEADER_SIG {
+        let entry_name = find_zip_entry_by_suffix(path, inner_suffix)?;
+        let bytes = read_zip_entry_bytes(path, &entry_name)?;
+        Some(String::from_utf8_lossy(&bytes).into_owned())
+    } else {
+        let meta = std::fs::metadata(path).ok()?;
+        if meta.len() > MAX_HASH_FILE_SIZE {
+            return None;
+        }
+        std::fs::read_to_string(path).ok()
+    }
+}
+
+/// Read a single entry from a ZIP file as a UTF-8 string.
+///
+/// Delegates to [`read_zip_entry_bytes`] and converts the result to UTF-8.
+fn read_zip_entry_as_str(path: &Path, entry_name: &str) -> Option<String> {
+    String::from_utf8(read_zip_entry_bytes(path, entry_name)?).ok()
+}
+
 /// Compute a stable structural fingerprint for a Final Draft `.fdx` file.
 ///
 /// `.fdx` files are ZIP archives containing a single XML document.  This
@@ -2729,59 +3241,13 @@ fn read_zip_entry_bytes(path: &Path, entry_name: &str) -> Option<Vec<u8>> {
 /// Returns `None` if the file cannot be opened, is not a valid ZIP, or
 /// contains no scene headings.
 pub fn parse_fdx_scene_fingerprint(path: &Path) -> Option<String> {
-    use std::io::{Read, Seek, SeekFrom};
-
-    // Scan the ZIP directory to find the FDX XML entry name.
-    let entry_name = {
-        let mut file = std::fs::File::open(path).ok()?;
-        let file_len = file.metadata().ok()?.len();
-        const LOCAL_HEADER_SIG: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
-        let mut found = None;
-        for _ in 0..50 {
-            let pos = file.stream_position().ok()?;
-            if pos >= file_len {
-                break;
-            }
-            let mut sig = [0u8; 4];
-            if file.read_exact(&mut sig).is_err() {
-                break;
-            }
-            if sig != LOCAL_HEADER_SIG {
-                break;
-            }
-            let mut header = [0u8; 26];
-            file.read_exact(&mut header).ok()?;
-            let _compression = u16::from_le_bytes([header[4], header[5]]);
-            let compressed_size =
-                u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
-            let name_len = u16::from_le_bytes([header[22], header[23]]) as usize;
-            let extra_len = u16::from_le_bytes([header[24], header[25]]) as usize;
-            let mut name_buf = vec![0u8; name_len];
-            file.read_exact(&mut name_buf).ok()?;
-            if extra_len > 0 {
-                file.seek(SeekFrom::Current(extra_len as i64)).ok()?;
-            }
-            let name = String::from_utf8_lossy(&name_buf).into_owned();
-            if name.ends_with(".fdx") {
-                found = Some(name);
-                break;
-            }
-            if compressed_size > 0 {
-                file.seek(SeekFrom::Current(compressed_size as i64)).ok()?;
-            }
-        }
-        found?
-    };
-
-    let xml_bytes = read_zip_entry_bytes(path, &entry_name)?;
-    let xml = String::from_utf8_lossy(&xml_bytes);
+    let xml = read_xml_content(path, ".fdx")?;
 
     // Collect scene headings: <Paragraph Type="Scene Heading"><Text>…</Text></Paragraph>
     let mut headings: Vec<String> = Vec::new();
     let mut search_from = 0usize;
     while let Some(rel) = xml[search_from..].find("Type=\"Scene Heading\"") {
         let abs = search_from + rel;
-        // Find the <Text> element within this paragraph block.
         let after = &xml[abs..];
         if let Some(text_start) = after.find("<Text>") {
             let content_start = text_start + "<Text>".len();
@@ -2801,6 +3267,89 @@ pub fn parse_fdx_scene_fingerprint(path: &Path) -> Option<String> {
 
     let canonical = format!("{}:{}", headings.len(), headings.join(":"));
     Some(hex::encode(blake3::hash(canonical.as_bytes()).as_bytes()))
+}
+
+fn parse_fountain_scene_fingerprint(path: &Path) -> Option<String> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+
+    let mut headings: Vec<String> = Vec::new();
+    let mut past_title_page = false;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if !past_title_page {
+            if trimmed.is_empty() {
+                past_title_page = true;
+            }
+            continue;
+        }
+
+        let upper = trimmed.to_ascii_uppercase();
+        let is_heading = upper.starts_with("INT.")
+            || upper.starts_with("EXT.")
+            || upper.starts_with("INT./EXT.")
+            || upper.starts_with("I/E.")
+            || (trimmed.starts_with('.') && trimmed.len() > 1);
+        if is_heading {
+            headings.push(trimmed.to_string());
+        }
+    }
+
+    if headings.is_empty() {
+        return None;
+    }
+
+    let canonical = format!("{}:{}", headings.len(), headings.join(":"));
+    Some(hex::encode(blake3::hash(canonical.as_bytes()).as_bytes()))
+}
+
+fn parse_opml_outline_fingerprint(path: &Path) -> Option<String> {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASH_FILE_SIZE {
+        return None;
+    }
+    let contents = std::fs::read_to_string(path).ok()?;
+
+    let mut items: Vec<String> = Vec::new();
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("<outline") {
+            continue;
+        }
+        let depth = (line.len() - line.trim_start().len()) / 2;
+        if let Some(pos) = trimmed.find("text=\"") {
+            let start = pos + "text=\"".len();
+            if let Some(end) = trimmed[start..].find('"') {
+                let text = &trimmed[start..start + end];
+                items.push(format!("{depth}:{text}"));
+            }
+        }
+    }
+
+    if items.is_empty() {
+        return None;
+    }
+
+    let canonical = format!("{}:{}", items.len(), items.join(":"));
+    Some(hex::encode(blake3::hash(canonical.as_bytes()).as_bytes()))
+}
+
+fn structural_fingerprint(path: &Path) -> Option<(&'static str, String)> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "fdx" => parse_fdx_scene_fingerprint(path).map(|fp| ("fdx_scene_fp", fp)),
+        "fountain" => {
+            parse_fountain_scene_fingerprint(path).map(|fp| ("fountain_scene_fp", fp))
+        }
+        "opml" => {
+            parse_opml_outline_fingerprint(path).map(|fp| ("opml_outline_fp", fp))
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -2904,10 +3453,11 @@ mod tests {
             30_000,
             PasteSource::Unknown,
             PasteContentKind::default(),
+            0,
         );
 
-        assert!(session.paste_context.is_some());
-        let ctx = session.paste_context.as_ref().unwrap();
+        assert!(!session.paste_context.is_empty());
+        let ctx = session.paste_context.last().unwrap();
         assert_eq!(ctx.paste_time, paste_time);
 
         let within_window = paste_time + 15_000 * MS_TO_NS;
@@ -3005,9 +3555,10 @@ mod tests {
             30_000,
             PasteSource::SameDocument,
             PasteContentKind::default(),
+            0,
         );
         assert_eq!(
-            session.paste_context.as_ref().unwrap().source,
+            session.paste_context.last().unwrap().source,
             PasteSource::SameDocument,
         );
 
@@ -3017,9 +3568,10 @@ mod tests {
             30_000,
             PasteSource::External,
             PasteContentKind::default(),
+            0,
         );
         assert_eq!(
-            session.paste_context.as_ref().unwrap().source,
+            session.paste_context.last().unwrap().source,
             PasteSource::External,
         );
     }
@@ -3681,5 +4233,94 @@ mod tests {
     fn test_parse_fdx_scene_fingerprint_missing_file() {
         let path = std::path::Path::new("/nonexistent/script.fdx");
         assert!(parse_fdx_scene_fingerprint(path).is_none());
+    }
+
+    #[test]
+    fn test_parse_fdx_scene_fingerprint_plain_xml() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<FinalDraft DocumentType="Script" Template="No" Version="4">
+<Content>
+<Paragraph Type="Scene Heading"><Text>INT. OFFICE - DAY</Text></Paragraph>
+<Paragraph Type="Action"><Text>A writer types at a desk.</Text></Paragraph>
+<Paragraph Type="Scene Heading"><Text>EXT. PARK - NIGHT</Text></Paragraph>
+</Content>
+</FinalDraft>"#;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("script.fdx");
+        std::fs::write(&file, xml).unwrap();
+
+        let fp = parse_fdx_scene_fingerprint(&file);
+        assert!(fp.is_some());
+        // Deterministic: same content always produces the same fingerprint.
+        assert_eq!(fp, parse_fdx_scene_fingerprint(&file));
+    }
+
+    #[test]
+    fn test_extract_word_count_fdx_plain_xml() {
+        let xml = r#"<?xml version="1.0"?>
+<FinalDraft DocumentType="Script" Template="No" Version="4">
+<Content>
+<Paragraph Type="Scene Heading"><Text>INT. OFFICE - DAY</Text></Paragraph>
+<Paragraph Type="Dialogue"><Text>Hello world from the script.</Text></Paragraph>
+</Content>
+</FinalDraft>"#;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("script.fdx");
+        std::fs::write(&file, xml).unwrap();
+
+        let wc = extract_word_count(&file);
+        assert!(wc.is_some());
+        assert!(wc.unwrap() > 0);
+    }
+
+    #[test]
+    fn test_has_fdx_revisions_none() {
+        let xml = r#"<?xml version="1.0"?>
+<FinalDraft DocumentType="Script" Template="No" Version="4">
+<Content>
+<Paragraph Type="Action"><Text>Clean draft.</Text></Paragraph>
+</Content>
+</FinalDraft>"#;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("clean.fdx");
+        std::fs::write(&file, xml).unwrap();
+
+        assert!(!has_track_changes(&file));
+    }
+
+    #[test]
+    fn test_has_fdx_revisions_with_revision_attr() {
+        let xml = r#"<?xml version="1.0"?>
+<FinalDraft DocumentType="Script" Template="No" Version="4">
+<Content>
+<Paragraph Type="Action" Revision="1"><Text>Revised line.</Text></Paragraph>
+</Content>
+</FinalDraft>"#;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("revised.fdx");
+        std::fs::write(&file, xml).unwrap();
+
+        assert!(has_track_changes(&file));
+    }
+
+    #[test]
+    fn test_has_fdx_revisions_with_script_note() {
+        let xml = r##"<?xml version="1.0"?>
+<FinalDraft DocumentType="Script" Template="No" Version="4">
+<Content>
+<Paragraph Type="Action"><Text>Some line.</Text></Paragraph>
+<ScriptNote Color="#FFFF00"><Paragraph><Text>Fix this.</Text></Paragraph></ScriptNote>
+</Content>
+</FinalDraft>"##;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("noted.fdx");
+        std::fs::write(&file, xml).unwrap();
+
+        assert!(has_track_changes(&file));
     }
 }

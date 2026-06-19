@@ -1227,7 +1227,7 @@ impl EventLoopCtx {
                     session.last_checkpoint_keystrokes,
                     session.hw_cosign_scheduler.is_some(),
                     session.session_id.clone(),
-                    session.paste_context.is_some(),
+                    !session.paste_context.is_empty(),
                     session.app_bundle_id.clone(),
                     session.window_title.reveal().to_string(),
                     session.transcription_suspicion.ecology_score,

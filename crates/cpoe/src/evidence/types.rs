@@ -402,6 +402,15 @@ pub struct ManuscriptExportAttestation {
     pub source_checkpoint_ns: i64,
     /// Unix nanoseconds when the output file was first observed.
     pub export_detected_ns: i64,
+    /// The export file extension (e.g. "pdf", "epub", "txt").
+    #[serde(default)]
+    pub export_format: String,
+    /// How the export was correlated to the session.
+    /// "high" = adapter compile-process match.
+    /// "process_match" = signing_id matches session bundle (tier 2/3).
+    /// "time_window" = tier 1 extension within time window only.
+    #[serde(default)]
+    pub correlation_method: String,
 }
 
 /// One entry in a document's binder/scene tree snapshot.

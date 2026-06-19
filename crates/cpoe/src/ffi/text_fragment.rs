@@ -414,6 +414,11 @@ pub fn ffi_sentinel_record_paste(
     app_bundle_id: String,
     window_title: String,
     detection_confidence: f64,
+    has_plain_text: bool,
+    has_rtf: bool,
+    has_html: bool,
+    has_image: bool,
+    has_spreadsheet: bool,
 ) -> FfiPasteRecordResult {
     catch_ffi_panic!(@err FfiPasteRecordResult, {
     super::types::run_on_stack(move || {
@@ -446,8 +451,14 @@ pub fn ffi_sentinel_record_paste(
     let text_hash = hash_text(&pasted_text);
     let text_hash_hex = hex::encode(text_hash);
 
-    // Classify from text alone (FFI caller has no pasteboard type info).
-    let inventory = crate::sentinel::types::PasteboardTypeInventory::default();
+    let inventory = crate::sentinel::types::PasteboardTypeInventory {
+        utis: Vec::new(),
+        has_plain_text,
+        has_rtf,
+        has_html,
+        has_image,
+        has_spreadsheet,
+    };
     let content_kind = crate::sentinel::content_classifier::classify_paste_content_kind(
         &pasted_text,
         &inventory,
@@ -527,6 +538,7 @@ pub fn ffi_sentinel_record_paste(
                         30_000,
                         source,
                         content_kind,
+                        char_count.max(0) as usize,
                     );
                 }
             }
@@ -614,10 +626,13 @@ pub fn ffi_attest_text(
         signing_key.verifying_key().as_bytes(),
     )
     .unwrap_or_default();
-    let vc_payload = format!("{tier}:{fragment_hash_hex}:{timestamp_iso}:{nonce_hex}:{author_did}");
+    let vc_claim = format!("{tier}:{fragment_hash_hex}:{timestamp_iso}:{nonce_hex}:{author_did}");
     let vc_sig = {
         use ed25519_dalek::Signer;
-        let sig = signing_key.sign(vc_payload.as_bytes());
+        let mut vc_payload = Vec::with_capacity(25 + vc_claim.len());
+        vc_payload.extend_from_slice(b"witnessd-vc-attest-v1:");
+        vc_payload.extend_from_slice(vc_claim.as_bytes());
+        let sig = signing_key.sign(&vc_payload);
         hex::encode(sig.to_bytes())
     };
     drop(signing_key);

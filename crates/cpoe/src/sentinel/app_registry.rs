@@ -230,16 +230,6 @@ pub struct UserWritingApp {
 pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
     // ── Microsoft ──────────────────────────────────────────────────────────
     WritingApp {
-        bundle_id: "com.microsoft.Word",
-        display_name: "Microsoft Word",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
         bundle_id: "com.microsoft.onenote.mac",
         display_name: "Microsoft OneNote",
         storage: StoragePattern::ContainerBased,
@@ -330,27 +320,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         default_debounce_ms: Some(300),
         witnessing_mode: WitnessingMode::Auto,
     },
-    // ── Affinity Publisher ─────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.seriflabs.affinitypublisher",
-        display_name: "Affinity Publisher",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
-        bundle_id: "com.seriflabs.affinitypublisher2",
-        display_name: "Affinity Publisher 2",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
     // ── Drafts ─────────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.agiletortoise.Drafts-OSX",
@@ -374,69 +343,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
             "Library/Containers/com.luki.paper.mac/Data/Library/Application Support/Craft",
         ],
         needs_title_inference: true,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Highland 2 ─────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.quoteunquoteapps.highland2",
-        display_name: "Highland 2",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Final Draft ────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.finaldraft.mac.finaldraft10",
-        display_name: "Final Draft",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
-        bundle_id: "com.finaldraft.mac.fd11",
-        display_name: "Final Draft 11",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
-        bundle_id: "com.finaldraft.mac.fd12",
-        display_name: "Final Draft 12",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
-        bundle_id: "com.finaldraft.mac.fd13",
-        display_name: "Final Draft 13",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Fade In ────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.moviemagic.fadein",
-        display_name: "Fade In",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
         default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
@@ -585,100 +491,12 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
 
         witnessing_mode: WitnessingMode::Auto,
     },
-    // ── Noteship ───────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.red-sweater.noteship",
-        display_name: "Noteship",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
     // ── Notebooks ──────────────────────────────────────────────────────────
     WritingApp {
         bundle_id: "com.alfonsschmid.Notebooks",
         display_name: "Notebooks",
         storage: StoragePattern::FileBased,
         container_paths: &["Library/Mobile Documents/com~alfonsschmid~Notebooks/Documents"],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Mellel ─────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.redlers.mellel",
-        display_name: "Mellel",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Nisus Writer ───────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.nisus.NisusWriter",
-        display_name: "Nisus Writer Pro",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── TextEdit (built-in) ────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.apple.TextEdit",
-        display_name: "TextEdit",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── BBEdit ─────────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.barebones.bbedit",
-        display_name: "BBEdit",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Ghostwriter ────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "io.github.wereturtle.ghostwriter",
-        display_name: "Ghostwriter",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── Manuskript ─────────────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "com.olivierkes.manuskript",
-        display_name: "Manuskript",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    // ── LibreOffice Writer ─────────────────────────────────────────────────
-    WritingApp {
-        bundle_id: "org.libreoffice.script",
-        display_name: "LibreOffice",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
         needs_title_inference: false,
         default_debounce_ms: None,
 
@@ -1260,16 +1078,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         witnessing_mode: WitnessingMode::Auto,
     },
     WritingApp {
-        bundle_id: "com.github.atom",
-        display_name: "Atom",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: true,
-        default_debounce_ms: None,
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
         bundle_id: "com.noteship.app",
         display_name: "Noteship",
         storage: StoragePattern::FileBased,
@@ -1318,16 +1126,6 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         container_paths: &[],
         needs_title_inference: true,
         default_debounce_ms: Some(50),
-
-        witnessing_mode: WitnessingMode::Auto,
-    },
-    WritingApp {
-        bundle_id: "com.apptorium.Pockity",
-        display_name: "Pockity",
-        storage: StoragePattern::FileBased,
-        container_paths: &[],
-        needs_title_inference: false,
-        default_debounce_ms: None,
 
         witnessing_mode: WitnessingMode::Auto,
     },
