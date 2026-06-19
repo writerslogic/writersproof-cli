@@ -25,7 +25,7 @@ impl TempEnv {
     pub fn new() -> Self {
         Self {
             dir: tempfile::tempdir().expect("failed to create temp dir"),
-            bin: env!("CARGO_BIN_EXE_cpop"),
+            bin: env!("CARGO_BIN_EXE_writersproof-cli"),
         }
     }
 

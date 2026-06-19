@@ -19,7 +19,7 @@ fn run_cpop_with_stdin(
     args: &[&str],
     stdin_content: Option<&str>,
 ) -> (String, String, i32) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_cpop"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_writersproof-cli"))
         .args(args)
         .env("CPOE_DATA_DIR", data_dir)
         .env("CPOE_NO_KEYCHAIN", "1")

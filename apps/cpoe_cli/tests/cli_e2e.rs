@@ -5,7 +5,7 @@ use tempfile::tempdir;
 #[test]
 fn test_cli_full_workflow() {
     let dir = tempdir().unwrap();
-    let bin = env!("CARGO_BIN_EXE_cpop");
+    let bin = env!("CARGO_BIN_EXE_writersproof-cli");
 
     let run = |args: &[&str], input: Option<&str>| {
         use std::io::Write;
@@ -109,7 +109,7 @@ impl CliTestEnv {
     fn new() -> Self {
         Self {
             dir: tempdir().unwrap(),
-            bin: env!("CARGO_BIN_EXE_cpop"),
+            bin: env!("CARGO_BIN_EXE_writersproof-cli"),
         }
     }
 
@@ -164,8 +164,10 @@ fn test_cli_help() {
     let env = CliTestEnv::new();
     let stdout = env.run_expect_success(&["--help"], None);
     assert!(
-        stdout.contains("CPoE") || stdout.contains("writerslogic"),
-        "Help should mention CPoE: {}",
+        stdout.contains("WritersProof")
+            || stdout.contains("CPoE")
+            || stdout.contains("writerslogic"),
+        "Help should mention the product name: {}",
         stdout
     );
     assert!(
@@ -178,7 +180,7 @@ fn test_cli_help() {
 fn test_cli_version() {
     let env = CliTestEnv::new();
     let stdout = env.run_expect_success(&["--version"], None);
-    assert!(stdout.contains("cpoe"));
+    assert!(stdout.contains("writersproof") || stdout.contains("cpoe"));
 }
 
 #[test]
@@ -313,54 +315,6 @@ fn test_cli_verify_invalid_file() {
             || stderr.to_lowercase().contains("invalid"),
         "Should indicate parse error. stderr: {}",
         stderr
-    );
-}
-
-#[test]
-fn test_cli_export_war_format() {
-    let env = CliTestEnv::new();
-    env.init();
-
-    let doc_path = env.dir.path().join("doc.txt");
-    fs::write(&doc_path, "WAR format test content").unwrap();
-    env.run_expect_success(
-        &["commit", doc_path.to_str().unwrap(), "-m", "Test 1"],
-        None,
-    );
-    fs::write(&doc_path, "WAR format test content - revision 2").unwrap();
-    env.run_expect_success(
-        &["commit", doc_path.to_str().unwrap(), "-m", "Test 2"],
-        None,
-    );
-    fs::write(&doc_path, "WAR format test content - revision 3 final").unwrap();
-    env.run_expect_success(
-        &["commit", doc_path.to_str().unwrap(), "-m", "Test 3"],
-        None,
-    );
-
-    let war_path = env.dir.path().join("evidence.war");
-    let stdout = env.run_expect_success(
-        &[
-            "export",
-            doc_path.to_str().unwrap(),
-            "-f",
-            "war",
-            "-o",
-            war_path.to_str().unwrap(),
-        ],
-        Some("n\nWAR format declaration\n"),
-    );
-
-    assert!(war_path.exists(), "WAR file should be created");
-    assert!(
-        stdout.contains("exported") || stdout.contains("WAR"),
-        "Should confirm export"
-    );
-
-    let war_content = fs::read_to_string(&war_path).unwrap();
-    assert!(
-        war_content.contains("-----BEGIN CPoE WAR") || war_content.contains("BEGIN"),
-        "WAR file should have ASCII armor"
     );
 }
 

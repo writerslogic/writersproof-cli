@@ -493,6 +493,7 @@ mod tests {
                 document_url: "https://example.com".into(),
                 document_title: "Secret Doc".into(),
                 protocol_version: None,
+                editor_type: None,
             }),
             "StartSession",
             "StartSession should not include PII"
@@ -504,6 +505,8 @@ mod tests {
                 delta: 0,
                 commitment: None,
                 ordinal: None,
+                tool_category: None,
+                tool_host: None,
             }),
             "Checkpoint",
             "Checkpoint should return 'Checkpoint'"
@@ -566,6 +569,8 @@ mod tests {
                 delta,
                 commitment,
                 ordinal,
+                tool_category: _,
+                tool_host: _,
             } => {
                 assert_eq!(content_hash.len(), 64, "content_hash should be preserved");
                 assert_eq!(char_count, 1500, "char_count should be 1500");
@@ -925,6 +930,7 @@ mod tests {
         let resp = Response::SessionStopped {
             message: "ended".into(),
             signature: Some("ee".repeat(64)),
+            evidence_quality: None,
         };
         let mut buf = Vec::new();
         write_message_to(&mut buf, &resp).unwrap();
@@ -938,6 +944,7 @@ mod tests {
         let resp = Response::SessionStopped {
             message: "ended".into(),
             signature: None,
+            evidence_quality: None,
         };
         let mut buf = Vec::new();
         write_message_to(&mut buf, &resp).unwrap();
