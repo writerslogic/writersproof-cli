@@ -2952,6 +2952,79 @@ pub fn parse_scrivener_project_map(scriv_root: &Path) -> Option<ScrivenerProject
     })
 }
 
+pub fn parse_scrivener_binder_snapshot(
+    scriv_root: &Path,
+) -> Option<crate::evidence::DocumentStructureSnapshot> {
+    let scrivx_path = find_scrivx_file(scriv_root)?;
+    let contents = std::fs::read_to_string(&scrivx_path).ok()?;
+    let source_hash = hex::encode(blake3::hash(contents.as_bytes()).as_bytes());
+
+    let mut entries = Vec::new();
+    let mut depth: u32 = 0;
+    let mut search_from = 0usize;
+
+    while search_from < contents.len() {
+        // Find next tag
+        let next_open = contents[search_from..].find('<');
+        let next_open = match next_open {
+            Some(p) => search_from + p,
+            None => break,
+        };
+        let tag_end = match contents[next_open..].find('>') {
+            Some(e) => next_open + e,
+            None => break,
+        };
+        let tag = &contents[next_open..=tag_end];
+
+        if tag.starts_with("<BinderItem") {
+            let item_type = tag
+                .find("Type=\"")
+                .and_then(|p| {
+                    let start = p + "Type=\"".len();
+                    tag[start..].find('"').map(|end| tag[start..start + end].to_string())
+                })
+                .unwrap_or_default();
+            let uuid = ['\"', '\''].iter().find_map(|q| {
+                let needle = format!("ID={q}");
+                let after = tag.find(needle.as_str()).map(|p| &tag[p + needle.len()..])?;
+                after.find(*q).map(|end| after[..end].to_string())
+            });
+            let after_tag = &contents[tag_end + 1..];
+            let title = after_tag.find("<Title>").and_then(|ts| {
+                let start = ts + "<Title>".len();
+                after_tag[start..]
+                    .find("</Title>")
+                    .map(|end| after_tag[start..start + end].trim().to_string())
+            });
+            entries.push(crate::evidence::DocumentStructureEntry {
+                uuid: uuid.unwrap_or_default(),
+                title: title.unwrap_or_default(),
+                depth,
+                item_type,
+            });
+            if !tag.ends_with("/>") {
+                depth += 1;
+            }
+        } else if tag.starts_with("</BinderItem") {
+            depth = depth.saturating_sub(1);
+        }
+
+        search_from = tag_end + 1;
+    }
+
+    if entries.is_empty() {
+        return None;
+    }
+
+    let path_hash = hex::encode(blake3::hash(scriv_root.to_string_lossy().as_bytes()).as_bytes());
+    Some(crate::evidence::DocumentStructureSnapshot {
+        document_path_hash: path_hash,
+        entries,
+        source_hash,
+        captured_at: chrono::Utc::now(),
+    })
+}
+
 /// Record a file-change event for a path inside a bundle document session.
 ///
 /// `rel_path` is the path component after the bundle root (e.g.

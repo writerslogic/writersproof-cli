@@ -47,6 +47,14 @@ pub fn is_bundle_document(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Return `true` if `path` looks like a macOS package directory.
+///
+/// Checks for the standard `Contents/` subdirectory that macOS packages use.
+/// Does NOT false-positive on regular directories.
+pub fn is_macos_package(path: &Path) -> bool {
+    path.is_dir() && path.join("Contents").is_dir()
+}
+
 /// Start a recursive [`notify`] watcher on the internal content subtree of
 /// `bundle_path`.
 ///

@@ -144,11 +144,12 @@ impl std::str::FromStr for ContentGranularity {
 }
 
 /// How a writing application stores its content on disk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum StoragePattern {
     /// Documents are saved as ordinary files; the sentinel discovers them
     /// through the Accessibility `AXDocument` attribute or FSEvents.
+    #[default]
     FileBased,
     /// Content lives inside an app group container (`~/Library/Group Containers/…`).
     /// The container path is provided so it can be watched directly.
@@ -213,6 +214,9 @@ pub struct UserWritingApp {
     #[serde(with = "system_time_serde")]
     pub added_at: SystemTime,
     pub probe_confidence: ProbeConfidence,
+    /// When this app was last seen in a session (Unix timestamp in JSON).
+    #[serde(default, with = "option_system_time_serde")]
+    pub last_seen_at: Option<SystemTime>,
 }
 
 /// All writing applications known to WritersProof.
@@ -925,6 +929,20 @@ struct AutoDiscoveredApp {
     probe_confidence: ProbeConfidence,
 }
 
+const MAX_PROBES_PER_CHECKPOINT: u32 = 3;
+const PROBE_COOLDOWN_SECS: u64 = 300;
+
+static PROBE_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static PROBE_COOLDOWNS: OnceLock<DashMap<String, std::time::Instant>> = OnceLock::new();
+
+fn probe_cooldowns() -> &'static DashMap<String, std::time::Instant> {
+    PROBE_COOLDOWNS.get_or_init(DashMap::new)
+}
+
+pub fn reset_probe_count() {
+    PROBE_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Probe an unknown app's AX capabilities and cache the metadata.
 ///
 /// This does NOT register the app as a "writing app" — per-session forensic
@@ -945,12 +963,24 @@ pub fn probe_and_cache(bundle_id: &str, app_name: &str) {
     if NON_WRITING_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(&key)) {
         return;
     }
+    if PROBE_COUNT.load(std::sync::atomic::Ordering::Relaxed) >= MAX_PROBES_PER_CHECKPOINT {
+        return;
+    }
+    if let Some(cooldown) = probe_cooldowns().get(&key) {
+        if cooldown.elapsed().as_secs() < PROBE_COOLDOWN_SECS {
+            return;
+        }
+    }
+    PROBE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let probe = super::app_discovery::probe_app(bundle_id);
     log::info!(
         "Probed unknown app: {} ({}) storage={:?} title_infer={} confidence={:?}",
         probe.display_name, bundle_id, probe.storage,
         probe.needs_title_inference, probe.confidence,
     );
+    if probe.confidence == ProbeConfidence::Low {
+        probe_cooldowns().insert(key.clone(), std::time::Instant::now());
+    }
     auto_discovered().insert(key, AutoDiscoveredApp {
         display_name: if probe.display_name == bundle_id {
             app_name.to_string()
@@ -1012,6 +1042,7 @@ pub fn flush_discovered_apps() {
             witnessing_mode: WitnessingMode::Auto,
             added_at: SystemTime::now(),
             probe_confidence: app.probe_confidence,
+            last_seen_at: Some(SystemTime::now()),
         };
         if let Err(e) = fresh_reg.add_user_app(user_app) {
             log::warn!("Failed to persist auto-discovered app {bundle_id}: {e}");
@@ -1145,6 +1176,23 @@ mod system_time_serde {
     }
 }
 
+mod option_system_time_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    pub fn serialize<S: Serializer>(time: &Option<SystemTime>, s: S) -> Result<S::Ok, S::Error> {
+        match time {
+            Some(t) => t.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs().serialize(s),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<SystemTime>, D::Error> {
+        let opt = Option::<u64>::deserialize(d)?;
+        Ok(opt.map(|secs| UNIX_EPOCH + Duration::from_secs(secs)))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Unified registry
 // ---------------------------------------------------------------------------
@@ -1155,6 +1203,7 @@ mod system_time_serde {
 pub struct AppRegistry {
     builtin: &'static [WritingApp],
     user: Vec<UserWritingApp>,
+    remote: Vec<super::remote_registry::RemoteApp>,
     /// Lowercase bundle IDs that need title-based document inference.
     title_inferred: HashSet<String>,
     data_dir: PathBuf,
@@ -1208,6 +1257,36 @@ impl AppRegistry {
             }
         };
 
+        let now = SystemTime::now();
+        let day_secs: u64 = 86400;
+        let user: Vec<_> = user
+            .into_iter()
+            .filter_map(|mut app| {
+                let stale_days = app
+                    .last_seen_at
+                    .or(Some(app.added_at))
+                    .and_then(|t| now.duration_since(t).ok())
+                    .map(|d| d.as_secs() / day_secs)
+                    .unwrap_or(0);
+                if stale_days > 180 && app.probe_confidence == ProbeConfidence::Low {
+                    log::info!("Pruning stale user app: {} (unseen {} days)", app.bundle_id, stale_days);
+                    return None;
+                }
+                if stale_days > 90 {
+                    let old = app.probe_confidence;
+                    app.probe_confidence = match app.probe_confidence {
+                        ProbeConfidence::High => ProbeConfidence::Medium,
+                        ProbeConfidence::Medium => ProbeConfidence::Low,
+                        ProbeConfidence::Low => ProbeConfidence::Low,
+                    };
+                    if app.probe_confidence != old {
+                        log::info!("Demoted stale user app: {} {:?} -> {:?}", app.bundle_id, old, app.probe_confidence);
+                    }
+                }
+                Some(app)
+            })
+            .collect();
+
         for app in &user {
             log::info!(
                 "custom app loaded: {} ({}) storage={:?} title_inference={}",
@@ -1218,9 +1297,12 @@ impl AppRegistry {
             );
         }
 
+        let remote = super::remote_registry::load_remote_apps(data_dir);
+
         let mut reg = Self {
             builtin: KNOWN_WRITING_APPS,
             user,
+            remote,
             title_inferred: HashSet::new(),
             data_dir: data_dir.to_path_buf(),
         };
@@ -1265,6 +1347,14 @@ impl AppRegistry {
                 }
             }
         }
+        for app in &self.remote {
+            for rel in &app.container_paths {
+                let abs = home.join(rel);
+                if abs.exists() {
+                    paths.push(abs);
+                }
+            }
+        }
         for app in &self.user {
             for rel in &app.container_paths {
                 let abs = home.join(rel);
@@ -1278,9 +1368,14 @@ impl AppRegistry {
         paths
     }
 
-    /// Whether `bundle_id` is recognized (either built-in or user-added).
+    /// Whether `bundle_id` is recognized (built-in, remote, or user-added).
     pub fn is_known(&self, bundle_id: &str) -> bool {
-        self.lookup_builtin(bundle_id).is_some() || self.lookup_user(bundle_id).is_some()
+        self.lookup_builtin(bundle_id).is_some()
+            || self.lookup_user(bundle_id).is_some()
+            || self
+                .remote
+                .iter()
+                .any(|a| a.bundle_id.eq_ignore_ascii_case(bundle_id))
     }
 
     /// Add (or replace) a user app. Writes to disk before updating memory,
@@ -1329,6 +1424,14 @@ impl AppRegistry {
             if app.needs_title_inference {
                 self.title_inferred
                     .insert(app.bundle_id.to_ascii_lowercase());
+            }
+        }
+        for app in &self.remote {
+            let key = app.bundle_id.to_ascii_lowercase();
+            if app.needs_title_inference {
+                self.title_inferred.insert(key);
+            } else {
+                self.title_inferred.remove(&key);
             }
         }
         for app in &self.user {
@@ -1629,7 +1732,8 @@ mod tests {
             needs_title_inference: true,
             added_at: SystemTime::now(),
             probe_confidence: ProbeConfidence::High,
-    
+            last_seen_at: None,
+
             witnessing_mode: WitnessingMode::Auto,
         };
         let json = serde_json::to_string(&app).unwrap();

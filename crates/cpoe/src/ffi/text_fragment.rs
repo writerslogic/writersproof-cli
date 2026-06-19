@@ -574,6 +574,13 @@ pub fn ffi_attest_text(
     if normalized.is_empty() {
         return FfiAttestTextResult::err("No attestable content after normalization");
     }
+    const MIN_ATTEST_TEXT_CHARS: usize = 50;
+    if normalized.len() < MIN_ATTEST_TEXT_CHARS {
+        return FfiAttestTextResult::err(format!(
+            "Text too short for attestation ({} chars, minimum {MIN_ATTEST_TEXT_CHARS} after normalization)",
+            normalized.len()
+        ));
+    }
 
     let fragment_hash_hex = hex::encode(fragment_hash);
     let writersproof_id = fragment_hash_hex[..16].to_string();

@@ -101,6 +101,7 @@ pub fn ffi_add_user_writing_app(
         added_at: std::time::SystemTime::now(),
         probe_confidence,
         witnessing_mode: crate::sentinel::app_registry::WitnessingMode::default(),
+        last_seen_at: None,
     };
     let mut registry = crate::sentinel::app_registry::AppRegistry::load(&data_dir);
     match registry.add_user_app(app) {
