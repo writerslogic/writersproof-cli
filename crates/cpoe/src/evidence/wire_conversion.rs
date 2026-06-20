@@ -171,7 +171,7 @@ fn checkpoint_to_wire(
                 ProofAlgorithm::SwfPosme
             }),
             Err(e) => {
-                log::warn!("PoSME CBOR decode failed, defaulting to SwfPosme: {e}");
+                log::error!("PoSME CBOR decode failed, defaulting to SwfPosme (algorithm type may be incorrect): {e}");
                 Some(ProofAlgorithm::SwfPosme)
             }
         }
@@ -299,7 +299,7 @@ fn checkpoint_to_wire(
                 })?;
             crate::crypto::compute_jitter_seal(merkle_root, swf_input, &intervals_cbor)
         } else {
-            vec![0u8; 32]
+            vec![]
         };
 
         let jb_wire = JitterBindingWire {

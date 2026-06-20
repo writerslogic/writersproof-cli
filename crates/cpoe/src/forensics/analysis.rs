@@ -777,12 +777,14 @@ pub fn per_checkpoint_flags(
     let mut flags = Vec::with_capacity(checkpoints.len());
 
     for (idx, cp) in checkpoints.iter().enumerate() {
-        let cp_ts = cp.timestamp.timestamp_nanos_opt().unwrap_or(0);
+        let cp_ts = cp.timestamp.timestamp_nanos_opt().unwrap_or_else(|| {
+            cp.timestamp.timestamp().saturating_mul(1_000_000_000)
+        });
         let prev_ts = if idx > 0 {
-            checkpoints[idx - 1]
-                .timestamp
-                .timestamp_nanos_opt()
-                .unwrap_or(0)
+            let prev = &checkpoints[idx - 1].timestamp;
+            prev.timestamp_nanos_opt().unwrap_or_else(|| {
+                prev.timestamp().saturating_mul(1_000_000_000)
+            })
         } else {
             0
         };

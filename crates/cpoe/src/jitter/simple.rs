@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::timestamp_nanos_u64;
 
 /// Lightweight jitter sample used by platform hooks.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct SimpleJitterSample {
     /// Absolute timestamp in nanoseconds since epoch (keyDown time).
     pub timestamp_ns: i64,

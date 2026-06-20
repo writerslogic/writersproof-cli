@@ -299,7 +299,12 @@ impl OfflineQueue {
                 Self::validate_id(&entry.id)?;
                 let path = self.anchor_dir()?.join(format!("{}.json", entry.id));
                 if path.exists() {
-                    fs::remove_file(&path)?;
+                    if let Err(e) = fs::remove_file(&path) {
+                        log::error!(
+                            "anchor {} discarded but queue file removal failed (may resubmit): {e}",
+                            entry.id
+                        );
+                    }
                 }
                 discard_count += 1;
                 continue;
@@ -332,7 +337,12 @@ impl OfflineQueue {
                     Self::validate_id(&entry.id)?;
                     let path = self.anchor_dir()?.join(format!("{}.json", entry.id));
                     if path.exists() {
-                        fs::remove_file(&path)?;
+                        if let Err(e) = fs::remove_file(&path) {
+                            log::error!(
+                                "anchor {} submitted but queue file removal failed (may resubmit): {e}",
+                                entry.id
+                            );
+                        }
                     }
                     success_count += 1;
                 }
