@@ -11,6 +11,9 @@ use crate::error::{Error, Result};
 use der::asn1::{BitString, ObjectIdentifier, OctetString};
 use der::{Decode, Encode};
 use ed25519_dalek::SigningKey;
+use p256::ecdsa::{
+    signature::Signer as EcdsaSigner, DerSignature, SigningKey as P256SigningKey,
+};
 use sha2::Digest;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 use x509_cert::certificate::{CertificateInner, TbsCertificateInner, Version};
@@ -21,6 +24,15 @@ use x509_cert::time::Validity;
 
 /// OID for Ed25519 (RFC 8410): 1.3.101.112
 const ED25519_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
+
+/// OID for ECDSA with SHA-256 (RFC 5758): 1.2.840.10045.4.3.2
+const ECDSA_SHA256_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
+
+/// OID for id-ecPublicKey (RFC 5480): 1.2.840.10045.2.1
+const EC_PUBLIC_KEY_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
+
+/// OID for prime256v1/secp256r1 (RFC 5480): 1.2.840.10045.3.1.7
+const PRIME256V1_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
 
 /// C2PA claim signing EKU OID: 1.3.6.1.4.1.62558.2.1
 const C2PA_CLAIM_SIGNING_OID: ObjectIdentifier =
@@ -129,36 +141,141 @@ pub fn generate_self_signed_cert(signing_key: &SigningKey) -> Result<Vec<u8>> {
         .map_err(|e| Error::Crypto(format!("failed to DER-encode certificate: {e}")))
 }
 
-/// Extract the Ed25519 public key bytes from a DER-encoded X.509 certificate.
+/// Generate a self-signed X.509 v3 certificate for the given P-256 (ECDSA) signing key.
 ///
-/// Parses the certificate and extracts the 32-byte Ed25519 public key
-/// from the SubjectPublicKeyInfo field.
-pub fn extract_public_key_from_cert(cert_der: &[u8]) -> Result<[u8; 32]> {
+/// The certificate uses:
+/// - Subject/Issuer: `CN=WritersProof CPoE Signer, O=WritersLogic`
+/// - Validity: 1 year from the current time
+/// - Signature algorithm: ecdsa-with-SHA256 (OID 1.2.840.10045.4.3.2)
+/// - Public key algorithm: id-ecPublicKey with prime256v1 named curve
+/// - Self-signed with the same key
+///
+/// Returns the DER-encoded certificate bytes.
+pub fn generate_self_signed_cert_p256(signing_key: &P256SigningKey) -> Result<Vec<u8>> {
+    let dn: RdnSequence = CERT_DN
+        .parse()
+        .map_err(|e| Error::Crypto(format!("failed to parse certificate DN: {e}")))?;
+
+    // Signature algorithm: ecdsa-with-SHA256, no parameters (RFC 5758 Section 3.2)
+    let sig_algorithm = AlgorithmIdentifierOwned {
+        oid: ECDSA_SHA256_OID,
+        parameters: None,
+    };
+
+    // Public key algorithm: id-ecPublicKey with named curve parameter prime256v1
+    let pk_algorithm = AlgorithmIdentifierOwned {
+        oid: EC_PUBLIC_KEY_OID,
+        parameters: Some(
+            PRIME256V1_OID
+                .to_der()
+                .and_then(|bytes| der::Any::from_der(&bytes))
+                .map_err(|e| Error::Crypto(format!("failed to encode curve parameter: {e}")))?,
+        ),
+    };
+
+    // SEC1 uncompressed public key point (65 bytes: 0x04 || x || y)
+    let verifying_key = signing_key.verifying_key();
+    let pk_point = verifying_key.to_encoded_point(false);
+    let pk_bytes = pk_point.as_bytes();
+
+    // Serial number derived from public key hash for determinism.
+    let pk_hash = sha2::Sha256::digest(pk_bytes);
+    debug_assert_eq!(pk_hash.len(), 32, "SHA-256 digest must be 32 bytes");
+    let serial: SerialNumber = SerialNumber::new(&pk_hash[..19])
+        .map_err(|e| Error::Crypto(format!("failed to create serial number: {e}")))?;
+
+    // Validity: now to now + 1 year
+    let validity = Validity::from_now(core::time::Duration::from_secs(
+        VALIDITY_DAYS * 24 * 60 * 60,
+    ))
+    .map_err(|e| Error::Crypto(format!("failed to create validity period: {e}")))?;
+
+    // SubjectPublicKeyInfo for P-256
+    let spki = SubjectPublicKeyInfoOwned {
+        algorithm: pk_algorithm,
+        subject_public_key: BitString::from_bytes(pk_bytes)
+            .map_err(|e| Error::Crypto(format!("failed to encode public key: {e}")))?,
+    };
+
+    // Build X.509 v3 extensions required by C2PA Trust Model
+    let extensions = build_c2pa_extensions(&pk_hash)?;
+
+    let tbs = TbsCertificateInner {
+        version: Version::V3,
+        serial_number: serial,
+        signature: sig_algorithm.clone(),
+        issuer: dn.clone(),
+        validity,
+        subject: dn,
+        subject_public_key_info: spki,
+        issuer_unique_id: None,
+        subject_unique_id: None,
+        extensions: Some(extensions),
+    };
+
+    // DER-encode the TBS certificate for signing.
+    let tbs_der = tbs
+        .to_der()
+        .map_err(|e| Error::Crypto(format!("failed to DER-encode TBS certificate: {e}")))?;
+
+    // Sign with ECDSA-SHA256 (produces DER-encoded signature)
+    let der_sig: DerSignature = EcdsaSigner::sign(signing_key, &tbs_der);
+    let signature_bytes = der_sig
+        .to_der()
+        .map_err(|e| Error::Crypto(format!("failed to DER-encode ECDSA signature: {e}")))?;
+
+    let signature = BitString::from_bytes(&signature_bytes)
+        .map_err(|e| Error::Crypto(format!("failed to encode signature: {e}")))?;
+
+    let cert = CertificateInner {
+        tbs_certificate: tbs,
+        signature_algorithm: sig_algorithm,
+        signature,
+    };
+
+    cert.to_der()
+        .map_err(|e| Error::Crypto(format!("failed to DER-encode certificate: {e}")))
+}
+
+/// Extract the public key bytes from a DER-encoded X.509 certificate.
+///
+/// Supports both Ed25519 and P-256 certificates:
+/// - Ed25519 (OID 1.3.101.112): returns the 32-byte public key
+/// - P-256 (OID 1.2.840.10045.2.1): returns the SEC1 uncompressed point (65 bytes)
+pub fn extract_public_key_from_cert(cert_der: &[u8]) -> Result<Vec<u8>> {
     let cert = x509_cert::Certificate::from_der(cert_der)
         .map_err(|e| Error::Crypto(format!("failed to parse certificate DER: {e}")))?;
 
     let spki = &cert.tbs_certificate.subject_public_key_info;
-
-    // Verify this is an Ed25519 certificate
-    if spki.algorithm.oid != ED25519_OID {
-        return Err(Error::Crypto(format!(
-            "expected Ed25519 OID ({}), got {}",
-            ED25519_OID, spki.algorithm.oid
-        )));
-    }
-
     let raw_bytes = spki.subject_public_key.raw_bytes();
 
-    if raw_bytes.len() != 32 {
-        return Err(Error::Crypto(format!(
-            "Ed25519 public key must be 32 bytes, got {}",
-            raw_bytes.len()
-        )));
+    if spki.algorithm.oid == ED25519_OID {
+        if raw_bytes.len() != 32 {
+            return Err(Error::Crypto(format!(
+                "Ed25519 public key must be 32 bytes, got {}",
+                raw_bytes.len()
+            )));
+        }
+        Ok(raw_bytes.to_vec())
+    } else if spki.algorithm.oid == EC_PUBLIC_KEY_OID {
+        if raw_bytes.len() != 65 {
+            return Err(Error::Crypto(format!(
+                "P-256 uncompressed public key must be 65 bytes, got {}",
+                raw_bytes.len()
+            )));
+        }
+        if raw_bytes[0] != 0x04 {
+            return Err(Error::Crypto(
+                "P-256 public key must be uncompressed (0x04 prefix)".into(),
+            ));
+        }
+        Ok(raw_bytes.to_vec())
+    } else {
+        Err(Error::Crypto(format!(
+            "unsupported public key algorithm OID: {}",
+            spki.algorithm.oid
+        )))
     }
-
-    let mut key = [0u8; 32];
-    key.copy_from_slice(raw_bytes);
-    Ok(key)
 }
 
 /// Build X.509 v3 extensions required by the C2PA Trust Model.
@@ -235,7 +352,7 @@ mod tests {
 
         // Extract key should match original
         let extracted = extract_public_key_from_cert(&cert_der).unwrap();
-        assert_eq!(extracted, key.verifying_key().to_bytes());
+        assert_eq!(extracted.as_slice(), key.verifying_key().as_bytes());
     }
 
     #[test]
@@ -314,7 +431,111 @@ mod tests {
         let pk1 = extract_public_key_from_cert(&cert1).unwrap();
         let pk2 = extract_public_key_from_cert(&cert2).unwrap();
         assert_ne!(pk1, pk2);
-        assert_eq!(pk1, key1.verifying_key().to_bytes());
-        assert_eq!(pk2, key2.verifying_key().to_bytes());
+        assert_eq!(pk1.as_slice(), key1.verifying_key().as_bytes());
+        assert_eq!(pk2.as_slice(), key2.verifying_key().as_bytes());
+    }
+
+    fn test_p256_signing_key() -> P256SigningKey {
+        P256SigningKey::from_bytes(&[1u8; 32].into()).unwrap()
+    }
+
+    #[test]
+    fn generate_p256_cert_and_extract_key_roundtrip() {
+        let key = test_p256_signing_key();
+        let cert_der = generate_self_signed_cert_p256(&key).unwrap();
+
+        assert!(cert_der.len() > 100, "cert too small: {} bytes", cert_der.len());
+
+        let extracted = extract_public_key_from_cert(&cert_der).unwrap();
+        let expected = key.verifying_key().to_encoded_point(false);
+        assert_eq!(extracted.as_slice(), expected.as_bytes());
+    }
+
+    #[test]
+    fn generated_p256_cert_is_valid_der() {
+        let key = test_p256_signing_key();
+        let cert_der = generate_self_signed_cert_p256(&key).unwrap();
+
+        let cert = x509_cert::Certificate::from_der(&cert_der).unwrap();
+        assert_eq!(cert.tbs_certificate.version, Version::V3);
+    }
+
+    #[test]
+    fn generated_p256_cert_has_correct_subject() {
+        let key = test_p256_signing_key();
+        let cert_der = generate_self_signed_cert_p256(&key).unwrap();
+        let cert = x509_cert::Certificate::from_der(&cert_der).unwrap();
+
+        let subject_str = cert.tbs_certificate.subject.to_string();
+        assert!(
+            subject_str.contains("WritersProof CPoE Signer"),
+            "unexpected subject: {}",
+            subject_str
+        );
+        assert!(
+            subject_str.contains("WritersLogic"),
+            "unexpected subject: {}",
+            subject_str
+        );
+    }
+
+    #[test]
+    fn generated_p256_cert_uses_ecdsa_sha256() {
+        let key = test_p256_signing_key();
+        let cert_der = generate_self_signed_cert_p256(&key).unwrap();
+        let cert = x509_cert::Certificate::from_der(&cert_der).unwrap();
+
+        assert_eq!(
+            cert.tbs_certificate.subject_public_key_info.algorithm.oid,
+            EC_PUBLIC_KEY_OID
+        );
+        assert_eq!(cert.tbs_certificate.signature.oid, ECDSA_SHA256_OID);
+        assert_eq!(cert.signature_algorithm.oid, ECDSA_SHA256_OID);
+    }
+
+    #[test]
+    fn generated_p256_cert_signature_verifies() {
+        use p256::ecdsa::{signature::Verifier as EcdsaVerifier, VerifyingKey};
+
+        let key = test_p256_signing_key();
+        let cert_der = generate_self_signed_cert_p256(&key).unwrap();
+        let cert = x509_cert::Certificate::from_der(&cert_der).unwrap();
+
+        let tbs_der = cert.tbs_certificate.to_der().unwrap();
+        let sig_bytes = cert.signature.raw_bytes();
+        let sig = DerSignature::from_der(sig_bytes).unwrap();
+        let vk = key.verifying_key();
+        EcdsaVerifier::verify(vk, &tbs_der, &sig).unwrap();
+    }
+
+    #[test]
+    fn different_p256_keys_produce_different_certs() {
+        let key1 = P256SigningKey::from_bytes(&[1u8; 32].into()).unwrap();
+        let key2 = P256SigningKey::from_bytes(&[2u8; 32].into()).unwrap();
+
+        let cert1 = generate_self_signed_cert_p256(&key1).unwrap();
+        let cert2 = generate_self_signed_cert_p256(&key2).unwrap();
+
+        assert_ne!(cert1, cert2);
+
+        let pk1 = extract_public_key_from_cert(&cert1).unwrap();
+        let pk2 = extract_public_key_from_cert(&cert2).unwrap();
+        assert_ne!(pk1, pk2);
+    }
+
+    #[test]
+    fn extract_key_distinguishes_ed25519_and_p256() {
+        let ed_key = test_signing_key();
+        let p256_key = test_p256_signing_key();
+
+        let ed_cert = generate_self_signed_cert(&ed_key).unwrap();
+        let p256_cert = generate_self_signed_cert_p256(&p256_key).unwrap();
+
+        let ed_pk = extract_public_key_from_cert(&ed_cert).unwrap();
+        let p256_pk = extract_public_key_from_cert(&p256_cert).unwrap();
+
+        assert_eq!(ed_pk.len(), 32);
+        assert_eq!(p256_pk.len(), 65);
+        assert_eq!(p256_pk[0], 0x04);
     }
 }

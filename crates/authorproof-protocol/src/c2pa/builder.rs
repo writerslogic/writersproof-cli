@@ -54,6 +54,7 @@ pub struct C2paManifestBuilder {
     cognitive_markers: Option<CognitiveMarkersAssertion>,
     evidence_chain: Option<EvidenceChainAssertion>,
     vc_embedded_json: Option<String>,
+    timestamp_token: Option<Vec<u8>>,
 }
 
 impl C2paManifestBuilder {
@@ -88,6 +89,7 @@ impl C2paManifestBuilder {
             cognitive_markers: None,
             evidence_chain: None,
             vc_embedded_json: None,
+            timestamp_token: None,
         }
     }
 
@@ -225,6 +227,21 @@ impl C2paManifestBuilder {
     /// Embed a signed W3C Verifiable Credential (JSON) directly in the manifest.
     pub fn vc_embedded(mut self, vc_json: String) -> Self {
         self.vc_embedded_json = Some(vc_json);
+        self
+    }
+
+    /// Set a pre-fetched RFC 3161 `TimeStampToken` for the `sigTst` COSE header.
+    ///
+    /// The caller is responsible for obtaining the token from a TSA (e.g. by
+    /// POSTing the output of [`super::timestamp::build_timestamp_request`] to
+    /// a TSA URL and parsing the response with
+    /// [`super::timestamp::parse_timestamp_response`]). This keeps the protocol
+    /// crate HTTP-free for wasm compatibility.
+    ///
+    /// When set, the token is injected into the COSE_Sign1 unprotected header
+    /// as `sigTst` per C2PA 2.4 Section 14.4.
+    pub fn timestamp_token(mut self, token: Vec<u8>) -> Self {
+        self.timestamp_token = Some(token);
         self
     }
 
@@ -494,7 +511,12 @@ impl C2paManifestBuilder {
         // cert_der takes precedence; cert_chain[0] is used as fallback end-entity cert.
         let cert_der = self.cert_der.as_deref().or_else(|| self.cert_chain.first().map(|v| v.as_slice()));
         let claim_cbor = ciborium_to_vec(&claim)?;
-        let signature = sign_c2pa_claim(&claim_cbor, signer, cert_der)?;
+        let mut signature = sign_c2pa_claim(&claim_cbor, signer, cert_der)?;
+
+        // C2PA 2.4 §14.4: inject sigTst into the COSE unprotected header.
+        if let Some(ref token) = self.timestamp_token {
+            signature = super::timestamp::inject_timestamp_into_cose(&signature, token)?;
+        }
 
         Ok(C2paManifest {
             claim,
@@ -549,8 +571,10 @@ fn sign_c2pa_claim(
 ) -> Result<Vec<u8>> {
     let pk = signer.public_key();
     let algo = signer.algorithm();
-    let expected_len = match algo {
-        coset::iana::Algorithm::EdDSA => 32,
+    let valid_len = match algo {
+        coset::iana::Algorithm::EdDSA => pk.len() == 32,
+        coset::iana::Algorithm::ES256 => pk.len() == 65 || pk.len() == 33,
+        coset::iana::Algorithm::ES384 => pk.len() == 97 || pk.len() == 49,
         _ => {
             return Err(Error::Crypto(format!(
                 "unsupported COSE algorithm {:?}",
@@ -558,12 +582,11 @@ fn sign_c2pa_claim(
             )))
         }
     };
-    if pk.len() != expected_len {
+    if !valid_len {
         return Err(Error::Crypto(format!(
-            "public key must be {} bytes for {:?}, got {}",
-            expected_len,
+            "invalid public key length {} for {:?}",
+            pk.len(),
             algo,
-            pk.len()
         )));
     }
     crate::crypto::cose_sign1_c2pa(claim_cbor, signer, cert_der)

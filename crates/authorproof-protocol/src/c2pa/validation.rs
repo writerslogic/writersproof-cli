@@ -2,6 +2,7 @@
 
 use coset::CborSerializable;
 use ed25519_dalek::VerifyingKey;
+use p256::ecdsa::VerifyingKey as P256VerifyingKey;
 use sha2::Digest;
 
 use crate::error::{Error, Result};
@@ -162,10 +163,40 @@ pub fn verify_manifest_signature(manifest: &C2paManifest) -> Result<bool> {
     }
 
     let pk_bytes = extract_public_key(&sign1)?;
-    let vk = VerifyingKey::from_bytes(&pk_bytes)
-        .map_err(|e| Error::Crypto(format!("invalid Ed25519 public key: {e}")))?;
 
-    match crate::crypto::verify_cose_sign1_ed25519(&sign1, &vk) {
+    let alg = sign1
+        .protected
+        .header
+        .alg
+        .as_ref()
+        .ok_or_else(|| Error::Crypto("COSE_Sign1 protected header missing alg".to_string()))?;
+
+    let result = match alg {
+        coset::RegisteredLabelWithPrivate::Assigned(coset::iana::Algorithm::EdDSA) => {
+            let pk: [u8; 32] = pk_bytes.as_slice().try_into().map_err(|_| {
+                Error::Crypto(format!(
+                    "Ed25519 public key must be 32 bytes, got {}",
+                    pk_bytes.len()
+                ))
+            })?;
+            let vk = VerifyingKey::from_bytes(&pk)
+                .map_err(|e| Error::Crypto(format!("invalid Ed25519 public key: {e}")))?;
+            crate::crypto::verify_cose_sign1_ed25519(&sign1, &vk)
+        }
+        coset::RegisteredLabelWithPrivate::Assigned(coset::iana::Algorithm::ES256) => {
+            let vk = P256VerifyingKey::from_sec1_bytes(&pk_bytes)
+                .map_err(|e| Error::Crypto(format!("invalid P-256 public key: {e}")))?;
+            crate::crypto::verify_cose_sign1_es256(&sign1, &vk)
+        }
+        _ => {
+            return Err(Error::Crypto(format!(
+                "unsupported COSE algorithm: {:?}",
+                alg
+            )));
+        }
+    };
+
+    match result {
         Ok(()) => Ok(true),
         Err(e) => {
             log::debug!("COSE_Sign1 verification failed (x5chain key): {e}");
@@ -174,7 +205,7 @@ pub fn verify_manifest_signature(manifest: &C2paManifest) -> Result<bool> {
     }
 }
 
-/// Verify the COSE_Sign1 signature on a manifest against a known public key.
+/// Verify the COSE_Sign1 signature on a manifest against a known Ed25519 public key.
 pub fn verify_manifest_with_key(
     manifest: &C2paManifest,
     public_key: &[u8; 32],
@@ -198,11 +229,11 @@ pub fn verify_manifest_with_key(
     }
 }
 
-/// Extract the Ed25519 public key from x5chain (label 33) in the protected header.
+/// Extract the public key from x5chain (label 33) in the protected header.
 ///
-/// Handles both raw 32-byte public keys (legacy) and DER-encoded X.509
-/// certificates (C2PA-compliant).
-fn extract_public_key(sign1: &coset::CoseSign1) -> Result<[u8; 32]> {
+/// Handles raw public keys (32-byte Ed25519, 33/65-byte P-256) and
+/// DER-encoded X.509 certificates (C2PA-compliant).
+fn extract_public_key(sign1: &coset::CoseSign1) -> Result<Vec<u8>> {
     let pk_value = sign1
         .protected
         .header
@@ -215,16 +246,16 @@ fn extract_public_key(sign1: &coset::CoseSign1) -> Result<[u8; 32]> {
         })?;
 
     match pk_value {
-        ciborium::Value::Bytes(bytes) if bytes.len() == 32 => {
-            let mut pk = [0u8; 32];
-            pk.copy_from_slice(bytes);
-            Ok(pk)
+        ciborium::Value::Bytes(bytes)
+            if bytes.len() == 32 || bytes.len() == 33 || bytes.len() == 65 =>
+        {
+            Ok(bytes.clone())
         }
-        ciborium::Value::Bytes(bytes) if bytes.len() > 32 => {
+        ciborium::Value::Bytes(bytes) if bytes.len() > 65 => {
             super::cert::extract_public_key_from_cert(bytes)
         }
         ciborium::Value::Bytes(bytes) => Err(Error::Crypto(format!(
-            "x5chain value too short: expected >=32 bytes, got {}",
+            "x5chain value has unexpected length: {}",
             bytes.len()
         ))),
         _ => Err(Error::Crypto(

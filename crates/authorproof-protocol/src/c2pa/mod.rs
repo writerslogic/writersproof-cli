@@ -10,6 +10,7 @@ pub mod cert;
 pub mod embed;
 pub mod standalone;
 pub mod text_embed;
+pub mod timestamp;
 pub mod trust;
 mod builder;
 mod jumbf;

@@ -21,6 +21,8 @@ coset = "0.4"
 anyhow = "1.0.95"
 thiserror = "2.0.11"
 ed25519-dalek = { version = "2.1.1", features = ["zeroize"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+ecdsa = { version = "0.16", features = ["signing", "verifying", "der"] }
 zeroize = { version = "1.8.1", features = ["derive"] }
 rand = "0.8"
 uuid = { version = "1.12.1", features = ["v4", "serde"] }

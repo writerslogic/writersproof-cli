@@ -964,7 +964,7 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
         super::cert::generate_self_signed_cert(&signing_key).expect("generate self-signed cert");
     let extracted_pk =
         super::cert::extract_public_key_from_cert(&cert_der).expect("extract pubkey from cert");
-    assert_eq!(extracted_pk, signing_key.verifying_key().to_bytes());
+    assert_eq!(extracted_pk.as_slice(), signing_key.verifying_key().as_bytes());
 
     // === Phase 4: Build C2PA manifest with forensic signals ===
     let signals = ForensicSignalScores {
@@ -1032,7 +1032,7 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
             );
             let pk = super::cert::extract_public_key_from_cert(bytes)
                 .expect("x5chain cert must be a valid X.509 certificate");
-            assert_eq!(pk, signing_key.verifying_key().to_bytes());
+            assert_eq!(pk.as_slice(), signing_key.verifying_key().as_bytes());
         }
         other => panic!("x5chain value must be Bytes, got {other:?}"),
     }

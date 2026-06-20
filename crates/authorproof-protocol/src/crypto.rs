@@ -5,6 +5,10 @@ use crate::rfc::{HashAlgorithm, HashValue};
 use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder};
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use hmac::{Hmac, Mac};
+use p256::ecdsa::{
+    signature::Signer as EcdsaSigner, DerSignature, SigningKey as P256SigningKey,
+    VerifyingKey as P256VerifyingKey,
+};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -96,6 +100,24 @@ impl EvidenceSigner for SigningKey {
 
     fn public_key(&self) -> Vec<u8> {
         self.verifying_key().to_bytes().to_vec()
+    }
+}
+
+impl EvidenceSigner for P256SigningKey {
+    fn sign(&self, data: &[u8]) -> Result<Vec<u8>> {
+        let sig: DerSignature = EcdsaSigner::sign(self, data);
+        Ok(sig.as_bytes().to_vec())
+    }
+
+    fn algorithm(&self) -> coset::iana::Algorithm {
+        coset::iana::Algorithm::ES256
+    }
+
+    fn public_key(&self) -> Vec<u8> {
+        self.verifying_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .to_vec()
     }
 }
 
@@ -216,6 +238,22 @@ pub(crate) fn verify_cose_sign1_ed25519(
         verifying_key
             .verify(sig_data, &signature)
             .map_err(|e| Error::Crypto(format!("Signature verification failed: {}", e)))
+    })
+}
+
+/// Verify an ECDSA P-256 (ES256) signature on an already-parsed COSE_Sign1 structure.
+///
+/// Returns `Ok(())` on success, `Err` on verification failure.
+pub(crate) fn verify_cose_sign1_es256(
+    sign1: &coset::CoseSign1,
+    verifying_key: &P256VerifyingKey,
+) -> Result<()> {
+    sign1.verify_signature(&[], |sig, sig_data| {
+        let signature = DerSignature::from_bytes(sig)
+            .map_err(|e| Error::Crypto(format!("Invalid DER signature format: {}", e)))?;
+        verifying_key
+            .verify(sig_data, &signature)
+            .map_err(|e| Error::Crypto(format!("ES256 signature verification failed: {}", e)))
     })
 }
 
