@@ -1,13 +1,1156 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are generated from the commit history.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
+[Conventional Commits](https://www.conventionalcommits.org/).
+## [1.3.0] - 2026-06-20
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Added
+- Add C2PA ES256 signing, P-256 certs, and RFC 3161 timestamping
 
-## [Unreleased]
+### Documentation
+- Standardize CLI command/install references to writersproof-cli; bump submodules
+- Correct Homebrew install command to writersproof-cli formula
 
-## [1.0.5]
+### Fixed
+- Resolve 7 security, silent failure, and performance issues
+## [1.0.7] - 2026-06-01
 
-Current released version. Changes prior to the adoption of this changelog are
-recorded in the git history and release tags.
+### Added
+- Add wld export --notarize to publish evidence to WritersProof verify page
+- Send evidence packet bytes in publish for paid full notarization
+- Secure channel degradation warnings, commitment verification feedback
+- Sync VC-Sig attestation block between engine and browser extension (T-042)
+- Signed remote app registry for edge-case apps
+- Remaining writing app tasks (T-015, T-019, T-025, T-027, T-044)
+- Trigger runtime app learning at focus time
+- Writing app support improvements (T-000 through T-039, 30 tasks)
+- Extension-based witnessing mode auto-detection for unknown apps
+- Verified Tinderbox integration via runtime testing
+- Deep Tinderbox integration (AppleScript text reading, correct bundle ID)
+- Report polish, metric interpretations, topology labels, anomaly icons
+- World-class report polish, exhibit badges, dimension details, session cards
+- Inline SVG visualizations for evidence cards, dimension rings, LR bar
+- PDF report visual improvements, remove collapsible sections
+- Forensic report visual charts, keystroke count accuracy
+- SVG score gauge, collapsible sections, forgery cost bar, report polish
+- Report visual overhaul, checkpoint timeline, finding cards, collapsible sections
+- Transcription detection composite scorer, field-calibrated thresholds, export pipeline fixes
+- Wire ContinuationSection and ProvenanceSection (A10 complete)
+- Wire 13 unwired functions, add 3 FFI exports, fix 7 pre-existing bugs
+- Browser extension overhaul, Safari parity, 85 unit tests, security fixes across 22 integrations
+- Predicted UX fixes: document guidance, window level, position memory, app labels, export hint
+- Text size preference, complete terminology rename, permission revocation fix
+- Virtual session export, adaptive app detection, UX beta feedback fixes
+- Reliable cross-window transcription via Swift-driven detection path
+- Swift-driven cross-window detection feeds Rust live score directly
+- C2PA-signed PDF forensic reports, PoSME terminology, verify.writersproof.com URLs
+
+### Changed
+- Remove dead WritersProof binary attest queue and client verify/attest/nonce methods
+- Replace per-app debounce with adaptive focus debounce
+- Trim 38 redundant entries from static app registry
+- Replace TitleParserVariant with unified smart title parser
+
+### Fixed
+- Rename all artifact references from writerslogic to writersproof-cli
+- Repair cpoe_cli integration test build and rebrand stale assertions
+- Point CLI anchor client at api.writersproof.com
+- Resolve 28 validated HIGH findings from todo.md audit
+- Resolve deferred audit findings
+- Validate all 112 open HIGH findings in todo.md
+- Audit findings across app_registry, remote_registry, types, focus
+- Three quality improvements across all tasks
+- Signature verification and adaptive debounce correctness
+- Update cpoe_macos submodule (T-043 window title capture)
+- 4 quality improvements to writing app support tasks
+- Correct bundle IDs for Logseq, Notion, remove duplicate Warp entry
+- Add legacy Tinderbox bundle ID for older versions
+- Correct Tinderbox bundle ID to com.eastgate.Tinderbox-11
+- Improve Tinderbox support (DatabaseBacked + ContentLevel, add .tbx extension)
+- Keystroke count inflation from coalesced rate-limited events
+- Keystroke count accuracy, permission UX, author profile visibility
+- Remove sandbox-incompatible auto-add of home directory watch path
+- Keystroke count only counts content-producing keys, use cumulative total consistently
+- Engine hardening from parallel session
+- Remaining audit findings (H-6, H-8, H-11)
+- 5-file audit findings (1 CRITICAL, 4 HIGH)
+- Sentinel/core.rs audit findings (3 MEDIUM)
+- Track xwin worker thread, detect death and auto-respawn (H-004/M-006)
+- Event_handlers audit findings (H-001, H-003, M-003, M-004)
+- Persist document_stats on every manual checkpoint
+- Scorer recalibration, report visual redesign, submodule update
+- Recalibrate transcription scorer against field data, improve report layout
+- Keystroke count shows session count instead of cumulative total
+- Polish wiring quality, fix paste detection bug, harden edge cases
+- Remaining bugs across Atlassian, HubSpot, Salesforce, Windows integrations
+- Text size preference applies live without relaunch
+- Onboarding permission revocation tracking, clean first-launch detach
+- Custom Supabase auth storage using data protection keychain
+- Auto-migrate legacy keychain items on first launch to prevent password prompts
+- KSecUseDataProtectionKeychain key type mismatch causing password prompts
+- Complete kSecUseDataProtectionKeychain coverage across all keychain callers
+- Eliminate 13 admin password prompts on fresh install
+- Strengthen behavioral transcription signals in live score
+- Cross-window check never firing due to keystroke_count race
+- Enable writing style analysis by default
+- Cross-window transcription false positives
+- Crash on volumeIsEncrypted fdesetup sandbox denial
+- Apply cross-window transcription penalty to live scores
+- Safari extension app group entitlement for cross-process communication
+- GlobalHotkeyService sentinelStatus property name
+- Add missing GlobalHotkeyService.swift to Xcode project
+- Cross-window transcription detection, jitter ring buffer, sentinel hardening
+- PDF multi-page pagination, Safari extension TDZ crash, right-Cmd toggle hotkey
+- Dead code audit, duplication fixes, security hardening, CLI cleanup
+- Cross-editor paste detection, full-analysis PDF forensic reports
+- Validate on macOS, rename binary and archives to writersproof-cli
+
+### Performance
+- Deflate-compress C2PA evidence bundle, store precompressed assets
+
+### Security
+- Rotate CA keypair, add manifest signing key (H-039)
+- Fix 2 deferred audit items
+- Fix 19 audit findings across 12 high-risk engine files
+- Validate checkpoint message input (length + control chars)
+- Fix TOCTOU in export path validation, simplify sync conflict
+- Fix audit findings in new code from this session
+
+### Release
+- MacOS app v1.2.0, FFI bindings regenerated
+- V1.1.0 — UX overhaul, virtual session export, adaptive app detection
+## [1.0.6] - 2026-06-01
+
+### Added
+- C2PA ZIP export, text manifest embedding, VC integration, duplication cleanup
+- Browser extension account sign-in via writersproof.com
+- Writing mode hysteresis to prevent label flickering
+- Auto-detect editors on any website without explicit domain config
+- Expand app registry and browser extension site support
+- Browser extension reliability and evidence completeness improvements
+- Browser extension heartbeat, auto-reconnect, and message queueing
+- Composite cognitive score blending 6 cached signals for accuracy
+- Content-aware paste classification for tables, images, and media
+- Wire 6 forensic analysis signals through full data pipeline
+- Record skipped paste checkpoints as integrity flag in forensic report
+- Add dictation behavioral forensics metrics (revision density, disfluency, burst CV)
+- C2PA validation expansion, protocol crypto, CLI export improvements
+- Forensic signal expansion, sentinel hardening, report enrichment
+- Scroll event capture, cursor attention analysis, production hardening
+- Extend forensic report, evidence packet, and HTML with all signals
+- C2PA embed/trust, VC export FFI, velocity analysis, forensic HTML report, store integrity checks
+- Fill remaining debug logging gaps across dictation, clipboard, config, polling, queue, cloud sync, challenge
+- Add debug logging to fingerprint module (28 functions) and identity module (25 functions)
+- Exhaustive debug logging for WritersProof API, checkpoint chain, session lifecycle, hybrid focus dedup
+- Add exhaustive debug logging across all 114 Rust FFI entry points
+- Add oslog backend so Rust log::* calls appear in macOS unified logging
+- Add v2 structural-signal writing mode classifier
+- Add compute_planning_pause_rate to cadence analysis
+- Add structural signal fields to CadenceMetrics for v2 classifier
+- Add local differential privacy to research collector + FFI opt-in
+- Restore build_ingredients and full C2PA builder wiring in package.rs
+- Restore protocol builder extensions + audit fixes
+- CAWG COSE_Sign1 signing, enriched identity, OnceLock for static mappings
+- JCS canonicalization, EU AI Act constants, serde_jcs dependency
+- Add unified CredentialPackage builder with cross-standard verification
+- Forensic gating, VDF multiplier, transcription suspicion, audit fixes
+- Implement per-type entropy metrics (timing, pause) per draft-condrey-rats-pop
+- Add 5 P0 CLI subcommands (forensics, beacon, report, snapshot, credential)
+- Forensic signal modules, C2PA/VC/export tests, CLI/Windows spec
+- Security hardening, code quality, Pro dictation analytics
+- Tasks 4,6,8 — roughtime calibration, fingerprint maturity, CA trust bundle
+- Extend DictationEvent with anti-forgery fields; add WAL dictation entry types
+- Add dictation utility functions to utils crate; fix pre-existing compile errors
+- Add ES exec tracking for terminal editors (vim/nvim/emacs/nano/helix)
+- Add session_counter (CBOR key 24) to EvidencePacketWire with ordering verification
+- Add enforce_hardware_attestation() to tpm module
+- Wire AttestationTier scoring penalty and add require_hardware_attestation config
+- S13 NSServices/NSSendTypes writing signal, S10 AXURL fallback for WKWebView-hosted local content
+- S19 show evidence_quality verdict in popup session summary
+- S19 forward evidence_quality from checkpoint/session_stopped to popup via broadcastToPopup
+- S19 surface evidence_quality verdict in CheckpointCreated and SessionStopped responses
+- S5 browser jitter forensics, append cv/regularity/rounding/verdict to evidence on session stop
+- Bind hardware counter (TSC/CNTVCT) into per-keystroke HMAC
+- Wire verify_dual_anchor into evidence packet build()
+- Add session_index.rs for cross-restart browser session continuity
+- Add prose segment velocity penalty to forensic scoring
+- Add automatic event archive rotation to SecureStore
+- Add ManuscriptExportAttestation and DocumentStructureSnapshot to evidence packet
+- Add PermissionState monitor for runtime Accessibility/Input Monitoring tracking
+- Add BundleMonitor for Scrivener/Ulysses and sentinel improvements
+- Implement and wire ClipboardMonitor with macOS NSPasteboard support
+- Rewrite content_detector PatternMatcher with weighted scoring, stop-word prose detection, and softmax selection
+- File tracking enhancements, git integration, app discovery, co-edit detection
+- Add Markdown export format for embeddable evidence hash blocks
+- Add semantic_summary column to SecureEvent for checkpoint evidence
+- Paste source classification, semantic evidence wiring, CRC32 round-trip test
+- Add CRC32 integrity footer to .cpoe packages, wire semantic metrics to FFI
+- Add keyboard device classification, paste source, session activity types, 12 tests
+- Add C2PA manifest creation/validation, deletion pattern fingerprinting
+- Add keystroke semantic classification, fingerprint enhancements, collaboration FFI
+- Prompts 3-8, 25 verification and hardening
+- Update macOS submodule with all 23 wired FFI integrations
+- Wire up all 27 previously uncalled FFI functions
+- Writersproof_id collision fix, clipboard COSE signing, two-phase FFI timeout
+- Elevate browser extension and offline queue to production quality
+- Browser extension text attestation via right-click context menu
+- Offline queue for text attestations with automatic drain on sign-in
+- Text attestation with right-click attest, WritersProof API sync, and verify portal
+- Add Phase 3.2 CloudKit sync engine with conflict resolution
+- Checkpoint policy engine with forensic validation and pattern detection
+- Implement Phase 4 Digital Credentials + Wallet integration
+- Implement Phase 2.3 keystroke context detection
+- Add customizable app allowlist and improve sentinel startup
+- Implement Phase 2.1 text-fragment evidence data model
+- Add Scrivener chapter correlation and SQLite WAL pseudo-save for database-backed apps
+- Populate dimension analysis, activity_contexts, writing_flow from computed data
+- Exhaustive evidence and PDF report completeness overhaul
+- Wire sentinel keystrokes into cognitive analysis pipeline
+- Wire cognitive signals into FFI, evidence packets, and UI layer
+- Spoofing detection, error fingerprinting, personal baseline model
+- Unified WritingMode classifier combining all signal layers
+- Real word frequency table, IKI modality detector, improved classifier
+- Cognitive vs transcriptive writing differentiation (4 classifiers)
+- Posme parameter bounds, protocol improvements, audit triage
+- Sentinel global monitoring with exclusion-based filtering
+- Sentinel exclusion redesign, global monitoring by default
+- Manual snapshot button, Safari/backup issue documentation
+- Add build script, packaged extensions, and publishing guide for Chrome/Edge/Firefox
+- Add native messaging handlers for browser-desktop coordination
+- Browser extension improvements across 12 suggestions
+- Enable snapshots by default, sync on sentinel start
+- Add 6 FFI functions for snapshot version history
+- Add encrypted snapshot version history store with word-level diff
+- Expand browser extension to monitor grammar tools, AI assistants, and writing platforms
+- Recursive project root detection and per-file keystroke counts in project evidence
+- Project-level evidence for multi-file workflows (Scrivener, LaTeX)
+- Embed document in .cpoe evidence packet; add ffi_extract_document
+- Sentinel targeted mode for single-document tracking
+- Integrate posme VDF into checkpoint pipeline, update submodule pointers
+- Add posme crate (draft-condrey-cfrg-posme) and wire type extensions
+- Forensic flags, MMR peak hashes, browser extension UX overhaul, utils refactor
+- Standalone mode for browser extension; works without desktop app via IndexedDB evidence chain
+- Expand supported sites to 18 defaults; add custom domain configuration in options
+- Add V6InsufficientData verdict for insufficient evidence; auto-verify on tracking stop
+- Implement Bitcoin block header cross-check for OTS proofs
+- Implement three advanced forensic metrics: CLC, repair locality, fatigue trajectory
+- Implement server nonce handshake loop and warn on missing temporal binding
+- Rewrite labyrinth with multivariate phase-space fusion, LLE, quantization detection, flat embedding
+- Persist entropy digest alongside HW co-signatures for auditable threshold verification
+- Persist self-entangled HW co-signatures to secure event store with DB migration
+- Embed entropy accumulation and HW co-sign triggering into sentinel event handlers
+- Cross-window text comparison for transcription detection
+- SE-derived threshold salt for entropy-triggered hardware co-signing
+- Entangled hardware co-signature binding document, software sig, device time, and device identity
+- Add accessor methods to WebVHIdentity for CLI and FFI consumers
+- FFI functions, lifecycle tests, wire format tests, and author_did auto-population for did:webvh
+- Populate author_did on evidence export when did:webvh identity is available
+- Integrate did:webvh identity layer via didwebvh-rs 0.4, feature-gated as did-webvh
+- PDF embedded VC attachment, storage_opaque trust vector, report edge case fixes
+- W3C VC 2.0 + did:key integration in HTML/PDF reports; fix AR4SI status mapping
+- Enhanced evidence reports with forensic metrics, W3C VC 2.0, and DID integration
+- Challenge nonce integration in sentinel checkpoint cycle and secure store
+- Challenge nonce binding in checkpoint hash, WritersProof challenge client
+- 3-tier AI tool classification with 30 signing IDs, local model runners, AI-capable environments
+- Categorized AI tool detection, ES rename/gap handling, write coalescing
+- Embed CBOR evidence in HTML report as self-verifying artifact; add cpop-media-type meta
+- Persist AI tool detection from Endpoint Security to document sessions and evidence packets
+- Add full Lamport public key to CheckpointSignature for cryptographic verification
+- Endpoint Security FFI endpoints and macOS submodule update
+- Wire HID capture into sentinel start/stop lifecycle
+- IOKit HID Manager keystroke capture for dual-layer anti-forgery validation
+- Wire Lamport signatures through DB storage and sentinel checkpoint creation
+- Export Lamport one-shot signatures in CheckpointWire (keys 18/19)
+- Capture keyDown+keyUp for dwell time and flight time biometric analysis
+- Lamport one-shot signatures on checkpoints; post-quantum anti-forgery with provable double-sign detection
+- Document snapshots and report redesign
+- Document snapshots at checkpoints, clean professional HTML report redesign, JSON export
+- JSON export readable, macOS submodule updated
+- JSON export produces human-readable output; CPOP/CWAR remain binary CBOR+COSE
+- Expand allowed apps list with writing tools, IDEs, and creative apps
+- Universal app tracking; allow extensionless files, add VSCode/Notion/Cursor to Electron list, fix title skip matching
+- Anti-forgery hardening; COSE_Sign1 signed exports, signing key in wire format, injection rate limiting, timestamp monotonicity enforcement
+- Keystroke buffering during focus gaps, transcription detection via burst speed CV and zero-variance windows
+- Wire voice fingerprint collection into FFI keystroke injection path
+- Move cpop-jitter and cpop-protocol crates into writerslogic repo
+- Add E2E cross-process test harness using AppleScript to verify full user experience
+- Expand test suites to 45 engine + 52 API tests covering security, edge cases, error recovery
+- Add engine integration tests (18 tests) and API test script (31 tests)
+- Add PreWitnessBuffer for auto-witnessing with human input validation
+- Add cumulative per-document statistics persisted across tracking sessions
+- Add ratchet chain binding verification to key hierarchy validation
+- Update cpop_macos submodule with detachable popover feature
+- Wire event validation into sentinel and FFI keystroke paths
+- Add per-keystroke multi-layer event validation for CGEventTap hardening
+- Wire per-document jitter samples and focus metrics into FFI forensic scoring
+- Integrate cadence and focus metrics into assessment scoring
+- Add window-switching detection to sentinel and forensics pipeline
+- Add cognitive vs transcriptive differentiation metrics to cadence analysis
+- Add per-document jitter sample tracking to sentinel sessions
+- Add per-document keystroke counting to sentinel DocumentSession
+- Wire access audit log into IPC server for SOC 2 compliance
+- Add admin access log, DID Document generation, WAL rotation, IPC RBAC, and compliance fixes P1-P10
+- Add WAL rotation/archival and RBAC on IPC messages
+- Add JPEG Trust profile, OpenID4VC metadata, DIF identity modules, and update standards alignment docs
+- Add DIF, ORCID, and identity bridge types for CPOP
+- Add EU AI Act Article 50 and CAWG standards conformance profiles
+- Add SCITT, ToIP EGF, and TRQP trust infrastructure types to rats module
+- Add COSE-secured VC encoding per W3C JOSE/COSE spec
+- Wire C2PA dc:format setter from cpop-protocol 0.3, add patch override
+- Add CoRIM reference values module for RATS Verifier interop
+- Add RATS interoperability module with EAT/CWT encoding
+- Add IETF RATS module with CWT-encoded EAT tokens and RFC 9334 role types
+- Add MIME type detection for multi-asset C2PA manifest generation
+- Propagate AI disclosure level to C2PA digitalSourceType per IPTC mapping
+- Add processStart/processEnd to C2PA assertion per specs-core PR #2009
+- Add C2PA assertion export format to CLI
+- Add link command, PDF export, beacon flags, and CLI test suite
+- Add beacon attestation, PDF report generation, and WritersProof client updates
+- Add structured metadata headers to WAR block
+- Standards alignment, did:key fix, WritersProof CA trust anchor
+- Add verify module, analysis subsystems, and remaining HIGH fixes
+- Recipient verification experience — print verify URL, update docs
+- Add steganography and WritersProof FFI bindings for GUI apps
+- CLI 1.0.0 — flatten to 10 commands, interactive menu, any-file tracking, production hardening
+- Wire type spec conformance — baseline verification, waypoint params, CborWar format, confidence tier
+- V0.4.1 — merge watch into track, auto-init, directory support, conditional code signing
+- V0.4.0 — Apple code signing, jitter sample interval 10, 5s status refresh, demo script, perf and quality improvements across all crates
+- CLI production polish with --json, --quiet, completions, and expanded tests
+- Add ToolReceipt, EffortAttribution, HKDF seals, rename iterations to steps
+- Add ephemeral checkpoint hash, canary seed, and identity mnemonic
+- Add category scores, dimension analysis, and statistical methodology sections
+- Add WAR authorship report generation (HTML)
+
+### Changed
+- Rename binary from cpoe to writersproof-cli
+- Use chrome.identity.launchWebAuthFlow for extension sign-in
+- Deduplicate code across engine, jitter, and CLI crates
+- Downgrade SeqCst to Acquire for bridge health reads, prealloc HTML buffer
+- Gate fingerprint capture on ffi feature, targeted dead_code allows on shared_tap
+- Sentinel subscribes to SharedKeystrokeTap, eliminating dual CGEventTap (SYS-008)
+- AX-primary focus architecture, reduce PID poll to 100ms
+- Non-critical init isolation, menu state, typed routing, derived domains
+- Extract DashboardBannerStack, use AppConfig.appVersion
+- Rename cpop references to cpoe, add W3C AI disclosure variants
+- Rename pop-timestamp to cpoe-timestamp in CDDL type comments
+- Encapsulate macOS CF types in CfGuard RAII wrappers
+- Enforce SortedEvents invariant, remove redundant sorts
+- Add impl_ffi_err! macro, replace 13 manual FfiErrResult impls
+- Migrate hex decode sites in text_fragment.rs to crypto newtypes
+- Add TextFragment::new() constructor, collapse 6 duplicate struct literals
+- Migrate remaining sig/pubkey/hash encode sites to crypto newtypes
+- Add ffi/conv.rs for typed signing helpers, migrate encode sites
+- Migrate hex decode sites to crypto_types newtypes
+- Extract shared test fixtures and histogram builder
+- Extract EventLoopCtx and 19 handler methods from sentinel/core.rs
+- Extract dimension builders from ffi/report.rs into report_dimensions.rs
+- Downgrade pub constants to private, replace magic numbers with lerp_score
+- Replace 33 writing_mode constants with ScoringSignal struct
+- Consolidate AI bundle patterns and browser IDs into forensics/constants.rs
+- Consolidate CORRECTION_ZONE, PAUSE/BURST_THRESHOLD_NS into forensics/constants.rs
+- Replace 4 inline variance/CV computations with utils::stats
+- Extract shared spearman_correlation to utils/stats.rs
+- Extract check_ffi_result and path_str CLI helpers
+- Extract shared ax_child/ax_read_string/ax_release helpers, raise MIN_FORENSIC_SAMPLES to 50
+- Remove FocusMonitor trait from platform layer, consolidate in sentinel
+- Extract build_wire_packet, eliminate temp-file in JSON export, add sync_all, canonicalize project paths
+- Dead code cleanup, FFI deduplication, HTML sections decomposition
+- Split build_war_report_for_path() from 921 lines into focused helpers
+- Split CPoEService+Polling refreshStatus() into 14 sub-functions (265 -> 47 lines)
+- Consolidate sigmoid utility, unify cognitive analysis pipeline
+- Reframe UI from AI detection to creative control attestation
+- Clean up jitter bridge module
+- Perplexity.rs to match refactored analysis module patterns
+- Consolidate atomic_write into crypto::atomic_write (3 duplicate impls removed); adopt ns_elapsed across 10 more sites
+- Eliminate 3 duplicate now_ns/now_as_secs helpers; adopt now_secs across 4 more files; adopt short_hex_id across 18 call sites
+- Adopt time utilities across 15 call sites in forensics, fingerprint, checkpoint, evidence, sentinel, ffi
+- Add time conversion utilities (ns_to_secs, ns_to_ms, ns_elapsed, now_secs, duration_to_ms) and apply to velocity and error_topology
+- SortedEvents + Probability newtypes, lerp_score helper
+- Add hex_decode_16/32/64 helpers to utils; 8 edge-case tests
+- Name inline DST byte constants; remove redundant .to_string() from checkpoint errors
+- Change store path params from &str to impl AsRef<Path>
+- Replace String alloc with visitor pattern in hex/b64 deserializers
+- Replace stringly-typed rate-limit keys with IpcOperation enum
+- Second-pass todo_runner polish — live elapsed, max-aware bar, clean shutdown
+- Fix todo_runner correctness bugs — single-scan scheduling, timeout escalation, summary report
+- Pluggable KeychainBackend trait with InMemoryBackend for testability
+- Consolidate Welford mean/variance helpers in utils::stats (SYS-017)
+- Split layout_sections god module into page-specific submodules
+- Add finitude check to compute_hurst_rs for consistency with DFA
+- Optimize lyapunov distance computation, remove sqrt from inner loop
+- Extract hurst exponent classification to shared helper
+- Centralize string sanitization (yes/no, bundle IDs, hex comparisons)
+- Hex64 newtype, AsyncIpcClient reconnect, Vec<u64> for TOKEN_USER buffer
+- Extract shared utilities, named structs, deduplicate constants
+- Apply load_events_for_path to chain, report, forensics; fix test type mismatch
+- Deduplicate device_identity into helpers, add load_events_for_path, remove dead tmp_path ref
+- Remove deprecated verify() wrapper; all callers use verify_self_signed()
+- Split cmd_export.rs into submodule (keystroke, packet, output)
+- Split cmd_track.rs into submodule
+- Split native_messaging_host.rs into directory submodule
+- Extract setup methods and checkpoint helper from core.rs
+- Split c2pa.rs into c2pa/ submodule
+- Tighten crypto modules; delete obfuscation.rs; consolidate ObfuscatedString into obfuscated.rs
+- Replace FfiResult struct literals with FfiResult::ok/err helpers across all FFI modules
+- Consolidate helpers (FfiResult::ok/err, finite_or, atomic_write, compute_edit_extents, Packet Default, short_hex_id)
+- Consolidate atomic_write, Packet::Default, and compute_edit_extents helpers
+- Add FfiResult::ok/err, shared finite_or and short_hex_id helpers
+- Chain struct fields into ChainMetadata; rename old ChainMetadata to ChainIntegrityMetadata; restore missing methods
+- Remove analyze_labyrinth wrapper; single entry point with optional mouse data
+- Baseline digest update_digest_in_place with numerically stable running average and static bin centers
+- Extract try_hw_cosign helper; flatten 12-deep nesting in sentinel event loop
+- Premium typography, responsive breakpoints, B&W print, cpop-report scoping, strip DOM theater
+- Build JSON-LD via serde_json; rename to cpop namespace; add evidence_hash, qualified derivation
+- Split CSS into base/components/layout; add JSON-LD, meta anchors, pop-report scoping, print headers
+- Extract section headings to constants; use include_str for static templates
+- Simplify sentinel; remove auto-witness, debounce, title://, pre-witness buffers (~500 lines removed)
+- Remove redundant Strength enum, unify on TrustTier
+- Add SecureEvent::new() and open_store_with_signing_key() to reduce duplication
+- Merge calibration/ module into physics/ as transport_calibration
+- Improve DID method extraction readability (H-072 quality polish)
+- Rename cpop_engine to cpop-engine, set all crates publish = false
+- Split 5 oversized files into directory-based submodules
+- Split 5 files over 800 lines into directory-based submodules
+- Split checkpoint/chain.rs into chain_helpers.rs and chain_verification.rs
+- Split ffi/evidence.rs into export, checkpoint, and derivative submodules
+- Split secure_enclave.rs into directory-based submodule
+- Redesign FFI layer with structured report, forensics, and verification types
+- Extract WAR delimiter strings into constants
+- Split HTML report god module, consolidate stats (H-135, SYS-029)
+- Deduplicate anchor HTTP, sentinel IPC, fingerprint, platform (SYS-024, SYS-026, SYS-031, H-143)
+- Consolidate duplicated code (SYS-025, SYS-028, SYS-030)
+- Product data dir ~/.writerslogic → ~/.writersproof
+- Use centralized error helpers and constants
+- Standardize engine logging to log crate
+
+### Documentation
+- Update macOS submodule pointer for help book rewrite
+- Add field-level doc comments to HumanModel, ValidationResult, and Anomaly
+- Update remaining-work-prompts with completed prompts 3-8, 25
+- Remove 5 completed prompts (1, 31, 35, 37, 41) from remaining work
+- Mark macOS release-blocker items as fixed and bump submodule
+- Mark 7 release-blocker items fixed/deferred
+- Mark SYS-026 and SYS-029 fixed
+- Mark SYS-019 and lerp_score dedup tasks as fixed
+- Update status to reflect 38 types fixed, 66 violations remaining
+- Mark rejected—struct fields require String type, .to_string() is idiomatic Rust
+- Mark SYS-023, SYS-024, SYS-027, SYS-028 fixed after triage verification
+- Close all remaining open items; all findings resolved or marked false positive
+- Clarify forensics/ vs analysis/ module boundary
+- Document crate architecture and compilation targets in README
+- Document why the workspace has 3 separate crates (compilation targets)
+- Mark 10 sentinel audit findings as resolved in todo.md
+- Add test runner README with quick reference for all test suites
+- Add project evolution plan with phased audit and fix roadmap
+- Update audit-todo.md with resolution status (52 of 190 findings fixed)
+- Consolidated engine deep audit todo from 55-file, 10-agent parallel audit
+- Update CLI reference, FAQ, configuration, and add integration submodules
+- Update CLI README for v1.0.0, fix release workflow tag example
+- Update README for v1.0.0 — install instructions, correct repo URLs, AGPL license, CLI commands
+
+### Fixed
+- Replace test/clippy with build check in pre-release validation
+- Gate sentinel_es to macOS, add missing MouseEvent fields on Linux
+- Drop --all-features from CI (x11 feature conflicts with macOS)
+- Scope CI tests to cpoe_cli package only
+- Run pre-release validation on macOS (engine requires macOS APIs)
+- Merge duplicate macOS dependency sections in Cargo.toml
+- Gate oslog dependency to macOS only
+- Correct hysteresis thresholds for writing mode transitions
+- Refuse forensic verdict on insufficient evidence, fix report contradictions
+- Crash in looks_like_document_name on non-ASCII window titles (VS Code)
+- Forensic report evidence-first structure, verdict after evidence
+- Doc_has_focus uses targeted_path fallback for paste detection during app switch
+- Forensic report uses real keystroke count, focus time, session count from store
+- C2PA manifest encoding, CBOR tag enforcement, claim_generator_info v2
+- Jitter sample dedup when FFI inject active, macOS submodule update
+- Double-count elimination, witness pulse auth gate
+- Remove keystroke_count increment from CGEventTap event handler
+- Raise MAX_COALESCED_COUNT to 50, add autorepeat FFI constant
+- Reliability audit, 13 issues across engine and macOS app
+- Clamp total_focus_ms in session_forensic_score to prevent overflow
+- Guard log_ramp against NaN, negative, and out-of-range inputs
+- Prevent AX observer callback re-entrancy that caused stack overflow
+- Increase stack size to 16 MB for AX observer and xwin-check threads
+- Evidence maturity scoring, session focus tracking, profile feed resilience
+- Sentinel bugs, transcription detection, entropy checkpoints, evidence separation
+- WPM timestamp domain, profile DID, clippy warnings, export gating, CBOR verify
+- Prevent double-consumer on rapid stop/start, clear burst_buffer on lag
+- Detect dead bridge thread in fingerprint capture loop (30s health check)
+- Shared tap double-init race, subscriber underflow, capture cancellation (audit HIGH)
+- Apply open_validated/canonicalize_validated at remaining TOCTOU call sites (SYS-006)
+- Fingerprint EMA merges all dimensions, persist consolidation count, fsync canonical profile
+- Apply open_validated/canonicalize_validated at TOCTOU call sites (SYS-006)
+- Systemic security and performance hardening (SYS-001, SYS-005, SYS-006, SYS-008)
+- Security hardening, forgery resistance, PDF rendering, and keystroke storage
+- Add RwLockRecover import for release build
+- Hash macOS package directories, read fingerprint samples from sentinel accumulator
+- Treat macOS packages (.scriv, .pages, .rtfd) as documents not directories
+- Upgrade title:// sessions to real path by app bundle ID fallback
+- Add Spotlight and Notification Center to transient/blocked lists
+- Remove unreachable catch blocks
+- Dedup only same-type same-path events in merge task
+- Suppress stale polling FocusLost in HybridFocusTracker merge task
+- Nonisolated lcsRatio for detached task
+- ConstantTimeEqual nil pointer guard
+- Install ID write order (disk before Keychain)
+- HMAC key sync queue accessibility
+- Round 2 audit fixes - session cleanup, lagged events, drop URL validation
+- Round 1 audit fixes across chain, crypto, event handlers, polling
+- FocusLost with empty path checks app match before clearing focus
+- Re-key title:// sessions on window title change and upgrade to real path on save
+- Prevent stale polling events from clearing AXObserver focus
+- Add comprehensive debug logging across focus tracking, keystroke injection, and status reporting
+- Resolve all deferred audit findings
+- Narrow ~/Library exclusion to allow iCloud Drive Desktop/Documents
+- Audit findings across sentinel FFI, config, and transparency view
+- Sentinel keystroke/focus audit, ES file-open upgrade, permission verification
+- Resolve 19 test failures across workspace
+- Resolve 460 audit findings across workspace, 22 with code fixes
+- EAT decode path silent .ok() errors replaced with log::warn
+- Verify WAL journal mode in all store opens
+- Snapshot audit findings, zeroize compressed data, fix monotonicity
+- Clean up fingerprint map and dead JoinHandles on session end
+- Three bugs in performance/hardening changes
+- Derive text fragment confidence from ecology score
+- Auto-recover dead CGEventTap and bridge threads
+- Add defensive guard on store unwrap in start_witnessing
+- Resolve FFI compilation errors for release build
+- Recalibrate assessment penalties from diary session data
+- Suppress warnings for RAII fields and unused public API in macOS platform
+- Resolve FFI build errors from concurrent session
+- Cross-peak range proof verification in MMR
+- Resolve all remaining audit findings
+- Restore missing assertion label imports in builder.rs
+- Package.rs audit findings H-1, H-2, M-3
+- Move COSE methods into impl CawgIdentityAssertion block
+- Constraint_uri placement in TDM entry, restore CborSerializable import
+- Close OnceLock function bodies in jpeg_trust.rs and standards.rs
+- Update mTLS mocks for renamed TpmError/Capabilities variants
+- Remove references to protocol builder extensions not yet merged
+- NaN-safe weighted_blend, pause NaN filter, digraph count preservation
+- Normalize writing mode scoring weights to sum to 1.0 (was 1.15)
+- Eliminate redundant LR computation, cap enhanced dimension score at 99
+- Document lock ordering (M-129), warn on legacy genesis (M-133), recovery hint on WAL sync failure (M-134)
+- Replace f64::INFINITY with finite INFEASIBLE_COST in forgery estimation
+- Add missing analysis_status field to ForensicMetrics initializers in verify tests
+- Beacon DST uses only content_hash (server-verifiable); NaN guards; quiet mode
+- Suppress 10 compiler warnings in test code
+- Suppress dead_code warnings on dictation methods gated by ffi feature
+- Improve dictation utils; add push_u64, correction_rate; fix words_per_minute floor
+- Add missing session_counter field to all EvidencePacketWire initializers
+- Add missing session_counter field to EvidencePacketWire initializer
+- Add missing catch_ffi_panic/FfiErrResult imports in ffi modules, cover BundleBased storage pattern
+- Resolve compile errors introduced by prior session commits
+- Browser extension commitment logging and dist rebuild
+- Misc engine hardening (IPC visibility, VDF arithmetic, WAL types, did:webvh)
+- Hysteresis check only the separating threshold, not all thresholds
+- CLI native-host input validation and cmd_track path comparison
+- Harden RFC 3161 DER encoding, SSRF guard, and nonce canonicalization
+- Add max_age_ns non-negative assert to TimestampValidator::with_drift_and_age
+- Defensive CFRelease of error on SecKeyCopyExternalRepresentation success path
+- LeToUint64 low-word signed overflow (missed in SC-M-008), WAL entry-body I/O error not distinguished from truncation
+- H-008 Keychain downgrade check implemented, H-009 parent dir symlink resolved; close SYS-001/003/006/007
+- Apply all medium-severity audit findings across 5 audited files
+- Char-boundary-safe string truncation in error messages; log WAL timestamp overflow
+- Prevent infinite loop in redact_log_line by advancing offset past each replacement
+- Sort PCR list before read to match TPM ascending-index digest order; propagate save_counter error on legacy HMAC migration
+- Add catch_ffi_panic! to 24 more FFI functions across 7 files
+- Wrap 9 FFI functions in catch_ffi_panic!, bound snapshot label to 256 bytes
+- Apply crypto.rs and ffi/system.rs audit findings
+- Security hardening, clippy fixes, and audit finding resolutions
+- Resolve 5 clippy warnings, fix git context timeout, fix test compilation
+- Audit fixes, verify hardening, execute deduplication
+- Linter improvements; app registry auto-discovery, text fragment DST hardening, wave 4 Swift audit fixes
+- Wave 4 audit fixes across 6 Rust + 3 Swift files
+- Safe u32 casts in forensics_detail, atomic write in document extraction
+- Content detector test regression from messaging false positive
+- Eliminate double store open in sync conflict, deduplicate device_identity calls
+- Linter auto-fixes (clipboard, store, writersproof_ffi); add remaining work prompts doc
+- Elevate all Swift files to 9/10; refactor DashboardMonitoring + EngineService
+- Wave 3 audit fixes in OnboardingView and BatchVerifyView
+- Update macOS submodule with audit fixes across 11 files
+- Update macOS submodule (ZWJ sanitizer, linter hardening)
+- SQL case-insensitive matching, dynamic language scoring in content detector
+- Update macOS submodule after history rewrite (purge .a, merge to main)
+- Complete stubs and remove deprecated placeholders
+- Update macOS submodule (sync failure logging)
+- Signature::from_bytes infallible in ed25519-dalek v2, clean DST padding, fix linter double-qualification
+- Linter improvements; remove dead engine/sealed_chain modules; add credentials, provenance metrics, CloudKit sync, forensic report enhancements
+- Resolve all compiler warnings (unused imports, unused variable in score_chat)
+- Apply linter improvements across 22 files; remove dead sync module; add input validation, HMAC integrity, and dead code cleanup
+- Remove dead sync module (actual sync lives in Swift CloudSyncService), consolidate notifications into NotificationManager
+- Resolve compilation errors in conflict_resolver, types, and helpers
+- Resolve all compilation errors and clippy warnings across Phase 2 modules
+- Replace deprecated timestamp_nanos_safe with timestamp_nanos_opt, fix mut stats in sync module
+- Use ClipboardError::Other for RwLock poison errors
+- Remove duplicate store/cloudkit_sync and store/sync_state (sync/ module already exists)
+- Correct RwLock usage in clipboard.rs and add TextFragment import to cloudkit_sync.rs
+- Add DateTimeNanosExt imports for timestamp_nanos_safe() usage
+- Add TextFragment import to cloudkit_sync tests
+- Resolve unused imports and async/await issues in cloudkit_sync and clipboard
+- Simplify CloudKit sync engine to resolve type mismatches
+- Resolve all audit findings in language_model.rs and device_pairing.rs
+- Audit findings in phase 2.3 paste detection (timestamp bounds, overflow handling, test clarity)
+- Move metrics/profile flag blocks after forensics binding to fix ffi build
+- Preserve last_was_sentence_end through whitespace in cognitive accumulator
+- Evidence_hash chain commitment, checkpoint_hash from content not HMAC, time_cost 0->1
+- 5 display bugs from exhaustive export/PDF audit
+- PDF report shows 0 keystrokes and inconclusive verdict
+- Two correctness bugs found in post-commit audit
+- Structural audit fixes — race conditions, deadlock, error handling
+- Audit findings in engine watcher, session, and jitter bridge
+- Clippy warnings in cognitive accumulator and sentinel core
+- Resolve all open todo items (H-182, H-188, M-108..M-114)
+- Correct biased RNG output range in pink noise generator
+- Paste detection loop (Rust + Swift + static lib rebuild)
+- Stop re-reading paste chars from DB on every status poll
+- Paste detection only on Cmd+V
+- Add missing struct fields in CLI and protocol tests
+- MMR stale peaks after merge, clippy warnings, MIME type test
+- Add domain separation and char_count to genesis prev-hash
+- Resolve all 9 compiler warnings (0 warnings achieved)
+- 3 HIGH severity protocol security findings
+- 7 protocol hardening improvements from crate review
+- 4 hardening improvements from external code review
+- Add path validation to ffi_extract_document to prevent arbitrary file writes
+- 3 Rust engine bugs from audit round 6
+- Packet genesis hash verification now uses CBOR DocumentRef matching chain_helpers
+- Complete EAR roundtrip for all 14 EarAppraisal fields in rats/eat.rs
+- Skip CGEventTap in Engine::resume when CPOE_SKIP_PERMISSIONS is set
+- Clamp negative variance in jitter entropy; bound attestation/ai_declaration input size at FFI boundary
+- Float-to-int overflow guard, NaN/infinity sanitization in forensics and evidence builder
+- Preserve HTTP error body on read failure; log silent I/O errors in ephemeral session persistence
+- MMR FileStore read cache and file permission hardening
+- Log warnings on silent failures in obfuscated serialization, mlock, and cfstr
+- Deprecate stub methods, safe casts, BTreeMap for deterministic encoding, fallback report ID
+- Use BTreeMap in signable_payload() for deterministic key ordering regardless of serde_json feature unification
+- Reject unknown TPM provider types to prevent algorithm confusion attacks
+- Zeroize stale key material on timeout in BehavioralKey::key()
+- Replace silent as-casts with try_from for hw_cosign fields in store/events.rs
+- O(n*m) to O(n+m) signature lookup in wire_conversion via HashMap
+- Remove iterm2 and MacVim from blocked_apps (duplicated in allowed_apps)
+- Await genesis commitment before first checkpoint (H-038)
+- Use i32::try_from for challenges_issued to prevent overflow on large counts
+- Eliminate clippy warnings and workspace test failures across every crate
+- Use super:: imports so native_messaging_host tests compile from both binary targets
+- Detach pump thread on post failure; bundle_id uses exe file name only
+- Zeroize-on-drop hygiene, atomic auto-checkpoint claim, WAL fallback
+- Plug TPM handle and WAL tempfile leaks on error paths
+- Adapt callers to SecureStore::open Zeroizing<Vec<u8>> key
+- Replace let _ discard with .expect on infallible String::Write in render_html
+- Replace dummy EncryptedMessage error constructions with typed SecureChannelSendError/RecvError enums
+- Replace Result<_, String> with crate::error::Error in trust_policy and report/pdf
+- Consolidate two-pass variance calculations using Welford helpers
+- Add Debug to SecureStore with key redaction
+- Add Debug to 3 more ipc types (PeerCreds, SecureUnixSocket, VerifiedConnection)
+- Enable missing_debug_implementations lint; add Debug to crypto/sensitive types and 30+ public APIs
+- Encapsulate provider lookup with get_provider_by_type helper method
+- Add finite(), total_cmp in median/weakest_link, log::warn on NaN clamp
+- Resolve CRITICAL-002 and CRITICAL-006 error handling and zeroization
+- Reject negative IKI values; centralize conversion logic in utility function
+- Optimize perplexity n-gram and ots calendar URLs
+- Replace .as_str().to_string() with .to_owned() across 15 sites
+- Wire up refactored analysis error types in call sites
+- M-060 rename ambiguous mean_and_std_dev; M-025 poison connection on timeout
+- NaN guard in relative_similarity; validate hash params in all session methods
+- Remove no-op sign/verify check, add base16 multibase decoding
+- MNEMONIC_CACHE invalidatable via Mutex, signing key integrity check, multibase byte comparison
+- Did_key_from_public returns Option, zeroize HKDF output, warn on unknown tier
+- Lock_recover consistency in secure_storage, reject punycode IDN in did:webvh
+- 7 identity audit findings (2H, 4M, 1L)
+- Harden IPC module; alignment UB, constant-time confirm, RAII for Win32 allocs
+- NaN-safe similarity, streaming CRL, session_id validation on all endpoints
+- Restore regressions in 7 refactored files while keeping improvements
+- Resolve 29 audit findings across 6 files (H-045..H-058, M-001..M-057)
+- Surface store errors at FFI boundary in ephemeral and witnessing status
+- Detect saturation *before* loss, report items truncated
+- Resolve sealed_chain header validation and unused import in sentinel tests
+- Apply 7 agent fixes for error handling, atomicity, and data integrity
+- Labeled loop prevents continue skipping candidates, rename mouse_duration_ns, bound char_value
+- Add json_response helper with 1MB body-size cap across all 8 endpoints
+- Harden atomic writes with tempfile crate across 10 files; nonce safety, API URL constant
+- Resolve all remaining audit findings; panic recovery, Drop timeout, API URL constant, Debug redaction
+- Resolve remaining audit findings; lock scope, broadcast lag, path canonicalization, SAFETY docs
+- Add version check to BaselineDigest::validate, add 20 validation tests
+- NaN validation, digest_signature COSE verification, checkpoint ID uniqueness
+- Resolve audit findings across 5 engine files (2C/9H/7M)
+- Set lib name to cpop_engine for FFI compat, regenerate UniFFI bindings for witnessd rename
+- Weak self in Tasks and force-unwrap patterns (HK-1A-1, HK-2A-1)
+- Fix c2pa test compile errors (missing imports, type mismatch)
+- Rename verify() to verify_self_signed(), add trusted_public_key to VerifyOptions
+- Add COSE_Sign1 Ed25519 verification for EAT CWT decode
+- Guard sqrt with is_finite on IKI-surprisal correlation
+- C-001/H-032 implement CMS RSA-SHA256 signature verification in RFC3161 TSA provider
+- C-012 SSRF guard in did:webvh resolver; H-017 false positive (log chain verified by library)
+- H-007 anchor MMR root in signed checkpoint; verify cross-checkpoint proof in verify_detailed
+- C-027 move WAR signing to war::build_signed_ephemeral_block; C-028 cache forensic analysis in ffi/report
+- H-039 return error response to client on jitter evidence write failure
+- C-018 C-021 C-025 C-026 C-029 H-026 H-043 from session 4 audit; mark 23 false positives
+- H-009 verify per-entry HMAC on store reads to detect mid-session tampering
+- H-007 include MMR root hash in signed checkpoint for external verification
+- SYS-001 variance.max(0.0).sqrt() guard in audio/biological/analysis; SYS-005 symlink rejection in watcher
+- H-022 include error context in TPM sign/ticket/digest map_err closures
+- C-011 reject legacy XOR recovery, H-006 unverified FFI confidence threshold, H-010 Windows symlink guard
+- H-001 focus lock race, H-002/H-004 path canonicalize, H-005 perplexity NaN, H-008 WAL fsync, H-011 behavioral HKDF, H-012 PID liveness, H-013/H-025 stop_witnessing path, H-022 TSS2 errors, H-023 physical_state CBOR
+- C-004 VC validUntil, C-006 zero-edit score, C-008 jitter seal propagation, C-009 VDF nil guard, C-013 keychain fail-hard, C-014 HTTPS unconditional
+- Update deny.toml exception to witnessd; revert authorproof-protocol license to Apache-2.0; close M-056/090/091/092
+- Resolve 4 clippy warnings in witnessd (map_or, useless_format, match_to_question_mark, type_complexity)
+- H-021 rfc3161 false-positive verification, M-081 evidence_backed quality gate, H-034 WAR tool field injection
+- Update 3 stale test assertions after genesis VDF fix
+- H-013 require VDF proof for genesis checkpoint; verify when present in Legacy mode
+- M-023 socket TOCTOU guard, M-057 CBOR parser doc, M-060 extension validation, migrate cpop_cli from cpop-engine to witnessd
+- Consolidate resource brush helpers (SYS-005) and apply code quality fixes (M-015, M-032, M-033)
+- Add HW co-sign and WarReport fields to CLI SecureEvent and WarReport constructors
+- Unify HW co-sign hash computation; length-prefixed binding eliminates ghost asymmetry
+- Strengthen sentinel HW co-sign with event_hash binding and monotonic counter
+- Guard 10 NaN/Infinity vulnerabilities in forensics and analysis modules
+- Replace 5 silent error swallows with logging in engine core paths
+- Zeroize temporary key bytes in ChainEncryptionKey::derive; compact JSON for sealed chains
+- Update all Chain field access to use metadata sub-struct after refactor
+- Resolve all 19 audit findings for did:webvh integration
+- Address validation, atomic file writes, FFI timeouts, path safety for did:webvh
+- JSON export decodes CBOR without validation to handle packets with fewer than 3 checkpoints
+- JSON export tries untagged CBOR decode as fallback; clearer error messages
+- Restore VC signing, serde defaults for backward compat, DID key validation
+- Remove stale PrimaryMetrics fields from test constructors, fix hurst_exponent path
+- Export pipeline builds real KeystrokeEvidence and edit topology from store data
+- Export pipeline builds real KeystrokeEvidence and edit topology from store data
+- Enrich VC with trust vector, chain timing, forensic summary, and anomaly warnings
+- Sentinel stop deadlock, windowed entropy estimation, evidence version compat
+- No-VDF-data verdict downgrades to V3Suspicious instead of V4LikelySynthetic
+- Sentinel audit fixes; file size limit, lock scoping, channel error handling, saturating math
+- FFI region estimation matches evaluate_authorship; replace unicode arrow in log
+- Writing mode revision detector handles zero-delta events from auto-save
+- Pre-demo hardening; access log audit trail, evidence type enums, sealed chain versioning, unused var warning
+- M-050..M-074 batch; sort efficiency, O(n^2) docs, DST migration path, machine UUID entropy, keychain rollback, HMAC comment
+- M-009/M-012/M-013/M-029/M-033/M-040 medium-effort batch fixes
+- Batch of medium-priority improvements (M-022, M-034, M-039, M-042, M-045, M-046, M-068, M-070)
+- Add missing challenge_nonce column to get_all_events_grouped SELECT, preventing runtime crash
+- Use write_recover() instead of write() in mouse_capture for poison recovery consistency
+- M-037 HMAC migration rollback, M-041 beacon runtime docs, M-044 ephemeral cleanup, M-049 session gap constant, M-061 packet_id entropy, M-065 format detect logging, M-066 CBOR tag consolidation
+- Anti-replay for recovery state encryption; monotonic counter, AAD, ordinal validation
+- M-004 TOCTOU pre-check for focus hash, M-015 hoist IPC validation constants to module level
+- Extract magic numbers as named constants in ipc_handler and packet
+- Mouse_capture lock_recover, export timeout, pre-export checkpoint flush
+- SYS-002 silent error swallowing; upgrade warn to error, surface WAL open failures
+- Extract duplicated forensic scoring logic into forensics/scoring.rs (SYS-003)
+- O_NOFOLLOW on all file opens (SYS-006), Zeroizing wrappers replace manual zeroize (SYS-007)
+- Add missing challenge_nonce field to CLI SecureEvent constructors
+- Move DB open out of sessions lock, O_NOFOLLOW on file hash, eliminate variable shadowing in rename handler
+- SE key manager audit; memset_s zeroize, CFError leak, error taxonomy, consistent key types
+- Hold single write guard during nonce zeroize to close TOCTOU window
+- Rename handler emits SessionEventType::Renamed and WAL PathChange entry
+- Zeroize signing_key and session_nonce in sentinel stop() and Drop
+- Move ObservationBasis import to test module to silence unused warning
+- Stop sentinel on quit; regenerate FFI with checksums for file_rename and challenge_nonce
+- Validate rename path, saturating capture_gaps, cap ai_tools Vec, remove VSCode/browsers from AI map
+- Remove unused ObservationBasis import in ffi/sentinel_es.rs
+- Add evidence_hash and evidence_cbor_b64 fields to CLI WarReport construction
+- Spawn_blocking for checkpoint I/O; improve bridge death diagnostics
+- Keep ephemeral session until finalize succeeds; canonicalize paths in tracked files
+- Prevent use-after-free on tap detach; catch_unwind in CGEventTap callbacks
+- Log DB open failures in FFI; allow virtual paths in ffi_get_log
+- Implement Drop for PollingSentinelFocusTracker; stop HID capture on Sentinel drop
+- Update last_activity on checkpoint/jitter injection; add mouse capture stop timeout
+- Export message correctly reflects signed vs unsigned COSE status
+- Stop captures before joining bridge threads to prevent deadlock on sentinel stop
+- M-028 sort in-place for percentile, M-029 avoid full packet clone for hash, M-031 named clock drift constant
+- M-038 TOCTOU in char_count, M-048 atomic stale session eviction, M-072 seed cache poison logging
+- M-039 batch tracked-file queries, M-042 lazy attestation init, M-011 file hash size limit
+- M-005 atomic running flag, M-012 sentinel config intervals, M-037 HMAC migration atomicity
+- M-074 HMAC-first verification order, M-078 zero-seal flag, M-080 TV parse robustness
+- M-007 dedup write_pid, M-014 zero-key check, M-017 rate limiter poison recovery, M-083 TSA error log
+- Resolve merge conflicts and mark 37H + 6C as fixed in todo.md
+- Log warning on non-finite float in fixed_point::from_float (M-064)
+- Remove hyphen from CSV formula injection guard; corrupts legitimate path data
+- M-067 log unknown AR4SI status, M-082 preserve OTS error context, M-003 extract process score weight constants
+- Add DER length bounds check in rfc3161 and improve HMAC expect messages in crypto
+- Cap VDF Vec pre-allocation to 64K to prevent OOM on large iteration counts (H-035)
+- Remaining C/H audit fixes (rbac default, server handler, store, WAR verification)
+- 3 critical bug fixes (C-001 duplicate, C-007 pending_downs cap, rbac test)
+- 5 sentinel issues (TOCTOU lock, deterministic unfocus, lock thrashing, bridge health, slice panic)
+- Harden CBOR depth checker and protocol validation (C-002, H-023..H-026)
+- H-031 require both anti-rollback counters when both are present in sealed blob
+- Resolve H-004, H-007, H-008, H-009, H-010 security and correctness issues
+- H-036..H-042 hardening for WAL, Windows hooks, macOS thread join, MMR proof
+- H-012 warn on self-signed baseline verification, H-014 verify_hash_chain returns Result, H-015 append_checkpoint returns AppendResult enum
+- H-016 verify key file permissions after rename, H-017 use Mutex for rate limiter atomicity
+- Remaining systemic fixes from audit agents (error logging, bounds, linter)
+- Replace silent error swallowing with log::warn in FFI and evidence boundary code
+- Extract duplicated focus penalty computation and replace production eprintln with log::trace
+- Remove TOCTOU exists() pre-checks in sentinel core checkpoint and snapshot paths
+- Eliminate TOCTOU races in sentinel/identity and zeroize key material in crypto
+- Add is_finite() sanitization guards to forensics float computations
+- Add NaN/Infinity guards to float operations in stats, hurst, and pink_noise
+- Update cpop_macos submodule with 4 bug fixes
+- 7 audit fixes in cpop_jitter_bridge/session.rs, add save/load round-trip test
+- Update cpop_macos submodule with 3 HIGH severity fixes
+- Update cpop_macos submodule with HIGH severity security fixes
+- Update cpop_macos submodule with 5 HIGH security fixes
+- 7 audit findings in cpop_jitter_bridge session/types (2H, 4M, 1L)
+- Pre-release quality audit, 14 improvements across 21 files
+- Replace deprecated HashValue::sha256 with try_sha256 in CLI
+- Resolve clippy warnings in lib and integration tests
+- Repair integration test compilation after ffi_sentinel_inject_keystroke signature change
+- Add sentinel trace diagnostics for focus and status debugging
+- Replace file-writing trace! macro with log::trace! delegation in sentinel module
+- Eliminate TOCTOU race in commit_checkpoint_for_path by using hash_file_with_size
+- Correct lock ordering in Sentinel::stop() to match AUD-041 convention (signing_key before sessions)
+- Use constant-time comparison in Lamport signature verification to prevent timing side-channel
+- HID capture resource management, Arc lifetime safety, Lamport field pairing validation
+- Skip dwell/flight fields in bincode IPC serialization for backward compatibility
+- Paste checkpoint only triggers in tracked document editor
+- Remove stale rhythm collection warning
+- Persist all session keystroke stats on sentinel stop so counts accumulate across sessions
+- Detached window max height increased
+- Detached window max width constrained
+- Detached window title bar clears traffic light buttons
+- Persist keystroke count on auto-checkpoints, fall back to stored stats for history display
+- UI polish across cards; consistent padding, compacted declaration card, improved spacing
+- Declaration radio hit testing, export checkpoint validation uses store not stale UI counter
+- 1s tracking poll interval for responsive keystroke display
+- Keep Swift keystroke monitor always active; CGEventTap reports alive but silently drops events
+- Prioritize manually-tracked sessions in status display over auto-witnessed ones
+- Remove dead ffi_create_checkpoint tests, add signing_public_key to protocol test fixture
+- COSE_Sign1 unwrapping in all verify paths, unfocused keystroke attribution guard, uniffi attr placement
+- Reject relative paths from title inference so Electron editors use title:// fallback
+- Title session migration on save, C2PA char_count, pending status guidance, stop/start comment
+- TOCTOU race in title migration, char_count export, bridge thread health; UX improvements for MVP
+- Detect dead sentinel event loop and auto-restart, full stop/start cycle on wake
+- Refresh manifest before integrity checks so auto-checkpoints don't trigger false tampering alerts
+- Recover keystroke capture after sleep/wake, track unsaved documents from first keystroke
+- Load cumulative keystroke stats on auto-witness and focus-gained session creation
+- Gate debug-only variables behind cfg(debug_assertions) to eliminate release warnings
+- Simplify geo_mean guard in forgery_cost, simplify id cast in helpers
+- WAR decoder bounds check, voice hash panic removal, report seed zeroize on error
+- Use constant-time comparison for RFC 3161 nonce and hash verification
+- Correct stale comment reference H-007 -> H-056 in ipc/crypto.rs
+- Resolve 8 MEDIUM audit items (M-046, M-050, M-054, M-055, M-068, M-078, M-087, M-088)
+- Resolve M-097/098/101/102/104/105/106/041/042/049 medium-severity issues
+- Resolve M-077 through M-100 medium-severity issues across engine and protocol crates
+- Apply M-044/M-045/M-047/M-051/M-053 medium-severity hardening to IPC, FFI, and secure channel
+- Address M-059, M-062, M-065, M-066 medium-severity issues in cpop-engine
+- Apply M-069 through M-075 medium-severity improvements in analysis and forensics
+- Apply M-032/M-034/M-035/M-036/M-037 medium-severity CLI fixes
+- Extract MIN_CAUSALITY_ENTROPY_BITS named constant (H-079 quality improvement)
+- Add CBOR recursive depth limit (H-078) to prevent stack overflow from deeply nested payloads
+- Hold session lock across stdin interaction to prevent TOCTOU race (H-054)
+- Resolve 12 HIGH-severity audit findings and improve sentinel restart reliability
+- Resolve H-056/H-057/H-063/H-073 high-severity race conditions and error handling
+- Resolve H-064 through H-070 high-severity issues in cpop-engine
+- Resolve H-077/H-079/H-080/H-081 high-severity issues in protocol and engine crates
+- Harden numeric casts and key zeroization across sentinel module
+- Resolve 6 audit findings in sentinel core/session (H-062,M-008,M-009,M-058,M-059,M-060)
+- Acquire PID file before sentinel.start() to prevent race (H-060, M-061, M-013)
+- Resolve 6 audit findings in sentinel/helpers.rs (C-001,H-002,H-005,H-006,M-010,M-066)
+- Resolve H-059 HMAC key leak, M-011 nanos truncation, M-012 timestamp underflow
+- Resolve 13 medium-severity audit findings (M-048,M-056,M-057,M-063,M-064,M-067,M-072,M-076,M-080,M-090,M-091,M-093,M-094)
+- Clear global sentinel on failed start to prevent reusing broken instance
+- Add 5s timeout to ffi_sentinel_stop to prevent UI thread hang
+- Update cpop_macos submodule with SYS-006 weak reference guards
+- Add auto-witnessing logic to FFI keystroke inject path for NSEvent fallback
+- Accept unverified FFI keystrokes from Swift NSEvent fallback; remove PID-based rejection from PreWitnessBuffer
+- API tests work with bash 3.2 (remove associative arrays), accept 429 rate limit, skip CORS/rate headers
+- Remove empty pub use evidence::* re-export after module split
+- E2E test correctly validates anti-forgery by expecting injected keystrokes to be rejected
+- Resolve export/verify roundtrip by decoding wire format in verifier
+- Fix integration tests (path canonicalization, HMAC key, timing thresholds), document export/verify CBOR version bug
+- CamelCase serde, nonce body, evidence_hash content binding, and deprecated HashValue calls
+- Set current_focus on start_witnessing; update cpop_macos submodule
+- Align sentinel data dir with FFI path (Application Support/WritersProof on macOS)
+- Auto-checkpoint on session end, periodic timer, and idle auto-stop
+- Update API URLs to api.writersproof.com, fix f32/f64 type mismatches from protocol v0.3.0
+- Add f32/f64 casts for cpop-protocol 0.3.0 type changes
+- Update tests for anchor status demotion and legacy key public key validation
+- Update cargo-deny config for correct field names, allowed licenses, and advisory ignores
+- Resolve 8 audit findings (H-001..H-007, declaration H-003)
+- Resolve 9 audit findings across anchors, vdf, analysis, mmr, and report modules
+- Resolve 11 HIGH findings across platform, war, and forensics modules
+- Harden evidence/keyhierarchy against timestamp wraps, key leaks, and missing cert expiry
+- Resolve 11 HIGH audit findings in checkpoint, verify, and keyhierarchy
+- Resolve 9 HIGH audit findings in sentinel and ipc modules
+- Document SigningKey zeroize-on-drop in sentinel baseline update
+- Resolve 9 HIGH findings across crypto, store, and sentinel modules
+- Resolve 14 medium audit items (EM-037 through EM-050)
+- Resolve 15 medium issues (EM-021 through EM-035) in cpop_engine
+- Resolve 10 medium engine issues (EM-011 through EM-020)
+- Resolve 9 medium issues (EM-002 through EM-010) in analysis and anchors modules
+- Use sample variance in std_error calculation (EM-001)
+- Resolve 6 HIGH audit items (EH-043..EH-048, EH-050) in cpop_engine
+- Resolve 5 HIGH correctness bugs in engine (EH-028, EH-030..EH-033)
+- Resolve EH-034 through EH-038 error handling issues in analysis and forensics
+- Address EH-039..EH-042 overflow, truncation, and validation issues
+- Resolve EH-018..EH-021; WAR status direction, density calc, EAR binding, stale score guard
+- Resolve EH-013 through EH-017 (device identity, zeroize, replay nonce, atomic writes, audit log)
+- Correct profile URI, attestation tier derivation, CV guard, and fractal dimension units (EH-024..EH-027)
+- Resolve 6 HIGH security items (EH-007 through EH-012)
+- Guard against negative IKI, inverted durations, and subnormal ln() in forensics
+- Resolve 6 HIGH IPC findings (EH-001 through EH-006)
+- Replace ReadClock magic number with constant, remove redundant drop
+- Resolve 8 LOW severity findings (L-001 through L-008)
+- Resolve 4 TPM critical findings; algorithm-aware verification, standard RSA PKCS#1v15, blob bounds checks, serialized TPM access
+- Mark loaded hybrid sessions read-only, add bounds+overflow guards in zone engine
+- Harden jitter module with constant-time comparison, ordinal validation, DST, NaN guard, and atomic writes
+- Improve verification trust model, bump seal auth DST to v2, fix PhysicalState field
+- Fix counter gap, CFErrorRef leaks, random length validation, PCR bounds, and auth size check in TPM
+- Harden Windows TPM init, seal auth derivation, and binding verification trust model
+- Harden TPM providers; fix safe_clock lies, seed leak, and missing zeroization
+- Narrow pub mod helpers to pub(crate) in ffi/mod.rs
+- Deduplicate key-loading functions across FFI submodules into helpers.rs
+- Wire writersproof_ffi module into FFI exports, restore anchor function
+- Correct safe_clock binding, kSecAttrKeyClass import, keychain error handling, and attestation payload
+- Extract EventTapRunner to deduplicate CGEventTap lifecycle; validate debug path
+- Harden macOS keystroke capture with mutex recovery, safety docs, and consistent keycode handling
+- Rename FfiWitnessingStatus.checkpoint_count to event_count for semantic accuracy
+- Harden 7 engine modules with security, correctness, and robustness fixes
+- Harden evidence builder setters with empty-input guard, NaN check, and convention fixes
+- Harden forgery_cost with correct INFINITY semantics, named constants, and bounds check
+- Flush last burst, extract interval_ms helper, fix thinking_pause denominator, reuse intervals for long_pauses
+- Clarify hkdf_expand doc comment and return KeyHierarchyError from verify_ratchet_signature
+- Harden v1 recovery cipher with ordinal validation and deprecation warning
+- Zeroize ratchet key material from hkdf_expand in sign_checkpoint methods
+- Harden keyhierarchy verification (safe casts, timestamp guard, error types, ratchet docs)
+- Harden keyhierarchy verification with safe casts, pre-epoch guard, and consistent error types
+- Require non-empty master_public_key in key hierarchy verification (CRITICAL auth bypass)
+- Resolve 5 ipc/server.rs audit findings (AUD-053/054/056, stale socket, log injection)
+- Apply 9 audit findings to evidence builder setters (log2 guard, mac_key zeroize, safe casts, docs)
+- Resolve 8 medium-severity validation and data integrity audit findings
+- Address 6 security audit findings (AUD-007/008/009/043/047/080/144/163)
+- Add NaN/Inf guards across 6 files for systemic SYS-032 resolution
+- Address 6 concurrency and IPC medium-severity audit findings (AUD-040/041/052/021/108/120)
+- Replace unsafe integer casts with try_from and direct i64 serialization
+- Resolve all 14 high-severity audit findings (AUD-005 through AUD-151)
+- Audit fixes AUD-026/027/030/036 for checkpoint and evidence hardening
+- Zeroize key material in ProtectedKey and derive_signing_key (AUD-005, AUD-015)
+- Wrap ratchet_init in Zeroizing to clear intermediate key material (SYS-033)
+- Verify zero-checkpoint bypass, IPC decrypt sequence rollback, content_hash error propagation, TPM counter migration, integrity HMAC sequence binding, forensics saturating_sub, CSS sanitize verdict, PDF flag truncation, tap_ptr dangling pointer, suspicious event counting
+- Constant-time nonce comparison, sentinel running flag race, SYS-033 documentation
+- Engine resume guard, verify ratchet loop, now_ns skip, notary timestamps, json-rpc IDs, linux path filter, HMAC key durability
+- OTS stubs hardened, bitcoin OP_RETURN verify + blocktime, focus path tracking, mouse seed zeroize, incremental integrity, WAL sync batching
+- Engine timestamp ordering, verify VDF cap, bitcoin satoshi math, rfc3161 nonce flexibility, wire export nonce
+- Path traversal guard, HMAC buffer zeroize, engine TOCTOU, verify hex normalization, rfc3161 DER encoding, notary bounds
+- Complete all 20 pending tasks; cert verification, stego privacy, TPM fixes, WAL streaming, anchor calldata check
+- Platform-aware data dir test, clippy redundant closure in evidence.rs
+- Pass non-zero PID for CGEventTap-validated keystrokes, fix derive_hmac TOCTOU
+- Round 3 medium-severity hardening across all cpop_engine subsystems
+- Comprehensive cpop_engine audit fixes + macOS app login and focus bugs
+- Update cpop_macos submodule for paste checkpoint cancel fix
+- Replace expect() with error propagation in scitt.rs, add logging to access_log silent recovery
+- Re-enable CGEventTap after macOS timeout disable; add keystroke debug tracing
+- FFI functions now report per-document keystroke counts instead of global accumulator
+- Replace panic with Result in CpopReferenceValues::to_cbor()
+- Add .unwrap() to beacon_to_receipt_format() calls in scitt tests
+- Borrow String as &str in PDF layout wrap_text_lines loop
+- Test_export_verify_roundtrip tolerates VDF duration cross-check in fast test environments
+- CLI audit findings, wire beacon flags, remove auto-create, add file size checks, document limitations
+- Close 6 compliance gaps (entropy thresholds, RFC 3161 field, idle timeout, debugger detection, retention purge, DSAR export)
+- H-001 domain check allows proper subdomains while rejecting suffix attacks
+- Resolve 12 CLI audit findings (M-013..M-017, L-001..L-007)
+- Resolve 12 engine audit findings (H-004, H-005, M-018..M-023, L-008..L-011)
+- Resolve 12 engine audit findings (H-004/005, M-018..023, L-008..011)
+- Resolve 20 marketplace audit findings including 2 CRITICALs (C-001, C-002)
+- Resolve 12 CLI audit items (M-013..M-017, L-001..L-007)
+- Resolve 20 marketplace audit items (C-001, C-002, H-006..H-011, M-024..M-031, L-012..L-015)
+- Resolve Zeroizing<Vec<u8>> type mismatches in CLI crate
+- Resolve all 17 LOW items in macOS security files (L-046 through L-062)
+- Review improvements for M-153 (uptime cross-check) and M-164 (migration fix)
+- Resolve 24 MEDIUM items across 9 macOS security files (M-149 through M-180)
+- Resolve final 5 HIGH items in macOS app (H-110 through H-115)
+- Update all integration clients to use canonical api.writersproof.com domain
+- Resolve 8 HIGH items in macOS app (H-096 through H-109)
+- Resolve 2 critical findings in macOS app (C-010 attestation binding, C-011 extension ID validation)
+- Distinguish channel full vs closed in bridge threads, add Drop for MacOSKeystrokeCapture
+- Resolve 6 systemic security patterns in macOS app (SYS-S01 through SYS-S06)
+- Update cpop_macos submodule with DataDirectoryIntegrityService hardening
+- Address residual audit findings in crypto, sentinel, and verification
+- Strengthen verification pipeline, forensics analysis, and RFC 3161 nonce handling
+- Improve sentinel event loop, platform capture, and TPM resource management
+- Harden checkpoint locking, IPC auth, crypto zeroization, and store integrity
+- Rename WAR to Written Authorship Report, remove legacy formats
+- Require input monitoring for sentinel, add 35 FFI tests
+- Remove private API symbols rejected by App Store (2.5.1, 2.4.5)
+- Resolve 4 should-fix items from deep code review
+- Resolve 5 bugs found in deep code review
+- Resolve remaining 9 MEDIUM findings from CLI audit
+- Resolve 8 MEDIUM findings from CLI audit
+- Resolve all 3 critical design issues (C-014, C-037, C-038)
+- Collapsible_if clippy lint on Rust 1.94 (CI)
+- CLI user-facing issues — binary name, export --json, UX improvements
+- Remove staging directory and test artifacts from commit
+- CPOP export crash, recipient verification experience, HTML report
+- Stdout pollution in --json mode, actionable error messages, Status help text
+- Wire BackspaceSignature into voice similarity, fail on CSPRNG error
+- Add GLOBAL OPTIONS section to wld man output
+- Install.sh checksum verification, release pipeline aarch64-linux, SLSA badge accuracy
+- CLI tier validation, fingerprint fallback, 5-band verdict thresholds
+- SWF crypto hardening and key material zeroization
+- Spec conformance — wire types, SWF verification, timestamps, OutputMode for export/attest
+- Spec conformance, TPM module split, quality fixes across engine and protocol
+- Use sha256sum with shasum fallback for cross-platform checksum generation
+- Make serde_json non-optional in wld_protocol, update c2pa to C2PA 2.2, add C2PA FFI export
+- Use platform-appropriate paths in IPC validation tests for Windows CI
+- Resolve clippy errors for --all-features CI (module_inception, type inference, dead_code)
+- Resolve Windows compilation errors (import path + missing trait method)
+- Disable Windows build and Scoop update until platform code compiles
+- Use macos-latest for x86_64-apple-darwin (macos-13 retired)
+- Suppress unused import warnings on non-macOS for Once and Zeroize
+- Gate MIGRATION_ONCE to macOS, replace is_none_or with map_or for MSRV 1.75
+- Use --workspace instead of --all-features for cross-platform compat
+- Clippy useless vec! in simple_attestation example
+- Add missing baseline_verification field in codec bench
+- Mark Roughtime network test as #[ignore] for CI stability
+- Update e2e test to reference wld binary (not writerslogic)
+- Remaining Linux compile errors (import paths, unused imports)
+- Linux compile errors (stub focus tracker, TPM clock, platform types)
+- Use correct secret name HOMEBREW_TAP_TOKEN in release workflow
+- Restore println for CLI-facing daemon messages, test Error::signature
+- Unwrap Zeroizing<Vec<u8>> before passing to SecureStore::open
+- WAL doc clarity, serde bounds enforcement, Roughtime error propagation, RQA diagonal dedup
+- Quality audit corrections from completed issue review
+- Extract named constants, browser extension hardening, and PCR parse bounds
+- WAL bounds, fatigue detection, Hurst exponent, protocol validation, and cross-crate hardening
+- MEDIUM batch — named constants, lock recovery, migration safety, overflow guards, and code quality
+- FFI compilation, MEDIUM bug fixes, ephemeral input validation, and counter rollback init
+- Lock poison recovery, wire type size limits, and false positive triage
+- IPC hardening, FFI panic safety, silent error logging, and unused import cleanup
+- NaN guards, key zeroization, VDF validation, path security, and test fixes
+- Replace unwrap on path.parent and return errors from consumed focus receivers
+- Add P-256 verification, fingerprint cache, wire validation, clock error propagation, and path normalization
+- Counter rollback protection, roughtime quorum, session integrity checks, and temporal rate limiting
+- Remove panics from FFI boundary, use HMAC for presence challenge, populate VDF proof, and extract evidence builder logic
+- Reject zero signing key, store thread handles, correct VDF algorithm, and finalize sessions
+- Harden path validation, config permissions, and counter rollback protection
+- Guard against NaN/Inf in forensics, Hurst regression, and evidence sort
+- Wrap key material in Zeroizing for secure storage and FFI helpers
+- Zeroize session seeds and legacy PUF data on error paths
+- Log errors instead of silently discarding in health check and TPM flush
+- Add null pointer checks in Windows hooks and use full path for peer verification
+- Prevent integer overflow in timestamps and cap VDF verification iterations
+- Add error logging for silent failures in hex decode, queue, and path normalization
+- Use constant-time comparisons in WAL scan_to_end
+
+### Performance
+- Eliminate per-keystroke RwLock reads with cached_focus local (SYS-008)
+- Lazy enumerator for watch path polling
+- Debounce content fingerprint computation on focus change
+- Replace unbounded confidence_values Vec with running statistics
+- Eliminate triple file hash/read in checkpoint tick
+- Use kernel event timestamps for IKI precision instead of wall-clock time
+- Add KD-tree for O(n log n) nearest-neighbor search in Lyapunov and Labyrinth
+- Parallelize forensic probes with rayon thread pool
+- Parallelize independent IKI probes via std::thread::scope
+- Replace RwLock synthetic stats with lock-free atomics, gate debug writes
+- Incremental jitter hash chain replaces O(n) batch hash
+- Stack allocation for keystroke input, constant-time chain verification
+- Fix 3 analysis performance bottlenecks
+- Cache unique_doc_hashes incrementally; cache Hurst exponent between calls; mark M-040/M-053 already addressed
+- Detect_sessions returns borrowed slices instead of cloning events
+- Offload blocking I/O and CPU work to spawn_blocking in cmd_commit/export/track/daemon
+- Add compute_async/verify_async VDF wrappers via spawn_blocking
+- Cache ActivityFingerprint as Arc to avoid deep clone on read
+- Replace collect::<Vec>::join with direct String building in pdf/html report
+- Use HashMap::retain for profile cleanup to eliminate clone+Vec
+- Convert unused builder setters to move semantics; fix voice test ngram alloc
+- Idle-priority SWF computation, spawn_blocking for IPC handler
+- Optimize hot paths — HashSet for index sampling, Arc<str> for device_id, eliminate redundant clones and iterations
+
+### Security
+- Invalidate secure-field cache on field-switching keys
+- Persist auth rate limiters, RSA-3072 cert pinning, 12-char password minimum
+- Fix all critical/high audit findings across 4 audited files
+- Fix all critical and high audit findings across auth, integrity, engine, and HTTP client
+- Fix 40+ quickfix audit findings across workspace
+- Fix 10+ medium-severity audit findings
+- Fix 35+ audit findings across workspace
+- Zeroize behavioral key bytes, eliminate double key load
+- Add catch_ffi_panic! to all 14 unprotected FFI exports
+- Enforce ZeroizeOnDrop for all key material structs
+- Add domain separators, position binding, and height binding to MMR hashes
+- Domain-separated beacon anchor signature; document TPM self-trust
+- Add integrity module (missed from prior commit)
+- Harden anti-forgery, transcription detection, and signing integrity
+- Wave 4 Rust audit fixes
+- Wave 2 audit fixes across 8 macOS files + 3 Rust files
+- Comprehensive round 3 fixes across Rust and Swift
+- Fix wave 2 Rust audit findings
+- Rate limiter uses monotonic time; clamp coalesced_count; fix rollback arithmetic
+- Fix signature verification DST mismatch, clipboard COSE nonce, input validation
+- Fix anchor signature mismatch in ffi_sync_text_attestation
+- Complete audit fixes (DST for anchor/publish, zeroize, COSE nonce, auto-anchor)
+- Audit fix sweep — 75+ fixes across 10 Swift files and Rust FFI
+- Fix audit findings across 5 files
+- Verify remote fragment signatures, zeroize sync signing key
+- Add domain separation to all text attestation signatures, input validation, key zeroization
+- Fix 7 critical/high checkpoint & vdf audit findings
+- Symlink guard, constant-time root verify, overflow checks, challenge nonce in PoSME seed
+- Harden 5 user-as-adversary attack vectors (1.1, 2.2, 6.1, 10.1, 10.2)
+- Harden 10 files from 7-file deep audit (25 fixes)
+- Prevent infinite loop in posme challenge derivation
+- Enforce file permissions on fingerprint storage, zeroize sealed identity salt
+- Fix TOCTOU races in snapshot store, add size limits, reject corrupt hashes
+- Harden NMH handlers (JSONL limits, timestamp validation, session ID entropy, URL mismatch warning)
+- Harden sentinel core (entropy hashing, key rejection, drop timeout)
+- Fix audit findings in NMH handlers (source canonicalization, error propagation)
+- Fix 11 audit findings from quick scan
+- Fix 15 HIGH findings from CLI audit
+- Fix 6 critical CLI findings from /suggest audit
+- Constant-time HMAC comparison, log permission failures, counter persistence
+
+### Audit
+- Close H-001/002/003 architectural (UniFFI generated), H-023 mitigated, H-014 false positive
+- Mark H-004/012/013/014/019/031 resolved or false positive after code review
+- Batch 2 (cmd_export/*, cmd_fingerprint.rs); fixed 1, deferred 1, 0 blocked
+- Batch 1 (cli.rs, cmd_attest.rs, cmd_commit.rs, cmd_config.rs, cmd_daemon.rs)
+- Mark 15 medium items reviewed (4 fixed, 3 already fixed, 8 false positives)
+- Mark 7 medium fixes done, 2 already fixed, 6 false positives in todo.md
+- Mark C-004, H-018, H-020, SYS-004 as fixed in todo.md
+- Full workspace scan, 148 findings across 374 files
+- Consolidated findings from CLI, engine, Atlassian, and Google Workspace audits
+
+### Conductor
+- Fix track directory structure
+- Add conductor setup files
+
+### Config
+- Raise default TASK_TIMEOUT to 3800s for opus-scale tasks
+
+### Phase
+- Add keystroke context detection tests (phase 2.3)
+
+### Redesign
+- Professional forensic PDF with verification block, metadata, embedded evidence
+- Add executive summary, hypotheses, LR interpretation, key findings, glossary, dynamic evidence notes
+- Professional forensic examination report for HTML evidence exports
+
+### Release
+- V1.0.5 — red team hardening, standards alignment, WritersProof CA
+- V1.0.4 — red team hardening, standards alignment, WritersProof CA
+- V1.0.3 — CPOP export fix, recipient experience, product rename
+- V1.0.2 — rename CLI binary to cpop, migrate to crates.io deps
+
+### Restore
+- Credential_package_e2e.rs integration test
+
+### Revert
+- M-029 content_hash mut change; blast radius too large for a perf micro-optimization
+
+### Style
+- Cargo fmt
+- Cargo fmt --all across workspace
+- Apply cargo fmt across workspace (77 files; import ordering, trailing whitespace)
+- Modernize PDF report page 1 with white cards, colored borders, and improved typography
+- Modernize PDF layout sections to white cards with borders and better spacing
+- Clippy range contains pattern + clamp SNR to both bounds
+- Remove narrating comments and flatten nesting
+- Auto-linter comment cleanup across codebase
+
+### Tooling
+- Add in-place progress renderer with outcome counts and live running list
+- Parallel model-aware Python todo runner with autonomous per-task prompt
+- Add todo-runner.sh to drive headless Claude through SYS tasks
+
+### Triage
+- H-009/SYS-004/H-021 false positives and architectural deferrals; all actionable findings resolved
+
