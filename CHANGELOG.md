@@ -3,6 +3,13 @@
 All notable changes to this project are generated from the commit history.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Conventional Commits](https://www.conventionalcommits.org/).
+## [Unreleased]
+
+### Changed
+- Rename CPoP -> CPoE (Cryptographic Proof of Effort)
+
+### Documentation
+- Update changelog [skip ci]
 ## [1.3.0] - 2026-06-20
 
 ### Added
