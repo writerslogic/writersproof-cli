@@ -261,7 +261,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Challenge nonce binding in checkpoint hash, WritersProof challenge client
 - 3-tier AI tool classification with 30 signing IDs, local model runners, AI-capable environments
 - Categorized AI tool detection, ES rename/gap handling, write coalescing
-- Embed CBOR evidence in HTML report as self-verifying artifact; add cpop-media-type meta
+- Embed CBOR evidence in HTML report as self-verifying artifact; add cpoe-media-type meta
 - Persist AI tool detection from Endpoint Security to document sessions and evidence packets
 - Add full Lamport public key to CheckpointSignature for cryptographic verification
 - Endpoint Security FFI endpoints and macOS submodule update
@@ -274,20 +274,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Document snapshots and report redesign
 - Document snapshots at checkpoints, clean professional HTML report redesign, JSON export
 - JSON export readable, macOS submodule updated
-- JSON export produces human-readable output; CPOP/CWAR remain binary CBOR+COSE
+- JSON export produces human-readable output; CPOE/CWAR remain binary CBOR+COSE
 - Expand allowed apps list with writing tools, IDEs, and creative apps
 - Universal app tracking; allow extensionless files, add VSCode/Notion/Cursor to Electron list, fix title skip matching
 - Anti-forgery hardening; COSE_Sign1 signed exports, signing key in wire format, injection rate limiting, timestamp monotonicity enforcement
 - Keystroke buffering during focus gaps, transcription detection via burst speed CV and zero-variance windows
 - Wire voice fingerprint collection into FFI keystroke injection path
-- Move cpop-jitter and cpop-protocol crates into writerslogic repo
+- Move cpoe-jitter and cpoe-protocol crates into writerslogic repo
 - Add E2E cross-process test harness using AppleScript to verify full user experience
 - Expand test suites to 45 engine + 52 API tests covering security, edge cases, error recovery
 - Add engine integration tests (18 tests) and API test script (31 tests)
 - Add PreWitnessBuffer for auto-witnessing with human input validation
 - Add cumulative per-document statistics persisted across tracking sessions
 - Add ratchet chain binding verification to key hierarchy validation
-- Update cpop_macos submodule with detachable popover feature
+- Update cpoe_macos submodule with detachable popover feature
 - Wire event validation into sentinel and FFI keystroke paths
 - Add per-keystroke multi-layer event validation for CGEventTap hardening
 - Wire per-document jitter samples and focus metrics into FFI forensic scoring
@@ -300,11 +300,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Add admin access log, DID Document generation, WAL rotation, IPC RBAC, and compliance fixes P1-P10
 - Add WAL rotation/archival and RBAC on IPC messages
 - Add JPEG Trust profile, OpenID4VC metadata, DIF identity modules, and update standards alignment docs
-- Add DIF, ORCID, and identity bridge types for CPOP
+- Add DIF, ORCID, and identity bridge types for CPOE
 - Add EU AI Act Article 50 and CAWG standards conformance profiles
 - Add SCITT, ToIP EGF, and TRQP trust infrastructure types to rats module
 - Add COSE-secured VC encoding per W3C JOSE/COSE spec
-- Wire C2PA dc:format setter from cpop-protocol 0.3, add patch override
+- Wire C2PA dc:format setter from cpoe-protocol 0.3, add patch override
 - Add CoRIM reference values module for RATS Verifier interop
 - Add RATS interoperability module with EAT/CWT encoding
 - Add IETF RATS module with CWT-encoded EAT tokens and RFC 9334 role types
@@ -339,7 +339,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - AX-primary focus architecture, reduce PID poll to 100ms
 - Non-critical init isolation, menu state, typed routing, derived domains
 - Extract DashboardBannerStack, use AppConfig.appVersion
-- Rename cpop references to cpoe, add W3C AI disclosure variants
+- Rename cpoe references to cpoe, add W3C AI disclosure variants
 - Rename pop-timestamp to cpoe-timestamp in CDDL type comments
 - Encapsulate macOS CF types in CfGuard RAII wrappers
 - Enforce SortedEvents invariant, remove redundant sorts
@@ -407,8 +407,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Remove analyze_labyrinth wrapper; single entry point with optional mouse data
 - Baseline digest update_digest_in_place with numerically stable running average and static bin centers
 - Extract try_hw_cosign helper; flatten 12-deep nesting in sentinel event loop
-- Premium typography, responsive breakpoints, B&W print, cpop-report scoping, strip DOM theater
-- Build JSON-LD via serde_json; rename to cpop namespace; add evidence_hash, qualified derivation
+- Premium typography, responsive breakpoints, B&W print, cpoe-report scoping, strip DOM theater
+- Build JSON-LD via serde_json; rename to cpoe namespace; add evidence_hash, qualified derivation
 - Split CSS into base/components/layout; add JSON-LD, meta anchors, pop-report scoping, print headers
 - Extract section headings to constants; use include_str for static templates
 - Simplify sentinel; remove auto-witness, debounce, title://, pre-witness buffers (~500 lines removed)
@@ -416,7 +416,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Add SecureEvent::new() and open_store_with_signing_key() to reduce duplication
 - Merge calibration/ module into physics/ as transport_calibration
 - Improve DID method extraction readability (H-072 quality polish)
-- Rename cpop_engine to cpop-engine, set all crates publish = false
+- Rename cpoe_engine to cpoe-engine, set all crates publish = false
 - Split 5 oversized files into directory-based submodules
 - Split 5 files over 800 lines into directory-based submodules
 - Split checkpoint/chain.rs into chain_helpers.rs and chain_verification.rs
@@ -683,7 +683,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Add version check to BaselineDigest::validate, add 20 validation tests
 - NaN validation, digest_signature COSE verification, checkpoint ID uniqueness
 - Resolve audit findings across 5 engine files (2C/9H/7M)
-- Set lib name to cpop_engine for FFI compat, regenerate UniFFI bindings for witnessd rename
+- Set lib name to cpoe_engine for FFI compat, regenerate UniFFI bindings for witnessd rename
 - Weak self in Tasks and force-unwrap patterns (HK-1A-1, HK-2A-1)
 - Fix c2pa test compile errors (missing imports, type mismatch)
 - Rename verify() to verify_self_signed(), add trusted_public_key to VerifyOptions
@@ -707,7 +707,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - H-021 rfc3161 false-positive verification, M-081 evidence_backed quality gate, H-034 WAR tool field injection
 - Update 3 stale test assertions after genesis VDF fix
 - H-013 require VDF proof for genesis checkpoint; verify when present in Legacy mode
-- M-023 socket TOCTOU guard, M-057 CBOR parser doc, M-060 extension validation, migrate cpop_cli from cpop-engine to witnessd
+- M-023 socket TOCTOU guard, M-057 CBOR parser doc, M-060 extension validation, migrate cpoe_cli from cpoe-engine to witnessd
 - Consolidate resource brush helpers (SYS-005) and apply code quality fixes (M-015, M-032, M-033)
 - Add HW co-sign and WarReport fields to CLI SecureEvent and WarReport constructors
 - Unify HW co-sign hash computation; length-prefixed binding eliminates ghost asymmetry
@@ -791,12 +791,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Eliminate TOCTOU races in sentinel/identity and zeroize key material in crypto
 - Add is_finite() sanitization guards to forensics float computations
 - Add NaN/Infinity guards to float operations in stats, hurst, and pink_noise
-- Update cpop_macos submodule with 4 bug fixes
-- 7 audit fixes in cpop_jitter_bridge/session.rs, add save/load round-trip test
-- Update cpop_macos submodule with 3 HIGH severity fixes
-- Update cpop_macos submodule with HIGH severity security fixes
-- Update cpop_macos submodule with 5 HIGH security fixes
-- 7 audit findings in cpop_jitter_bridge session/types (2H, 4M, 1L)
+- Update cpoe_macos submodule with 4 bug fixes
+- 7 audit fixes in cpoe_jitter_bridge/session.rs, add save/load round-trip test
+- Update cpoe_macos submodule with 3 HIGH severity fixes
+- Update cpoe_macos submodule with HIGH severity security fixes
+- Update cpoe_macos submodule with 5 HIGH security fixes
+- 7 audit findings in cpoe_jitter_bridge session/types (2H, 4M, 1L)
 - Pre-release quality audit, 14 improvements across 21 files
 - Replace deprecated HashValue::sha256 with try_sha256 in CLI
 - Resolve clippy warnings in lib and integration tests
@@ -838,7 +838,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Resolve M-097/098/101/102/104/105/106/041/042/049 medium-severity issues
 - Resolve M-077 through M-100 medium-severity issues across engine and protocol crates
 - Apply M-044/M-045/M-047/M-051/M-053 medium-severity hardening to IPC, FFI, and secure channel
-- Address M-059, M-062, M-065, M-066 medium-severity issues in cpop-engine
+- Address M-059, M-062, M-065, M-066 medium-severity issues in cpoe-engine
 - Apply M-069 through M-075 medium-severity improvements in analysis and forensics
 - Apply M-032/M-034/M-035/M-036/M-037 medium-severity CLI fixes
 - Extract MIN_CAUSALITY_ENTROPY_BITS named constant (H-079 quality improvement)
@@ -846,7 +846,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Hold session lock across stdin interaction to prevent TOCTOU race (H-054)
 - Resolve 12 HIGH-severity audit findings and improve sentinel restart reliability
 - Resolve H-056/H-057/H-063/H-073 high-severity race conditions and error handling
-- Resolve H-064 through H-070 high-severity issues in cpop-engine
+- Resolve H-064 through H-070 high-severity issues in cpoe-engine
 - Resolve H-077/H-079/H-080/H-081 high-severity issues in protocol and engine crates
 - Harden numeric casts and key zeroization across sentinel module
 - Resolve 6 audit findings in sentinel core/session (H-062,M-008,M-009,M-058,M-059,M-060)
@@ -856,7 +856,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Resolve 13 medium-severity audit findings (M-048,M-056,M-057,M-063,M-064,M-067,M-072,M-076,M-080,M-090,M-091,M-093,M-094)
 - Clear global sentinel on failed start to prevent reusing broken instance
 - Add 5s timeout to ffi_sentinel_stop to prevent UI thread hang
-- Update cpop_macos submodule with SYS-006 weak reference guards
+- Update cpoe_macos submodule with SYS-006 weak reference guards
 - Add auto-witnessing logic to FFI keystroke inject path for NSEvent fallback
 - Accept unverified FFI keystrokes from Swift NSEvent fallback; remove PID-based rejection from PreWitnessBuffer
 - API tests work with bash 3.2 (remove associative arrays), accept 429 rate limit, skip CORS/rate headers
@@ -865,11 +865,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Resolve export/verify roundtrip by decoding wire format in verifier
 - Fix integration tests (path canonicalization, HMAC key, timing thresholds), document export/verify CBOR version bug
 - CamelCase serde, nonce body, evidence_hash content binding, and deprecated HashValue calls
-- Set current_focus on start_witnessing; update cpop_macos submodule
+- Set current_focus on start_witnessing; update cpoe_macos submodule
 - Align sentinel data dir with FFI path (Application Support/WritersProof on macOS)
 - Auto-checkpoint on session end, periodic timer, and idle auto-stop
 - Update API URLs to api.writersproof.com, fix f32/f64 type mismatches from protocol v0.3.0
-- Add f32/f64 casts for cpop-protocol 0.3.0 type changes
+- Add f32/f64 casts for cpoe-protocol 0.3.0 type changes
 - Update tests for anchor status demotion and legacy key public key validation
 - Update cargo-deny config for correct field names, allowed licenses, and advisory ignores
 - Resolve 8 audit findings (H-001..H-007, declaration H-003)
@@ -881,11 +881,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Document SigningKey zeroize-on-drop in sentinel baseline update
 - Resolve 9 HIGH findings across crypto, store, and sentinel modules
 - Resolve 14 medium audit items (EM-037 through EM-050)
-- Resolve 15 medium issues (EM-021 through EM-035) in cpop_engine
+- Resolve 15 medium issues (EM-021 through EM-035) in cpoe_engine
 - Resolve 10 medium engine issues (EM-011 through EM-020)
 - Resolve 9 medium issues (EM-002 through EM-010) in analysis and anchors modules
 - Use sample variance in std_error calculation (EM-001)
-- Resolve 6 HIGH audit items (EH-043..EH-048, EH-050) in cpop_engine
+- Resolve 6 HIGH audit items (EH-043..EH-048, EH-050) in cpoe_engine
 - Resolve 5 HIGH correctness bugs in engine (EH-028, EH-030..EH-033)
 - Resolve EH-034 through EH-038 error handling issues in analysis and forensics
 - Address EH-039..EH-042 overflow, truncation, and validation issues
@@ -941,13 +941,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Complete all 20 pending tasks; cert verification, stego privacy, TPM fixes, WAL streaming, anchor calldata check
 - Platform-aware data dir test, clippy redundant closure in evidence.rs
 - Pass non-zero PID for CGEventTap-validated keystrokes, fix derive_hmac TOCTOU
-- Round 3 medium-severity hardening across all cpop_engine subsystems
-- Comprehensive cpop_engine audit fixes + macOS app login and focus bugs
-- Update cpop_macos submodule for paste checkpoint cancel fix
+- Round 3 medium-severity hardening across all cpoe_engine subsystems
+- Comprehensive cpoe_engine audit fixes + macOS app login and focus bugs
+- Update cpoe_macos submodule for paste checkpoint cancel fix
 - Replace expect() with error propagation in scitt.rs, add logging to access_log silent recovery
 - Re-enable CGEventTap after macOS timeout disable; add keystroke debug tracing
 - FFI functions now report per-document keystroke counts instead of global accumulator
-- Replace panic with Result in CpopReferenceValues::to_cbor()
+- Replace panic with Result in CpoeReferenceValues::to_cbor()
 - Add .unwrap() to beacon_to_receipt_format() calls in scitt tests
 - Borrow String as &str in PDF layout wrap_text_lines loop
 - Test_export_verify_roundtrip tolerates VDF duration cross-check in fast test environments
@@ -970,7 +970,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Resolve 2 critical findings in macOS app (C-010 attestation binding, C-011 extension ID validation)
 - Distinguish channel full vs closed in bridge threads, add Drop for MacOSKeystrokeCapture
 - Resolve 6 systemic security patterns in macOS app (SYS-S01 through SYS-S06)
-- Update cpop_macos submodule with DataDirectoryIntegrityService hardening
+- Update cpoe_macos submodule with DataDirectoryIntegrityService hardening
 - Address residual audit findings in crypto, sentinel, and verification
 - Strengthen verification pipeline, forensics analysis, and RFC 3161 nonce handling
 - Improve sentinel event loop, platform capture, and TPM resource management
@@ -986,7 +986,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Collapsible_if clippy lint on Rust 1.94 (CI)
 - CLI user-facing issues — binary name, export --json, UX improvements
 - Remove staging directory and test artifacts from commit
-- CPOP export crash, recipient verification experience, HTML report
+- CPOE export crash, recipient verification experience, HTML report
 - Stdout pollution in --json mode, actionable error messages, Status help text
 - Wire BackspaceSignature into voice similarity, fail on CSPRNG error
 - Add GLOBAL OPTIONS section to wld man output
@@ -1134,8 +1134,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ### Release
 - V1.0.5 — red team hardening, standards alignment, WritersProof CA
 - V1.0.4 — red team hardening, standards alignment, WritersProof CA
-- V1.0.3 — CPOP export fix, recipient experience, product rename
-- V1.0.2 — rename CLI binary to cpop, migrate to crates.io deps
+- V1.0.3 — CPOE export fix, recipient experience, product rename
+- V1.0.2 — rename CLI binary to cpoe, migrate to crates.io deps
 
 ### Restore
 - Credential_package_e2e.rs integration test
