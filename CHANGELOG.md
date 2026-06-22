@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Changed
-- Rename CPoP -> CPoE (Cryptographic Proof of Effort)
+- Rename CPoE -> CPoE (Cryptographic Proof of Effort)
 
 ### Documentation
 - Update changelog [skip ci]

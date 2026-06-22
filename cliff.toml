@@ -2,6 +2,14 @@
 # https://git-cliff.org
 
 [changelog]
+postprocessors = [
+  { pattern = "cpop", replace = "cpoe" },
+  { pattern = "Cpop", replace = "Cpoe" },
+  { pattern = "CPOP", replace = "CPOE" },
+  { pattern = "CPoP", replace = "CPoE" },
+  { pattern = "proof-of-process", replace = "proof-of-effort" },
+  { pattern = "Proof of Process", replace = "Proof of Effort" },
+]
 header = """
 # Changelog
 
