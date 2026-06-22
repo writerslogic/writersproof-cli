@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Rename CPoE -> CPoE (Cryptographic Proof of Effort)
 
 ### Documentation
+- CPoE -> CPoE in changelog + cliff postprocessor to keep regeneration clean
+- CPoE -> CPoE in changelog
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 ## [1.3.0] - 2026-06-20
 
