@@ -74,8 +74,8 @@ supabase/
 todo.md
 apps/*/Cargo.lock
 docs/demo-script.md
-apps/cpop_macos/
-apps/cpop_windows/
+apps/cpoe_macos/
+apps/cpoe_windows/
 staging/
 t.txt.*
 test.txt.*

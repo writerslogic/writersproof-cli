@@ -171,7 +171,7 @@ fn test_identity_csr_generation() {
 
     let id_manager = IdentityManager::generate();
     let csr_der = id_manager
-        .generate_csr("CN=CPoPDevice,O=CPoE,C=US")
+        .generate_csr("CN=CPoEDevice,O=CPoE,C=US")
         .expect("CSR generation failed");
 
     assert!(!csr_der.is_empty());

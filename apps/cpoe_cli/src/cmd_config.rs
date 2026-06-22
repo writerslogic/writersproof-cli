@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use anyhow::{anyhow, bail, Context, Result};
-use cpoe::config::CpopConfig;
+use cpoe::config::CpoeConfig;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
@@ -26,7 +26,7 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
 
     match action {
         ConfigAction::Show => {
-            let config = CpopConfig::load_or_default(&dir)?;
+            let config = CpoeConfig::load_or_default(&dir)?;
 
             println!("=== CPoE Configuration ===");
             println!();
@@ -81,7 +81,7 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
         }
 
         ConfigAction::Set { key, value } => {
-            let mut config = CpopConfig::load_or_default(&dir)?;
+            let mut config = CpoeConfig::load_or_default(&dir)?;
 
             let parts: Vec<&str> = key.split('.').collect();
 
@@ -217,7 +217,7 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
         }
 
         ConfigAction::Edit => {
-            let config = CpopConfig::load_or_default(&dir)?;
+            let config = CpoeConfig::load_or_default(&dir)?;
             config.persist()?;
 
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| {
@@ -290,7 +290,7 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                 const MAX_EDIT_RETRIES: u32 = 3;
                 let mut retries = 0;
                 loop {
-                    match CpopConfig::load_or_default(&dir) {
+                    match CpoeConfig::load_or_default(&dir) {
                         Ok(_) => {
                             println!("Configuration saved.");
                             break;
@@ -349,7 +349,7 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                 fs::remove_file(&config_path)?;
             }
 
-            let config = CpopConfig::load_or_default(&dir)?;
+            let config = CpoeConfig::load_or_default(&dir)?;
             config.persist()?;
 
             println!("Configuration reset to defaults.");
@@ -477,7 +477,7 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
 
 fn prompt_style_consent(
     consent_manager: &mut cpoe::fingerprint::ConsentManager,
-    config: &mut CpopConfig,
+    config: &mut CpoeConfig,
 ) -> Result<bool> {
     println!("=== Style Fingerprinting Consent ===");
     println!();

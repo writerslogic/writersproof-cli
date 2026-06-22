@@ -7,7 +7,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 
 fn main() -> anyhow::Result<()> {
-    println!("--- Proof-of-Process (CPoP) Attestation Demo ---");
+    println!("--- Proof-of-Effort (CPoE) Attestation Demo ---");
 
     let mut csprng = OsRng;
     let mut key_bytes = [0u8; 32];

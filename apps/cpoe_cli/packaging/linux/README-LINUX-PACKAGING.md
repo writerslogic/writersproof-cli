@@ -32,10 +32,10 @@ dpkg-buildpackage -us -uc -b
 
 **Installing:**
 ```bash
-sudo apt install ./cpop_1.0.0-1_amd64.deb
+sudo apt install ./cpoe_1.0.0-1_amd64.deb
 
 # Or with dependencies
-sudo dpkg -i cpop_1.0.0-1_amd64.deb
+sudo dpkg -i cpoe_1.0.0-1_amd64.deb
 sudo apt-get -f install
 ```
 

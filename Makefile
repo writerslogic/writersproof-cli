@@ -6,7 +6,7 @@
 build:
 	cargo build
 	@if [ "$$(uname)" = "Darwin" ]; then \
-		for bin in target/debug/cpop target/debug/writerslogic-native-messaging-host; do \
+		for bin in target/debug/cpoe target/debug/writerslogic-native-messaging-host; do \
 			[ -f "$$bin" ] && codesign -s - -f "$$bin" 2>/dev/null && \
 			echo "Ad-hoc signed $$bin"; \
 		done; \
@@ -14,11 +14,11 @@ build:
 
 # Run all workspace tests (mock keychain — zero keychain interaction)
 test:
-	CPOP_NO_KEYCHAIN=1 cargo test --workspace
+	CPOE_NO_KEYCHAIN=1 cargo test --workspace
 
 # Build + codesign + run the binary directly (bypasses cargo run rebuild)
 run: build
-	target/debug/cpop $(ARGS)
+	target/debug/cpoe $(ARGS)
 
 # Release build (should be properly codesigned separately for distribution)
 release:

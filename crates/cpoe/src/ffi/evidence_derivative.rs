@@ -135,7 +135,7 @@ pub fn ffi_link_derivative(source_path: String, export_path: String, message: St
     // Load VDF params
     let data_dir =
         crate::ffi::helpers::get_data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let config = crate::config::CpopConfig::load_or_default(&data_dir).unwrap_or_else(|e| {
+    let config = crate::config::CpoeConfig::load_or_default(&data_dir).unwrap_or_else(|e| {
         log::warn!("config load failed, using defaults: {e}");
         Default::default()
     });

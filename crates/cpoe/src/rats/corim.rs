@@ -14,7 +14,7 @@ use ciborium::Value;
 /// These thresholds define what constitutes valid human authorship evidence.
 /// Published as a CoRIM manifest so third-party Verifiers can appraise independently.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CpopReferenceValues {
+pub struct CpoeReferenceValues {
     /// Minimum accumulated entropy bits per checkpoint trigger.
     /// Source: `timing::ENTROPY_THRESHOLD_STANDARD` (3.0) per draft-condrey-rats-pop.
     pub min_entropy_bits: f64,
@@ -39,7 +39,7 @@ pub struct CpopReferenceValues {
     pub min_jitter_samples: u64,
 }
 
-impl Default for CpopReferenceValues {
+impl Default for CpoeReferenceValues {
     fn default() -> Self {
         Self {
             min_entropy_bits: crate::checkpoint::timing::ENTROPY_THRESHOLD_STANDARD,
@@ -64,7 +64,7 @@ const KEY_TYPING_RATE_MAX_WPM: &str = "typing-rate-max-wpm";
 const KEY_SYNTHETIC_THRESHOLD_MS: &str = "synthetic-threshold-ms";
 const KEY_MIN_JITTER_SAMPLES: &str = "min-jitter-samples";
 
-impl CpopReferenceValues {
+impl CpoeReferenceValues {
     /// Serialize to a CBOR map with string keys.
     pub fn to_cbor(&self) -> Result<Vec<u8>> {
         let map = Value::Map(vec![
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_default_reference_values() {
-        let rv = CpopReferenceValues::default();
+        let rv = CpoeReferenceValues::default();
         // Values must match the hardcoded constants in the codebase:
         // timing::ENTROPY_THRESHOLD_STANDARD (draft-condrey-rats-pop)
         assert_eq!(rv.min_entropy_bits, 3.0);
@@ -230,17 +230,17 @@ mod tests {
 
     #[test]
     fn test_corim_cbor_roundtrip() {
-        let original = CpopReferenceValues::default();
+        let original = CpoeReferenceValues::default();
         let cbor_bytes = original.to_cbor().expect("serialize");
         assert!(!cbor_bytes.is_empty());
 
-        let decoded = CpopReferenceValues::from_cbor(&cbor_bytes).expect("roundtrip decode failed");
+        let decoded = CpoeReferenceValues::from_cbor(&cbor_bytes).expect("roundtrip decode failed");
         assert_eq!(decoded, original);
     }
 
     #[test]
     fn test_corim_cbor_roundtrip_custom_values() {
-        let custom = CpopReferenceValues {
+        let custom = CpoeReferenceValues {
             min_entropy_bits: 64.0,
             vdf_duration_bounds: (0.25, 5.0),
             min_checkpoints_standard: 10,
@@ -251,13 +251,13 @@ mod tests {
         };
 
         let cbor_bytes = custom.to_cbor().expect("serialize");
-        let decoded = CpopReferenceValues::from_cbor(&cbor_bytes).expect("roundtrip decode failed");
+        let decoded = CpoeReferenceValues::from_cbor(&cbor_bytes).expect("roundtrip decode failed");
         assert_eq!(decoded, custom);
     }
 
     #[test]
     fn test_corim_reference_values_match_codebase() {
-        let rv = CpopReferenceValues::default();
+        let rv = CpoeReferenceValues::default();
         // Verify CoRIM defaults match the actual code constants they reference.
         assert!(
             (rv.min_entropy_bits - crate::checkpoint::timing::ENTROPY_THRESHOLD_STANDARD).abs() < f64::EPSILON,
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_corim_custom_values_roundtrip() {
-        let custom = CpopReferenceValues {
+        let custom = CpoeReferenceValues {
             min_entropy_bits: 7.5,
             vdf_duration_bounds: (0.1, 10.0),
             min_checkpoints_standard: 50,
@@ -289,7 +289,7 @@ mod tests {
             min_jitter_samples: 2000,
         };
         let cbor = custom.to_cbor().expect("serialize");
-        let decoded = CpopReferenceValues::from_cbor(&cbor).expect("custom roundtrip");
+        let decoded = CpoeReferenceValues::from_cbor(&cbor).expect("custom roundtrip");
         assert!((decoded.min_entropy_bits - 7.5).abs() < f64::EPSILON);
         assert_eq!(decoded.vdf_duration_bounds, (0.1, 10.0));
         assert_eq!(decoded.min_checkpoints_standard, 50);
@@ -306,6 +306,6 @@ mod tests {
             ciborium::into_writer(&Value::Integer(42.into()), &mut buf).unwrap();
             buf
         };
-        assert!(CpopReferenceValues::from_cbor(&not_a_map).is_err());
+        assert!(CpoeReferenceValues::from_cbor(&not_a_map).is_err());
     }
 }

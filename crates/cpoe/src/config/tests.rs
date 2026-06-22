@@ -7,7 +7,7 @@ use tempfile::tempdir;
 #[test]
 fn test_config_defaults() {
     let dir = tempdir().unwrap();
-    let config = CpopConfig::default_with_dir(dir.path());
+    let config = CpoeConfig::default_with_dir(dir.path());
 
     assert_eq!(config.data_dir, dir.path());
     assert_eq!(config.retention_days, 30);
@@ -21,10 +21,10 @@ fn test_config_defaults() {
 #[test]
 fn test_config_persistence() {
     let dir = tempdir().unwrap();
-    let config = CpopConfig::default_with_dir(dir.path());
+    let config = CpoeConfig::default_with_dir(dir.path());
     config.persist().expect("persist failed");
 
-    let loaded = CpopConfig::load_or_default(dir.path()).expect("load failed");
+    let loaded = CpoeConfig::load_or_default(dir.path()).expect("load failed");
     assert_eq!(loaded.data_dir, config.data_dir);
     assert_eq!(
         loaded.vdf.iterations_per_second,

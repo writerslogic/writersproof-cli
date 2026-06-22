@@ -59,7 +59,7 @@ fn test_export_format_json_is_valid_json() {
 }
 
 #[test]
-fn test_export_format_cpop_produces_file() {
+fn test_export_format_cpoe_produces_file() {
     let env = common::TempEnv::new();
     let file = env.with_commits("draft.txt", 3);
     let out_path = env.dir.path().join("draft.cpoe");

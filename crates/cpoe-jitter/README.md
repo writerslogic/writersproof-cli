@@ -2,16 +2,16 @@
 
 <div align="center">
 
-<img alt="cpoe-jitter" src="https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/proof-of-process/main/assets/branding/production/dark/png/cpoe-jitter.png" width="360">
+<img alt="cpoe-jitter" src="https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/proof-of-effort/main/assets/branding/production/dark/png/cpoe-jitter.png" width="360">
 
 ### Timing entropy primitive for human process attestation
 
 [![crates.io](https://img.shields.io/crates/v/cpoe-jitter.svg?style=for-the-badge)](https://crates.io/crates/cpoe-jitter)
 [![downloads](https://img.shields.io/crates/d/cpoe-jitter?style=for-the-badge)](https://crates.io/crates/cpoe-jitter)
 [![docs.rs](https://img.shields.io/docsrs/cpoe-jitter?style=for-the-badge)](https://docs.rs/cpoe-jitter)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=for-the-badge)](https://github.com/LF-Decentralized-Trust-labs/proof-of-process/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=for-the-badge)](https://github.com/LF-Decentralized-Trust-labs/proof-of-effort/blob/main/LICENSE)
 
-Part of the [Cryptographic Proof of Process (CPoP)](https://github.com/LF-Decentralized-Trust-labs/proof-of-process/blob/main/README.md) specification — an [LF Decentralized Trust](https://www.lfdecentralizedtrust.org/) Lab
+Part of the [Cryptographic Proof of Effort (CPoE)](https://github.com/LF-Decentralized-Trust-labs/proof-of-effort/blob/main/README.md) specification — an [LF Decentralized Trust](https://www.lfdecentralizedtrust.org/) Lab
 
 </div>
 
@@ -19,7 +19,7 @@ Part of the [Cryptographic Proof of Process (CPoP)](https://github.com/LF-Decent
 
 ## Overview
 
-`cpoe-jitter` provides cryptographic proof-of-process through timing jitter,
+`cpoe-jitter` provides cryptographic proof-of-effort through timing jitter,
 producing tamper-evident evidence that content was created through a human
 typing process rather than generated or pasted. Two engines are available:
 
@@ -80,10 +80,10 @@ cryptographically detectable.
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/LF-Decentralized-Trust-labs/proof-of-process/blob/main/CONTRIBUTING.md) for DCO sign-off requirements and contribution workflow.
+See [CONTRIBUTING.md](https://github.com/LF-Decentralized-Trust-labs/proof-of-effort/blob/main/CONTRIBUTING.md) for DCO sign-off requirements and contribution workflow.
 
 ## License
 
-Apache License, Version 2.0. See [LICENSE](https://github.com/LF-Decentralized-Trust-labs/proof-of-process/blob/main/LICENSE).
+Apache License, Version 2.0. See [LICENSE](https://github.com/LF-Decentralized-Trust-labs/proof-of-effort/blob/main/LICENSE).
 
-Part of the [proof-of-process](https://github.com/LF-Decentralized-Trust-labs/proof-of-process) repository.
+Part of the [proof-of-effort](https://github.com/LF-Decentralized-Trust-labs/proof-of-effort) repository.

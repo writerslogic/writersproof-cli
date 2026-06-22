@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=CPOP
+Name=CPOE
 GenericName=Authorship Witnessing
 Comment=Cryptographic authorship witnessing daemon - Kinetic Proof of Provenance
 Exec=writerslogic %U

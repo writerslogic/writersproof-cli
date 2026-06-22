@@ -167,7 +167,7 @@ fn standards_conformance_e2e() {
     assert_eq!(decoded_ear.iat, ear.iat);
 
     // 11. Generate CoRIM reference values; verify defaults.
-    let corim = cpoe_engine::rats::CpopReferenceValues::default();
+    let corim = cpoe_engine::rats::CpoeReferenceValues::default();
     assert!(
         (corim.min_entropy_bits - 3.0).abs() < f64::EPSILON,
         "CoRIM entropy threshold"
@@ -177,7 +177,7 @@ fn standards_conformance_e2e() {
     // Verify CBOR roundtrip.
     let corim_cbor = corim.to_cbor().expect("CoRIM to_cbor");
     let corim_decoded =
-        cpoe_engine::rats::CpopReferenceValues::from_cbor(&corim_cbor).expect("CoRIM roundtrip");
+        cpoe_engine::rats::CpoeReferenceValues::from_cbor(&corim_cbor).expect("CoRIM roundtrip");
     assert_eq!(corim_decoded, corim);
 
     // 12. Generate EU AI Act compliance; verify mapping.

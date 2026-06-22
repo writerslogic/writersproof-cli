@@ -113,7 +113,7 @@ pub(crate) fn build_wire_packet_with_ai(
 
     let data_dir =
         crate::ffi::helpers::get_data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let ips = crate::config::CpopConfig::load_or_default(&data_dir)
+    let ips = crate::config::CpoeConfig::load_or_default(&data_dir)
         .map(|c| c.vdf.iterations_per_second.max(1))
         .unwrap_or(1);
 

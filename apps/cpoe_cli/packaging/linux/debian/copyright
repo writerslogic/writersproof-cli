@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: cpop
+Upstream-Name: cpoe
 Upstream-Contact: David Condrey <david@condrey.dev>
-Source: https://github.com/writerslogic/cpop
+Source: https://github.com/writerslogic/writersproof-cli
 
 Files: *
 Copyright: 2024-2025 David Condrey
@@ -9,4 +9,4 @@ License: SEE LICENSE IN LICENSE
  This software is provided under a custom license.
  See the LICENSE file in the source distribution for full terms.
  .
- For the complete license text, see /usr/share/doc/cpop/LICENSE
+ For the complete license text, see /usr/share/doc/cpoe/LICENSE

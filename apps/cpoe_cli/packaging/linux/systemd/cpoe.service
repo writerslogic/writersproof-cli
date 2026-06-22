@@ -1,5 +1,5 @@
 [Unit]
-Description=CPOP Cryptographic Authorship Witnessing Daemon
+Description=CPOE Cryptographic Authorship Witnessing Daemon
 Documentation=man:writerslogic(1)
 Documentation=https://github.com/writerslogic/writerslogic
 After=network.target local-fs.target

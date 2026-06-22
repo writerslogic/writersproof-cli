@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! CPoP wire format types, CBOR/COSE codec, and evidence builder/verifier.
+//! CPoE wire format types, CBOR/COSE codec, and evidence builder/verifier.
 
 pub mod baseline;
 pub mod c2pa;

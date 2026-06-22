@@ -236,7 +236,7 @@ pub(super) fn build_evidence_packet(ctx: &EvidencePacketContext<'_>) -> Result<s
     }))
 }
 
-#[allow(dead_code)] // Wired once wire-format .cpop export is complete
+#[allow(dead_code)] // Wired once wire-format .cpoe export is complete
 pub(super) fn build_wire_packet_from_events(
     events: &[cpoe::SecureEvent],
     file_path: &std::path::Path,

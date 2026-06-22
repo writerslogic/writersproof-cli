@@ -708,7 +708,7 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 
     let data_dir =
         crate::ffi::helpers::get_data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let config = crate::config::CpopConfig::load_or_default(&data_dir).unwrap_or_else(|e| {
+    let config = crate::config::CpoeConfig::load_or_default(&data_dir).unwrap_or_else(|e| {
         log::warn!("config load failed, using defaults: {e}");
         Default::default()
     });

@@ -74,7 +74,7 @@ pub use crate::crypto::{
 pub use crate::error::{Error, Result};
 pub use crate::identity::MnemonicHandler;
 #[cfg(feature = "did-webvh")]
-pub use identity::did_webvh::{CpopSigner, WebVHIdentity};
+pub use identity::did_webvh::{CpoeSigner, WebVHIdentity};
 
 pub use crate::sentinel::{
     ChangeEvent, ChangeEventType, DaemonHandle, DaemonManager, DaemonState, DaemonStatus,

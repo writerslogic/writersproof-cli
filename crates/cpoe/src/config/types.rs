@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// Top-level engine configuration with subsystem settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct CpopConfig {
+pub struct CpoeConfig {
     pub data_dir: PathBuf,
     pub watch_dirs: Vec<PathBuf>,
     pub retention_days: u32,
@@ -27,7 +27,7 @@ pub struct CpopConfig {
     pub trust_bundle: TrustBundleConfig,
 }
 
-impl Default for CpopConfig {
+impl Default for CpoeConfig {
     fn default() -> Self {
         Self {
             data_dir: defaults::default_data_dir(),
@@ -584,7 +584,7 @@ impl SentinelConfig {
     }
 }
 
-impl CpopConfig {
+impl CpoeConfig {
     /// Validate all config values after load/deserialization.
     pub fn validate(&self) -> Result<()> {
         if self.retention_days == 0 {
@@ -626,8 +626,8 @@ impl CpopConfig {
     }
 }
 
-impl From<CpopConfig> for VdfParameters {
-    fn from(cfg: CpopConfig) -> Self {
+impl From<CpoeConfig> for VdfParameters {
+    fn from(cfg: CpoeConfig) -> Self {
         Self {
             iterations_per_second: cfg.vdf.iterations_per_second,
             min_iterations: cfg.vdf.min_iterations,

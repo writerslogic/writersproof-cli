@@ -1,5 +1,5 @@
 [Unit]
-Description=CPOP IBus Input Method Engine
+Description=CPOE IBus Input Method Engine
 Documentation=man:writerslogic(1)
 Documentation=https://github.com/writerslogic/writerslogic
 After=ibus.service
@@ -12,7 +12,7 @@ After=ibus.socket
 
 [Service]
 Type=dbus
-BusName=org.freedesktop.IBus.CPOP
+BusName=org.freedesktop.IBus.CPOE
 ExecStart=/usr/bin/writerslogic-ibus
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
@@ -21,7 +21,7 @@ TimeoutStartSec=10
 TimeoutStopSec=10
 
 # Environment
-Environment=CPOP_IBUS_ENGINE=1
+Environment=CPOE_IBUS_ENGINE=1
 
 # Logging
 StandardOutput=journal

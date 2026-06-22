@@ -9,12 +9,12 @@ use std::process::{Command, Stdio};
 use tempfile::tempdir;
 
 /// Run the cpoe binary with the given args and data dir, returning (stdout, stderr, exit_code).
-fn run_cpop(data_dir: &Path, args: &[&str]) -> (String, String, i32) {
-    run_cpop_with_stdin(data_dir, args, None)
+fn run_cpoe(data_dir: &Path, args: &[&str]) -> (String, String, i32) {
+    run_cpoe_with_stdin(data_dir, args, None)
 }
 
 /// Run the cpoe binary with optional stdin content.
-fn run_cpop_with_stdin(
+fn run_cpoe_with_stdin(
     data_dir: &Path,
     args: &[&str],
     stdin_content: Option<&str>,
@@ -45,13 +45,13 @@ fn run_cpop_with_stdin(
 }
 
 /// Run cpoe and assert it succeeds (exit code 0), returning stdout.
-fn run_cpop_ok(data_dir: &Path, args: &[&str]) -> String {
-    run_cpop_ok_with_stdin(data_dir, args, None)
+fn run_cpoe_ok(data_dir: &Path, args: &[&str]) -> String {
+    run_cpoe_ok_with_stdin(data_dir, args, None)
 }
 
 /// Run cpoe with stdin and assert it succeeds, returning stdout.
-fn run_cpop_ok_with_stdin(data_dir: &Path, args: &[&str], stdin_content: Option<&str>) -> String {
-    let (stdout, stderr, code) = run_cpop_with_stdin(data_dir, args, stdin_content);
+fn run_cpoe_ok_with_stdin(data_dir: &Path, args: &[&str], stdin_content: Option<&str>) -> String {
+    let (stdout, stderr, code) = run_cpoe_with_stdin(data_dir, args, stdin_content);
     assert_eq!(
         code,
         0,
@@ -65,14 +65,14 @@ fn run_cpop_ok_with_stdin(data_dir: &Path, args: &[&str], stdin_content: Option<
 }
 
 /// Initialize a cpoe data directory (creates signing key, identity, etc.).
-fn init_cpop(data_dir: &Path) {
-    run_cpop_ok(data_dir, &["init"]);
+fn init_cpoe(data_dir: &Path) {
+    run_cpoe_ok(data_dir, &["init"]);
 }
 
 /// Create 3 checkpoints for a file (the minimum required for export).
 fn create_min_checkpoints(data_dir: &Path, file_path: &Path) {
     fs::write(file_path, "Version 1: initial draft content.").unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data_dir,
         &["commit", file_path.to_str().unwrap(), "-m", "Draft 1"],
     );
@@ -82,7 +82,7 @@ fn create_min_checkpoints(data_dir: &Path, file_path: &Path) {
         "Version 2: revised draft content with additions.",
     )
     .unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data_dir,
         &["commit", file_path.to_str().unwrap(), "-m", "Draft 2"],
     );
@@ -92,7 +92,7 @@ fn create_min_checkpoints(data_dir: &Path, file_path: &Path) {
         "Version 3: final revised draft content with more additions and edits.",
     )
     .unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data_dir,
         &["commit", file_path.to_str().unwrap(), "-m", "Draft 3"],
     );
@@ -106,13 +106,13 @@ fn create_min_checkpoints(data_dir: &Path, file_path: &Path) {
 fn scenario_complete_authoring_workflow() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let essay = data.join("essay.txt");
 
     // 1. Create document and first commit
     fs::write(&essay, "The beginning of a great essay.").unwrap();
-    let stdout = run_cpop_ok(data, &["commit", essay.to_str().unwrap(), "-m", "Draft 1"]);
+    let stdout = run_cpoe_ok(data, &["commit", essay.to_str().unwrap(), "-m", "Draft 1"]);
     assert!(
         stdout.contains("Checkpoint #1"),
         "First commit should create checkpoint #1. Got: {}",
@@ -130,7 +130,7 @@ fn scenario_complete_authoring_workflow() {
         "The beginning of a great essay. Adding more thoughts and ideas.",
     )
     .unwrap();
-    let stdout = run_cpop_ok(data, &["commit", essay.to_str().unwrap(), "-m", "Draft 2"]);
+    let stdout = run_cpoe_ok(data, &["commit", essay.to_str().unwrap(), "-m", "Draft 2"]);
     assert!(
         stdout.contains("Checkpoint #2"),
         "Second commit should create checkpoint #2. Got: {}",
@@ -143,7 +143,7 @@ fn scenario_complete_authoring_workflow() {
         "The beginning of a great essay. Adding more thoughts and ideas. Concluding paragraph here.",
     )
     .unwrap();
-    let stdout = run_cpop_ok(data, &["commit", essay.to_str().unwrap(), "-m", "Draft 3"]);
+    let stdout = run_cpoe_ok(data, &["commit", essay.to_str().unwrap(), "-m", "Draft 3"]);
     assert!(
         stdout.contains("Checkpoint #3"),
         "Third commit should create checkpoint #3. Got: {}",
@@ -151,7 +151,7 @@ fn scenario_complete_authoring_workflow() {
     );
 
     // 4. Log should show all 3 checkpoints
-    let stdout = run_cpop_ok(data, &["log", essay.to_str().unwrap()]);
+    let stdout = run_cpoe_ok(data, &["log", essay.to_str().unwrap()]);
     assert!(
         stdout.contains("Draft 1"),
         "Log should show Draft 1. Got: {}",
@@ -170,7 +170,7 @@ fn scenario_complete_authoring_workflow() {
 
     // 5. Export as JSON
     let evidence_json = data.join("essay.evidence.json");
-    let stdout = run_cpop_ok_with_stdin(
+    let stdout = run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -202,7 +202,7 @@ fn scenario_complete_authoring_workflow() {
 
     // 6. Export as c2pa
     let c2pa_path = data.join("essay.c2pa.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -220,7 +220,7 @@ fn scenario_complete_authoring_workflow() {
     // 7. Verify the JSON evidence
     // Verify may exit non-zero in test due to suspicious duration ratio (fast commits),
     // but structural verification should pass.
-    let (stdout, _, _) = run_cpop(data, &["verify", evidence_json.to_str().unwrap()]);
+    let (stdout, _, _) = run_cpoe(data, &["verify", evidence_json.to_str().unwrap()]);
     assert!(
         stdout.contains("Evidence packet Verified") || stdout.contains("Structural"),
         "Verification should confirm structural validity. Got: {}",
@@ -228,7 +228,7 @@ fn scenario_complete_authoring_workflow() {
     );
 
     // 8. Status should show the tracked file
-    let stdout = run_cpop_ok(data, &["status"]);
+    let stdout = run_cpoe_ok(data, &["status"]);
     assert!(
         stdout.contains("Status") || stdout.contains("status"),
         "Status output should contain status info. Got: {}",
@@ -244,7 +244,7 @@ fn scenario_complete_authoring_workflow() {
 fn scenario_export_format_matrix() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("formats.txt");
     create_min_checkpoints(data, &doc);
@@ -260,7 +260,7 @@ fn scenario_export_format_matrix() {
 
     for (format, expected_name) in formats_and_extensions {
         let out_path = data.join(expected_name);
-        let (stdout, stderr, code) = run_cpop_with_stdin(
+        let (stdout, stderr, code) = run_cpoe_with_stdin(
             data,
             &[
                 "export",
@@ -314,9 +314,9 @@ fn scenario_export_format_matrix() {
 fn scenario_error_commit_nonexistent() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let (_, stderr, code) = run_cpop(data, &["commit", "/nonexistent/path/file.txt"]);
+    let (_, stderr, code) = run_cpoe(data, &["commit", "/nonexistent/path/file.txt"]);
     assert_ne!(code, 0, "Commit of nonexistent file should fail");
     assert!(
         stderr.contains("not found")
@@ -332,9 +332,9 @@ fn scenario_error_commit_nonexistent() {
 fn scenario_error_verify_nonexistent() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let (_, stderr, code) = run_cpop(data, &["verify", "/nonexistent/evidence.json"]);
+    let (_, stderr, code) = run_cpoe(data, &["verify", "/nonexistent/evidence.json"]);
     assert_ne!(code, 0, "Verify of nonexistent file should fail");
     assert!(
         stderr.contains("Error") || stderr.contains("not found") || stderr.contains("No such file"),
@@ -347,13 +347,13 @@ fn scenario_error_verify_nonexistent() {
 fn scenario_error_export_no_checkpoints() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Create a file but don't commit it
     let doc = data.join("untracked.txt");
     fs::write(&doc, "Content without checkpoints").unwrap();
 
-    let (_, stderr, code) = run_cpop_with_stdin(
+    let (_, stderr, code) = run_cpoe_with_stdin(
         data,
         &["export", doc.to_str().unwrap(), "--no-beacons"],
         Some("n\nDecl\n"),
@@ -373,12 +373,12 @@ fn scenario_error_export_no_checkpoints() {
 fn scenario_error_verify_invalid_json() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let bad_file = data.join("bad.json");
     fs::write(&bad_file, "this is not valid json").unwrap();
 
-    let (_, stderr, code) = run_cpop(data, &["verify", bad_file.to_str().unwrap()]);
+    let (_, stderr, code) = run_cpoe(data, &["verify", bad_file.to_str().unwrap()]);
     assert_ne!(code, 0, "Verify of invalid JSON should fail");
     assert!(
         stderr.to_lowercase().contains("parse")
@@ -397,10 +397,10 @@ fn scenario_error_verify_invalid_json() {
 fn scenario_identity_management() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Show DID
-    let did_output = run_cpop_ok(data, &["identity", "--did"]);
+    let did_output = run_cpoe_ok(data, &["identity", "--did"]);
     assert!(
         did_output.contains("did:key:") || did_output.contains("DID"),
         "Identity --did should output a DID. Got: {}",
@@ -408,14 +408,14 @@ fn scenario_identity_management() {
     );
 
     // Show fingerprint
-    let fp_output = run_cpop_ok(data, &["identity", "--fingerprint"]);
+    let fp_output = run_cpoe_ok(data, &["identity", "--fingerprint"]);
     assert!(
         !fp_output.trim().is_empty(),
         "Identity --fingerprint should produce output"
     );
 
     // Verify identity persists: run --did again and confirm same value
-    let did_output2 = run_cpop_ok(data, &["identity", "--did"]);
+    let did_output2 = run_cpoe_ok(data, &["identity", "--did"]);
     assert_eq!(
         did_output, did_output2,
         "Identity should persist across invocations"
@@ -430,10 +430,10 @@ fn scenario_identity_management() {
 fn scenario_config_management() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Show config
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("auto_start") || stdout.contains("Sentinel") || stdout.contains("VDF"),
         "Config show should display settings. Got: {}",
@@ -441,7 +441,7 @@ fn scenario_config_management() {
     );
 
     // Set a value
-    let stdout = run_cpop_ok(data, &["config", "set", "sentinel.auto_start", "false"]);
+    let stdout = run_cpoe_ok(data, &["config", "set", "sentinel.auto_start", "false"]);
     assert!(
         stdout.contains("Set")
             || stdout.contains("set")
@@ -452,7 +452,7 @@ fn scenario_config_management() {
     );
 
     // Verify change persisted
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("auto_start: false") || stdout.contains("auto_start\":false"),
         "Config should show updated value. Got: {}",
@@ -468,7 +468,7 @@ fn scenario_config_management() {
 fn scenario_link_command() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Create and commit a source document
     let source = data.join("source.txt");
@@ -479,7 +479,7 @@ fn scenario_link_command() {
     fs::write(&derivative, "Simulated PDF derivative content").unwrap();
 
     // Link source to derivative
-    let stdout = run_cpop_ok(
+    let stdout = run_cpoe_ok(
         data,
         &[
             "link",
@@ -496,7 +496,7 @@ fn scenario_link_command() {
     );
 
     // Log should show the link checkpoint
-    let stdout = run_cpop_ok(data, &["log", source.to_str().unwrap()]);
+    let stdout = run_cpoe_ok(data, &["log", source.to_str().unwrap()]);
     // Link creates a checkpoint, so there should be 4 now (3 original + 1 link)
     assert!(
         stdout.contains("#4") || stdout.contains("derivative") || stdout.contains("PDF export"),
@@ -513,7 +513,7 @@ fn scenario_link_command() {
 fn scenario_multi_file_project() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Create multiple files
     let file_a = data.join("chapter1.txt");
@@ -525,21 +525,21 @@ fn scenario_multi_file_project() {
     fs::write(&file_c, "Chapter 3: The conclusion").unwrap();
 
     // Commit each file
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", file_a.to_str().unwrap(), "-m", "Ch1 draft"],
     );
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", file_b.to_str().unwrap(), "-m", "Ch2 draft"],
     );
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", file_c.to_str().unwrap(), "-m", "Ch3 draft"],
     );
 
     // Log (no file arg) should list all tracked documents
-    let stdout = run_cpop_ok(data, &["log"]);
+    let stdout = run_cpoe_ok(data, &["log"]);
     assert!(
         stdout.contains("chapter1.txt") || stdout.contains("3 document"),
         "Log should list tracked documents. Got: {}",
@@ -547,7 +547,7 @@ fn scenario_multi_file_project() {
     );
 
     // Status should show data about the project
-    let stdout = run_cpop_ok(data, &["status"]);
+    let stdout = run_cpoe_ok(data, &["status"]);
     assert!(
         stdout.contains("Status") || stdout.contains("database"),
         "Status should show project info. Got: {}",
@@ -555,7 +555,7 @@ fn scenario_multi_file_project() {
     );
 
     // Log for a specific file should show its checkpoint
-    let stdout = run_cpop_ok(data, &["log", file_b.to_str().unwrap()]);
+    let stdout = run_cpoe_ok(data, &["log", file_b.to_str().unwrap()]);
     assert!(
         stdout.contains("Ch2 draft") || stdout.contains("chapter2"),
         "Log for chapter2 should show its checkpoint. Got: {}",
@@ -571,10 +571,10 @@ fn scenario_multi_file_project() {
 fn scenario_json_output_modes() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Status --json should return valid JSON
-    let stdout = run_cpop_ok(data, &["status", "--json"]);
+    let stdout = run_cpoe_ok(data, &["status", "--json"]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("status --json should be valid JSON: {}\nGot: {}", e, stdout));
     assert!(
@@ -585,12 +585,12 @@ fn scenario_json_output_modes() {
     // Commit then log --json
     let doc = data.join("json_test.txt");
     fs::write(&doc, "Content for JSON test").unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "JSON test", "--json"],
     );
 
-    let stdout = run_cpop_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
+    let stdout = run_cpoe_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("log --json should be valid JSON: {}\nGot: {}", e, stdout));
     assert_eq!(
@@ -608,14 +608,14 @@ fn scenario_json_output_modes() {
 fn scenario_export_verify_roundtrip() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("roundtrip.txt");
     create_min_checkpoints(data, &doc);
 
     // Export as JSON
     let evidence = data.join("roundtrip.evidence.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -631,7 +631,7 @@ fn scenario_export_verify_roundtrip() {
     assert!(evidence.exists());
 
     // Verify structural checks pass (may exit non-zero due to suspicious duration in tests)
-    let (stdout, _, _) = run_cpop(data, &["verify", evidence.to_str().unwrap()]);
+    let (stdout, _, _) = run_cpoe(data, &["verify", evidence.to_str().unwrap()]);
     assert!(
         stdout.contains("Evidence packet Verified") || stdout.contains("Structural"),
         "Round-trip verification should confirm structural validity. Got: {}",
@@ -646,14 +646,14 @@ fn scenario_export_verify_roundtrip() {
 #[test]
 fn test_track_creates_data_dir() {
     let dir = tempdir().unwrap();
-    let data = dir.path().join("nested").join("cpop_data");
+    let data = dir.path().join("nested").join("cpoe_data");
     // Data dir does not exist yet
     assert!(!data.exists());
 
     // Running any command with CPOE_DATA_DIR should create it via ensure_dirs
     let doc = dir.path().join("doc.txt");
     fs::write(&doc, "some content").unwrap();
-    run_cpop_ok(&data, &["commit", doc.to_str().unwrap(), "-m", "first"]);
+    run_cpoe_ok(&data, &["commit", doc.to_str().unwrap(), "-m", "first"]);
 
     assert!(
         data.exists(),
@@ -665,14 +665,14 @@ fn test_track_creates_data_dir() {
 fn test_track_binary_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let bin_file = data.join("random.bin");
     // Write random-looking binary bytes (not valid UTF-8)
     let bytes: Vec<u8> = (0..256).map(|i| i as u8).collect();
     fs::write(&bin_file, &bytes).unwrap();
 
-    let stdout = run_cpop_ok(
+    let stdout = run_cpoe_ok(
         data,
         &["commit", bin_file.to_str().unwrap(), "-m", "binary file"],
     );
@@ -687,7 +687,7 @@ fn test_track_binary_file() {
 fn test_track_symlink() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let real_file = data.join("real.txt");
     fs::write(&real_file, "symlink target content").unwrap();
@@ -699,7 +699,7 @@ fn test_track_symlink() {
     std::os::windows::fs::symlink_file(&real_file, &link_path).unwrap();
 
     // Commit via the symlink; should resolve to the real file
-    let (stdout, stderr, code) = run_cpop(
+    let (stdout, stderr, code) = run_cpoe(
         data,
         &["commit", link_path.to_str().unwrap(), "-m", "via symlink"],
     );
@@ -718,7 +718,7 @@ fn test_track_symlink() {
 fn test_track_large_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let large_file = data.join("large.txt");
     // 1 MB of text
@@ -726,7 +726,7 @@ fn test_track_large_file() {
     fs::write(&large_file, &content).unwrap();
 
     let start = std::time::Instant::now();
-    let stdout = run_cpop_ok(
+    let stdout = run_cpoe_ok(
         data,
         &["commit", large_file.to_str().unwrap(), "-m", "large file"],
     );
@@ -748,7 +748,7 @@ fn test_track_large_file() {
 fn test_track_special_chars_in_path() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Create a subdirectory with spaces and a file with unicode and hyphens
     let subdir = data.join("my documents");
@@ -756,7 +756,7 @@ fn test_track_special_chars_in_path() {
     let special_file = subdir.join("resume-draft_v2.txt");
     fs::write(&special_file, "Content with special path chars").unwrap();
 
-    let stdout = run_cpop_ok(
+    let stdout = run_cpoe_ok(
         data,
         &[
             "commit",
@@ -780,12 +780,12 @@ fn test_track_special_chars_in_path() {
 fn test_commit_empty_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let empty = data.join("empty.txt");
     fs::write(&empty, "").unwrap();
 
-    let (stdout, stderr, code) = run_cpop(
+    let (stdout, stderr, code) = run_cpoe(
         data,
         &["commit", empty.to_str().unwrap(), "-m", "empty file"],
     );
@@ -804,12 +804,12 @@ fn test_commit_empty_file() {
 fn test_commit_unchanged_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("stable.txt");
     fs::write(&doc, "Unchanging content for both commits").unwrap();
 
-    let stdout1 = run_cpop_ok(
+    let stdout1 = run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "first commit"],
     );
@@ -820,7 +820,7 @@ fn test_commit_unchanged_file() {
     );
 
     // Commit same content again without modification
-    let stdout2 = run_cpop_ok(
+    let stdout2 = run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "second commit"],
     );
@@ -835,11 +835,11 @@ fn test_commit_unchanged_file() {
 fn test_commit_with_message() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("msg_test.txt");
     fs::write(&doc, "Content for message test").unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &[
             "commit",
@@ -850,7 +850,7 @@ fn test_commit_with_message() {
     );
 
     // Log should contain the message
-    let stdout = run_cpop_ok(data, &["log", doc.to_str().unwrap()]);
+    let stdout = run_cpoe_ok(data, &["log", doc.to_str().unwrap()]);
     assert!(
         stdout.contains("My custom message here"),
         "Log should show the commit message. Got: {}",
@@ -862,13 +862,13 @@ fn test_commit_with_message() {
 fn test_commit_rapid_succession() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("rapid.txt");
     for i in 1..=5 {
         let content = format!("Rapid commit version {} with enough unique text", i);
         fs::write(&doc, &content).unwrap();
-        let stdout = run_cpop_ok(
+        let stdout = run_cpoe_ok(
             data,
             &[
                 "commit",
@@ -887,7 +887,7 @@ fn test_commit_rapid_succession() {
     }
 
     // Verify all 5 are logged
-    let stdout = run_cpop_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
+    let stdout = run_cpoe_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("log --json should parse: {}\nGot: {}", e, stdout));
     assert_eq!(
@@ -901,18 +901,18 @@ fn test_commit_rapid_succession() {
 fn test_commit_after_delete_content() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("delete_test.txt");
     fs::write(&doc, "Full content that will be deleted").unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "with content"],
     );
 
     // Delete content (write empty or near-empty)
     fs::write(&doc, "").unwrap();
-    let (stdout, stderr, code) = run_cpop(
+    let (stdout, stderr, code) = run_cpoe(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "after delete"],
     );
@@ -932,16 +932,16 @@ fn test_commit_after_delete_content() {
 // ===========================================================================
 
 #[test]
-fn test_export_cpop_binary_format() {
+fn test_export_cpoe_binary_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("binary_export.txt");
     create_min_checkpoints(data, &doc);
 
     let out_path = data.join("evidence.cpoe");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -970,13 +970,13 @@ fn test_export_cpop_binary_format() {
 fn test_export_cwar_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("cwar_export.txt");
     create_min_checkpoints(data, &doc);
 
     let out_path = data.join("evidence.cwar");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1003,13 +1003,13 @@ fn test_export_cwar_format() {
 fn test_export_html_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("html_export.txt");
     create_min_checkpoints(data, &doc);
 
     let out_path = data.join("report.html");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1036,13 +1036,13 @@ fn test_export_html_format() {
 fn test_export_pdf_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("pdf_export.txt");
     create_min_checkpoints(data, &doc);
 
     let out_path = data.join("report.pdf");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1069,13 +1069,13 @@ fn test_export_pdf_format() {
 fn test_export_c2pa_assertion_content() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("c2pa_content.txt");
     create_min_checkpoints(data, &doc);
 
     let out_path = data.join("assertion.c2pa.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1108,7 +1108,7 @@ fn test_export_c2pa_assertion_content() {
 fn test_export_custom_output_path() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("custom_out.txt");
     create_min_checkpoints(data, &doc);
@@ -1118,7 +1118,7 @@ fn test_export_custom_output_path() {
     fs::create_dir_all(&custom_dir).unwrap();
     let out_path = custom_dir.join("my_evidence.json");
 
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1146,7 +1146,7 @@ fn test_export_custom_output_path() {
 fn test_export_overwrites_existing() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("overwrite.txt");
     create_min_checkpoints(data, &doc);
@@ -1154,7 +1154,7 @@ fn test_export_overwrites_existing() {
     let out_path = data.join("overwrite.evidence.json");
 
     // Export first time
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1176,9 +1176,9 @@ fn test_export_overwrites_existing() {
         "Version 4: even more content added for the overwrite test.",
     )
     .unwrap();
-    run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 4"]);
+    run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 4"]);
 
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1206,13 +1206,13 @@ fn test_export_overwrites_existing() {
 fn test_verify_json_output() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("verify_json.txt");
     create_min_checkpoints(data, &doc);
 
     let evidence = data.join("verify_json.evidence.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1226,7 +1226,7 @@ fn test_verify_json_output() {
         Some("n\nDecl\n"),
     );
 
-    let (stdout, _, _) = run_cpop(data, &["verify", evidence.to_str().unwrap(), "--json"]);
+    let (stdout, _, _) = run_cpoe(data, &["verify", evidence.to_str().unwrap(), "--json"]);
     // With --json flag, output should be parseable JSON
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| {
         panic!(
@@ -1244,13 +1244,13 @@ fn test_verify_json_output() {
 fn test_verify_corrupted_evidence() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("corrupt_test.txt");
     create_min_checkpoints(data, &doc);
 
     let evidence = data.join("corrupt.evidence.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1270,7 +1270,7 @@ fn test_verify_corrupted_evidence() {
     content = content.replacen("\"content_hash\"", "\"content_hash_CORRUPTED\"", 1);
     fs::write(&evidence, &content).unwrap();
 
-    let (stdout, stderr, code) = run_cpop(data, &["verify", evidence.to_str().unwrap()]);
+    let (stdout, stderr, code) = run_cpoe(data, &["verify", evidence.to_str().unwrap()]);
     // Should detect corruption (may still exit 0 with warnings or exit non-zero)
     let combined = format!("{}{}", stdout, stderr);
     assert!(
@@ -1291,13 +1291,13 @@ fn test_verify_corrupted_evidence() {
 fn test_verify_truncated_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Write a truncated JSON file
     let truncated = data.join("truncated.json");
     fs::write(&truncated, r#"{"version": 1, "checkpoints": ["#).unwrap();
 
-    let (_, stderr, code) = run_cpop(data, &["verify", truncated.to_str().unwrap()]);
+    let (_, stderr, code) = run_cpoe(data, &["verify", truncated.to_str().unwrap()]);
     assert_ne!(code, 0, "Truncated evidence file should fail verification");
     assert!(
         stderr.to_lowercase().contains("parse")
@@ -1313,13 +1313,13 @@ fn test_verify_truncated_file() {
 fn test_verify_cwar_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("verify_cwar.txt");
     create_min_checkpoints(data, &doc);
 
     let cwar_path = data.join("verify_test.cwar");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1334,7 +1334,7 @@ fn test_verify_cwar_format() {
     );
 
     assert!(cwar_path.exists(), ".cwar file should exist for verify");
-    let (stdout, stderr, code) = run_cpop(data, &["verify", cwar_path.to_str().unwrap()]);
+    let (stdout, stderr, code) = run_cpoe(data, &["verify", cwar_path.to_str().unwrap()]);
     // Verify should at least attempt to parse the cwar without panicking
     assert!(
         code == 0
@@ -1357,12 +1357,12 @@ fn test_verify_cwar_format() {
 fn test_log_empty_no_checkpoints() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("no_commits.txt");
     fs::write(&doc, "Never committed content").unwrap();
 
-    let stdout = run_cpop_ok(data, &["log", doc.to_str().unwrap()]);
+    let stdout = run_cpoe_ok(data, &["log", doc.to_str().unwrap()]);
     assert!(
         stdout.contains("No checkpoints") || stdout.trim().is_empty(),
         "Log with no commits should show empty message. Got: {}",
@@ -1374,22 +1374,22 @@ fn test_log_empty_no_checkpoints() {
 fn test_log_shows_messages() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("log_msg.txt");
     fs::write(&doc, "First version of the document").unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "Initial rough draft"],
     );
 
     fs::write(&doc, "Second version with significant revisions applied").unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "Major revision pass"],
     );
 
-    let stdout = run_cpop_ok(data, &["log", doc.to_str().unwrap()]);
+    let stdout = run_cpoe_ok(data, &["log", doc.to_str().unwrap()]);
     assert!(
         stdout.contains("Initial rough draft"),
         "Log should show first message. Got: {}",
@@ -1406,16 +1406,16 @@ fn test_log_shows_messages() {
 fn test_log_json_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("log_json.txt");
     fs::write(&doc, "Content for JSON log test").unwrap();
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "JSON log entry"],
     );
 
-    let stdout = run_cpop_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
+    let stdout = run_cpoe_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("log --json should be valid JSON: {}\nGot: {}", e, stdout));
     assert!(
@@ -1434,7 +1434,7 @@ fn test_log_json_format() {
 fn test_log_per_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let file_a = data.join("alpha.txt");
     let file_b = data.join("beta.txt");
@@ -1442,17 +1442,17 @@ fn test_log_per_file() {
     fs::write(&file_a, "Alpha content").unwrap();
     fs::write(&file_b, "Beta content").unwrap();
 
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", file_a.to_str().unwrap(), "-m", "Alpha commit"],
     );
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["commit", file_b.to_str().unwrap(), "-m", "Beta commit"],
     );
 
     // Log for alpha should only show alpha's checkpoint
-    let stdout_a = run_cpop_ok(data, &["log", file_a.to_str().unwrap()]);
+    let stdout_a = run_cpoe_ok(data, &["log", file_a.to_str().unwrap()]);
     assert!(
         stdout_a.contains("Alpha commit"),
         "Log for alpha should show Alpha commit. Got: {}",
@@ -1465,7 +1465,7 @@ fn test_log_per_file() {
     );
 
     // Log for beta should only show beta's checkpoint
-    let stdout_b = run_cpop_ok(data, &["log", file_b.to_str().unwrap()]);
+    let stdout_b = run_cpoe_ok(data, &["log", file_b.to_str().unwrap()]);
     assert!(
         stdout_b.contains("Beta commit"),
         "Log for beta should show Beta commit. Got: {}",
@@ -1486,9 +1486,9 @@ fn test_log_per_file() {
 fn test_status_no_tracking() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let stdout = run_cpop_ok(data, &["status"]);
+    let stdout = run_cpoe_ok(data, &["status"]);
     assert!(
         stdout.contains("Status") || stdout.contains("status") || stdout.contains("No"),
         "Status before any tracking should produce clean output. Got: {}",
@@ -1500,13 +1500,13 @@ fn test_status_no_tracking() {
 fn test_status_shows_tracked_files() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("tracked_status.txt");
     fs::write(&doc, "Content to track").unwrap();
-    run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Track me"]);
+    run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Track me"]);
 
-    let stdout = run_cpop_ok(data, &["status"]);
+    let stdout = run_cpoe_ok(data, &["status"]);
     assert!(
         stdout.contains("tracked_status.txt")
             || stdout.contains("1 document")
@@ -1521,9 +1521,9 @@ fn test_status_shows_tracked_files() {
 fn test_status_json_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let stdout = run_cpop_ok(data, &["status", "--json"]);
+    let stdout = run_cpoe_ok(data, &["status", "--json"]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("status --json should be valid JSON: {}\nGot: {}", e, stdout));
     assert!(
@@ -1541,9 +1541,9 @@ fn test_status_json_format() {
 fn test_fingerprint_list() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let (stdout, stderr, code) = run_cpop(data, &["fingerprint", "list"]);
+    let (stdout, stderr, code) = run_cpoe(data, &["fingerprint", "list"]);
     // Should run without panicking; may report no profiles or succeed
     assert!(
         code == 0 || stderr.contains("Error"),
@@ -1558,9 +1558,9 @@ fn test_fingerprint_list() {
 fn test_fingerprint_show() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let (stdout, stderr, code) = run_cpop(data, &["fingerprint", "show"]);
+    let (stdout, stderr, code) = run_cpoe(data, &["fingerprint", "show"]);
     // Should run without panicking; may report no current profile
     assert!(
         code == 0 || stderr.contains("Error") || stderr.contains("No"),
@@ -1580,7 +1580,7 @@ fn test_help_flag() {
     let dir = tempdir().unwrap();
     let data = dir.path();
 
-    let stdout = run_cpop_ok(data, &["--help"]);
+    let stdout = run_cpoe_ok(data, &["--help"]);
     assert!(
         stdout.contains("CPoE") || stdout.contains("cpoe") || stdout.contains("Usage"),
         "--help should show usage information. Got: {}",
@@ -1598,7 +1598,7 @@ fn test_version_flag() {
     let dir = tempdir().unwrap();
     let data = dir.path();
 
-    let stdout = run_cpop_ok(data, &["--version"]);
+    let stdout = run_cpoe_ok(data, &["--version"]);
     assert!(
         stdout.contains("cpoe") || stdout.contains("CPoE"),
         "--version should contain program name. Got: {}",
@@ -1618,7 +1618,7 @@ fn test_subcommand_help() {
     let data = dir.path();
 
     // commit --help
-    let stdout = run_cpop_ok(data, &["commit", "--help"]);
+    let stdout = run_cpoe_ok(data, &["commit", "--help"]);
     assert!(
         stdout.contains("checkpoint") || stdout.contains("Checkpoint") || stdout.contains("commit"),
         "commit --help should describe the commit command. Got: {}",
@@ -1631,7 +1631,7 @@ fn test_subcommand_help() {
     );
 
     // export --help
-    let stdout = run_cpop_ok(data, &["export", "--help"]);
+    let stdout = run_cpoe_ok(data, &["export", "--help"]);
     assert!(
         stdout.contains("export") || stdout.contains("Export") || stdout.contains("evidence"),
         "export --help should describe the export command. Got: {}",
@@ -1644,7 +1644,7 @@ fn test_subcommand_help() {
     );
 
     // verify --help
-    let stdout = run_cpop_ok(data, &["verify", "--help"]);
+    let stdout = run_cpoe_ok(data, &["verify", "--help"]);
     assert!(
         stdout.contains("Verify") || stdout.contains("verify") || stdout.contains("evidence"),
         "verify --help should describe the verify command. Got: {}",
@@ -1660,7 +1660,7 @@ fn test_subcommand_help() {
 fn test_concurrent_commits_different_files() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let files: Vec<_> = (0..3)
         .map(|i| {
@@ -1677,7 +1677,7 @@ fn test_concurrent_commits_different_files() {
             let data_path = data.to_path_buf();
             let file_path = f.to_string_lossy().to_string();
             std::thread::spawn(move || {
-                let (stdout, stderr, code) = run_cpop(
+                let (stdout, stderr, code) = run_cpoe(
                     &data_path,
                     &["commit", &file_path, "-m", &format!("Thread {}", i)],
                 );
@@ -1711,7 +1711,7 @@ fn test_concurrent_commits_different_files() {
 fn test_many_commits_single_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("many_commits.txt");
     let commit_count = 20;
@@ -1722,13 +1722,13 @@ fn test_many_commits_single_file() {
             i
         );
         fs::write(&doc, &content).unwrap();
-        run_cpop_ok(
+        run_cpoe_ok(
             data,
             &["commit", doc.to_str().unwrap(), "-m", &format!("Rev {}", i)],
         );
     }
 
-    let stdout = run_cpop_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
+    let stdout = run_cpoe_ok(data, &["log", doc.to_str().unwrap(), "--json"]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("log --json should parse: {}\nGot: {}", e, stdout));
     assert_eq!(
@@ -1743,20 +1743,20 @@ fn test_many_commits_single_file() {
 fn test_large_commit_message() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("longmsg.txt");
     fs::write(&doc, "Content for long message test").unwrap();
 
     let long_msg = "A".repeat(1000);
-    let stdout = run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", &long_msg]);
+    let stdout = run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", &long_msg]);
     assert!(
         stdout.contains("Checkpoint #1"),
         "Commit with 1000-char message should succeed. Got: {}",
         stdout
     );
 
-    let log_out = run_cpop_ok(data, &["log", doc.to_str().unwrap()]);
+    let log_out = run_cpoe_ok(data, &["log", doc.to_str().unwrap()]);
     assert!(
         log_out.contains(&long_msg[..50]),
         "Log should contain the long message. Got: {}",
@@ -1768,20 +1768,20 @@ fn test_large_commit_message() {
 fn test_unicode_commit_message() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("unicode_msg.txt");
     fs::write(&doc, "Content for unicode message test").unwrap();
 
     let msg = "Draft with CJK chars and emoji: \u{1F4DD}\u{4E2D}\u{6587}\u{65E5}\u{672C}\u{8A9E}";
-    let stdout = run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", msg]);
+    let stdout = run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", msg]);
     assert!(
         stdout.contains("Checkpoint #1"),
         "Commit with unicode message should succeed. Got: {}",
         stdout
     );
 
-    let log_out = run_cpop_ok(data, &["log", doc.to_str().unwrap()]);
+    let log_out = run_cpoe_ok(data, &["log", doc.to_str().unwrap()]);
     assert!(
         log_out.contains("\u{4E2D}\u{6587}"),
         "Log should preserve CJK characters. Got: {}",
@@ -1793,17 +1793,17 @@ fn test_unicode_commit_message() {
 fn test_repeated_track_same_file() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("repeat_track.txt");
     fs::write(&doc, "Content version 1").unwrap();
 
-    let stdout1 = run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "First"]);
+    let stdout1 = run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "First"]);
     assert!(stdout1.contains("Checkpoint #1"));
 
     // Commit same file again (effectively "tracking" it twice)
     fs::write(&doc, "Content version 2").unwrap();
-    let stdout2 = run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Second"]);
+    let stdout2 = run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Second"]);
     assert!(
         stdout2.contains("Checkpoint #2"),
         "Repeated commit should increment checkpoint. Got: {}",
@@ -1819,7 +1819,7 @@ fn test_repeated_track_same_file() {
 fn test_export_after_file_deleted() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("will_delete.txt");
     create_min_checkpoints(data, &doc);
@@ -1829,7 +1829,7 @@ fn test_export_after_file_deleted() {
 
     // Export should fail because file no longer exists for canonicalize
     let out_path = data.join("deleted.evidence.json");
-    let (_, stderr, code) = run_cpop_with_stdin(
+    let (_, stderr, code) = run_cpoe_with_stdin(
         data,
         &[
             "export",
@@ -1858,13 +1858,13 @@ fn test_export_after_file_deleted() {
 fn test_export_tier_basic() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("tier_basic.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("tier_basic.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1889,13 +1889,13 @@ fn test_export_tier_basic() {
 fn test_export_tier_standard() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("tier_standard.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("tier_standard.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1917,13 +1917,13 @@ fn test_export_tier_standard() {
 fn test_export_tier_enhanced() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("tier_enhanced.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("tier_enhanced.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -1945,7 +1945,7 @@ fn test_export_tier_enhanced() {
 fn test_export_stego_flag() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("stego_test.txt");
     // Stego requires at least 64 words; write enough content for each version
@@ -1955,14 +1955,14 @@ fn test_export_stego_flag() {
         format!("Version {} {}", ver, base.repeat(10))
     };
     fs::write(&doc, long_text(1)).unwrap();
-    run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 1"]);
+    run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 1"]);
     fs::write(&doc, long_text(2)).unwrap();
-    run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 2"]);
+    run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 2"]);
     fs::write(&doc, long_text(3)).unwrap();
-    run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 3"]);
+    run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Draft 3"]);
 
     let out = data.join("stego_test.json");
-    let (_stdout, stderr, code) = run_cpop_with_stdin(
+    let (_stdout, stderr, code) = run_cpoe_with_stdin(
         data,
         &[
             "export",
@@ -1996,13 +1996,13 @@ fn test_export_stego_flag() {
 fn test_export_no_beacons_flag() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("no_beacons.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("no_beacons.json");
-    let (_stdout, stderr, _) = run_cpop_with_stdin(
+    let (_stdout, stderr, _) = run_cpoe_with_stdin(
         data,
         &[
             "export",
@@ -2029,13 +2029,13 @@ fn test_export_no_beacons_flag() {
 fn test_export_beacon_timeout_flag() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("beacon_timeout.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("beacon_timeout.json");
-    let (_stdout, stderr, code) = run_cpop_with_stdin(
+    let (_stdout, stderr, code) = run_cpoe_with_stdin(
         data,
         &[
             "export",
@@ -2062,13 +2062,13 @@ fn test_export_beacon_timeout_flag() {
 fn test_export_json_structure() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("json_structure.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("structure.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -2109,13 +2109,13 @@ fn test_export_json_structure() {
 fn test_export_c2pa_has_process_timestamps() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("c2pa_timestamps.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("timestamps.c2pa.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -2152,13 +2152,13 @@ fn test_export_c2pa_has_process_timestamps() {
 fn test_verify_shows_checkpoint_count() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("verify_count.txt");
     create_min_checkpoints(data, &doc);
 
     let evidence = data.join("verify_count.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -2172,7 +2172,7 @@ fn test_verify_shows_checkpoint_count() {
         Some("n\nDecl\n"),
     );
 
-    let (stdout, _, _) = run_cpop(data, &["verify", evidence.to_str().unwrap()]);
+    let (stdout, _, _) = run_cpoe(data, &["verify", evidence.to_str().unwrap()]);
     assert!(
         stdout.contains("3") || stdout.contains("checkpoint"),
         "Verify output should mention checkpoint count or number 3. Got: {}",
@@ -2184,13 +2184,13 @@ fn test_verify_shows_checkpoint_count() {
 fn test_verify_shows_document_name() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("verify_docname.txt");
     create_min_checkpoints(data, &doc);
 
     let evidence = data.join("verify_docname.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -2204,7 +2204,7 @@ fn test_verify_shows_document_name() {
         Some("n\nDecl\n"),
     );
 
-    let (stdout, _, _) = run_cpop(data, &["verify", evidence.to_str().unwrap()]);
+    let (stdout, _, _) = run_cpoe(data, &["verify", evidence.to_str().unwrap()]);
     assert!(
         stdout.contains("verify_docname") || stdout.contains("Document"),
         "Verify output should mention the document name. Got: {}",
@@ -2216,12 +2216,12 @@ fn test_verify_shows_document_name() {
 fn test_verify_wrong_format() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let txt_file = data.join("plaintext.txt");
     fs::write(&txt_file, "This is a plain text file, not evidence").unwrap();
 
-    let (_, stderr, code) = run_cpop(data, &["verify", txt_file.to_str().unwrap()]);
+    let (_, stderr, code) = run_cpoe(data, &["verify", txt_file.to_str().unwrap()]);
     assert_ne!(code, 0, "Verify of .txt file should fail");
     assert!(
         stderr.to_lowercase().contains("unknown")
@@ -2236,12 +2236,12 @@ fn test_verify_wrong_format() {
 fn test_verify_empty_json_object() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let empty_json = data.join("empty_obj.json");
     fs::write(&empty_json, "{}").unwrap();
 
-    let (_, stderr, code) = run_cpop(data, &["verify", empty_json.to_str().unwrap()]);
+    let (_, stderr, code) = run_cpoe(data, &["verify", empty_json.to_str().unwrap()]);
     assert_ne!(code, 0, "Verify of empty JSON object should fail");
     assert!(
         stderr.contains("Error")
@@ -2256,13 +2256,13 @@ fn test_verify_empty_json_object() {
 fn test_verify_valid_packet_structure() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("roundtrip_verify.txt");
     create_min_checkpoints(data, &doc);
 
     let evidence = data.join("roundtrip_verify.json");
-    run_cpop_ok_with_stdin(
+    run_cpoe_ok_with_stdin(
         data,
         &[
             "export",
@@ -2276,7 +2276,7 @@ fn test_verify_valid_packet_structure() {
         Some("n\nDecl\n"),
     );
 
-    let (stdout, _, _) = run_cpop(data, &["verify", evidence.to_str().unwrap()]);
+    let (stdout, _, _) = run_cpoe(data, &["verify", evidence.to_str().unwrap()]);
     assert!(
         stdout.contains("Verified") || stdout.contains("Structural") || stdout.contains("pass"),
         "Export-then-verify should confirm validity. Got: {}",
@@ -2292,18 +2292,18 @@ fn test_verify_valid_packet_structure() {
 fn test_config_set_and_get_multiple() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Set multiple config values
-    run_cpop_ok(data, &["config", "set", "sentinel.auto_start", "true"]);
-    run_cpop_ok(
+    run_cpoe_ok(data, &["config", "set", "sentinel.auto_start", "true"]);
+    run_cpoe_ok(
         data,
         &["config", "set", "sentinel.heartbeat_interval_secs", "30"],
     );
-    run_cpop_ok(data, &["config", "set", "privacy.hash_urls", "true"]);
+    run_cpoe_ok(data, &["config", "set", "privacy.hash_urls", "true"]);
 
     // Verify all values persisted
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("auto_start: true"),
         "auto_start should be true. Got: {}",
@@ -2325,9 +2325,9 @@ fn test_config_set_and_get_multiple() {
 fn test_config_set_invalid_key() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let (_, stderr, code) = run_cpop(data, &["config", "set", "nonexistent.fake_key", "value"]);
+    let (_, stderr, code) = run_cpoe(data, &["config", "set", "nonexistent.fake_key", "value"]);
     assert_ne!(code, 0, "Setting invalid config key should fail");
     assert!(
         stderr.to_lowercase().contains("unknown") || stderr.contains("Error"),
@@ -2340,22 +2340,22 @@ fn test_config_set_invalid_key() {
 fn test_config_reset_to_default() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Set a non-default value
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["config", "set", "sentinel.heartbeat_interval_secs", "120"],
     );
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(stdout.contains("heartbeat_interval_secs: 120"));
 
     // Set it back to default
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &["config", "set", "sentinel.heartbeat_interval_secs", "10"],
     );
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("heartbeat_interval_secs: 10"),
         "Config should be reset to default. Got: {}",
@@ -2367,27 +2367,27 @@ fn test_config_reset_to_default() {
 fn test_config_set_boolean_variants() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Test various boolean representations
-    run_cpop_ok(data, &["config", "set", "sentinel.auto_start", "1"]);
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    run_cpoe_ok(data, &["config", "set", "sentinel.auto_start", "1"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("auto_start: true"),
         "1 should map to true. Got: {}",
         stdout
     );
 
-    run_cpop_ok(data, &["config", "set", "sentinel.auto_start", "no"]);
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    run_cpoe_ok(data, &["config", "set", "sentinel.auto_start", "no"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("auto_start: false"),
         "no should map to false. Got: {}",
         stdout
     );
 
-    run_cpop_ok(data, &["config", "set", "sentinel.auto_start", "yes"]);
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    run_cpoe_ok(data, &["config", "set", "sentinel.auto_start", "yes"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("auto_start: true"),
         "yes should map to true. Got: {}",
@@ -2399,9 +2399,9 @@ fn test_config_set_boolean_variants() {
 fn test_config_data_dir_shown() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let stdout = run_cpop_ok(data, &["config", "show"]);
+    let stdout = run_cpoe_ok(data, &["config", "show"]);
     assert!(
         stdout.contains("Data directory") || stdout.contains("data_dir"),
         "Config show should display data directory. Got: {}",
@@ -2417,9 +2417,9 @@ fn test_config_data_dir_shown() {
 fn test_identity_show_did() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let stdout = run_cpop_ok(data, &["identity", "--did"]);
+    let stdout = run_cpoe_ok(data, &["identity", "--did"]);
     assert!(
         stdout.contains("did:key:z"),
         "DID should start with did:key:z. Got: {}",
@@ -2431,9 +2431,9 @@ fn test_identity_show_did() {
 fn test_identity_show_fingerprint() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let stdout = run_cpop_ok(data, &["identity", "--fingerprint"]);
+    let stdout = run_cpoe_ok(data, &["identity", "--fingerprint"]);
     let trimmed = stdout.trim();
     // Fingerprint should be hex or contain hex-like characters
     assert!(!trimmed.is_empty(), "Fingerprint should produce output");
@@ -2450,9 +2450,9 @@ fn test_identity_show_fingerprint() {
 fn test_identity_mnemonic_backup() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let stdout = run_cpop_ok(data, &["identity", "--mnemonic"]);
+    let stdout = run_cpoe_ok(data, &["identity", "--mnemonic"]);
     // Filter only lines that look like mnemonic words (all alphabetic, lowercase)
     let mnemonic_words: Vec<&str> = stdout
         .split_whitespace()
@@ -2471,18 +2471,18 @@ fn test_identity_mnemonic_backup() {
 fn test_identity_persistence() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
-    let did1 = run_cpop_ok(data, &["identity", "--did"]);
-    let did2 = run_cpop_ok(data, &["identity", "--did"]);
+    let did1 = run_cpoe_ok(data, &["identity", "--did"]);
+    let did2 = run_cpoe_ok(data, &["identity", "--did"]);
     assert_eq!(
         did1.trim(),
         did2.trim(),
         "DID should be stable across invocations"
     );
 
-    let fp1 = run_cpop_ok(data, &["identity", "--fingerprint"]);
-    let fp2 = run_cpop_ok(data, &["identity", "--fingerprint"]);
+    let fp1 = run_cpoe_ok(data, &["identity", "--fingerprint"]);
+    let fp2 = run_cpoe_ok(data, &["identity", "--fingerprint"]);
     assert_eq!(
         fp1.trim(),
         fp2.trim(),
@@ -2498,14 +2498,14 @@ fn test_identity_persistence() {
 fn test_link_requires_tracked_source() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let source = data.join("untracked_source.txt");
     let derivative = data.join("derivative.pdf");
     fs::write(&source, "Source content").unwrap();
     fs::write(&derivative, "Derivative content").unwrap();
 
-    let (_, stderr, code) = run_cpop(
+    let (_, stderr, code) = run_cpoe(
         data,
         &[
             "link",
@@ -2528,12 +2528,12 @@ fn test_link_requires_tracked_source() {
 fn test_link_derivative_must_exist() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let source = data.join("link_src.txt");
     create_min_checkpoints(data, &source);
 
-    let (_, stderr, code) = run_cpop(
+    let (_, stderr, code) = run_cpoe(
         data,
         &[
             "link",
@@ -2553,7 +2553,7 @@ fn test_link_derivative_must_exist() {
 fn test_link_shows_in_log() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let source = data.join("link_log_src.txt");
     create_min_checkpoints(data, &source);
@@ -2561,7 +2561,7 @@ fn test_link_shows_in_log() {
     let derivative = data.join("link_log_deriv.pdf");
     fs::write(&derivative, "PDF derivative content").unwrap();
 
-    run_cpop_ok(
+    run_cpoe_ok(
         data,
         &[
             "link",
@@ -2572,7 +2572,7 @@ fn test_link_shows_in_log() {
         ],
     );
 
-    let stdout = run_cpop_ok(data, &["log", source.to_str().unwrap(), "--json"]);
+    let stdout = run_cpoe_ok(data, &["log", source.to_str().unwrap(), "--json"]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("log --json should parse: {}\nGot: {}", e, stdout));
     assert_eq!(
@@ -2587,13 +2587,13 @@ fn test_link_shows_in_log() {
 fn test_link_to_self() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("self_link.txt");
     create_min_checkpoints(data, &doc);
 
     // Linking a file to itself; should either error or succeed gracefully
-    let (stdout, stderr, code) = run_cpop(
+    let (stdout, stderr, code) = run_cpoe(
         data,
         &["link", doc.to_str().unwrap(), doc.to_str().unwrap()],
     );
@@ -2616,7 +2616,7 @@ fn test_daemon_help() {
     let dir = tempdir().unwrap();
     let data = dir.path();
 
-    let stdout = run_cpop_ok(data, &["start", "--help"]);
+    let stdout = run_cpoe_ok(data, &["start", "--help"]);
     assert!(
         stdout.contains("daemon")
             || stdout.contains("start")
@@ -2633,7 +2633,7 @@ fn test_presence_help() {
     let dir = tempdir().unwrap();
     let data = dir.path();
 
-    let stdout = run_cpop_ok(data, &["presence", "--help"]);
+    let stdout = run_cpoe_ok(data, &["presence", "--help"]);
     assert!(
         stdout.contains("presence") || stdout.contains("Presence") || stdout.contains("challenge"),
         "presence --help should show usage. Got: {}",
@@ -2649,12 +2649,12 @@ fn test_presence_help() {
 fn test_corrupted_database() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     // Create a valid checkpoint first
     let doc = data.join("corrupt_db.txt");
     fs::write(&doc, "Content before corruption").unwrap();
-    run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Before"]);
+    run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Before"]);
 
     // Corrupt the database file
     let db_path = data.join("events.db");
@@ -2663,7 +2663,7 @@ fn test_corrupted_database() {
     }
 
     // Subsequent operations should fail gracefully, not panic
-    let (_, stderr, code) = run_cpop(
+    let (_, stderr, code) = run_cpoe(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "After corruption"],
     );
@@ -2688,7 +2688,7 @@ fn test_permission_denied_data_dir() {
     let dir = tempdir().unwrap();
     let data = dir.path().join("readonly_data");
     fs::create_dir_all(&data).unwrap();
-    init_cpop(&data);
+    init_cpoe(&data);
 
     // Make data dir read-only
     let mut perms = fs::metadata(&data).unwrap().permissions();
@@ -2699,7 +2699,7 @@ fn test_permission_denied_data_dir() {
     let doc = dir.path().join("readonly_test.txt");
     fs::write(&doc, "Content for readonly test").unwrap();
 
-    let (_, stderr, code) = run_cpop(
+    let (_, stderr, code) = run_cpoe(
         &data,
         &["commit", doc.to_str().unwrap(), "-m", "Should fail"],
     );
@@ -2724,11 +2724,11 @@ fn test_permission_denied_data_dir() {
 fn test_missing_data_dir_recovery() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("recovery_test.txt");
     fs::write(&doc, "Content before data dir removal").unwrap();
-    run_cpop_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Before"]);
+    run_cpoe_ok(data, &["commit", doc.to_str().unwrap(), "-m", "Before"]);
 
     // Remove the database but keep the data dir
     let db_path = data.join("events.db");
@@ -2738,7 +2738,7 @@ fn test_missing_data_dir_recovery() {
 
     // Should recover (recreate DB) or give a clear error
     fs::write(&doc, "Content after recovery").unwrap();
-    let (stdout, stderr, code) = run_cpop(
+    let (stdout, stderr, code) = run_cpoe(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "After recovery"],
     );
@@ -2762,12 +2762,12 @@ fn test_missing_data_dir_recovery() {
 fn test_commit_json_output() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("commit_json.txt");
     fs::write(&doc, "Content for JSON commit output test").unwrap();
 
-    let stdout = run_cpop_ok(
+    let stdout = run_cpoe_ok(
         data,
         &[
             "commit",
@@ -2802,12 +2802,12 @@ fn test_commit_json_output() {
 fn test_commit_quiet_mode() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("quiet_commit.txt");
     fs::write(&doc, "Content for quiet commit").unwrap();
 
-    let stdout = run_cpop_ok(
+    let stdout = run_cpoe_ok(
         data,
         &["commit", doc.to_str().unwrap(), "-m", "Quiet", "--quiet"],
     );
@@ -2826,13 +2826,13 @@ fn test_commit_quiet_mode() {
 fn test_export_invalid_tier() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let doc = data.join("bad_tier.txt");
     create_min_checkpoints(data, &doc);
 
     let out = data.join("bad_tier.json");
-    let (_, stderr, code) = run_cpop_with_stdin(
+    let (_, stderr, code) = run_cpoe_with_stdin(
         data,
         &[
             "export",
@@ -2865,12 +2865,12 @@ fn test_export_invalid_tier() {
 fn test_commit_blocked_extension() {
     let dir = tempdir().unwrap();
     let data = dir.path();
-    init_cpop(data);
+    init_cpoe(data);
 
     let exe_file = data.join("malware.exe");
     fs::write(&exe_file, "pretend binary").unwrap();
 
-    let (_, stderr, code) = run_cpop(
+    let (_, stderr, code) = run_cpoe(
         data,
         &["commit", exe_file.to_str().unwrap(), "-m", "Should fail"],
     );

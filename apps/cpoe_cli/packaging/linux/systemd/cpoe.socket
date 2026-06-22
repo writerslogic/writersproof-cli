@@ -1,14 +1,14 @@
 [Unit]
-Description=CPOP Socket Activation
-Documentation=man:cpop(1)
-PartOf=cpop.service
+Description=CPOE Socket Activation
+Documentation=man:cpoe(1)
+PartOf=cpoe.service
 
 [Socket]
 # Unix socket for local communication
-ListenStream=/run/cpop/cpop.sock
+ListenStream=/run/cpoe/cpoe.sock
 SocketMode=0660
-SocketUser=cpop
-SocketGroup=cpop
+SocketUser=cpoe
+SocketGroup=cpoe
 
 # Accept connections
 Accept=no

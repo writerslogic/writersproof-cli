@@ -2,7 +2,7 @@
 
 //! C2PA (Coalition for Content Provenance and Authenticity) manifest generation.
 //!
-//! Produces sidecar `.c2pa` manifests containing CPoP evidence assertions
+//! Produces sidecar `.c2pa` manifests containing CPoE evidence assertions
 //! per C2PA 2.2 specification (2025-05-01). The manifest uses JUMBF
 //! (ISO 19566-5) box format with COSE_Sign1 signatures.
 

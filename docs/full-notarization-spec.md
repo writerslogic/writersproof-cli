@@ -15,7 +15,7 @@ Server + engine are ready: the moment macOS calls `ffiPublishEvidence`, evidence
 
 Today every publish is **lightweight**: `/v1/publish` records the evidence hash + provenance metadata in `wp_notarizations` and returns `verify.writersproof.com/v/<hash>`. The packet is not stored or counter-signed.
 
-**Full notarization** (paid) additionally: stores the actual `.cpop` evidence packet in R2, CA-counter-signs it, and records sizes + expiry. The schema and bindings already support it:
+**Full notarization** (paid) additionally: stores the actual `.cpoe` evidence packet in R2, CA-counter-signs it, and records sizes + expiry. The schema and bindings already support it:
 - `wp_notarizations.r2_key`, `countersigned_size`, `original_size`, `tier`, `expires_at`, `expired` (cron already sweeps expired R2 objects in `apps/api/src/cron.ts`).
 - Worker bindings present: `EVIDENCE_STORE` (R2 bucket `writersproof-evidence`), `NOTARIZE_CA_PRIVATE_KEY`, `NOTARIZE_CA_PUBLIC_KEY`.
 
@@ -26,8 +26,8 @@ The desktop `PublishRequest` sends only `{ evidence_hash, author_did, signature,
 ## Work items
 
 ### 1. Client (writerslogic — Rust engine + FFI)
-- `crates/cpoe/src/writersproof/types.rs`: add `evidence_b64: Option<String>` (base64 of the `.cpop`) to `PublishRequest`, or switch publish to a multipart/octet-stream upload (preferred if packets can exceed ~700 KB after base64, since `/v1/*` has a 1 MB body limit — bump `bodyLimit` for `/v1/publish` accordingly).
-- `crates/cpoe/src/ffi/writersproof_ffi.rs` (`ffi_publish_evidence`) / `evidence_export.rs`: read the packet bytes from the exported `.cpop` and include them.
+- `crates/cpoe/src/writersproof/types.rs`: add `evidence_b64: Option<String>` (base64 of the `.cpoe`) to `PublishRequest`, or switch publish to a multipart/octet-stream upload (preferred if packets can exceed ~700 KB after base64, since `/v1/*` has a 1 MB body limit — bump `bodyLimit` for `/v1/publish` accordingly).
+- `crates/cpoe/src/ffi/writersproof_ffi.rs` (`ffi_publish_evidence`) / `evidence_export.rs`: read the packet bytes from the exported `.cpoe` and include them.
 - Keep hash+signature for the lightweight/free path (server decides tier).
 - Rebuild FFI + macOS app (release required for users to benefit).
 
@@ -37,7 +37,7 @@ Branch on subscription tier (look up `wp_subscriptions` for the authed `userId`;
 - **paid** → require packet bytes; then:
   1. Verify `sha256(packet) === evidence_hash` (reject mismatch).
   2. CA-counter-sign: Ed25519 over the packet (or wrap in COSE_Sign1) with `NOTARIZE_CA_PRIVATE_KEY`; match whatever the verifier/`/v1/provenance` expects.
-  3. `EVIDENCE_STORE.put(r2_key, countersignedBytes)` where `r2_key = \`${userId}/${evidence_hash}.cpop\``.
+  3. `EVIDENCE_STORE.put(r2_key, countersignedBytes)` where `r2_key = \`${userId}/${evidence_hash}.cpoe\``.
   4. Insert `wp_notarizations` with `r2_key`, `original_size`, `countersigned_size`, `tier`, `expires_at` (free: null/never; paid: per retention policy).
 - Enforce a larger `bodyLimit` for `/v1/publish` if accepting packets.
 

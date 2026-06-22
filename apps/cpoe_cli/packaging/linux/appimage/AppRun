@@ -1,5 +1,5 @@
 #!/bin/bash
-# AppRun script for cpop AppImage
+# AppRun script for cpoe AppImage
 # This script is executed when the AppImage is run
 
 SELF=$(readlink -f "$0")
@@ -16,11 +16,11 @@ case "$ARGV0" in
     witnessctl|witnessctl.AppImage)
         exec "${HERE}/usr/bin/witnessctl" "$@"
         ;;
-    cpop-ibus|cpop-ibus.AppImage)
-        exec "${HERE}/usr/bin/cpop-ibus" "$@"
+    cpoe-ibus|cpoe-ibus.AppImage)
+        exec "${HERE}/usr/bin/cpoe-ibus" "$@"
         ;;
     *)
-        # Default to cpop daemon
-        exec "${HERE}/usr/bin/cpop" "$@"
+        # Default to cpoe daemon
+        exec "${HERE}/usr/bin/cpoe" "$@"
         ;;
 esac

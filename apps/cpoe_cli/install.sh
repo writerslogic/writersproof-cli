@@ -103,7 +103,7 @@ verify_checksum() {
 }
 
 # Download and install
-install_cpop() {
+install_cpoe() {
     local platform version url archive_name checksum_url tmp_dir
 
     info "Detecting platform..."
@@ -190,7 +190,7 @@ main() {
     echo "  Cryptographic Authorship Witnessing"
     echo ""
 
-    install_cpop
+    install_cpoe
 }
 
 main "$@"

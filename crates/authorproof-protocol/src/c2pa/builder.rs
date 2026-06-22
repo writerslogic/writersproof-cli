@@ -27,7 +27,7 @@ use super::{
 /// C2PA 2.4 spec version for claim_generator_info.
 const C2PA_SPEC_VERSION: &str = "2.4.0";
 
-/// Builder for constructing a C2PA manifest with CPoP evidence assertions (§15.6).
+/// Builder for constructing a C2PA manifest with CPoE evidence assertions (§15.6).
 #[derive(Clone)]
 pub struct C2paManifestBuilder {
     document_hash: [u8; 32],
@@ -270,7 +270,7 @@ impl C2paManifestBuilder {
                 })),
                 parameters: Some(ActionParameters {
                     description: Some(
-                        "Document authored with WritersProof Proof-of-Process witnessing".to_string(),
+                        "Document authored with WritersProof Proof-of-Effort witnessing".to_string(),
                     ),
                 }),
             }],
@@ -400,7 +400,7 @@ impl C2paManifestBuilder {
                         type_id: "c2pa.types.audit-log".to_string(),
                     }]),
                 },
-                description: Some("CPoE proof-of-process evidence packet".to_string()),
+                description: Some("CPoE proof-of-effort evidence packet".to_string()),
                 metadata: Some(AssertionMetadata {
                     process_start,
                     process_end,

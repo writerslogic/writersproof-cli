@@ -1,41 +1,41 @@
 #!/bin/bash
-# postinst script for cpop
+# postinst script for cpoe
 
 set -e
 
 case "$1" in
     configure)
-        # Create cpop system user if it doesn't exist
-        if ! getent passwd cpop >/dev/null 2>&1; then
-            adduser --system --group --home /var/lib/cpop \
+        # Create cpoe system user if it doesn't exist
+        if ! getent passwd cpoe >/dev/null 2>&1; then
+            adduser --system --group --home /var/lib/cpoe \
                 --no-create-home --shell /usr/sbin/nologin \
-                --gecos "CPOP Daemon" cpop
+                --gecos "CPOE Daemon" cpoe
         fi
 
         # Create required directories
-        install -d -m 750 -o cpop -g cpop /var/lib/cpop
-        install -d -m 750 -o cpop -g cpop /var/log/cpop
-        install -d -m 755 /etc/cpop
+        install -d -m 750 -o cpoe -g cpoe /var/lib/cpoe
+        install -d -m 750 -o cpoe -g cpoe /var/log/cpoe
+        install -d -m 755 /etc/cpoe
 
         # Create default config if it doesn't exist
-        if [ ! -f /etc/cpop/config.toml ]; then
-            if [ -f /etc/cpop/config.toml.default ]; then
-                cp /etc/cpop/config.toml.default /etc/cpop/config.toml
-                chmod 640 /etc/cpop/config.toml
-                chown root:cpop /etc/cpop/config.toml
+        if [ ! -f /etc/cpoe/config.toml ]; then
+            if [ -f /etc/cpoe/config.toml.default ]; then
+                cp /etc/cpoe/config.toml.default /etc/cpoe/config.toml
+                chmod 640 /etc/cpoe/config.toml
+                chown root:cpoe /etc/cpoe/config.toml
             fi
         fi
 
         # Create environment file if it doesn't exist
-        if [ ! -f /etc/cpop/environment ]; then
-            cat > /etc/cpop/environment << 'EOF'
-# Environment variables for cpop
-# CPOP_LOG_LEVEL=info
-# CPOP_DATA_DIR=/var/lib/cpop
-# CPOP_CONFIG=/etc/cpop/config.toml
+        if [ ! -f /etc/cpoe/environment ]; then
+            cat > /etc/cpoe/environment << 'EOF'
+# Environment variables for cpoe
+# CPOE_LOG_LEVEL=info
+# CPOE_DATA_DIR=/var/lib/cpoe
+# CPOE_CONFIG=/etc/cpoe/config.toml
 EOF
-            chmod 640 /etc/cpop/environment
-            chown root:cpop /etc/cpop/environment
+            chmod 640 /etc/cpoe/environment
+            chown root:cpoe /etc/cpoe/environment
         fi
 
         # Reload systemd daemon

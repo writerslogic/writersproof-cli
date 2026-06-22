@@ -1,39 +1,39 @@
-# /etc/cpop/environment
-# Environment variables for cpop daemon
+# /etc/cpoe/environment
+# Environment variables for cpoe daemon
 
 # Log level: debug, info, warn, error
-# CPOP_LOG_LEVEL=info
+# CPOE_LOG_LEVEL=info
 
 # Data directory for MMR database and witness logs
-# CPOP_DATA_DIR=/var/lib/cpop
+# CPOE_DATA_DIR=/var/lib/cpoe
 
 # Configuration file path
-# CPOP_CONFIG=/etc/cpop/config.toml
+# CPOE_CONFIG=/etc/cpoe/config.toml
 
 # Socket path for IPC
-# CPOP_SOCKET=/run/cpop/cpop.sock
+# CPOE_SOCKET=/run/cpoe/cpoe.sock
 
 # Enable verbose logging
-# CPOP_VERBOSE=false
+# CPOE_VERBOSE=false
 
 # Anchor configuration
-# CPOP_ANCHOR_INTERVAL=3600
+# CPOE_ANCHOR_INTERVAL=3600
 
 # Privacy settings
-# CPOP_PRIVACY_MODE=strict
+# CPOE_PRIVACY_MODE=strict
 
 # Performance tuning
-# CPOP_BUFFER_SIZE=4096
-# CPOP_FLUSH_INTERVAL=60
+# CPOE_BUFFER_SIZE=4096
+# CPOE_FLUSH_INTERVAL=60
 
 # TLS settings (for remote anchoring)
-# CPOP_TLS_CERT=/etc/cpop/tls/cert.pem
-# CPOP_TLS_KEY=/etc/cpop/tls/key.pem
+# CPOE_TLS_CERT=/etc/cpoe/tls/cert.pem
+# CPOE_TLS_KEY=/etc/cpoe/tls/key.pem
 
 # Keybase integration
-# CPOP_KEYBASE_USERNAME=
-# CPOP_KEYBASE_ENABLE=false
+# CPOE_KEYBASE_USERNAME=
+# CPOE_KEYBASE_ENABLE=false
 
 # Blockchain anchoring
-# CPOP_BLOCKCHAIN_ENABLE=false
-# CPOP_BLOCKCHAIN_NETWORK=mainnet
+# CPOE_BLOCKCHAIN_ENABLE=false
+# CPOE_BLOCKCHAIN_NETWORK=mainnet

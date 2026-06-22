@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 
-# Debian rules file for cpop
+# Debian rules file for cpoe
 
 export DH_VERBOSE = 1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
@@ -20,34 +20,34 @@ override_dh_auto_clean:
 
 override_dh_auto_build:
 	# Build CLI binary
-	cargo build --release --package cpop_cli
+	cargo build --release --package cpoe_cli
 	mkdir -p bin/
-	cp target/release/cpop bin/cpop
-	cp target/release/cpop-native-messaging-host bin/ || true
+	cp target/release/cpoe bin/cpoe
+	cp target/release/cpoe-native-messaging-host bin/ || true
 
 override_dh_auto_test:
-	cargo test --package cpop_cli
+	cargo test --package cpoe_cli
 
 override_dh_auto_install:
 	# Install binaries
-	install -D -m 755 bin/cpop debian/cpop/usr/bin/cpop
+	install -D -m 755 bin/cpoe debian/cpoe/usr/bin/cpoe
 
 	# Install man pages
 	install -D -m 644 ../../docs/man/cpoe.1 debian/cpoe/usr/share/man/man1/cpoe.1
 
 	# Install systemd units (if present)
 	if [ -d packaging/linux/systemd ]; then \
-		install -D -m 644 packaging/linux/systemd/cpop.service debian/cpop/lib/systemd/system/cpop.service; \
-		install -D -m 644 packaging/linux/systemd/cpop-user.service debian/cpop/usr/lib/systemd/user/cpop.service; \
+		install -D -m 644 packaging/linux/systemd/cpoe.service debian/cpoe/lib/systemd/system/cpoe.service; \
+		install -D -m 644 packaging/linux/systemd/cpoe-user.service debian/cpoe/usr/lib/systemd/user/cpoe.service; \
 	fi
 
 	# Install documentation
-	install -D -m 644 ../../LICENSE debian/cpop/usr/share/doc/cpop/LICENSE
-	install -D -m 644 README.md debian/cpop/usr/share/doc/cpop/README.md
+	install -D -m 644 ../../LICENSE debian/cpoe/usr/share/doc/cpoe/LICENSE
+	install -D -m 644 README.md debian/cpoe/usr/share/doc/cpoe/README.md
 
 override_dh_installsystemd:
-	dh_installsystemd --name=cpop
-	dh_installsystemd --name=cpop --user
+	dh_installsystemd --name=cpoe
+	dh_installsystemd --name=cpoe --user
 
 override_dh_compress:
 	dh_compress -X.md

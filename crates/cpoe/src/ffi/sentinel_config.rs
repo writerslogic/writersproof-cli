@@ -8,12 +8,12 @@ use super::types::{catch_ffi_panic, FfiResult};
 use std::path::PathBuf;
 
 /// Load the config, apply a mutation, persist, and return success/error.
-fn with_config_mut(f: impl FnOnce(&mut crate::config::CpopConfig)) -> FfiResult {
+fn with_config_mut(f: impl FnOnce(&mut crate::config::CpoeConfig)) -> FfiResult {
     let data_dir = match get_data_dir() {
         Some(d) => d,
         None => return FfiResult::err("Cannot determine data directory"),
     };
-    let mut config = match crate::config::CpopConfig::load_or_default(&data_dir) {
+    let mut config = match crate::config::CpoeConfig::load_or_default(&data_dir) {
         Ok(c) => c,
         Err(e) => return FfiResult::err(format!("Failed to load config: {e}")),
     };
@@ -25,9 +25,9 @@ fn with_config_mut(f: impl FnOnce(&mut crate::config::CpopConfig)) -> FfiResult 
 }
 
 /// Load the current config (read-only).
-fn load_config() -> Result<crate::config::CpopConfig, String> {
+fn load_config() -> Result<crate::config::CpoeConfig, String> {
     let data_dir = require_data_dir()?;
-    crate::config::CpopConfig::load_or_default(&data_dir)
+    crate::config::CpoeConfig::load_or_default(&data_dir)
         .map_err(|e| format!("Failed to load config: {e}"))
 }
 

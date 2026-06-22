@@ -98,7 +98,7 @@ impl SignatureBitStringEncoding for X509Signature {
     }
 }
 
-/// X.509 extension for CPoP capability (OID 1.3.6.1.4.1.54066.1.1).
+/// X.509 extension for CPoE capability (OID 1.3.6.1.4.1.54066.1.1).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Capability(pub OctetString);
 
@@ -162,7 +162,7 @@ impl IdentityManager {
         &self.signer.0
     }
 
-    /// Generate a DER-encoded X.509 CSR with SKI and CPoP capability extensions.
+    /// Generate a DER-encoded X.509 CSR with SKI and CPoE capability extensions.
     /// Note: x509-cert 0.2 removed RequestBuilder. This is a pre-existing API limitation.
     pub fn generate_csr(&self, _subject_dn: &str) -> Result<Vec<u8>> {
         Err(Error::Crypto(

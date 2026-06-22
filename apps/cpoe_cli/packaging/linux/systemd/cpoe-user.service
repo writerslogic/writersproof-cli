@@ -1,5 +1,5 @@
 [Unit]
-Description=CPOP User Authorship Witnessing Service
+Description=CPOE User Authorship Witnessing Service
 Documentation=man:writerslogic(1)
 Documentation=https://github.com/writerslogic/writerslogic
 After=graphical-session.target
@@ -14,7 +14,7 @@ TimeoutStartSec=30
 TimeoutStopSec=30
 
 # Environment
-Environment=CPOP_USER_MODE=1
+Environment=CPOE_USER_MODE=1
 
 # Logging
 StandardOutput=journal

@@ -1,16 +1,16 @@
-# RPM spec file for cpop
+# RPM spec file for cpoe
 # Cryptographic Authorship Witnessing - Kinetic Proof of Provenance
 
 %global debug_package %{nil}
 %global __strip /bin/true
 
-Name:           cpop
+Name:           cpoe
 Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Cryptographic authorship witnessing daemon
 
 License:        Proprietary
-URL:            https://github.com/writerslogic/cpop
+URL:            https://github.com/writerslogic/writersproof-cli
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  rust >= 1.75
@@ -21,7 +21,7 @@ BuildRequires:  systemd-rpm-macros
 Requires:       systemd
 
 %description
-CPOP provides cryptographic authorship witnessing through kinetic
+CPOE provides cryptographic authorship witnessing through kinetic
 proof of provenance. It captures keystroke dynamics and timing patterns
 to create unforgeable evidence of human authorship.
 
@@ -32,13 +32,13 @@ Features:
 - Multi-anchor timestamping (blockchain, Keybase, etc.)
 - Forensic analysis toolkit
 
-%package -n cpop-ibus
-Summary:        IBus integration for cpop
+%package -n cpoe-ibus
+Summary:        IBus integration for cpoe
 Requires:       %{name} = %{version}-%{release}
 Requires:       ibus >= 1.5
 
-%description -n cpop-ibus
-IBus input method engine for cpop that captures keystroke dynamics
+%description -n cpoe-ibus
+IBus input method engine for cpoe that captures keystroke dynamics
 through the Linux input method framework.
 
 This package provides system-wide keystroke witnessing through IBus
@@ -48,42 +48,42 @@ without requiring elevated privileges.
 %autosetup
 
 %build
-cargo build --release --package cpop_cli
+cargo build --release --package cpoe_cli
 
 %install
 # Create directories
 install -d %{buildroot}%{_bindir}
-install -d %{buildroot}%{_sysconfdir}/cpop
+install -d %{buildroot}%{_sysconfdir}/cpoe
 install -d %{buildroot}%{_unitdir}
 install -d %{buildroot}%{_userunitdir}
 install -d %{buildroot}%{_mandir}/man1
-install -d %{buildroot}%{_sharedstatedir}/cpop
-install -d %{buildroot}%{_localstatedir}/log/cpop
+install -d %{buildroot}%{_sharedstatedir}/cpoe
+install -d %{buildroot}%{_localstatedir}/log/cpoe
 install -d %{buildroot}%{_datadir}/doc/%{name}
 install -d %{buildroot}%{_datadir}/ibus/component
 
 # Install binaries
-install -p -m 755 target/release/cpop %{buildroot}%{_bindir}/cpop
-install -p -m 755 target/release/cpop-native-messaging-host %{buildroot}%{_bindir}/cpop-native-messaging-host
+install -p -m 755 target/release/cpoe %{buildroot}%{_bindir}/cpoe
+install -p -m 755 target/release/cpoe-native-messaging-host %{buildroot}%{_bindir}/cpoe-native-messaging-host
 
 # Install man pages
 install -p -m 644 docs/man/cpoe.1 %{buildroot}%{_mandir}/man1/cpoe.1
 
 # Install systemd units
-install -p -m 644 apps/cpop_cli/packaging/linux/systemd/cpop.service %{buildroot}%{_unitdir}/cpop.service
-install -p -m 644 apps/cpop_cli/packaging/linux/systemd/cpop.socket %{buildroot}%{_unitdir}/cpop.socket
-install -p -m 644 apps/cpop_cli/packaging/linux/systemd/cpop-user.service %{buildroot}%{_userunitdir}/cpop.service
-install -p -m 644 apps/cpop_cli/packaging/linux/systemd/cpop-ibus.service %{buildroot}%{_userunitdir}/cpop-ibus.service
+install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe.service %{buildroot}%{_unitdir}/cpoe.service
+install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe.socket %{buildroot}%{_unitdir}/cpoe.socket
+install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe-user.service %{buildroot}%{_userunitdir}/cpoe.service
+install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe-ibus.service %{buildroot}%{_userunitdir}/cpoe-ibus.service
 
 # Install config
-install -p -m 640 configs/config.example.toml %{buildroot}%{_sysconfdir}/cpop/config.toml.default
+install -p -m 640 configs/config.example.toml %{buildroot}%{_sysconfdir}/cpoe/config.toml.default
 
 # Install environment file
-cat > %{buildroot}%{_sysconfdir}/cpop/environment << 'EOF'
-# Environment variables for cpop
-# CPOP_LOG_LEVEL=info
-# CPOP_DATA_DIR=/var/lib/cpop
-# CPOP_CONFIG=/etc/cpop/config.toml
+cat > %{buildroot}%{_sysconfdir}/cpoe/environment << 'EOF'
+# Environment variables for cpoe
+# CPOE_LOG_LEVEL=info
+# CPOE_DATA_DIR=/var/lib/cpoe
+# CPOE_CONFIG=/etc/cpoe/config.toml
 EOF
 
 # Install documentation
@@ -91,46 +91,46 @@ install -p -m 644 LICENSE %{buildroot}%{_datadir}/doc/%{name}/LICENSE
 install -p -m 644 README.md %{buildroot}%{_datadir}/doc/%{name}/README.md
 
 # Install IBus component (if available)
-if [ -f apps/cpop_cli/packaging/linux/systemd/cpop-ibus.xml ]; then
-    sed 's|/usr/local/bin|/usr/bin|g' apps/cpop_cli/packaging/linux/systemd/cpop-ibus.xml > %{buildroot}%{_datadir}/ibus/component/cpop.xml
-    chmod 644 %{buildroot}%{_datadir}/ibus/component/cpop.xml
+if [ -f apps/cpoe_cli/packaging/linux/systemd/cpoe-ibus.xml ]; then
+    sed 's|/usr/local/bin|/usr/bin|g' apps/cpoe_cli/packaging/linux/systemd/cpoe-ibus.xml > %{buildroot}%{_datadir}/ibus/component/cpoe.xml
+    chmod 644 %{buildroot}%{_datadir}/ibus/component/cpoe.xml
 fi
 
 %pre
-# Create cpop user and group
-getent group cpop >/dev/null || groupadd -r cpop
-getent passwd cpop >/dev/null || \
-    useradd -r -g cpop -d %{_sharedstatedir}/cpop -s /sbin/nologin \
-    -c "CPOP Daemon" cpop
+# Create cpoe user and group
+getent group cpoe >/dev/null || groupadd -r cpoe
+getent passwd cpoe >/dev/null || \
+    useradd -r -g cpoe -d %{_sharedstatedir}/cpoe -s /sbin/nologin \
+    -c "CPOE Daemon" cpoe
 exit 0
 
 %post
-%systemd_post cpop.service cpop.socket
+%systemd_post cpoe.service cpoe.socket
 
 # Create default config if it doesn't exist
-if [ ! -f %{_sysconfdir}/cpop/config.toml ]; then
-    cp %{_sysconfdir}/cpop/config.toml.default %{_sysconfdir}/cpop/config.toml
-    chmod 640 %{_sysconfdir}/cpop/config.toml
-    chown root:cpop %{_sysconfdir}/cpop/config.toml
+if [ ! -f %{_sysconfdir}/cpoe/config.toml ]; then
+    cp %{_sysconfdir}/cpoe/config.toml.default %{_sysconfdir}/cpoe/config.toml
+    chmod 640 %{_sysconfdir}/cpoe/config.toml
+    chown root:cpoe %{_sysconfdir}/cpoe/config.toml
 fi
 
 # Set ownership on data directories
-chown -R cpop:cpop %{_sharedstatedir}/cpop
-chown -R cpop:cpop %{_localstatedir}/log/cpop
+chown -R cpoe:cpoe %{_sharedstatedir}/cpoe
+chown -R cpoe:cpoe %{_localstatedir}/log/cpoe
 
 %preun
-%systemd_preun cpop.service cpop.socket
+%systemd_preun cpoe.service cpoe.socket
 
 %postun
-%systemd_postun_with_restart cpop.service cpop.socket
+%systemd_postun_with_restart cpoe.service cpoe.socket
 
-%post -n cpop-ibus
+%post -n cpoe-ibus
 # Restart IBus to pick up the new component
 if command -v ibus >/dev/null 2>&1; then
     ibus restart 2>/dev/null || true
 fi
 
-%postun -n cpop-ibus
+%postun -n cpoe-ibus
 # Restart IBus after removal
 if command -v ibus >/dev/null 2>&1; then
     ibus restart 2>/dev/null || true
@@ -139,23 +139,23 @@ fi
 %files
 %license LICENSE
 %doc README.md
-%{_bindir}/cpop
-%{_bindir}/cpop-native-messaging-host
+%{_bindir}/cpoe
+%{_bindir}/cpoe-native-messaging-host
 %{_mandir}/man1/cpoe.1*
-%{_unitdir}/cpop.service
-%{_unitdir}/cpop.socket
-%{_userunitdir}/cpop.service
-%dir %{_sysconfdir}/cpop
-%config(noreplace) %attr(640,root,cpop) %{_sysconfdir}/cpop/config.toml.default
-%config(noreplace) %attr(640,root,cpop) %{_sysconfdir}/cpop/environment
-%dir %attr(750,cpop,cpop) %{_sharedstatedir}/cpop
-%dir %attr(750,cpop,cpop) %{_localstatedir}/log/cpop
+%{_unitdir}/cpoe.service
+%{_unitdir}/cpoe.socket
+%{_userunitdir}/cpoe.service
+%dir %{_sysconfdir}/cpoe
+%config(noreplace) %attr(640,root,cpoe) %{_sysconfdir}/cpoe/config.toml.default
+%config(noreplace) %attr(640,root,cpoe) %{_sysconfdir}/cpoe/environment
+%dir %attr(750,cpoe,cpoe) %{_sharedstatedir}/cpoe
+%dir %attr(750,cpoe,cpoe) %{_localstatedir}/log/cpoe
 %{_datadir}/doc/%{name}/
 
-%files -n cpop-ibus
-%{_bindir}/cpop-ibus
-%{_userunitdir}/cpop-ibus.service
-%{_datadir}/ibus/component/cpop.xml
+%files -n cpoe-ibus
+%{_bindir}/cpoe-ibus
+%{_userunitdir}/cpoe-ibus.service
+%{_datadir}/ibus/component/cpoe.xml
 
 %changelog
 * Mon Jan 27 2025 David Condrey <david@condrey.dev> - 1.0.0-1

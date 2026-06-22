@@ -34,19 +34,19 @@ const ED25519_CONTEXT: &str = "https://w3id.org/security/suites/ed25519-2020/v1"
 const ED25519_MULTICODEC_PREFIX: [u8; 2] = [0xed, 0x01];
 
 // ---------------------------------------------------------------------------
-// CpopSigner: adapter from ed25519-dalek to didwebvh Signer trait
+// CpoeSigner: adapter from ed25519-dalek to didwebvh Signer trait
 // ---------------------------------------------------------------------------
 
 /// Adapter implementing the didwebvh [`Signer`] trait using CPoE Ed25519 keys.
 ///
 /// The inner [`SigningKey`] implements `ZeroizeOnDrop`, so key material is
 /// automatically erased when this struct is dropped.
-pub struct CpopSigner {
+pub struct CpoeSigner {
     signing_key: SigningKey,
     verification_method: String,
 }
 
-impl CpopSigner {
+impl CpoeSigner {
     /// Create a signer from an existing Ed25519 key.
     ///
     /// `verification_method` must be in `did:key:{mb}#{mb}` format as required
@@ -75,7 +75,7 @@ impl CpopSigner {
 }
 
 #[async_trait]
-impl Signer for CpopSigner {
+impl Signer for CpoeSigner {
     fn key_type(&self) -> KeyType {
         KeyType::Ed25519
     }
@@ -177,7 +177,7 @@ impl WebVHIdentity {
         log::debug!("WebVHIdentity::create: address={}", address);
         validate_address(&address)?;
         let webvh_key = derive_webvh_signing_key(master_key, &address)?;
-        let signer = CpopSigner::from_key(webvh_key);
+        let signer = CpoeSigner::from_key(webvh_key);
         let pk_mb = signer.public_key_multibase();
 
         let did_template = format!("did:webvh:{{SCID}}:{address}");
@@ -188,7 +188,7 @@ impl WebVHIdentity {
             ..Parameters::default()
         };
 
-        let config = CreateDIDConfig::<CpopSigner, CpopSigner>::builder_generic()
+        let config = CreateDIDConfig::<CpoeSigner, CpoeSigner>::builder_generic()
             .address(format!("https://{}/", address.replace(':', "/")))
             .authorization_key(signer)
             .did_document(doc)
@@ -285,7 +285,7 @@ impl WebVHIdentity {
     ) -> Result<(), Error> {
         log::debug!("WebVHIdentity::update_document: did={}", self.did);
         let webvh_key = derive_webvh_signing_key(master_key, &self.address)?;
-        let signer = CpopSigner::from_key(webvh_key);
+        let signer = CpoeSigner::from_key(webvh_key);
         self.state
             .update_document(doc, &signer)
             .await
@@ -301,7 +301,7 @@ impl WebVHIdentity {
     ) -> Result<(), Error> {
         log::debug!("WebVHIdentity::rotate_keys: did={}, new_keys_count={}", self.did, new_keys.len());
         let webvh_key = derive_webvh_signing_key(master_key, &self.address)?;
-        let signer = CpopSigner::from_key(webvh_key);
+        let signer = CpoeSigner::from_key(webvh_key);
         self.state
             .rotate_keys(new_keys, &signer)
             .await
@@ -313,7 +313,7 @@ impl WebVHIdentity {
     pub async fn deactivate(&mut self, master_key: &SigningKey) -> Result<(), Error> {
         log::debug!("WebVHIdentity::deactivate: did={}", self.did);
         let webvh_key = derive_webvh_signing_key(master_key, &self.address)?;
-        let signer = CpopSigner::from_key(webvh_key);
+        let signer = CpoeSigner::from_key(webvh_key);
         self.state
             .deactivate(&signer)
             .await
@@ -690,17 +690,17 @@ mod tests {
         SigningKey::from_bytes(&[0x42u8; 32])
     }
 
-    /// CpopSigner must report Ed25519 key type.
+    /// CpoeSigner must report Ed25519 key type.
     #[test]
     fn signer_key_type() {
-        let signer = CpopSigner::from_key(test_signing_key());
+        let signer = CpoeSigner::from_key(test_signing_key());
         assert_eq!(signer.key_type(), KeyType::Ed25519);
     }
 
-    /// CpopSigner verification method must be did:key:{mb}#{mb} format.
+    /// CpoeSigner verification method must be did:key:{mb}#{mb} format.
     #[test]
     fn signer_verification_method_format() {
-        let signer = CpopSigner::from_key(test_signing_key());
+        let signer = CpoeSigner::from_key(test_signing_key());
         let vm = signer.verification_method();
         assert!(vm.starts_with("did:key:z"), "must start with did:key:z");
         assert!(vm.contains('#'), "must contain fragment separator");
@@ -710,12 +710,12 @@ mod tests {
         assert_eq!(prefix, parts[1], "key and fragment must match");
     }
 
-    /// CpopSigner sign must produce a valid Ed25519 signature.
+    /// CpoeSigner sign must produce a valid Ed25519 signature.
     #[tokio::test]
     async fn signer_sign_roundtrip() {
         let key = test_signing_key();
         let verifying = key.verifying_key();
-        let signer = CpopSigner::from_key(key);
+        let signer = CpoeSigner::from_key(key);
 
         let data = b"test message for signing";
         let sig_bytes = signer.sign(data).await.expect("sign must succeed");
@@ -797,18 +797,18 @@ mod tests {
         }
     }
 
-    /// CpopSigner::new() with a custom verification_method returns it as-is.
+    /// CpoeSigner::new() with a custom verification_method returns it as-is.
     #[test]
     fn signer_new_custom_vm() {
         let custom_vm = "did:example:custom#key-99";
-        let signer = CpopSigner::new(test_signing_key(), custom_vm);
+        let signer = CpoeSigner::new(test_signing_key(), custom_vm);
         assert_eq!(signer.verification_method(), custom_vm);
     }
 
     /// Signing two different messages must produce different signatures.
     #[tokio::test]
     async fn signer_sign_different_data_different_sigs() {
-        let signer = CpopSigner::from_key(test_signing_key());
+        let signer = CpoeSigner::from_key(test_signing_key());
         let sig_a = signer.sign(b"message A").await.unwrap();
         let sig_b = signer.sign(b"message B").await.unwrap();
         assert_ne!(sig_a, sig_b, "different inputs must yield different sigs");
@@ -817,7 +817,7 @@ mod tests {
     /// Ed25519 is deterministic; signing the same message twice yields identical signatures.
     #[tokio::test]
     async fn signer_sign_same_data_same_sig() {
-        let signer = CpopSigner::from_key(test_signing_key());
+        let signer = CpoeSigner::from_key(test_signing_key());
         let msg = b"deterministic check";
         let sig1 = signer.sign(msg).await.unwrap();
         let sig2 = signer.sign(msg).await.unwrap();
@@ -917,7 +917,7 @@ mod tests {
     /// public_key_multibase() must match the key portion of verification_method().
     #[test]
     fn public_key_multibase_matches_verification_method() {
-        let signer = CpopSigner::from_key(test_signing_key());
+        let signer = CpoeSigner::from_key(test_signing_key());
         let pk_mb = signer.public_key_multibase();
         let vm = signer.verification_method();
         // verification_method is "did:key:{mb}#{mb}", extract the key part

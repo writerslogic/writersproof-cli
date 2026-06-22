@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Commercial
 
 use anyhow::{anyhow, Result};
-use cpoe::config::CpopConfig;
+use cpoe::config::CpoeConfig;
 use cpoe::vdf::params::Parameters as VdfParameters;
 use cpoe::{derive_hmac_key, SecureStore};
 use ed25519_dalek::SigningKey;
@@ -33,9 +33,9 @@ pub fn writersproof_dir() -> Result<PathBuf> {
     Ok(home.join(".writersproof"))
 }
 
-pub fn ensure_dirs() -> Result<CpopConfig> {
+pub fn ensure_dirs() -> Result<CpoeConfig> {
     let dir = writersproof_dir()?;
-    let config = CpopConfig::load_or_default(&dir)?;
+    let config = CpoeConfig::load_or_default(&dir)?;
 
     let dirs = [
         config.data_dir.clone(),
@@ -62,7 +62,7 @@ pub fn ensure_dirs() -> Result<CpopConfig> {
     Ok(config)
 }
 
-pub fn load_vdf_params(config: &CpopConfig) -> VdfParameters {
+pub fn load_vdf_params(config: &CpoeConfig) -> VdfParameters {
     VdfParameters {
         iterations_per_second: config.vdf.iterations_per_second,
         min_iterations: config.vdf.min_iterations,
@@ -459,11 +459,11 @@ mod tests {
 
     #[test]
     fn test_normalize_path_nonexistent_path_cleaned() {
-        let result = normalize_path(Path::new("/tmp/nonexistent_cpop_test_dir/foo.txt"))
+        let result = normalize_path(Path::new("/tmp/nonexistent_cpoe_test_dir/foo.txt"))
             .expect("normalize should succeed for nonexistent path");
         assert_eq!(
             result,
-            PathBuf::from("/tmp/nonexistent_cpop_test_dir/foo.txt"),
+            PathBuf::from("/tmp/nonexistent_cpoe_test_dir/foo.txt"),
             "nonexistent path should be returned cleaned but not canonicalized"
         );
     }
@@ -605,14 +605,14 @@ mod tests {
 
     #[test]
     fn test_write_restrictive_fails_if_parent_missing() {
-        let path = Path::new("/tmp/nonexistent_cpop_parent_dir_xyz/file.key");
+        let path = Path::new("/tmp/nonexistent_cpoe_parent_dir_xyz/file.key");
         let result = write_restrictive(path, b"data");
         assert!(result.is_err(), "write to nonexistent parent should fail");
     }
 
     #[test]
     fn test_write_restrictive_no_temp_file_on_failure() {
-        let path = Path::new("/tmp/nonexistent_cpop_parent_dir_xyz/file.key");
+        let path = Path::new("/tmp/nonexistent_cpoe_parent_dir_xyz/file.key");
         let _ = write_restrictive(path, b"data");
         let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
         assert!(
@@ -854,12 +854,12 @@ mod tests {
     // --- writersproof_dir ---
 
     #[test]
-    fn test_writersproof_dir_uses_cpop_data_dir_env() {
+    fn test_writersproof_dir_uses_cpoe_data_dir_env() {
         // This test reads CPOE_DATA_DIR which other tests also set, but
         // each test runs in its own process for e2e; for unit tests this is
         // safe because we're reading, not writing.
         let original = std::env::var("CPOE_DATA_DIR").ok();
-        std::env::set_var("CPOE_DATA_DIR", "/tmp/cpop_test_dir");
+        std::env::set_var("CPOE_DATA_DIR", "/tmp/cpoe_test_dir");
         let result = writersproof_dir();
         // Restore
         match original {
@@ -868,7 +868,7 @@ mod tests {
         }
         assert_eq!(
             result.unwrap(),
-            PathBuf::from("/tmp/cpop_test_dir"),
+            PathBuf::from("/tmp/cpoe_test_dir"),
             "should use CPOE_DATA_DIR env var when set"
         );
     }

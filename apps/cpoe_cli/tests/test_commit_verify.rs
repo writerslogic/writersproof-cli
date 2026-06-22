@@ -219,7 +219,7 @@ fn test_verify_unknown_extension_errors() {
 }
 
 #[test]
-fn test_verify_random_bytes_as_cpop_errors() {
+fn test_verify_random_bytes_as_cpoe_errors() {
     let env = common::TempEnv::with_identity();
     let path = env.dir.path().join("fake.cpoe");
     fs::write(&path, &[0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0xFF]).unwrap();

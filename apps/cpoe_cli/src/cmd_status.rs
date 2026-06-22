@@ -9,7 +9,7 @@ use std::fs;
 use std::time::Duration;
 use zeroize::Zeroizing;
 
-use cpoe::config::CpopConfig;
+use cpoe::config::CpoeConfig;
 
 use crate::output::OutputMode;
 use crate::util::{ensure_dirs, open_secure_store, writersproof_dir};
@@ -287,7 +287,7 @@ pub(crate) fn cmd_status(out: &OutputMode) -> Result<()> {
 
 pub(crate) fn show_quick_status(out: &OutputMode) -> Result<()> {
     let dir = writersproof_dir()?;
-    let config = CpopConfig::load_or_default(&dir)?;
+    let config = CpoeConfig::load_or_default(&dir)?;
 
     let tracked_files = if dir.join("signing_key").exists() {
         match open_secure_store() {

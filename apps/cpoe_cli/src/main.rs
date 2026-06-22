@@ -150,7 +150,7 @@ async fn maybe_auto_start(cli: &Cli, out: &OutputMode) -> Result<()> {
     }
 
     if let Ok(dir) = util::writersproof_dir() {
-        if let Ok(config) = cpoe::config::CpopConfig::load_or_default(&dir) {
+        if let Ok(config) = cpoe::config::CpoeConfig::load_or_default(&dir) {
             if config.sentinel.auto_start {
                 let daemon_manager = cpoe::DaemonManager::new(&config.data_dir);
                 if !daemon_manager.is_running() {

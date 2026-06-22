@@ -1,23 +1,23 @@
 #!/bin/bash
-# postrm script for cpop
+# postrm script for cpoe
 
 set -e
 
 case "$1" in
     purge)
         # Remove data directories on purge
-        rm -rf /var/lib/cpop
-        rm -rf /var/log/cpop
-        rm -rf /etc/cpop
+        rm -rf /var/lib/cpoe
+        rm -rf /var/log/cpoe
+        rm -rf /etc/cpoe
 
-        # Remove cpop user
-        if getent passwd cpop >/dev/null 2>&1; then
-            deluser --quiet --system cpop || true
+        # Remove cpoe user
+        if getent passwd cpoe >/dev/null 2>&1; then
+            deluser --quiet --system cpoe || true
         fi
 
-        # Remove cpop group
-        if getent group cpop >/dev/null 2>&1; then
-            delgroup --quiet --system cpop || true
+        # Remove cpoe group
+        if getent group cpoe >/dev/null 2>&1; then
+            delgroup --quiet --system cpoe || true
         fi
 
         # Reload systemd daemon

@@ -113,9 +113,9 @@ fn decode_multibase_ed25519(multibase: &str) -> Vec<u8> {
 fn notarize_full_round_trip() {
     let api_key = test_api_key();
     let signing_key = test_signing_key();
-    let (cpop_bytes, _dir) = build_test_evidence(&signing_key);
+    let (cpoe_bytes, _dir) = build_test_evidence(&signing_key);
 
-    println!("Built evidence packet: {} bytes", cpop_bytes.len());
+    println!("Built evidence packet: {} bytes", cpoe_bytes.len());
 
     // --- Step 1: POST to /v1/notarize ---
     let client = reqwest::blocking::Client::new();
@@ -123,7 +123,7 @@ fn notarize_full_round_trip() {
         .post("https://api.writersproof.com/v1/notarize")
         .header("X-API-Key", &api_key)
         .header("Content-Type", "application/c2pa")
-        .body(cpop_bytes.clone())
+        .body(cpoe_bytes.clone())
         .timeout(Duration::from_secs(30))
         .send()
         .expect("POST /v1/notarize");
@@ -169,7 +169,7 @@ fn notarize_full_round_trip() {
     );
     let countersigned = download_resp.bytes().expect("read countersigned bytes");
     println!("Downloaded countersigned packet: {} bytes", countersigned.len());
-    assert!(countersigned.len() > cpop_bytes.len());
+    assert!(countersigned.len() > cpoe_bytes.len());
 
     // --- Step 3: Resolve CA public key from DID document ---
     let did_resp = client
@@ -217,21 +217,21 @@ fn notarize_full_round_trip() {
     );
 
     // --- Step 5: Strip countersig, confirm byte-identical ---
-    let recovered_cpop = strip_countersignature(&countersigned, &ca_verifying_key)
+    let recovered_cpoe = strip_countersignature(&countersigned, &ca_verifying_key)
         .expect("strip countersignature");
 
     assert_eq!(
-        recovered_cpop, cpop_bytes,
-        "Inner .cpop must be byte-identical to original",
+        recovered_cpoe, cpoe_bytes,
+        "Inner .cpoe must be byte-identical to original",
     );
     println!("Inner payload byte-identical to original: OK");
 
-    // Verify the recovered .cpop still works standalone.
+    // Verify the recovered .cpoe still works standalone.
     let standalone_payload =
-        verify_evidence_cose(&recovered_cpop, &author_verifying_key)
-            .expect("verify recovered .cpop standalone");
+        verify_evidence_cose(&recovered_cpoe, &author_verifying_key)
+            .expect("verify recovered .cpoe standalone");
     assert_eq!(standalone_payload, evidence_payload);
-    println!("Standalone verification of recovered .cpop: OK");
+    println!("Standalone verification of recovered .cpoe: OK");
 
     println!("\n=== NOTARIZE E2E ROUND-TRIP: ALL CHECKS PASSED ===");
     println!("Notarization ID: {}", notarization_id);

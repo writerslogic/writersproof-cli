@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CBOR-tagged evidence packets (tag 600) and attestation results (tag 601)
 - X.509 certificate-based identity with Proof-of-Possession
 - Forensic scoring models (ProcessScore, BehavioralScore)
-- Proof-of-Possession (CPoP) tests
+- Proof-of-Possession (CPoE) tests
 
 ### Changed
 - Migrated from separate repository to CPoE monorepo
@@ -22,12 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial crate structure
-- CBOR/COSE encoding for CPoP packets (RFC 8949, RFC 9052)
+- CBOR/COSE encoding for CPoE packets (RFC 8949, RFC 9052)
 - Ed25519 cryptographic primitives
 - Protocol models as defined in draft-condrey-cpoe
 - `no_std` support with `std` feature flag
 - WASM target support behind `wasm` feature
 - Integration with cpoe_jitter for timing evidence
 
-[Unreleased]: https://github.com/LF-Decentralized-Trust-labs/proof-of-process/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/LF-Decentralized-Trust-labs/proof-of-process/releases/tag/v0.1.0
+[Unreleased]: https://github.com/LF-Decentralized-Trust-labs/proof-of-effort/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/LF-Decentralized-Trust-labs/proof-of-effort/releases/tag/v0.1.0

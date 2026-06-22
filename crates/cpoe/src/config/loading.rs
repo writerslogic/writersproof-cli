@@ -6,7 +6,7 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-impl CpopConfig {
+impl CpoeConfig {
     /// Load config from `data_dir/writersproof.json`, falling back to defaults and legacy files.
     ///
     /// AUD-140: Reads the file directly instead of checking exists() first to avoid TOCTOU.
@@ -17,7 +17,7 @@ impl CpopConfig {
 
         match fs::read_to_string(&config_path) {
             Ok(raw) => {
-                let mut config: CpopConfig = serde_json::from_str(&raw).map_err(|e| {
+                let mut config: CpoeConfig = serde_json::from_str(&raw).map_err(|e| {
                     anyhow::anyhow!("failed to parse {}: {}", config_path.display(), e)
                 })?;
                 config.data_dir = data_dir.to_path_buf();

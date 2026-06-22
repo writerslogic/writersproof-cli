@@ -74,7 +74,7 @@ pub fn ffi_get_witnessing_config() -> FfiWitnessingConfig {
         FfiWitnessingConfig
     );
     let config = try_ffi!(
-        crate::config::CpopConfig::load_or_default(&data_dir),
+        crate::config::CpoeConfig::load_or_default(&data_dir),
         FfiWitnessingConfig
     );
     FfiWitnessingConfig {
@@ -100,7 +100,7 @@ pub fn ffi_set_witnessing_mode(mode: String) -> FfiResult {
         Some(d) => d,
         None => return FfiResult::err("Cannot determine data directory"),
     };
-    let mut config = match crate::config::CpopConfig::load_or_default(&data_dir) {
+    let mut config = match crate::config::CpoeConfig::load_or_default(&data_dir) {
         Ok(c) => c,
         Err(e) => return FfiResult::err(format!("Failed to load config: {e}")),
     };
@@ -126,7 +126,7 @@ pub fn ffi_set_content_granularity(granularity: String) -> FfiResult {
         Some(d) => d,
         None => return FfiResult::err("Cannot determine data directory"),
     };
-    let mut config = match crate::config::CpopConfig::load_or_default(&data_dir) {
+    let mut config = match crate::config::CpoeConfig::load_or_default(&data_dir) {
         Ok(c) => c,
         Err(e) => return FfiResult::err(format!("Failed to load config: {e}")),
     };
@@ -148,7 +148,7 @@ pub fn ffi_resolve_witnessing_mode(bundle_id: String, document_path: String) -> 
         FfiResolvedMode
     );
     let config = try_ffi!(
-        crate::config::CpopConfig::load_or_default(&data_dir),
+        crate::config::CpoeConfig::load_or_default(&data_dir),
         FfiResolvedMode
     );
 

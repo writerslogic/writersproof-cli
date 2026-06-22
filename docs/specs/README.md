@@ -1,6 +1,6 @@
 # Technical Specifications
 
-Formal specifications for the **Proof-of-Process (PoP)** protocol suite (`draft-condrey-rats-pop`).
+Formal specifications for the **Proof-of-Effort (PoP)** protocol suite (`draft-condrey-rats-pop`).
 
 ## Documents
 
@@ -17,7 +17,7 @@ All specifications are in **Draft** status, tracking `draft-condrey-rats-pop`.
 
 ## Wire Format
 
-- CBOR Tag: `1129336656` (0x43504F50 = "CPOP")
+- CBOR Tag: `1129336656` (0x43504F50 = "CPOE")
 - Media type: `application/c2pa`
 - File extension: `.c2pa`
 - Profile URI: `urn:ietf:params:rats:eat:profile:pop:1.0`

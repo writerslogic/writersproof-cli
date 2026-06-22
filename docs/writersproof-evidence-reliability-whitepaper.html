@@ -243,14 +243,14 @@
       WritersProof asks "was this text observably written by a human, and can we prove it?"
     </div>
 
-    <h2>2. Proof of Process: A Different Approach</h2>
+    <h2>2. Proof of Effort: A Different Approach</h2>
     <p>
       WritersProof inverts the detection paradigm. Instead of analyzing finished text for statistical
       artifacts, it captures behavioral evidence <em>during</em> document creation and packages that
       evidence into cryptographically signed, independently verifiable packets.
     </p>
     <p>
-      The system implements the <strong>Proof-of-Process (PoP)</strong> protocol, specified in
+      The system implements the <strong>Proof-of-Effort (PoP)</strong> protocol, specified in
       draft-condrey-rats-pop, an IETF Remote Attestation Procedures (RATS) architecture document.
       PoP treats authorship as an attestable claim backed by observable evidence, not a statistical
       inference from the text itself.
@@ -376,7 +376,7 @@
 
     <h3>Layer 3: Cryptographic Packaging</h3>
     <p>
-      Evidence is packaged into <strong>PoP Evidence Packets</strong> (.cpop files), serialized
+      Evidence is packaged into <strong>PoP Evidence Packets</strong> (.cpoe files), serialized
       as CBOR (RFC 8949) with COSE_Sign1 signatures (RFC 9052). Each packet contains:
     </p>
     <ul>
@@ -388,7 +388,7 @@
     </ul>
     <p>
       The wire format uses IANA-registered CBOR tag 1129336656 (0x43504F50) and media type
-      <code>application/vnd.writersproof.cpop+cbor</code>.
+      <code>application/vnd.writersproof.cpoe+cbor</code>.
     </p>
 
     <h2>4. Verification: Trust Without Authority</h2>
@@ -574,7 +574,7 @@
       </tr>
       <tr>
         <td>draft-condrey-rats-pop</td>
-        <td>Proof-of-Process protocol specification defining evidence structure and verification procedures</td>
+        <td>Proof-of-Effort protocol specification defining evidence structure and verification procedures</td>
       </tr>
       <tr>
         <td>CBOR (RFC 8949)</td>
@@ -633,7 +633,7 @@
     <h2>10. Verify Evidence Online</h2>
     <p>
       Any WritersProof evidence packet can be independently verified using the public verification
-      portal. Upload a .cpop evidence file or paste attestation text to confirm its cryptographic
+      portal. Upload a .cpoe evidence file or paste attestation text to confirm its cryptographic
       integrity, review forensic scores, and inspect the checkpoint chain.
     </p>
     <p>

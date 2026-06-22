@@ -281,7 +281,7 @@ pub fn verify_evidence_cose(cose_data: &[u8], verifying_key: &VerifyingKey) -> R
 /// COSE label for the countersigner's key ID in the protected header.
 const COUNTERSIGN_KID_LABEL: &str = "writersproof-ca";
 
-/// Countersign a signed `.cpop` packet by wrapping it in a second COSE_Sign1.
+/// Countersign a signed `.cpoe` packet by wrapping it in a second COSE_Sign1.
 ///
 /// The original COSE_Sign1 bytes become the payload of a new COSE_Sign1 signed
 /// by the countersigner (typically the WritersProof CA). This avoids the
@@ -289,24 +289,24 @@ const COUNTERSIGN_KID_LABEL: &str = "writersproof-ca";
 /// into a COSE_Sign container (the "to-be-signed" structures differ).
 ///
 /// Verification: parse the outer COSE_Sign1, verify the CA signature, extract
-/// the payload (original `.cpop` bytes), then verify the author's signature.
+/// the payload (original `.cpoe` bytes), then verify the author's signature.
 ///
 /// Stripping the countersig: extract the outer COSE_Sign1 payload — that's the
-/// original `.cpop` file, unmodified.
+/// original `.cpoe` file, unmodified.
 pub fn countersign_packet(
-    cpop_bytes: &[u8],
+    cpoe_bytes: &[u8],
     countersigner: &dyn EvidenceSigner,
 ) -> Result<Vec<u8>> {
-    if cpop_bytes.len() > MAX_COSE_INPUT_SIZE {
+    if cpoe_bytes.len() > MAX_COSE_INPUT_SIZE {
         return Err(Error::Crypto(format!(
             "Input too large for countersigning: {} bytes (max {})",
-            cpop_bytes.len(),
+            cpoe_bytes.len(),
             MAX_COSE_INPUT_SIZE
         )));
     }
 
     // Validate the input is a well-formed COSE_Sign1 before wrapping.
-    let _ = parse_cose_sign1(cpop_bytes)?;
+    let _ = parse_cose_sign1(cpoe_bytes)?;
 
     let protected = HeaderBuilder::new()
         .algorithm(countersigner.algorithm())
@@ -316,7 +316,7 @@ pub fn countersign_packet(
     let mut sign_error: Option<Error> = None;
     let builder = CoseSign1Builder::new()
         .protected(protected)
-        .payload(cpop_bytes.to_vec())
+        .payload(cpoe_bytes.to_vec())
         .create_signature(&[], |sig_data| match countersigner.sign(sig_data) {
             Ok(sig) => sig,
             Err(e) => {
@@ -354,7 +354,7 @@ pub fn verify_countersigned_packet(
         return Err(Error::Crypto("Countersigned packet too large".to_string()));
     }
 
-    // Verify outer (CA) signature and extract inner .cpop bytes.
+    // Verify outer (CA) signature and extract inner .cpoe bytes.
     let outer = parse_cose_sign1(countersigned_bytes)?;
     verify_cose_sign1_ed25519(&outer, ca_verifying_key)?;
     let inner_bytes = outer
@@ -365,11 +365,11 @@ pub fn verify_countersigned_packet(
     verify_evidence_cose(&inner_bytes, author_verifying_key)
 }
 
-/// Strip the countersignature, returning the original `.cpop` bytes.
+/// Strip the countersignature, returning the original `.cpoe` bytes.
 ///
 /// Verifies the outer CA signature before extraction to ensure the
 /// countersigned packet hasn't been tampered with. Returns the inner
-/// COSE_Sign1 bytes (the original `.cpop` file).
+/// COSE_Sign1 bytes (the original `.cpoe` file).
 pub fn strip_countersignature(
     countersigned_bytes: &[u8],
     ca_verifying_key: &VerifyingKey,
@@ -389,7 +389,7 @@ mod tests {
         SigningKey::from_bytes(&[seed; 32])
     }
 
-    fn make_signed_cpop(author_key: &SigningKey) -> Vec<u8> {
+    fn make_signed_cpoe(author_key: &SigningKey) -> Vec<u8> {
         let payload = b"fake-evidence-cbor-payload-for-testing";
         sign_evidence_cose(payload, author_key).expect("sign")
     }
@@ -399,13 +399,13 @@ mod tests {
         let author_key = test_signing_key(1);
         let ca_key = test_signing_key(2);
 
-        // 1. Sign original .cpop
-        let cpop = make_signed_cpop(&author_key);
-        assert!(!cpop.is_empty());
+        // 1. Sign original .cpoe
+        let cpoe = make_signed_cpoe(&author_key);
+        assert!(!cpoe.is_empty());
 
         // 2. Countersign with CA key
-        let countersigned = countersign_packet(&cpop, &ca_key).expect("countersign");
-        assert!(countersigned.len() > cpop.len());
+        let countersigned = countersign_packet(&cpoe, &ca_key).expect("countersign");
+        assert!(countersigned.len() > cpoe.len());
 
         // 3. Verify both signatures
         let evidence_payload = verify_countersigned_packet(
@@ -422,15 +422,15 @@ mod tests {
         let author_key = test_signing_key(3);
         let ca_key = test_signing_key(4);
 
-        let cpop = make_signed_cpop(&author_key);
-        let countersigned = countersign_packet(&cpop, &ca_key).expect("countersign");
+        let cpoe = make_signed_cpoe(&author_key);
+        let countersigned = countersign_packet(&cpoe, &ca_key).expect("countersign");
 
         // Strip the CA signature
         let recovered = strip_countersignature(&countersigned, &ca_key.verifying_key())
             .expect("strip");
 
-        // Recovered bytes must be identical to original .cpop
-        assert_eq!(recovered, cpop);
+        // Recovered bytes must be identical to original .cpoe
+        assert_eq!(recovered, cpoe);
 
         // Original still verifies independently
         let payload = verify_evidence_cose(&recovered, &author_key.verifying_key())
@@ -444,8 +444,8 @@ mod tests {
         let ca_key = test_signing_key(6);
         let wrong_author = test_signing_key(7);
 
-        let cpop = make_signed_cpop(&author_key);
-        let countersigned = countersign_packet(&cpop, &ca_key).expect("countersign");
+        let cpoe = make_signed_cpoe(&author_key);
+        let countersigned = countersign_packet(&cpoe, &ca_key).expect("countersign");
 
         // CA signature valid, but wrong author key → inner verification fails
         let result = verify_countersigned_packet(
@@ -462,8 +462,8 @@ mod tests {
         let ca_key = test_signing_key(9);
         let wrong_ca = test_signing_key(10);
 
-        let cpop = make_signed_cpop(&author_key);
-        let countersigned = countersign_packet(&cpop, &ca_key).expect("countersign");
+        let cpoe = make_signed_cpoe(&author_key);
+        let countersigned = countersign_packet(&cpoe, &ca_key).expect("countersign");
 
         // Wrong CA key → outer verification fails
         let result = verify_countersigned_packet(
@@ -486,8 +486,8 @@ mod tests {
         let author_key = test_signing_key(12);
         let ca_key = test_signing_key(13);
 
-        let cpop = make_signed_cpop(&author_key);
-        let countersigned = countersign_packet(&cpop, &ca_key).expect("countersign");
+        let cpoe = make_signed_cpoe(&author_key);
+        let countersigned = countersign_packet(&cpoe, &ca_key).expect("countersign");
 
         let outer = parse_cose_sign1(&countersigned).expect("parse outer");
         let kid = &outer.protected.header.key_id;

@@ -94,7 +94,7 @@ impl VerificationResult {
     }
 }
 
-/// Main WASM entry point: verify COSE-signed CPoP evidence + forensic analysis.
+/// Main WASM entry point: verify COSE-signed CPoE evidence + forensic analysis.
 /// Performs COSE Ed25519 signature verification, CBOR tag validation,
 /// causality chain verification, adversarial collapse detection,
 /// and Hurst exponent estimation. Returns forensic verdict V1-V5.

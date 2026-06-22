@@ -27,7 +27,7 @@ fn now_millis() -> Result<u64> {
         .as_millis() as u64)
 }
 
-/// Incrementally build a signed CPoP evidence packet with causality-chained checkpoints.
+/// Incrementally build a signed CPoE evidence packet with causality-chained checkpoints.
 pub struct Builder {
     version: u32,
     profile_uri: String,

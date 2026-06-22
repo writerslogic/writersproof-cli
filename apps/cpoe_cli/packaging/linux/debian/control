@@ -1,21 +1,21 @@
-Source: cpop
+Source: cpoe
 Section: utils
 Priority: optional
 Maintainer: David Condrey <david@condrey.dev>
 Build-Depends: debhelper-compat (= 13), golang-go (>= 1.21), git
 Standards-Version: 4.6.2
-Homepage: https://github.com/writerslogic/cpop
-Vcs-Browser: https://github.com/writerslogic/cpop
-Vcs-Git: https://github.com/writerslogic/cpop.git
+Homepage: https://github.com/writerslogic/writersproof-cli
+Vcs-Browser: https://github.com/writerslogic/writersproof-cli
+Vcs-Git: https://github.com/writerslogic/writersproof-cli.git
 Rules-Requires-Root: no
 
-Package: cpop
+Package: cpoe
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Recommends: ibus (>= 1.5)
-Suggests: cpop-ibus
+Suggests: cpoe-ibus
 Description: Cryptographic authorship witnessing daemon
- CPOP provides cryptographic authorship witnessing through kinetic
+ CPOE provides cryptographic authorship witnessing through kinetic
  proof of provenance. It captures keystroke dynamics and timing patterns
  to create unforgeable evidence of human authorship.
  .
@@ -26,11 +26,11 @@ Description: Cryptographic authorship witnessing daemon
   - Multi-anchor timestamping (blockchain, Keybase, etc.)
   - Forensic analysis toolkit
 
-Package: cpop-ibus
+Package: cpoe-ibus
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, cpop (= ${binary:Version}), ibus (>= 1.5)
-Description: IBus integration for cpop
- IBus input method engine for cpop that captures keystroke dynamics
+Depends: ${shlibs:Depends}, ${misc:Depends}, cpoe (= ${binary:Version}), ibus (>= 1.5)
+Description: IBus integration for cpoe
+ IBus input method engine for cpoe that captures keystroke dynamics
  through the Linux input method framework.
  .
  This package provides system-wide keystroke witnessing through IBus

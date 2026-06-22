@@ -2,7 +2,7 @@
 
 //! RATS (Remote Attestation Procedures) interoperability module.
 //!
-//! Implements the IETF RATS architecture (RFC 9334) for CPoE's proof-of-process
+//! Implements the IETF RATS architecture (RFC 9334) for CPoE's proof-of-effort
 //! attestation flow. Provides:
 //!
 //! - **types**: RATS roles (Attester, Verifier, Relying Party) and wire-format
@@ -22,7 +22,7 @@ pub mod types;
 /// C2PA media type used for evidence packets and attestation results.
 pub const C2PA_MEDIA_TYPE: &str = "application/c2pa";
 
-pub use corim::CpopReferenceValues;
+pub use corim::CpoeReferenceValues;
 #[allow(deprecated)]
 pub use eat::decode_eat_cwt_unverified;
 pub use eat::{decode_eat_cwt_verified, encode_eat_cwt};

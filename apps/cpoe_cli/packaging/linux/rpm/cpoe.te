@@ -1,97 +1,97 @@
-# SELinux Type Enforcement Policy for cpop
+# SELinux Type Enforcement Policy for cpoe
 #
-# This policy module provides SELinux confinement for the cpop daemon.
+# This policy module provides SELinux confinement for the cpoe daemon.
 # It allows the daemon to perform its cryptographic authorship witnessing
 # functions while maintaining security isolation.
 #
 # To compile and install:
-#   checkmodule -M -m -o cpop.mod cpop.te
-#   semodule_package -o cpop.pp -m cpop.mod
-#   semodule -i cpop.pp
+#   checkmodule -M -m -o cpoe.mod cpoe.te
+#   semodule_package -o cpoe.pp -m cpoe.mod
+#   semodule -i cpoe.pp
 #
 # Or use the provided Makefile target:
 #   make selinux
 
-policy_module(cpop, 1.0.0)
+policy_module(cpoe, 1.0.0)
 
 ########################################
 #
 # Declarations
 #
 
-type cpop_t;
-type cpop_exec_t;
-init_daemon_domain(cpop_t, cpop_exec_t)
+type cpoe_t;
+type cpoe_exec_t;
+init_daemon_domain(cpoe_t, cpoe_exec_t)
 
-type cpop_var_lib_t;
-files_type(cpop_var_lib_t)
+type cpoe_var_lib_t;
+files_type(cpoe_var_lib_t)
 
-type cpop_var_log_t;
-logging_log_file(cpop_var_log_t)
+type cpoe_var_log_t;
+logging_log_file(cpoe_var_log_t)
 
-type cpop_etc_t;
-files_config_file(cpop_etc_t)
+type cpoe_etc_t;
+files_config_file(cpoe_etc_t)
 
-type cpop_var_run_t;
-files_pid_file(cpop_var_run_t)
+type cpoe_var_run_t;
+files_pid_file(cpoe_var_run_t)
 
-type cpop_tmp_t;
-files_tmp_file(cpop_tmp_t)
+type cpoe_tmp_t;
+files_tmp_file(cpoe_tmp_t)
 
 ########################################
 #
-# cpop local policy
+# cpoe local policy
 #
 
 # Allow reading its own config
-allow cpop_t cpop_etc_t:dir list_dir_perms;
-allow cpop_t cpop_etc_t:file read_file_perms;
+allow cpoe_t cpoe_etc_t:dir list_dir_perms;
+allow cpoe_t cpoe_etc_t:file read_file_perms;
 
 # Allow managing its own data
-allow cpop_t cpop_var_lib_t:dir create_dir_perms;
-allow cpop_t cpop_var_lib_t:file create_file_perms;
-allow cpop_t cpop_var_lib_t:lnk_file { create read unlink };
+allow cpoe_t cpoe_var_lib_t:dir create_dir_perms;
+allow cpoe_t cpoe_var_lib_t:file create_file_perms;
+allow cpoe_t cpoe_var_lib_t:lnk_file { create read unlink };
 
 # Allow logging
-allow cpop_t cpop_var_log_t:dir create_dir_perms;
-allow cpop_t cpop_var_log_t:file create_file_perms;
-logging_log_filetrans(cpop_t, cpop_var_log_t, file)
+allow cpoe_t cpoe_var_log_t:dir create_dir_perms;
+allow cpoe_t cpoe_var_log_t:file create_file_perms;
+logging_log_filetrans(cpoe_t, cpoe_var_log_t, file)
 
 # Allow runtime files (socket, pid)
-allow cpop_t cpop_var_run_t:dir create_dir_perms;
-allow cpop_t cpop_var_run_t:file create_file_perms;
-allow cpop_t cpop_var_run_t:sock_file create_file_perms;
-files_pid_filetrans(cpop_t, cpop_var_run_t, { file sock_file dir })
+allow cpoe_t cpoe_var_run_t:dir create_dir_perms;
+allow cpoe_t cpoe_var_run_t:file create_file_perms;
+allow cpoe_t cpoe_var_run_t:sock_file create_file_perms;
+files_pid_filetrans(cpoe_t, cpoe_var_run_t, { file sock_file dir })
 
 # Allow temporary files
-allow cpop_t cpop_tmp_t:dir create_dir_perms;
-allow cpop_t cpop_tmp_t:file create_file_perms;
-files_tmp_filetrans(cpop_t, cpop_tmp_t, { file dir })
+allow cpoe_t cpoe_tmp_t:dir create_dir_perms;
+allow cpoe_t cpoe_tmp_t:file create_file_perms;
+files_tmp_filetrans(cpoe_t, cpoe_tmp_t, { file dir })
 
 # Network access (for timestamping anchors)
-allow cpop_t self:tcp_socket create_stream_socket_perms;
-allow cpop_t self:udp_socket create_socket_perms;
-corenet_tcp_connect_http_port(cpop_t)
-corenet_tcp_connect_https_port(cpop_t)
+allow cpoe_t self:tcp_socket create_stream_socket_perms;
+allow cpoe_t self:udp_socket create_socket_perms;
+corenet_tcp_connect_http_port(cpoe_t)
+corenet_tcp_connect_https_port(cpoe_t)
 
 # Allow reading passwd for user info
-auth_use_nsswitch(cpop_t)
+auth_use_nsswitch(cpoe_t)
 
 # Allow signaling self
-allow cpop_t self:process { signal signull };
+allow cpoe_t self:process { signal signull };
 
 # Allow using its own unix sockets
-allow cpop_t self:unix_stream_socket create_stream_socket_perms;
-allow cpop_t self:unix_dgram_socket create_socket_perms;
+allow cpoe_t self:unix_stream_socket create_stream_socket_perms;
+allow cpoe_t self:unix_dgram_socket create_socket_perms;
 
 # Misc
-kernel_read_system_state(cpop_t)
-files_read_etc_files(cpop_t)
-miscfiles_read_localization(cpop_t)
+kernel_read_system_state(cpoe_t)
+files_read_etc_files(cpoe_t)
+miscfiles_read_localization(cpoe_t)
 
 ########################################
 #
-# File context definitions (to be used with cpop.fc)
+# File context definitions (to be used with cpoe.fc)
 #
 
-# See cpop.fc for file context definitions
+# See cpoe.fc for file context definitions

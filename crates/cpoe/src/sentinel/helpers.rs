@@ -2069,7 +2069,7 @@ async fn submit_to_writersproof_anchor(
     hash: &[u8; 32],
     signing_key: Option<&ed25519_dalek::SigningKey>,
 ) {
-    let config = match crate::config::CpopConfig::load_or_default(wp_dir) {
+    let config = match crate::config::CpoeConfig::load_or_default(wp_dir) {
         Ok(c) => c.writersproof,
         Err(_) => return,
     };

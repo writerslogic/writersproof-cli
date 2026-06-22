@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Output from a cpoe CLI invocation.
-pub struct CpopOutput {
+pub struct CpoeOutput {
     pub success: bool,
     pub exit_code: Option<i32>,
     pub stdout: String,
@@ -37,8 +37,8 @@ impl TempEnv {
     }
 
     /// Run cpoe with given args and optional stdin.
-    pub fn run(&self, args: &[&str], input: Option<&str>) -> CpopOutput {
-        run_cpop_in(self.dir.path(), self.bin, args, input, &[])
+    pub fn run(&self, args: &[&str], input: Option<&str>) -> CpoeOutput {
+        run_cpoe_in(self.dir.path(), self.bin, args, input, &[])
     }
 
     /// Run cpoe with extra environment variables.
@@ -47,8 +47,8 @@ impl TempEnv {
         args: &[&str],
         input: Option<&str>,
         env: &[(&str, &str)],
-    ) -> CpopOutput {
-        run_cpop_in(self.dir.path(), self.bin, args, input, env)
+    ) -> CpoeOutput {
+        run_cpoe_in(self.dir.path(), self.bin, args, input, env)
     }
 
     /// Run cpoe expecting success; panics with details on failure.
@@ -65,7 +65,7 @@ impl TempEnv {
     }
 
     /// Run cpoe expecting failure; panics if it succeeds.
-    pub fn run_expect_failure(&self, args: &[&str], input: Option<&str>) -> CpopOutput {
+    pub fn run_expect_failure(&self, args: &[&str], input: Option<&str>) -> CpoeOutput {
         let output = self.run(args, input);
         assert!(
             !output.success,
@@ -109,13 +109,13 @@ impl TempEnv {
 }
 
 /// Run cpoe in a specific directory with environment isolation.
-fn run_cpop_in(
+fn run_cpoe_in(
     dir: &Path,
     bin: &str,
     args: &[&str],
     input: Option<&str>,
     extra_env: &[(&str, &str)],
-) -> CpopOutput {
+) -> CpoeOutput {
     use std::io::Write;
     use std::process::Stdio;
 
@@ -141,7 +141,7 @@ fn run_cpop_in(
     }
 
     let output = child.wait_with_output().expect("failed to wait on child");
-    CpopOutput {
+    CpoeOutput {
         success: output.status.success(),
         exit_code: output.status.code(),
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -151,7 +151,7 @@ fn run_cpop_in(
 
 // === Assertion helpers ===
 
-pub fn assert_exit_success(output: &CpopOutput, context: &str) {
+pub fn assert_exit_success(output: &CpoeOutput, context: &str) {
     assert!(
         output.success,
         "{context}: expected success but got exit code {:?}\nSTDOUT: {}\nSTDERR: {}",
@@ -159,7 +159,7 @@ pub fn assert_exit_success(output: &CpopOutput, context: &str) {
     );
 }
 
-pub fn assert_exit_failure(output: &CpopOutput, context: &str) {
+pub fn assert_exit_failure(output: &CpoeOutput, context: &str) {
     assert!(
         !output.success,
         "{context}: expected failure but got success\nSTDOUT: {}\nSTDERR: {}",
@@ -167,7 +167,7 @@ pub fn assert_exit_failure(output: &CpopOutput, context: &str) {
     );
 }
 
-pub fn assert_stdout_contains(output: &CpopOutput, needle: &str, context: &str) {
+pub fn assert_stdout_contains(output: &CpoeOutput, needle: &str, context: &str) {
     assert!(
         output.stdout.contains(needle),
         "{context}: stdout should contain '{needle}'\nActual stdout: {}",
@@ -175,7 +175,7 @@ pub fn assert_stdout_contains(output: &CpopOutput, needle: &str, context: &str) 
     );
 }
 
-pub fn assert_stderr_contains(output: &CpopOutput, needle: &str, context: &str) {
+pub fn assert_stderr_contains(output: &CpoeOutput, needle: &str, context: &str) {
     assert!(
         output.stderr.contains(needle),
         "{context}: stderr should contain '{needle}'\nActual stderr: {}",
@@ -183,7 +183,7 @@ pub fn assert_stderr_contains(output: &CpopOutput, needle: &str, context: &str) 
     );
 }
 
-pub fn assert_no_panic(output: &CpopOutput, context: &str) {
+pub fn assert_no_panic(output: &CpoeOutput, context: &str) {
     assert!(
         !output.stderr.contains("panicked at"),
         "{context}: process panicked!\nSTDERR: {}",
@@ -196,7 +196,7 @@ pub fn assert_no_panic(output: &CpopOutput, context: &str) {
     );
 }
 
-pub fn assert_json_valid(output: &CpopOutput, context: &str) -> serde_json::Value {
+pub fn assert_json_valid(output: &CpoeOutput, context: &str) -> serde_json::Value {
     serde_json::from_str(&output.stdout).unwrap_or_else(|e| {
         panic!(
             "{context}: stdout is not valid JSON: {e}\nActual: {}",
