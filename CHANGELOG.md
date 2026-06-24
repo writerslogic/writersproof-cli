@@ -5,10 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Conventional Commits](https://www.conventionalcommits.org/).
 ## [Unreleased]
 
+### Documentation
+- Update changelog [skip ci]
+- Restructure README with collapsible sections
+- Update changelog [skip ci]
+- Update changelog [skip ci]
+## [1.4.0] - 2026-06-24
+
 ### Changed
 - Rename CPoE -> CPoE (Cryptographic Proof of Effort)
 
 ### Documentation
+- Update changelog [skip ci]
 - CPoE -> CPoE in changelog + cliff postprocessor to keep regeneration clean
 - CPoE -> CPoE in changelog
 - Update changelog [skip ci]
