@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/cpoe-jitter",
     "crates/authorproof-protocol",
+    "crates/badge-fingerprint",
     "crates/posme",
     "crates/cpoe",
     "apps/cpoe_cli",

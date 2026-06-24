@@ -1,0 +1,23 @@
+[package]
+name = "badge-fingerprint"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["David Condrey <david@writerslogic.com>"]
+description = "Deterministic generative fingerprint badge artwork bound to a WritersProof short-id"
+repository = "https://github.com/writerslogic/writersproof-cli"
+publish = false
+
+[lib]
+name = "badge_fingerprint"
+
+[dependencies]
+sha2 = "0.10.8"
+serde = { version = "1.0.217", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0.135"
+
+[[example]]
+name = "gallery"
+path = "examples/gallery.rs"
