@@ -46,11 +46,109 @@ const ISSUER_PROFILE_NAME: &str = "WritersProof";
 /// Issuer profile canonical URL.
 const ISSUER_PROFILE_URL: &str = "https://writersproof.com";
 
-/// Stable base URI for the achievement definition. The achievement id is this
-/// base plus the attestation tier so each tier is a distinct, dereferenceable
-/// achievement.
-const ACHIEVEMENT_BASE_URI: &str =
-    "https://writersproof.com/achievements/verified-human-authorship";
+/// Stable base URI for achievement definitions. The achievement id is this base
+/// plus the authorship-mode slug, so each mode (Human-Authored, AI-Assisted,
+/// Human-Revised) is a distinct, dereferenceable achievement. The assurance
+/// tier is carried as the achievement *level* (a `tag` + the credential name),
+/// NOT as a separate achievement.
+const ACHIEVEMENT_BASE_URI: &str = "https://writersproof.com/achievements";
+
+/// Authorship mode — the badge *identity* axis (what the achievement attests),
+/// orthogonal to the assurance tier (the *level* at which it is attested).
+///
+/// We never assert "AI-generated": the engine proves a human *process* and can
+/// detect deviation from it, but cannot cryptographically prove that some text
+/// was authored by an AI. `AiAssistedDisclosed` is therefore the honest framing
+/// for author-declared AI use, and undisclosed AI-pattern composition reads as
+/// `HumanRevised` (a human working over pre-existing material), never as a
+/// fabricated disclosure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthorshipMode {
+    /// Original human composition with no declared AI assistance.
+    HumanAuthored,
+    /// The author disclosed the use of AI tools.
+    AiAssistedDisclosed,
+    /// A human substantially revised pre-existing or imported content.
+    HumanRevised,
+}
+
+impl AuthorshipMode {
+    /// Stable URL slug used in the achievement id. Never rename (breaks the
+    /// dereferenceable achievement URI).
+    pub fn slug(&self) -> &'static str {
+        match self {
+            AuthorshipMode::HumanAuthored => "human-authored",
+            AuthorshipMode::AiAssistedDisclosed => "ai-assisted-disclosed",
+            AuthorshipMode::HumanRevised => "human-revised",
+        }
+    }
+
+    /// Human-facing label shown on the badge and in the credential name.
+    pub fn label(&self) -> &'static str {
+        match self {
+            AuthorshipMode::HumanAuthored => "Human-Authored",
+            AuthorshipMode::AiAssistedDisclosed => "AI-Assisted (Disclosed)",
+            AuthorshipMode::HumanRevised => "Human-Revised",
+        }
+    }
+
+    /// Achievement description for this mode.
+    pub fn description(&self) -> &'static str {
+        match self {
+            AuthorshipMode::HumanAuthored => {
+                "Cryptographically witnessed evidence that a human composed this \
+                 content through an observed, original writing process."
+            }
+            AuthorshipMode::AiAssistedDisclosed => {
+                "The author disclosed the use of AI tools. The witnessed writing \
+                 process documents the human's authorship over the disclosed \
+                 assistance."
+            }
+            AuthorshipMode::HumanRevised => {
+                "Cryptographically witnessed evidence that a human substantially \
+                 revised pre-existing or imported content through an observed \
+                 editing process."
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for AuthorshipMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+/// Map forensic + disclosure signals to an [`AuthorshipMode`].
+///
+/// `writing_mode` / `composition_mode` are the lowercase forensic enum strings
+/// (e.g. `"cognitive"`, `"paste_veneer"`); `ai_disclosed` is true when the
+/// author's signed declaration names any AI tool.
+///
+/// Rules (disclosure is authoritative):
+/// 1. Declared AI use → `AiAssistedDisclosed`, regardless of forensic signal.
+/// 2. Heavy paste/import (`paste_domesticate`, `paste_veneer`) or undisclosed
+///    AI-mediated composition (`ai_mediated`), or a transcriptive writing mode
+///    → `HumanRevised` (a human working over pre-existing material).
+/// 3. Otherwise → `HumanAuthored`.
+pub fn infer_authorship_mode(
+    writing_mode: Option<&str>,
+    composition_mode: Option<&str>,
+    ai_disclosed: bool,
+) -> AuthorshipMode {
+    if ai_disclosed {
+        return AuthorshipMode::AiAssistedDisclosed;
+    }
+    match composition_mode {
+        Some("paste_domesticate") | Some("paste_veneer") | Some("ai_mediated") => {
+            AuthorshipMode::HumanRevised
+        }
+        _ => match writing_mode {
+            Some("transcriptive") => AuthorshipMode::HumanRevised,
+            _ => AuthorshipMode::HumanAuthored,
+        },
+    }
+}
 
 /// Open Badges 3.0 `OpenBadgeCredential` (alias of `AchievementCredential`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +235,10 @@ pub struct Achievement {
     /// OB 3.0 `achievementType` vocabulary term. "Badge" for a badge award.
     #[serde(rename = "achievementType")]
     pub achievement_type_value: String,
+    /// OB 3.0 `tag` array. Carries the assurance tier as the achievement
+    /// *level* (e.g. `"assurance:verified"`), keeping mode and tier orthogonal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<Vec<String>>,
 }
 
 /// Open Badges 3.0 `Criteria` object — how the achievement is earned.
@@ -157,39 +259,55 @@ fn tier_label(internal_tier: Option<&str>) -> &'static str {
     }
 }
 
-/// Compose the human-readable credential and achievement name from the tier.
-fn achievement_name(tier_label: &str) -> String {
-    format!("Verified Human Authorship ({tier_label})")
+/// Compose the human-readable credential name as "Mode — Tier" (e.g.
+/// "Human-Authored — Verified"): the mode is the identity, the tier the level.
+fn credential_name(mode: AuthorshipMode, tier_label: &str) -> String {
+    format!("{} — {tier_label}", mode.label())
 }
 
-/// Compose the criteria narrative describing how the badge was earned.
-fn criteria_narrative(tier_label: &str, internal_tier: Option<&str>) -> String {
-    let basis = match internal_tier {
-        Some("hardware_bound") => {
+/// Compose the criteria narrative describing how the badge was earned, framed by
+/// authorship mode and qualified by the assurance tier.
+fn criteria_narrative(
+    mode: AuthorshipMode,
+    tier_label: &str,
+    internal_tier: Option<&str>,
+) -> String {
+    let mode_clause = match mode {
+        AuthorshipMode::HumanAuthored => {
             "Behavioral authorship evidence (keystroke timing, revision cadence, \
-             and process checkpoints) was captured during document creation and \
-             bound to a hardware-backed key (TPM / Secure Enclave)."
+             and process checkpoints) was captured during original human \
+             composition."
         }
-        Some("attested_software") => {
-            "Behavioral authorship evidence (keystroke timing, revision cadence, \
-             and process checkpoints) was captured during document creation and \
-             signed by an attested software key."
+        AuthorshipMode::AiAssistedDisclosed => {
+            "The author disclosed the use of AI tools; behavioral evidence \
+             (keystroke timing, revision cadence, and process checkpoints) \
+             documents the human's authorship process over that assistance."
         }
-        _ => {
-            "Authorship was declared by the author and accompanied by a \
-             cryptographically signed proof-of-process evidence chain."
+        AuthorshipMode::HumanRevised => {
+            "Behavioral evidence (keystroke timing, revision cadence, and process \
+             checkpoints) documents a human substantially revising pre-existing \
+             or imported content."
         }
     };
+    let tier_clause = match internal_tier {
+        Some("hardware_bound") => "The signing key is bound to hardware (TPM / Secure Enclave).",
+        Some("attested_software") => "The evidence is signed by an attested software key.",
+        _ => "The evidence is a cryptographically signed proof-of-process chain.",
+    };
     format!(
-        "Awarded at the \"{tier_label}\" attestation tier. {basis} The evidence \
-         is packaged as a signed CPoE (Cryptographic Proof of Effort) packet and \
-         is independently verifiable."
+        "Awarded at the \"{tier_label}\" assurance tier. {mode_clause} {tier_clause} \
+         The evidence is packaged as a signed CPoE (Cryptographic Proof of Effort) \
+         packet and is independently verifiable."
     )
 }
 
 /// Build the core OB 3.0 credential fields from an EAR token (shared by all
 /// encoding paths). Mirrors the VC profile's `build_vc_core`.
-fn build_open_badge_core(ear: &EarToken, author_did: &str) -> Result<OpenBadgeCredential> {
+fn build_open_badge_core(
+    ear: &EarToken,
+    author_did: &str,
+    mode: AuthorshipMode,
+) -> Result<OpenBadgeCredential> {
     let appr = ear
         .pop_appraisal()
         .ok_or_else(|| Error::evidence("EAR token missing 'pop' submodule"))?;
@@ -238,22 +356,20 @@ fn build_open_badge_core(ear: &EarToken, author_did: &str) -> Result<OpenBadgeCr
         seal_hash,
     }];
 
-    // Stable, tier-specific achievement URI.
-    let internal_tier_slug = internal_tier.as_deref().unwrap_or("software_only");
-    let achievement_id = format!("{ACHIEVEMENT_BASE_URI}#{internal_tier_slug}");
+    // Stable, mode-keyed achievement URI; the tier rides along as the level.
+    let achievement_id = format!("{ACHIEVEMENT_BASE_URI}/{}", mode.slug());
 
     let achievement = Achievement {
         id: achievement_id,
         achievement_type: vec!["Achievement".to_string()],
-        name: achievement_name(label),
-        description: "Cryptographically witnessed evidence that this content was authored \
-             by a human through an observed writing process."
-            .to_string(),
+        name: mode.label().to_string(),
+        description: mode.description().to_string(),
         criteria: Criteria {
             id: None,
-            narrative: criteria_narrative(label, internal_tier.as_deref()),
+            narrative: criteria_narrative(mode, label, internal_tier.as_deref()),
         },
         achievement_type_value: "Badge".to_string(),
+        tag: Some(vec![format!("assurance:{}", label.to_lowercase())]),
     };
 
     let process_attestation = OpenBadgeProcessAttestation {
@@ -273,7 +389,7 @@ fn build_open_badge_core(ear: &EarToken, author_did: &str) -> Result<OpenBadgeCr
             "VerifiableCredential".to_string(),
             "OpenBadgeCredential".to_string(),
         ],
-        name: achievement_name(label),
+        name: credential_name(mode, label),
         issuer: Profile {
             id: vc::issuer_did(),
             profile_type: vec!["Profile".to_string()],
@@ -296,8 +412,12 @@ fn build_open_badge_core(ear: &EarToken, author_did: &str) -> Result<OpenBadgeCr
 
 /// Produce an unsigned Open Badges 3.0 credential with a placeholder Data
 /// Integrity proof (empty `proofValue`).
-pub fn to_open_badge_credential(ear: &EarToken, author_did: &str) -> Result<OpenBadgeCredential> {
-    let mut badge = build_open_badge_core(ear, author_did)?;
+pub fn to_open_badge_credential(
+    ear: &EarToken,
+    author_did: &str,
+    mode: AuthorshipMode,
+) -> Result<OpenBadgeCredential> {
+    let mut badge = build_open_badge_core(ear, author_did, mode)?;
     badge.proof = Some(VcProof {
         proof_type: "DataIntegrityProof".to_string(),
         cryptosuite: "eddsa-jcs-2022".to_string(),
@@ -317,9 +437,10 @@ pub fn to_open_badge_credential(ear: &EarToken, author_did: &str) -> Result<Open
 pub fn to_signed_open_badge_credential(
     ear: &EarToken,
     author_did: &str,
+    mode: AuthorshipMode,
     signer: &dyn tpm::Provider,
 ) -> Result<OpenBadgeCredential> {
-    let mut badge = build_open_badge_core(ear, author_did)?;
+    let mut badge = build_open_badge_core(ear, author_did, mode)?;
 
     let proof_options = VcProof {
         proof_type: "DataIntegrityProof".to_string(),
@@ -364,9 +485,10 @@ const COSE_OB_CONTENT_TYPE: &str = "application/vc+cose";
 pub fn to_cose_secured_open_badge(
     ear: &EarToken,
     author_did: &str,
+    mode: AuthorshipMode,
     signer: &dyn tpm::Provider,
 ) -> Result<Vec<u8>> {
-    let badge = build_open_badge_core(ear, author_did)?;
+    let badge = build_open_badge_core(ear, author_did, mode)?;
 
     let badge_json = serde_json::to_value(&badge)
         .map_err(|e| Error::evidence(format!("badge serialization failed: {e}")))?;
@@ -533,7 +655,8 @@ mod tests {
         let (ear, _dir) = create_test_ear();
         let did = "did:key:z6MkBadgeShape";
 
-        let badge = to_open_badge_credential(&ear, did).expect("badge");
+        let badge =
+            to_open_badge_credential(&ear, did, AuthorshipMode::HumanAuthored).expect("badge");
 
         // @context: VC v2 base + pinned OB 3.0 context.
         assert_eq!(badge.context.len(), 2);
@@ -553,8 +676,8 @@ mod tests {
             ]
         );
 
-        // Credential has a human-readable name.
-        assert!(badge.name.starts_with("Verified Human Authorship"));
+        // Credential name is "Mode — Tier": mode identity, tier level.
+        assert!(badge.name.starts_with("Human-Authored — "));
 
         // Issuer is a Profile OBJECT, not a bare string.
         assert_eq!(badge.issuer.profile_type, vec!["Profile".to_string()]);
@@ -570,14 +693,17 @@ mod tests {
         assert_eq!(subject.subject_type, vec!["AchievementSubject".to_string()]);
         assert_eq!(subject.id, did);
 
-        // Achievement fields.
+        // Achievement is keyed off the mode (identity), not the tier.
         let ach = &subject.achievement;
-        assert!(ach.id.starts_with(ACHIEVEMENT_BASE_URI));
+        assert_eq!(ach.id, format!("{ACHIEVEMENT_BASE_URI}/human-authored"));
         assert_eq!(ach.achievement_type, vec!["Achievement".to_string()]);
-        assert!(ach.name.starts_with("Verified Human Authorship"));
+        assert_eq!(ach.name, "Human-Authored");
         assert!(!ach.description.is_empty());
         assert!(!ach.criteria.narrative.is_empty());
         assert_eq!(ach.achievement_type_value, "Badge");
+        // Tier rides as the achievement level via a tag.
+        let tags = ach.tag.as_ref().expect("assurance tag present");
+        assert!(tags.iter().any(|t| t.starts_with("assurance:")));
 
         // Process attestation must be preserved.
         let pa = subject
@@ -603,7 +729,8 @@ mod tests {
     fn test_open_badge_field_names_in_json() {
         let (ear, _dir) = create_test_ear();
         let did = "did:key:z6MkBadgeJson";
-        let badge = to_open_badge_credential(&ear, did).expect("badge");
+        let badge =
+            to_open_badge_credential(&ear, did, AuthorshipMode::HumanAuthored).expect("badge");
         let json = serde_json::to_string(&badge).expect("serialize");
 
         // Exact OB 3.0 JSON-LD field names must be present.
@@ -625,7 +752,9 @@ mod tests {
         let provider = SoftwareProvider::new();
         let did = "did:key:z6MkBadgeSigned";
 
-        let badge = to_signed_open_badge_credential(&ear, did, &provider).expect("signed badge");
+        let badge =
+            to_signed_open_badge_credential(&ear, did, AuthorshipMode::HumanAuthored, &provider)
+                .expect("signed badge");
         let proof = badge.proof.expect("proof present");
         assert_eq!(proof.proof_type, "DataIntegrityProof");
         assert_eq!(proof.cryptosuite, "eddsa-jcs-2022");
@@ -643,7 +772,9 @@ mod tests {
         let provider = SoftwareProvider::new();
         let did = "did:key:z6MkBadgeVerify";
 
-        let badge = to_signed_open_badge_credential(&ear, did, &provider).expect("signed badge");
+        let badge =
+            to_signed_open_badge_credential(&ear, did, AuthorshipMode::HumanAuthored, &provider)
+                .expect("signed badge");
         let proof = badge.proof.as_ref().expect("proof");
 
         // Reconstruct the signing input and verify against the provider's key.
@@ -679,7 +810,8 @@ mod tests {
         let provider = SoftwareProvider::new();
         let did = "did:key:z6MkBadgeCose";
 
-        let cose = to_cose_secured_open_badge(&ear, did, &provider).expect("cose");
+        let cose = to_cose_secured_open_badge(&ear, did, AuthorshipMode::HumanAuthored, &provider)
+            .expect("cose");
         assert!(!cose.is_empty());
 
         let decoded = from_cose_secured_open_badge(&cose).expect("decode");
@@ -696,12 +828,74 @@ mod tests {
     fn test_credential_status_revocable() {
         let (ear, _dir) = create_test_ear();
         let did = "did:key:z6MkBadgeStatus";
-        let mut badge = to_open_badge_credential(&ear, did).expect("badge");
+        let mut badge =
+            to_open_badge_credential(&ear, did, AuthorshipMode::HumanAuthored).expect("badge");
         assert!(badge.credential_status.is_none());
         badge.set_credential_status(42);
         let status = badge.credential_status.expect("status set");
         assert_eq!(status.status_type, "BitstringStatusListEntry");
         assert_eq!(status.status_purpose, "revocation");
         assert_eq!(status.status_list_index, "42");
+    }
+
+    #[test]
+    fn test_infer_authorship_mode_rules() {
+        // Disclosure is authoritative and overrides any forensic signal.
+        assert_eq!(
+            infer_authorship_mode(Some("cognitive"), Some("pure_composition"), true),
+            AuthorshipMode::AiAssistedDisclosed
+        );
+        // Heavy paste / AI-mediated composition (undisclosed) → Human-Revised.
+        for cm in ["paste_domesticate", "paste_veneer", "ai_mediated"] {
+            assert_eq!(
+                infer_authorship_mode(Some("cognitive"), Some(cm), false),
+                AuthorshipMode::HumanRevised,
+                "composition_mode {cm}"
+            );
+        }
+        // Transcriptive writing without disclosure → Human-Revised.
+        assert_eq!(
+            infer_authorship_mode(Some("transcriptive"), None, false),
+            AuthorshipMode::HumanRevised
+        );
+        // Original cognitive composition, nothing disclosed → Human-Authored.
+        assert_eq!(
+            infer_authorship_mode(Some("cognitive"), Some("pure_composition"), false),
+            AuthorshipMode::HumanAuthored
+        );
+        // No signals at all → Human-Authored (default identity).
+        assert_eq!(
+            infer_authorship_mode(None, None, false),
+            AuthorshipMode::HumanAuthored
+        );
+    }
+
+    #[test]
+    fn test_achievement_keyed_off_mode() {
+        let (ear, _dir) = create_test_ear();
+        let did = "did:key:z6MkBadgeMode";
+        for (mode, slug, label) in [
+            (
+                AuthorshipMode::HumanAuthored,
+                "human-authored",
+                "Human-Authored",
+            ),
+            (
+                AuthorshipMode::AiAssistedDisclosed,
+                "ai-assisted-disclosed",
+                "AI-Assisted (Disclosed)",
+            ),
+            (
+                AuthorshipMode::HumanRevised,
+                "human-revised",
+                "Human-Revised",
+            ),
+        ] {
+            let badge = to_open_badge_credential(&ear, did, mode).expect("badge");
+            let ach = &badge.credential_subject.achievement;
+            assert_eq!(ach.id, format!("{ACHIEVEMENT_BASE_URI}/{slug}"));
+            assert_eq!(ach.name, label);
+            assert!(badge.name.starts_with(&format!("{label} — ")));
+        }
     }
 }

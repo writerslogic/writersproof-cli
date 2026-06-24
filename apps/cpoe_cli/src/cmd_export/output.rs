@@ -383,14 +383,8 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 .map(|suffix| format!("did:key:{suffix}"))
                 .ok_or_else(|| anyhow!("cannot derive author DID from signing key"))?;
 
-            let provider = cpoe::tpm::detect_provider();
-            let mut badge = war::profiles::openbadge::to_signed_open_badge_credential(
-                ear,
-                &author_did,
-                &*provider,
-            )
-            .map_err(|e| anyhow!("build OpenBadge credential: {e}"))?;
-
+            // Compute forensic metrics first: the authorship mode (the badge
+            // identity) is inferred from them plus the declared AI disclosure.
             let event_data = cpoe::forensics::EventData::from_secure_events(events);
             let regions = cpoe::forensics::build_edit_regions(events);
             let analysis_ctx = cpoe::forensics::AnalysisContext::default();
@@ -408,6 +402,26 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 .as_ref()
                 .and_then(|c| c.dominant_mode)
                 .map(|m| m.to_string());
+            let ai_disclosed = evidence_packet
+                .declaration
+                .as_ref()
+                .map(|d| !d.ai_tools.is_empty())
+                .unwrap_or(false);
+            let mode = war::profiles::openbadge::infer_authorship_mode(
+                writing_mode.as_deref(),
+                comp_mode.as_deref(),
+                ai_disclosed,
+            );
+
+            let provider = cpoe::tpm::detect_provider();
+            let mut badge = war::profiles::openbadge::to_signed_open_badge_credential(
+                ear,
+                &author_did,
+                mode,
+                &*provider,
+            )
+            .map_err(|e| anyhow!("build OpenBadge credential: {e}"))?;
+
             let signals = cpoe::ffi::report::build_vc_forensic_signals(&metrics);
             badge.enrich_forensic_signals(writing_mode, comp_mode, signals);
 

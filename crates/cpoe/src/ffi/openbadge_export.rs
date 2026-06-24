@@ -7,8 +7,28 @@
 //! `eddsa-jcs-2022` proof, and verification logic are shared with the VC path.
 
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiErrResult, FfiResult, FfiVcVerifyResult};
-use crate::ffi::vc_export::build_ear_for_path;
+use crate::ffi::vc_export::build_ear_and_report_for_path;
 use crate::war::profiles::openbadge;
+
+/// Derive the authorship mode (badge identity) from a built report: AI
+/// disclosure from the signed declaration, writing/composition mode from the
+/// forensic breakdown.
+fn openbadge_mode_from_report(report: &crate::report::WarReport) -> openbadge::AuthorshipMode {
+    let ai_disclosed = report
+        .declaration_summary
+        .as_ref()
+        .map(|d| !d.ai_tools.is_empty())
+        .unwrap_or(false);
+    let writing_mode = report
+        .forensic_metrics
+        .as_ref()
+        .map(|f| f.writing_mode.as_str());
+    let composition_mode = report
+        .forensic_metrics
+        .as_ref()
+        .and_then(|f| f.composition_mode.as_deref());
+    openbadge::infer_authorship_mode(writing_mode, composition_mode, ai_disclosed)
+}
 
 /// Export a signed Open Badges 3.0 credential (Data Integrity / JSON).
 ///
@@ -36,13 +56,14 @@ pub fn ffi_export_openbadge_json(
     let signing_key = try_ffi!(crate::ffi::helpers::load_signing_key(), FfiResult);
     let provider = crate::tpm::detect_provider();
 
-    let (ear, author_did) = try_ffi!(
-        build_ear_for_path(&evidence_path, &document_path, &signing_key),
+    let (ear, author_did, report) = try_ffi!(
+        build_ear_and_report_for_path(&evidence_path, &document_path, &signing_key),
         FfiResult
     );
+    let mode = openbadge_mode_from_report(&report);
 
     let badge = try_ffi!(
-        openbadge::to_signed_open_badge_credential(&ear, &author_did, &*provider)
+        openbadge::to_signed_open_badge_credential(&ear, &author_did, mode, &*provider)
             .map_err(|e| e.to_string()),
         FfiResult
     );
@@ -81,13 +102,14 @@ pub fn ffi_export_openbadge_cbor(
     let signing_key = try_ffi!(crate::ffi::helpers::load_signing_key(), FfiResult);
     let provider = crate::tpm::detect_provider();
 
-    let (ear, author_did) = try_ffi!(
-        build_ear_for_path(&evidence_path, &document_path, &signing_key),
+    let (ear, author_did, report) = try_ffi!(
+        build_ear_and_report_for_path(&evidence_path, &document_path, &signing_key),
         FfiResult
     );
+    let mode = openbadge_mode_from_report(&report);
 
     let cbor_bytes = try_ffi!(
-        openbadge::to_cose_secured_open_badge(&ear, &author_did, &*provider)
+        openbadge::to_cose_secured_open_badge(&ear, &author_did, mode, &*provider)
             .map_err(|e| e.to_string()),
         FfiResult
     );

@@ -198,6 +198,18 @@ pub(crate) fn build_ear_for_path(
     document_path: &str,
     signing_key: &ed25519_dalek::SigningKey,
 ) -> Result<(EarToken, String), String> {
+    let (ear, did, _report) =
+        build_ear_and_report_for_path(evidence_path, document_path, signing_key)?;
+    Ok((ear, did))
+}
+
+/// Like [`build_ear_for_path`] but also returns the underlying [`WarReport`], so
+/// callers can derive forensic-mode / disclosure context without rebuilding it.
+pub(crate) fn build_ear_and_report_for_path(
+    evidence_path: &str,
+    document_path: &str,
+    signing_key: &ed25519_dalek::SigningKey,
+) -> Result<(EarToken, String, crate::report::WarReport), String> {
     let (report, _) = crate::ffi::report::build_war_report_for_path(evidence_path)?;
 
     // Verify the document at document_path matches the evidence chain's final hash.
@@ -257,7 +269,7 @@ pub(crate) fn build_ear_for_path(
         submods,
     };
 
-    Ok((ear, author_did))
+    Ok((ear, author_did, report))
 }
 
 
