@@ -7,9 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 
 ### Documentation
 - Update changelog [skip ci]
+- Update changelog [skip ci]
 - Restructure README with collapsible sections
 - Update changelog [skip ci]
 - Update changelog [skip ci]
+
+### Fixed
+- Remove duplicate lowercase PR template (case-collision broke rebase on case-insensitive FS)
+- Port engine Windows layer to windows crate 0.59
 ## [1.4.0] - 2026-06-24
 
 ### Changed
