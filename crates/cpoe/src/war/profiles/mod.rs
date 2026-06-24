@@ -6,6 +6,7 @@ pub mod c2pa;
 pub mod cawg;
 pub mod eu_ai_act;
 pub mod jpeg_trust;
+pub mod openbadge;
 pub mod standards;
 pub mod vc;
 

@@ -88,7 +88,8 @@ pub enum Commands {
             json  Machine-readable evidence packet\n  \
             html  Self-contained HTML report (open in browser)\n  \
             pdf   Signed PDF with anti-forgery security features\n  \
-            c2pa  C2PA Content Credentials manifest with embedded VC\n\n\
+            c2pa  C2PA Content Credentials manifest with embedded VC\n  \
+            openbadge  Open Badges 3.0 (1EdTech) verifiable credential\n\n\
             BEACONS:\n  \
             Temporal beacons (drand + NIST) are enabled by default via WritersProof.\n  \
             Use --no-beacons to disable (caps security level at T2)."
@@ -102,7 +103,7 @@ pub enum Commands {
         /// Output file path (defaults to stdout for JSON)
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
-        /// Output format (json, html, pdf, c2pa)
+        /// Output format (json, html, pdf, c2pa, openbadge)
         #[arg(short = 'f', long, default_value = "json")]
         format: String,
         /// Disable temporal beacon attestation (caps security level at T2)

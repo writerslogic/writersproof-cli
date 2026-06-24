@@ -368,6 +368,68 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 println!("  Evidence CBOR: {} bytes", evidence_cbor.len());
             }
         }
+        "openbadge" => {
+            let evidence_packet: evidence::Packet = serde_json::from_value(ctx.packet.clone())
+                .context("create evidence packet for OpenBadge export")?;
+            let policy = cpoe::trust_policy::profiles::basic();
+            let block = war::Block::from_packet_appraised(&evidence_packet, ctx.signer, &policy)
+                .map_err(|e| anyhow!("appraise evidence for OpenBadge: {e}"))?;
+            let ear = block
+                .ear
+                .as_ref()
+                .ok_or_else(|| anyhow!("appraised block has no EAR token"))?;
+
+            let author_did = cpoe::identity::did_key_from_public(&ctx.signer.public_key())
+                .map(|suffix| format!("did:key:{suffix}"))
+                .ok_or_else(|| anyhow!("cannot derive author DID from signing key"))?;
+
+            let provider = cpoe::tpm::detect_provider();
+            let mut badge = war::profiles::openbadge::to_signed_open_badge_credential(
+                ear,
+                &author_did,
+                &*provider,
+            )
+            .map_err(|e| anyhow!("build OpenBadge credential: {e}"))?;
+
+            let event_data = cpoe::forensics::EventData::from_secure_events(events);
+            let regions = cpoe::forensics::build_edit_regions(events);
+            let analysis_ctx = cpoe::forensics::AnalysisContext::default();
+            let metrics = cpoe::forensics::analyze_forensics_ext(
+                &event_data,
+                &regions,
+                None,
+                None,
+                None,
+                &analysis_ctx,
+            );
+            let writing_mode = metrics.writing_mode.as_ref().map(|wm| wm.mode.to_string());
+            let comp_mode = metrics
+                .composition_mode
+                .as_ref()
+                .and_then(|c| c.dominant_mode)
+                .map(|m| m.to_string());
+            let signals = cpoe::ffi::report::build_vc_forensic_signals(&metrics);
+            badge.enrich_forensic_signals(writing_mode, comp_mode, signals);
+
+            let json =
+                serde_json::to_string_pretty(&badge).context("serialize OpenBadge credential")?;
+            write_atomic(out_path, json.as_bytes())?;
+
+            if verbose {
+                println!();
+                println!(
+                    "Open Badges 3.0 credential exported to: {}",
+                    out_path.display()
+                );
+                println!("  Subject: {}", badge.credential_subject.id);
+                println!(
+                    "  Achievement: {}",
+                    badge.credential_subject.achievement.name
+                );
+                println!("  Issuer: {} ({})", badge.issuer.name, badge.issuer.id);
+                println!("  Checkpoints: {}", events.len());
+            }
+        }
         "md" | "markdown" => {
             let doc_name = file_path
                 .file_name()
