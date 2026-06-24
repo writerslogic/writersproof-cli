@@ -92,7 +92,8 @@ writersproof-cli verify essay.c2pa
 
 Run `writersproof-cli` with no arguments for an interactive menu, or `writersproof-cli --help` for full command reference.
 
-## CLI Commands
+<details>
+<summary><strong>CLI Commands</strong> -- 23 commands for tracking, witnessing, export, and verification</summary>
 
 | Command | Description |
 |:--------|:------------|
@@ -119,7 +120,10 @@ Run `writersproof-cli` with no arguments for an interactive menu, or `writerspro
 
 All commands support `--json` for machine-readable output and `--quiet` for silent operation.
 
-## Library Usage
+</details>
+
+<details>
+<summary><strong>Library Usage</strong></summary>
 
 Add to your `Cargo.toml`:
 
@@ -128,7 +132,10 @@ Add to your `Cargo.toml`:
 cpoe_engine = { git = "https://github.com/writerslogic/writersproof-cli", branch = "main" }
 ```
 
-## Features
+</details>
+
+<details>
+<summary><strong>Features</strong> -- 8 Cargo feature flags including jitter, FFI, did:webvh, and POSME</summary>
 
 | Feature | Description |
 |:--------|:------------|
@@ -141,7 +148,10 @@ cpoe_engine = { git = "https://github.com/writerslogic/writersproof-cli", branch
 | `did-webvh` | did:webvh decentralized identity |
 | `posme` | Proof of Sequential Memory-bound Effort |
 
-## Architecture
+</details>
+
+<details>
+<summary><strong>Architecture</strong> -- crates, apps, extensions, and the unidirectional dependency model</summary>
 
 ```
 writerslogic/
@@ -170,6 +180,20 @@ writerslogic/
 └── docs/                          Schemas, specs, and user guides
 ```
 
+</details>
+
+<details>
+<summary><strong>Verifying Evidence</strong></summary>
+
+Anyone can verify `.c2pa` evidence packets — no account or software required:
+
+- **Web**: Upload at [writerslogic.com/verify](https://writerslogic.com/verify)
+- **CLI**: `writersproof-cli verify proof.c2pa`
+
+Verification checks the checkpoint chain, Ed25519 signatures, VDF timing proofs, and behavioral consistency. It runs entirely client-side — your evidence is never uploaded to our servers.
+
+</details>
+
 ## Development
 
 ```bash
@@ -179,15 +203,6 @@ cargo clippy --workspace -- -D warnings  # Lint (zero warnings maintained)
 cargo fmt --all -- --check       # Format check
 cargo audit && cargo deny check  # Security audit
 ```
-
-## Verifying Evidence
-
-Anyone can verify `.c2pa` evidence packets — no account or software required:
-
-- **Web**: Upload at [writerslogic.com/verify](https://writerslogic.com/verify)
-- **CLI**: `writersproof-cli verify proof.c2pa`
-
-Verification checks the checkpoint chain, Ed25519 signatures, VDF timing proofs, and behavioral consistency. It runs entirely client-side — your evidence is never uploaded to our servers.
 
 ## Security & Privacy
 
@@ -222,7 +237,7 @@ See [SECURITY.md](SECURITY.md) for the security policy.
 
 > **Abstract:** Digital signatures prove key possession but not authorship. We introduce *proof-of-process* — a mechanism combining jitter seals, Verifiable Delay Functions, timestamp anchors, keystroke validation, and optional hardware attestation.
 >
-> — [arXiv:2602.01663](https://arxiv.org/abs/2602.01663) [cs.CR]
+> -- [arXiv:2602.01663](https://arxiv.org/abs/2602.01663) [cs.CR]
 
 ## License
 
