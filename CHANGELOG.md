@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Documentation
+- Restructure README with collapsible sections
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 ## [1.4.0] - 2026-06-24
 
