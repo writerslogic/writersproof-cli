@@ -6,11 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Added
+- Key Open Badge achievement off authorship mode, tier as level
 - Replace browser-extension icons with WritersProof fingerprint-seal mark
 - Open Badges 3.0 credential export (engine + CLI)
 - Badge-fingerprint crate — deterministic f(id) fingerprint badge generator
 
 ### Documentation
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
