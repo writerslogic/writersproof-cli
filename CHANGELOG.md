@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Documentation
+- Update changelog [skip ci]
 - Restructure README with collapsible sections
 - Update changelog [skip ci]
 - Update changelog [skip ci]
