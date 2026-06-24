@@ -37,10 +37,7 @@ pub(crate) fn handle_start_session(
 
     // Truncate at a UTF-8 character boundary to avoid allocating unbounded memory
     // from a user-controlled browser field.
-    let document_title: String = document_title
-        .chars()
-        .take(MAX_TITLE_LEN)
-        .collect();
+    let document_title: String = document_title.chars().take(MAX_TITLE_LEN).collect();
 
     if !is_url_acceptable(&document_url) {
         return Response::Error {
@@ -75,11 +72,7 @@ pub(crate) fn handle_start_session(
             .map(|r| r.session_id.clone())
     };
 
-    let evidence_path = build_evidence_path(
-        &session_dir,
-        &document_title,
-        &session_id,
-    );
+    let evidence_path = build_evidence_path(&session_dir, &document_title, &session_id);
 
     if let Err(resp) = write_evidence_header(
         &session_dir,
@@ -105,11 +98,7 @@ pub(crate) fn handle_start_session(
     }
 
     let signing_key = load_device_signing_key();
-    let genesis = compute_genesis_hash(
-        &session_id,
-        &session_nonce,
-        signing_key.as_ref(),
-    );
+    let genesis = compute_genesis_hash(&session_id, &session_nonce, signing_key.as_ref());
 
     let now_ns = now_nanos();
 
@@ -171,13 +160,12 @@ fn ensure_engine_initialized() -> Result<(), Response> {
 
 /// Resolve and create the browser session directory.
 fn resolve_session_dir() -> Result<std::path::PathBuf, Response> {
-    let data_dir = dirs::data_local_dir().or_else(dirs::home_dir).ok_or_else(|| {
-        Response::Error {
-            message: "Cannot determine data directory: no home or local data dir found"
-                .into(),
+    let data_dir = dirs::data_local_dir()
+        .or_else(dirs::home_dir)
+        .ok_or_else(|| Response::Error {
+            message: "Cannot determine data directory: no home or local data dir found".into(),
             code: "NO_DATA_DIR".into(),
-        }
-    })?;
+        })?;
 
     let session_dir = data_dir.join("CPoE").join("browser-sessions");
     std::fs::create_dir_all(&session_dir).map_err(|e| Response::Error {
@@ -216,7 +204,11 @@ fn sanitize_editor_type(editor_type: Option<&str>) -> Option<String> {
             .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
             .take(32)
             .collect();
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     })
 }
 
@@ -253,11 +245,9 @@ fn write_evidence_header(
         .replace("--", "\u{2014}")
         .replace('>', "\u{203A}");
 
-    let mut tmp = tempfile::NamedTempFile::new_in(session_dir).map_err(|e| {
-        Response::Error {
-            message: format!("create temp evidence file: {e}"),
-            code: "IO_ERROR".into(),
-        }
+    let mut tmp = tempfile::NamedTempFile::new_in(session_dir).map_err(|e| Response::Error {
+        message: format!("create temp evidence file: {e}"),
+        code: "IO_ERROR".into(),
     })?;
 
     cpoe::restrict_permissions(tmp.path(), 0o600).map_err(|e| Response::Error {
@@ -273,10 +263,11 @@ fn write_evidence_header(
         header.push_str(&format!("<!-- continues_from: {prior_id} -->\n"));
     }
 
-    tmp.write_all(header.as_bytes()).map_err(|e| Response::Error {
-        message: format!("write evidence file: {e}"),
-        code: "IO_ERROR".into(),
-    })?;
+    tmp.write_all(header.as_bytes())
+        .map_err(|e| Response::Error {
+            message: format!("write evidence file: {e}"),
+            code: "IO_ERROR".into(),
+        })?;
 
     tmp.persist(evidence_path).map_err(|e| Response::Error {
         message: format!("persist evidence file: {e}"),
@@ -303,9 +294,7 @@ fn compute_genesis_hash(
 }
 
 /// Finalize any prior session by creating a final checkpoint.
-fn finalize_prior_session(
-    session_lock: &mut Option<Session>,
-) {
+fn finalize_prior_session(session_lock: &mut Option<Session>) {
     if let Some(prev) = session_lock.take() {
         eprintln!(
             "Finalizing previous session {} ('{}', {} checkpoints) before starting new session",
@@ -378,7 +367,8 @@ pub(crate) fn handle_checkpoint(
     const MAX_SESSION_AGE_NS: u64 = 24 * 60 * 60 * 1_000_000_000;
     if now_ns.saturating_sub(session.started_at_ns) >= MAX_SESSION_AGE_NS {
         return Response::Error {
-            message: "Session has exceeded the maximum duration (24h). Please start a new session.".into(),
+            message: "Session has exceeded the maximum duration (24h). Please start a new session."
+                .into(),
             code: "SESSION_EXPIRED".into(),
         };
     }
@@ -452,7 +442,8 @@ pub(crate) fn handle_checkpoint(
         let length_ok = subtle::Choice::from((browser_bytes.len() == 32) as u8);
         let matches = length_ok & expected.ct_eq(&padded);
         if matches.unwrap_u8() == 0 {
-            eprintln!( // intentional: daemon diagnostic log, not debug output
+            eprintln!(
+                // intentional: daemon diagnostic log, not debug output
                 "Warning: browser commitment mismatch for ordinal {} (protocol integrity check)",
                 session.expected_ordinal,
             );
@@ -470,11 +461,25 @@ pub(crate) fn handle_checkpoint(
     let tool_cat = tool_category.as_deref().unwrap_or("none");
     let tool_h = tool_host.as_deref().unwrap_or("");
     // Sanitize tool fields for HTML comment context (strip -- and >)
-    let safe_tool_cat: String = tool_cat.chars().filter(|c| c.is_alphanumeric() || *c == '_').take(32).collect();
-    let safe_tool_host: String = tool_h.chars().filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-').take(128).collect();
+    let safe_tool_cat: String = tool_cat
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_')
+        .take(32)
+        .collect();
+    let safe_tool_host: String = tool_h
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-')
+        .take(128)
+        .collect();
     let content = format!(
         "<!-- {} -->\n<!-- hash: {} chars: {} delta: {} ordinal: {} tool: {}:{} -->\n",
-        safe_title, content_hash, char_count, delta, session.expected_ordinal, safe_tool_cat, safe_tool_host
+        safe_title,
+        content_hash,
+        char_count,
+        delta,
+        session.expected_ordinal,
+        safe_tool_cat,
+        safe_tool_host
     );
     if let Err(e) = std::fs::OpenOptions::new()
         .create(true)
@@ -799,7 +804,10 @@ pub(crate) fn handle_inject_jitter(intervals: Vec<u64>) -> Response {
     let count = intervals.len();
 
     if count == 0 {
-        return Response::JitterReceived { count: 0, dropped: 0 };
+        return Response::JitterReceived {
+            count: 0,
+            dropped: 0,
+        };
     }
 
     if count > MAX_BATCH_SIZE {
@@ -894,7 +902,10 @@ pub(crate) fn handle_inject_jitter(intervals: Vec<u64>) -> Response {
     );
 
     let dropped = accepted.saturating_sub(stored);
-    Response::JitterReceived { count: stored, dropped }
+    Response::JitterReceived {
+        count: stored,
+        dropped,
+    }
 }
 
 pub(crate) fn handle_snapshot_save(
@@ -1034,7 +1045,8 @@ pub(crate) fn handle_ai_content_copied(
             session.jitter_hash = jh.finalize().into();
         }
 
-        // Notify the sentinel for real-time tracking
+        // Notify the sentinel for real-time tracking (macOS Endpoint Security only).
+        #[cfg(target_os = "macos")]
         cpoe::ffi::sentinel_es::ffi_sentinel_es_ai_tool_detected(
             sanitized_source.clone(),
             0,
@@ -1101,8 +1113,7 @@ pub(crate) fn handle_text_attestation(
 
     // Best-effort local store (sign + SQLite insert) so the attestation
     // persists even if the API sync below fails and the offline queue is lost.
-    let _ =
-        cpoe::ffi::text_fragment::store_attestation_from_hash(&content_hash, &app_bundle_id);
+    let _ = cpoe::ffi::text_fragment::store_attestation_from_hash(&content_hash, &app_bundle_id);
 
     let sync_result = cpoe::ffi::writersproof_ffi::ffi_sync_text_attestation(
         content_hash,
@@ -1152,10 +1163,8 @@ pub(crate) fn handle_sign_vc_claim(vc_claim: String) -> Response {
     let mut nonce = [0u8; 16];
     getrandom::getrandom(&mut nonce).ok();
     let nonce_hex = hex::encode(nonce);
-    let author_did = cpoe::identity::did_key_from_public(
-        sk.verifying_key().as_bytes(),
-    )
-    .unwrap_or_default();
+    let author_did =
+        cpoe::identity::did_key_from_public(sk.verifying_key().as_bytes()).unwrap_or_default();
     let full_claim = format!("{vc_claim}:{nonce_hex}:{author_did}");
 
     let mut payload = Vec::with_capacity(25 + full_claim.len());
@@ -1172,7 +1181,12 @@ pub(crate) fn handle_sign_vc_claim(vc_claim: String) -> Response {
 }
 
 const ALLOWED_VIEWS: &[&str] = &[
-    "dashboard", "settings", "versionHistory", "history", "export", "checkpoint",
+    "dashboard",
+    "settings",
+    "versionHistory",
+    "history",
+    "export",
+    "checkpoint",
 ];
 
 pub(crate) fn handle_open_view(view: String) -> Response {

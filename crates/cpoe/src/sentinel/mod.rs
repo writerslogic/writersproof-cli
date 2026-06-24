@@ -27,26 +27,26 @@ pub use app_registry::{
 pub mod behavioral_key;
 pub mod bundle_monitor;
 pub use self::bundle_monitor::{is_bundle_document, start_bundle_monitor, BundleMonitor};
-pub mod permission_monitor;
 pub mod clipboard;
 pub mod content_classifier;
+pub mod content_fingerprint;
 pub mod core;
 pub mod core_session;
 mod core_setup;
-mod event_handlers;
 pub mod daemon;
+pub mod document_watcher;
 pub mod error;
+mod event_handlers;
 pub mod focus;
 pub mod helpers;
 pub mod ipc_handler;
-pub mod relationships;
-pub mod shadow;
-pub mod types;
+pub mod permission_monitor;
 pub mod process_files;
-pub mod content_fingerprint;
-pub mod document_watcher;
+pub mod relationships;
 pub mod remote_registry;
+pub mod shadow;
 pub mod terminal_editors;
+pub mod types;
 
 #[cfg(target_os = "macos")]
 pub mod macos_focus;
@@ -79,8 +79,8 @@ pub use self::helpers::{
     parse_scrivener_project_map, unfocus_document_sync, update_keystroke_context_window,
 };
 pub use self::ipc_handler::SentinelIpcHandler;
+pub use self::relationships::{detect_co_edited_files, CoEditedPair};
 pub use self::shadow::ShadowManager;
-pub use self::relationships::{CoEditedPair, detect_co_edited_files};
 pub use self::types::{
     extract_title_path_hint, generate_session_id, hash_string, infer_document_path_from_title,
     infer_document_path_from_title_with_bundle, normalize_document_path, parse_url_parts,
@@ -191,20 +191,19 @@ pub(crate) async fn platform_clipboard_read(
 pub(crate) async fn platform_clipboard_read(
 ) -> std::result::Result<(i32, String), self::clipboard::ClipboardError> {
     tokio::task::spawn_blocking(|| {
-        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Foundation::HGLOBAL;
         use windows::Win32::System::DataExchange::{
             CloseClipboard, GetClipboardData, GetClipboardSequenceNumber, OpenClipboard,
         };
-        use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock, HGLOBAL};
+        use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 
         const CF_UNICODETEXT: u32 = 13;
 
         let seq = unsafe { GetClipboardSequenceNumber() } as i32;
 
         unsafe {
-            OpenClipboard(HWND::default()).map_err(|_| {
-                self::clipboard::ClipboardError::PasteboardAccessDenied
-            })?;
+            OpenClipboard(None)
+                .map_err(|_| self::clipboard::ClipboardError::PasteboardAccessDenied)?;
 
             let text = (|| -> String {
                 let handle = match GetClipboardData(CF_UNICODETEXT) {
@@ -370,9 +369,7 @@ pub(crate) async fn platform_clipboard_window_title(
         }
     })
     .await
-    .map_err(|e| {
-        self::clipboard::ClipboardError::Other(format!("Window title task failed: {e}"))
-    })?
+    .map_err(|e| self::clipboard::ClipboardError::Other(format!("Window title task failed: {e}")))?
 }
 
 #[cfg(target_os = "windows")]
@@ -395,9 +392,7 @@ pub(crate) async fn platform_clipboard_window_title(
         }
     })
     .await
-    .map_err(|e| {
-        self::clipboard::ClipboardError::Other(format!("Window title task failed: {e}"))
-    })?
+    .map_err(|e| self::clipboard::ClipboardError::Other(format!("Window title task failed: {e}")))?
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -425,8 +420,7 @@ const MACOS_SPREADSHEET_UTIS: &[&str] = &[
 ];
 
 #[cfg(target_os = "macos")]
-pub(crate) async fn platform_pasteboard_types(
-) -> self::types::PasteboardTypeInventory {
+pub(crate) async fn platform_pasteboard_types() -> self::types::PasteboardTypeInventory {
     tokio::task::spawn_blocking(|| {
         use objc::runtime::Object;
         use std::ffi::CStr;
@@ -479,10 +473,8 @@ pub(crate) async fn platform_pasteboard_types(
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) async fn platform_pasteboard_types(
-) -> self::types::PasteboardTypeInventory {
+pub(crate) async fn platform_pasteboard_types() -> self::types::PasteboardTypeInventory {
     tokio::task::spawn_blocking(|| {
-        use windows::Win32::Foundation::HWND;
         use windows::Win32::System::DataExchange::{
             CloseClipboard, EnumClipboardFormats, GetClipboardFormatNameW, OpenClipboard,
         };
@@ -495,7 +487,7 @@ pub(crate) async fn platform_pasteboard_types(
         let mut inv = self::types::PasteboardTypeInventory::default();
 
         unsafe {
-            if OpenClipboard(HWND::default()).is_err() {
+            if OpenClipboard(None).is_err() {
                 return inv;
             }
 
@@ -530,7 +522,6 @@ pub(crate) async fn platform_pasteboard_types(
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub(crate) async fn platform_pasteboard_types(
-) -> self::types::PasteboardTypeInventory {
+pub(crate) async fn platform_pasteboard_types() -> self::types::PasteboardTypeInventory {
     self::types::PasteboardTypeInventory::default()
 }

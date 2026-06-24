@@ -46,14 +46,13 @@ fn check_debugger_windows() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn check_remote_debugger_windows() -> Result<()> {
+    use windows::Win32::Foundation::BOOL;
     use windows::Win32::System::Diagnostics::Debug::CheckRemoteDebuggerPresent;
     use windows::Win32::System::Threading::GetCurrentProcess;
 
-    let mut debugger_present = false;
-    let result = unsafe {
-        CheckRemoteDebuggerPresent(GetCurrentProcess(), &mut debugger_present)
-    };
-    if result.is_ok() && debugger_present {
+    let mut debugger_present = BOOL(0);
+    let result = unsafe { CheckRemoteDebuggerPresent(GetCurrentProcess(), &mut debugger_present) };
+    if result.is_ok() && debugger_present.as_bool() {
         return Err(Error::crypto(
             "signing refused: remote debugger attached (CheckRemoteDebuggerPresent)",
         ));
@@ -107,7 +106,12 @@ fn check_debugger_attached() -> Result<()> {
     // kern.proc.pid.<pid> returns a kinfo_proc struct; the p_flag field is at
     // offset 32 (kp_proc.p_flag within struct kinfo_proc on arm64/x86_64).
     let pid = unsafe { libc::getpid() };
-    let mut name: [i32; 4] = [1 /* CTL_KERN */, 14 /* KERN_PROC */, 1 /* KERN_PROC_PID */, pid];
+    let mut name: [i32; 4] = [
+        1,  /* CTL_KERN */
+        14, /* KERN_PROC */
+        1,  /* KERN_PROC_PID */
+        pid,
+    ];
     let mut info = [0u8; 648]; // sizeof(kinfo_proc) on macOS
     let mut size = info.len();
 

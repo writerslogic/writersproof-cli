@@ -16,12 +16,12 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::{
     GetRawInputData, RegisterRawInputDevices, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
-    RID_INPUT, RIDEV_INPUTSINK, RIM_TYPEKEYBOARD,
+    RIDEV_INPUTSINK, RID_INPUT, RIM_TYPEKEYBOARD,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetMessageW, PostThreadMessageW,
-    RegisterClassExW, HMENU, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_INPUT,
-    WM_QUIT, WNDCLASSEXW,
+    RegisterClassExW, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_INPUT, WM_QUIT,
+    WNDCLASSEXW,
 };
 
 /// Win32 `RI_KEY_BREAK` flag (bit 0 of `RAWKEYBOARD::Flags`).
@@ -165,10 +165,8 @@ impl HidInputCapture {
         if tid != 0 {
             // SAFETY: PostThreadMessageW with a valid thread ID is safe.
             unsafe {
-                if !PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0)).as_bool() {
-                    log::warn!(
-                        "PostThreadMessageW(WM_QUIT) failed for Raw Input thread {tid}"
-                    );
+                if PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0)).is_err() {
+                    log::warn!("PostThreadMessageW(WM_QUIT) failed for Raw Input thread {tid}");
                 }
             }
         }
@@ -206,10 +204,7 @@ impl std::fmt::Debug for HidInputCapture {
 /// `RAW_INPUT_CTX` thread-local is set before entering the message loop.
 unsafe fn create_raw_input_window() -> Option<HWND> {
     // Use a unique class name incorporating the thread ID to avoid collisions.
-    let class_name_str = format!(
-        "CPoE_RawInput_{}\0",
-        GetCurrentThreadId()
-    );
+    let class_name_str = format!("CPoE_RawInput_{}\0", GetCurrentThreadId());
     let class_name: Vec<u16> = class_name_str.encode_utf16().collect();
 
     let wc = WNDCLASSEXW {
@@ -227,7 +222,7 @@ unsafe fn create_raw_input_window() -> Option<HWND> {
 
     // Create a message-only window (HWND_MESSAGE parent) that receives no
     // visible UI but can process WM_INPUT messages.
-    let hwnd = CreateWindowExW(
+    let hwnd = match CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         windows::core::PCWSTR(class_name.as_ptr()),
         windows::core::PCWSTR::null(),
@@ -236,16 +231,17 @@ unsafe fn create_raw_input_window() -> Option<HWND> {
         0,
         0,
         0,
-        HWND_MESSAGE,
-        HMENU::default(),
+        Some(HWND_MESSAGE),
         None,
         None,
-    );
-
-    if hwnd == HWND::default() || hwnd.is_invalid() {
-        log::error!("CreateWindowExW failed for Raw Input message-only window");
-        return None;
-    }
+        None,
+    ) {
+        Ok(h) if !h.is_invalid() => h,
+        _ => {
+            log::error!("CreateWindowExW failed for Raw Input message-only window");
+            return None;
+        }
+    };
 
     // Register for raw keyboard input with RIDEV_INPUTSINK so we receive
     // events even when the window does not have focus.
@@ -256,10 +252,7 @@ unsafe fn create_raw_input_window() -> Option<HWND> {
         hwndTarget: hwnd,
     };
 
-    let registered = RegisterRawInputDevices(
-        &[rid],
-        std::mem::size_of::<RAWINPUTDEVICE>() as u32,
-    );
+    let registered = RegisterRawInputDevices(&[rid], std::mem::size_of::<RAWINPUTDEVICE>() as u32);
 
     if let Err(e) = registered {
         log::error!("RegisterRawInputDevices failed: {e}");

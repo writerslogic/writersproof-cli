@@ -157,9 +157,7 @@ fn find_app_bundle(bundle_id: &str) -> Option<PathBuf> {
     let candidates = [
         PathBuf::from("/Applications"),
         PathBuf::from("/System/Applications"),
-        dirs::home_dir()
-            .unwrap_or_default()
-            .join("Applications"),
+        dirs::home_dir().unwrap_or_default().join("Applications"),
     ];
     for dir in &candidates {
         if let Some(found) = scan_dir_for_bundle_id(dir, bundle_id) {
@@ -273,7 +271,10 @@ fn has_writing_uti_in_plist(bundle_path: &Path) -> bool {
         "org.openxmlformats.wordprocessingml.document",
         "NSStringPboardType",
     ];
-    if WRITING_INDICATORS.iter().any(|indicator| contents.contains(indicator)) {
+    if WRITING_INDICATORS
+        .iter()
+        .any(|indicator| contents.contains(indicator))
+    {
         return true;
     }
     // S13: An app that registers NSServices with NSSendTypes accepts text from other
@@ -540,14 +541,11 @@ fn platform_probe(bundle_id: &str) -> ProbeResult {
 #[cfg(target_os = "windows")]
 fn find_windows_app_dir(bundle_id: &str) -> Option<PathBuf> {
     use windows::Win32::System::Registry::{
-        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
-        REG_SZ, REG_VALUE_TYPE,
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ,
+        REG_VALUE_TYPE,
     };
 
-    let exe_name = bundle_id
-        .rsplit('.')
-        .next()
-        .unwrap_or(bundle_id);
+    let exe_name = bundle_id.rsplit('.').next().unwrap_or(bundle_id);
 
     let subkey = format!(
         "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{}.exe",
@@ -560,7 +558,7 @@ fn find_windows_app_dir(bundle_id: &str) -> Option<PathBuf> {
         if RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(subkey_wide.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         )
@@ -712,10 +710,7 @@ const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(300);
 /// On macOS, walks the accessibility tree looking for AXTextArea / AXTextField roles.
 /// Returns `None` if the app was recently probed and found to have no editable text
 /// (negative cache hit), or if probing fails.
-pub fn probe_runtime_text_editing(
-    bundle_id: &str,
-    pid: u32,
-) -> Option<RuntimeTextProbe> {
+pub fn probe_runtime_text_editing(bundle_id: &str, pid: u32) -> Option<RuntimeTextProbe> {
     // Check negative cache.
     {
         let mut guard = match NEGATIVE_CACHE.lock() {
@@ -823,11 +818,8 @@ fn platform_probe_text_editing(pid: u32) -> RuntimeTextProbe {
 unsafe fn is_editable_text_role(element: *mut std::ffi::c_void) -> bool {
     let mut role_value: core_foundation_sys::base::CFTypeRef = std::ptr::null();
     let role_attr = core_foundation::string::CFString::new("AXRole");
-    let err = AXUIElementCopyAttributeValue(
-        element,
-        role_attr.as_concrete_TypeRef(),
-        &mut role_value,
-    );
+    let err =
+        AXUIElementCopyAttributeValue(element, role_attr.as_concrete_TypeRef(), &mut role_value);
     if err != 0 || role_value.is_null() {
         return false;
     }
@@ -1025,7 +1017,10 @@ mod tests {
         let sys_apps = Path::new("/System/Applications");
         if sys_apps.is_dir() {
             let found = scan_dir_for_bundle_id(sys_apps, "com.apple.TextEdit");
-            assert!(found.is_some(), "TextEdit should be in /System/Applications");
+            assert!(
+                found.is_some(),
+                "TextEdit should be in /System/Applications"
+            );
             assert!(found.unwrap().join("Contents/Info.plist").exists());
         }
     }

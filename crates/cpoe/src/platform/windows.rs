@@ -6,8 +6,8 @@
 //! and focus tracking via GetForegroundWindow.
 
 use super::{
-    FocusInfo, KeystrokeCapture, KeystrokeEvent, MouseCapture, MouseEvent,
-    MouseIdleStats, MouseStegoParams, PermissionStatus, SyntheticStats,
+    FocusInfo, KeystrokeCapture, KeystrokeEvent, MouseCapture, MouseEvent, MouseIdleStats,
+    MouseStegoParams, PermissionStatus, SyntheticStats,
 };
 use crate::DateTimeNanosExt;
 use crate::{MutexRecover, RwLockRecover};
@@ -67,7 +67,6 @@ pub fn request_all_permissions() -> PermissionStatus {
 pub fn has_required_permissions() -> bool {
     true
 }
-
 
 fn get_process_path(pid: u32) -> Result<String> {
     // SAFETY: OpenProcess with PROCESS_QUERY_LIMITED_INFORMATION is a safe query-only call.
@@ -190,7 +189,7 @@ impl Drop for KeystrokeMonitor {
         // _hook was obtained from SetWindowsHookExW; pump_thread_id from GetCurrentThreadId.
         unsafe {
             let _ = UnhookWindowsHookEx(HHOOK(self._hook as *mut _));
-            if !PostThreadMessageW(self.pump_thread_id, WM_QUIT, WPARAM(0), LPARAM(0)).as_bool() {
+            if PostThreadMessageW(self.pump_thread_id, WM_QUIT, WPARAM(0), LPARAM(0)).is_err() {
                 log::warn!("PostThreadMessageW failed for KeystrokeMonitor pump thread");
             }
         }
@@ -336,7 +335,7 @@ impl KeystrokeCapture for WindowsKeystrokeCapture {
         let tid = self.pump_thread_id.load(Ordering::SeqCst);
         let posted = if tid != 0 {
             // SAFETY: PostThreadMessageW with a valid thread ID is safe.
-            unsafe { PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0)).as_bool() }
+            unsafe { PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0)).is_ok() }
         } else {
             false
         };
@@ -442,7 +441,11 @@ unsafe extern "system" fn keystroke_capture_hook(
             let event = KeystrokeEvent {
                 timestamp_ns: now,
                 keycode,
-                zone: if zone >= 0 { (zone as u32).min(255) as u8 } else { 0xFF },
+                zone: if zone >= 0 {
+                    (zone as u32).min(255) as u8
+                } else {
+                    0xFF
+                },
                 event_type: crate::platform::KeyEventType::Down,
                 char_value: None,
                 composed_text: None,
@@ -458,7 +461,6 @@ unsafe extern "system" fn keystroke_capture_hook(
 
     CallNextHookEx(None, code, wparam, lparam)
 }
-
 
 static MOUSE_GLOBAL_SENDER: Mutex<Option<mpsc::Sender<MouseEvent>>> = Mutex::new(None);
 static MOUSE_GLOBAL_IDLE_STATS: Mutex<Option<Arc<RwLock<MouseIdleStats>>>> = Mutex::new(None);
@@ -576,7 +578,7 @@ impl MouseCapture for WindowsMouseCapture {
         if tid != 0 {
             // SAFETY: PostThreadMessageW with a valid thread ID is safe.
             unsafe {
-                if !PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0)).as_bool() {
+                if PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0)).is_err() {
                     log::warn!("PostThreadMessageW failed for mouse pump thread {tid}");
                 }
             }
@@ -662,6 +664,10 @@ unsafe extern "system" fn mouse_capture_hook(code: i32, wparam: WPARAM, lparam: 
             is_idle: !kb_active,
             is_hardware: true,
             device_id: None,
+            // WH_MOUSE_LL move path (gated on WM_MOUSEMOVE above); wheel deltas
+            // belong to scroll events, which this hook does not capture.
+            scroll_delta_v: None,
+            scroll_delta_h: None,
         };
 
         if event.is_micro_movement() && !kb_active {

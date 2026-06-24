@@ -7,21 +7,22 @@ use crate::crypto::ObfuscatedString;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
+use windows::core::Interface;
 use windows::core::PWSTR;
 use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+};
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
 };
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationValuePattern, UIA_ValuePatternId,
 };
-use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
 };
-use windows::Win32::Foundation::HWND;
 
 pub struct WindowsFocusMonitor {
     config: Arc<SentinelConfig>,
@@ -84,14 +85,18 @@ struct ComGuard;
 
 impl ComGuard {
     fn init() -> Self {
-        unsafe { let _ = CoInitializeEx(None, COINIT_MULTITHREADED); }
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        }
         Self
     }
 }
 
 impl Drop for ComGuard {
     fn drop(&mut self) {
-        unsafe { windows::Win32::System::Com::CoUninitialize(); }
+        unsafe {
+            windows::Win32::System::Com::CoUninitialize();
+        }
     }
 }
 
@@ -108,9 +113,7 @@ fn uia_get_document_path(hwnd: HWND) -> Option<String> {
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
         let element = automation.ElementFromHandle(hwnd).ok()?;
-        let pattern = element
-            .GetCurrentPattern(UIA_ValuePatternId)
-            .ok()?;
+        let pattern = element.GetCurrentPattern(UIA_ValuePatternId).ok()?;
         let value_pattern: IUIAutomationValuePattern = pattern.cast().ok()?;
         let value = value_pattern.CurrentValue().ok()?;
         let text = value.to_string();

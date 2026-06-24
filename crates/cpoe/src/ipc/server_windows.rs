@@ -166,9 +166,10 @@ fn get_token_user_sid(token: windows::Win32::Foundation::HANDLE) -> Result<Strin
         sid_string.as_ptr() as *mut _
     ));
 
-    sid_string
-        .to_string()
-        .map_err(|e| anyhow!("SID string conversion failed: {}", e))
+    // SAFETY: raw_ptr was written by ConvertSidToStringSidW as a valid,
+    // null-terminated wide string; it remains live until LocalFree, which
+    // _sid_guard defers to the end of this scope.
+    unsafe { sid_string.to_string() }.map_err(|e| anyhow!("SID string conversion failed: {}", e))
 }
 
 #[cfg(target_os = "windows")]

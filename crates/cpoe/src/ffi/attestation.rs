@@ -10,32 +10,35 @@ use authorproof_protocol::rfc::wire_types::AttestationTier;
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_attestation_info() -> FfiAttestationInfo {
-    catch_ffi_panic!(FfiAttestationInfo {
-        tier: 0,
-        tier_label: String::new(),
-        provider_type: String::new(),
-        hardware_bound: false,
-        supports_sealing: false,
-        has_monotonic_counter: false,
-        has_secure_clock: false,
-        device_id: String::new(),
-    }, {
-    log::debug!("ffi_get_attestation_info");
-    let (_, tier_num, tier_label) = detect_attestation_tier_info();
+    catch_ffi_panic!(
+        FfiAttestationInfo {
+            tier: 0,
+            tier_label: String::new(),
+            provider_type: String::new(),
+            hardware_bound: false,
+            supports_sealing: false,
+            has_monotonic_counter: false,
+            has_secure_clock: false,
+            device_id: String::new(),
+        },
+        {
+            log::debug!("ffi_get_attestation_info");
+            let (_, tier_num, tier_label) = detect_attestation_tier_info();
 
-    let provider = crate::tpm::detect_provider();
-    let caps = provider.capabilities();
-    FfiAttestationInfo {
-        tier: tier_num,
-        tier_label,
-        provider_type: provider.device_id(),
-        hardware_bound: caps.hardware_backed && caps.supports_sealing,
-        supports_sealing: caps.supports_sealing,
-        has_monotonic_counter: caps.monotonic_counter,
-        has_secure_clock: caps.secure_clock,
-        device_id: provider.device_id(),
-    }
-    })
+            let provider = crate::tpm::detect_provider();
+            let caps = provider.capabilities();
+            FfiAttestationInfo {
+                tier: tier_num,
+                tier_label,
+                provider_type: provider.device_id(),
+                hardware_bound: caps.hardware_backed && caps.supports_sealing,
+                supports_sealing: caps.supports_sealing,
+                has_monotonic_counter: caps.monotonic_counter,
+                has_secure_clock: caps.secure_clock,
+                device_id: provider.device_id(),
+            }
+        }
+    )
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
@@ -73,19 +76,19 @@ pub fn ffi_reseal_identity() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_is_hardware_bound() -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_is_hardware_bound");
-    let data_dir = match get_data_dir() {
-        Some(d) => d,
-        None => return false,
-    };
+        log::debug!("ffi_is_hardware_bound");
+        let data_dir = match get_data_dir() {
+            Some(d) => d,
+            None => return false,
+        };
 
-    let store = crate::sealed_identity::SealedIdentityStore::auto_detect(&data_dir);
-    if !store.is_bound() {
-        return false;
-    }
+        let store = crate::sealed_identity::SealedIdentityStore::auto_detect(&data_dir);
+        if !store.is_bound() {
+            return false;
+        }
 
-    store.attestation_tier() == AttestationTier::HardwareBound
-        || store.attestation_tier() == AttestationTier::HardwareHardened
+        store.attestation_tier() == AttestationTier::HardwareBound
+            || store.attestation_tier() == AttestationTier::HardwareHardened
     })
 }
 
@@ -169,22 +172,25 @@ pub fn ffi_sign_attestation_challenge(challenge_b64: String) -> FfiAttestationRe
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_device_public_key() -> FfiDeviceKey {
-    catch_ffi_panic!(FfiDeviceKey {
-        public_key_b64: String::new(),
-        device_id: String::new(),
-        hardware_bound: false,
-    }, {
-    log::debug!("ffi_get_device_public_key");
-    let provider = crate::tpm::detect_provider();
-    let caps = provider.capabilities();
-    let public_key = provider.public_key();
+    catch_ffi_panic!(
+        FfiDeviceKey {
+            public_key_b64: String::new(),
+            device_id: String::new(),
+            hardware_bound: false,
+        },
+        {
+            log::debug!("ffi_get_device_public_key");
+            let provider = crate::tpm::detect_provider();
+            let caps = provider.capabilities();
+            let public_key = provider.public_key();
 
-    FfiDeviceKey {
-        public_key_b64: base64::engine::general_purpose::STANDARD.encode(&public_key),
-        device_id: provider.device_id(),
-        hardware_bound: caps.hardware_backed && caps.supports_sealing,
-    }
-    })
+            FfiDeviceKey {
+                public_key_b64: base64::engine::general_purpose::STANDARD.encode(&public_key),
+                device_id: provider.device_id(),
+                hardware_bound: caps.hardware_backed && caps.supports_sealing,
+            }
+        }
+    )
 }
 
 /// Run a shell command in a background thread with a 2-second timeout.
@@ -199,16 +205,17 @@ fn run_command_with_timeout(cmd: &'static str, args: &'static [&'static str]) ->
     if let Err(e) = std::thread::Builder::new()
         .stack_size(2 * 1024 * 1024)
         .spawn(move || {
-        let result = std::process::Command::new(cmd)
-            .args(args)
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.trim().to_string());
-        if tx.send(result).is_err() {
-            log::debug!("attestation channel send failed (receiver timed out)");
-        }
-    }) {
+            let result = std::process::Command::new(cmd)
+                .args(args)
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string());
+            if tx.send(result).is_err() {
+                log::debug!("attestation channel send failed (receiver timed out)");
+            }
+        })
+    {
         log::warn!("attestation thread spawn failed: {e}");
         return None;
     }
@@ -237,11 +244,8 @@ fn get_model() -> String {
             }
             #[cfg(target_os = "windows")]
             {
-                read_registry_string(
-                    "HARDWARE\\DESCRIPTION\\System\\BIOS",
-                    "SystemProductName",
-                )
-                .unwrap_or_else(|| "Windows PC".to_string())
+                read_registry_string("HARDWARE\\DESCRIPTION\\System\\BIOS", "SystemProductName")
+                    .unwrap_or_else(|| "Windows PC".to_string())
             }
             #[cfg(target_os = "linux")]
             {
@@ -288,23 +292,29 @@ fn get_os_version() -> String {
 #[cfg(target_os = "windows")]
 fn read_registry_string(subkey: &str, value_name: &str) -> Option<String> {
     use windows::Win32::System::Registry::{
-        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ,
-        REG_SZ, REG_VALUE_TYPE,
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ,
+        REG_VALUE_TYPE,
     };
 
     let subkey_wide: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
-    let value_wide: Vec<u16> = value_name.encode_utf16().chain(std::iter::once(0)).collect();
+    let value_wide: Vec<u16> = value_name
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
 
     unsafe {
         let mut hkey = HKEY::default();
-        RegOpenKeyExW(
+        if RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(subkey_wide.as_ptr()),
-            0,
+            Some(0),
             KEY_READ,
             &mut hkey,
         )
-        .ok()?;
+        .is_err()
+        {
+            return None;
+        }
 
         let mut buf = [0u16; 512];
         let mut size = (buf.len() * 2) as u32;
@@ -318,12 +328,18 @@ fn read_registry_string(subkey: &str, value_name: &str) -> Option<String> {
             Some(&mut size),
         );
         let _ = RegCloseKey(hkey);
-        result.ok()?;
+        if result.is_err() {
+            return None;
+        }
         if kind != REG_SZ || size < 2 {
             return None;
         }
         let char_count = (size as usize / 2).saturating_sub(1);
         let s = String::from_utf16_lossy(&buf[..char_count]);
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     }
 }

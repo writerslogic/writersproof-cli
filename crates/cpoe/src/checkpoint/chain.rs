@@ -150,9 +150,7 @@ impl Chain {
             }
         } else if anomaly_count > anomaly_threshold {
             crate::forensics::ForensicGateVerdict::LowConfidence {
-                reason: format!(
-                    "anomalies={anomaly_count} exceeds threshold {anomaly_threshold}"
-                ),
+                reason: format!("anomalies={anomaly_count} exceeds threshold {anomaly_threshold}"),
             }
         } else if analysis_success_ratio < 0.5 {
             crate::forensics::ForensicGateVerdict::LowConfidence {
@@ -176,9 +174,7 @@ impl Chain {
         };
         match cm.verdict {
             crate::forensics::cross_modal::CrossModalVerdict::Inconsistent => {
-                self.forensic_gate
-                    .as_ref()
-                    .map_or(4, |c| c.cost_multiplier)
+                self.forensic_gate.as_ref().map_or(4, |c| c.cost_multiplier)
             }
             crate::forensics::cross_modal::CrossModalVerdict::Marginal => 2,
             _ => 1,
@@ -256,16 +252,20 @@ impl Chain {
         let total_multiplier = vdf_multiplier.max(cm_multiplier);
 
         let msg = match &gate_verdict {
-            crate::forensics::ForensicGateVerdict::LowConfidence { reason } => {
-                Some(format!(
-                    "{}[low-confidence: {reason}]",
-                    message.as_deref().map(|m| format!("{m} ")).unwrap_or_default(),
-                ))
-            }
+            crate::forensics::ForensicGateVerdict::LowConfidence { reason } => Some(format!(
+                "{}[low-confidence: {reason}]",
+                message
+                    .as_deref()
+                    .map(|m| format!("{m} "))
+                    .unwrap_or_default(),
+            )),
             crate::forensics::ForensicGateVerdict::IncreaseCost { multiplier, reason } => {
                 Some(format!(
                     "{}[vdf-cost: {multiplier}x, {reason}]",
-                    message.as_deref().map(|m| format!("{m} ")).unwrap_or_default(),
+                    message
+                        .as_deref()
+                        .map(|m| format!("{m} "))
+                        .unwrap_or_default(),
                 ))
             }
             crate::forensics::ForensicGateVerdict::Proceed => message,
@@ -290,7 +290,13 @@ impl Chain {
         } else {
             crate::crypto::hash_file_handle(&lock_file)?
         };
-        self.commit_internal_locked(message, vdf_duration, vdf_cost_multiplier, content_hash, content_size)
+        self.commit_internal_locked(
+            message,
+            vdf_duration,
+            vdf_cost_multiplier,
+            content_hash,
+            content_size,
+        )
     }
 
     fn commit_internal_locked(
@@ -301,7 +307,10 @@ impl Chain {
         content_hash: [u8; 32],
         content_size: u64,
     ) -> Result<Checkpoint> {
-        log::debug!("checkpoint commit_internal: path={}", self.metadata.document_path);
+        log::debug!(
+            "checkpoint commit_internal: path={}",
+            self.metadata.document_path
+        );
 
         let ordinal = u64::try_from(self.checkpoints.len()).map_err(|_| {
             Error::checkpoint(format!(
@@ -384,15 +393,17 @@ impl Chain {
             let mut vdf_params = self.metadata.vdf_params;
             if vdf_cost_multiplier > 1 {
                 let m = u64::from(vdf_cost_multiplier);
-                vdf_params.min_iterations = vdf_params.min_iterations.checked_mul(m)
-                    .unwrap_or_else(|| {
+                vdf_params.min_iterations =
+                    vdf_params.min_iterations.checked_mul(m).unwrap_or_else(|| {
                         log::warn!(
                             "VDF min_iterations overflow: {} * {m}, clamped to u64::MAX",
                             vdf_params.min_iterations
                         );
                         u64::MAX
                     });
-                vdf_params.iterations_per_second = vdf_params.iterations_per_second.checked_mul(m)
+                vdf_params.iterations_per_second = vdf_params
+                    .iterations_per_second
+                    .checked_mul(m)
                     .unwrap_or_else(|| {
                         log::warn!(
                             "VDF iterations_per_second overflow: {} * {m}, clamped to u64::MAX",
@@ -423,7 +434,11 @@ impl Chain {
             checkpoint.hash = checkpoint.compute_hash();
         }
         self.checkpoints.push(checkpoint.clone());
-        log::debug!("checkpoint committed: ordinal={} path={}", checkpoint.ordinal, self.metadata.document_path);
+        log::debug!(
+            "checkpoint committed: ordinal={} path={}",
+            checkpoint.ordinal,
+            self.metadata.document_path
+        );
         Ok(checkpoint)
     }
 
@@ -444,7 +459,9 @@ impl Chain {
         if let Some(parent) = path.parent() {
             if let Ok(dir) = fs::File::open(parent) {
                 if let Err(e) = dir.sync_all() {
-                    log::warn!("checkpoint: parent directory fsync failed after atomic rename: {e}");
+                    log::warn!(
+                        "checkpoint: parent directory fsync failed after atomic rename: {e}"
+                    );
                 }
             }
         }
@@ -504,7 +521,9 @@ impl Chain {
         if let Some(parent) = path.parent() {
             if let Ok(dir) = fs::File::open(parent) {
                 if let Err(e) = dir.sync_all() {
-                    log::warn!("checkpoint: parent directory fsync failed after atomic rename: {e}");
+                    log::warn!(
+                        "checkpoint: parent directory fsync failed after atomic rename: {e}"
+                    );
                 }
             }
         }
@@ -584,21 +603,23 @@ impl Chain {
     #[cfg(windows)]
     fn acquire_lock(file: &fs::File) -> Result<()> {
         use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::Storage::FileSystem::{
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
             LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
         };
+        let handle = HANDLE(file.as_raw_handle());
         let mut overlapped = unsafe { std::mem::zeroed() };
         let ok = unsafe {
             LockFileEx(
-                file.as_raw_handle() as _,
+                handle,
                 LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
-                0,
+                Some(0),
                 1,
                 0,
                 &mut overlapped,
             )
         };
-        if ok == 0 {
+        if ok.is_err() {
             return Err(Error::checkpoint("Concurrent commit blocked by file lock"));
         }
         Ok(())
@@ -607,10 +628,12 @@ impl Chain {
     #[cfg(windows)]
     fn release_lock(file: &fs::File) {
         use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::Storage::FileSystem::UnlockFileEx;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::UnlockFileEx;
+        let handle = HANDLE(file.as_raw_handle());
         let mut overlapped = unsafe { std::mem::zeroed() };
         unsafe {
-            UnlockFileEx(file.as_raw_handle() as _, 0, 1, 0, &mut overlapped);
+            let _ = UnlockFileEx(handle, Some(0), 1, 0, &mut overlapped);
         }
     }
 

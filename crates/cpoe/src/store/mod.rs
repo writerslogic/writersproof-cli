@@ -56,7 +56,7 @@ pub(crate) fn acquire_db_lock(db_path: &Path) -> anyhow::Result<Option<std::fs::
             LockFileEx(
                 handle,
                 LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
-                0,
+                Some(0),
                 1,
                 0,
                 &mut overlapped,
@@ -136,7 +136,8 @@ impl SecureStore {
             }
         }
 
-        let journal_mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
+        let journal_mode: String =
+            conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
         if journal_mode.to_lowercase() != "wal" {
             log::warn!("events db: requested WAL but got '{journal_mode}' journal mode");
         }
@@ -357,10 +358,9 @@ impl SecureStore {
         for row in rows {
             let (stored_simhash, manifest_hash, doc_path) = row?;
             let dist = ((query_simhash as u64) ^ (stored_simhash as u64)).count_ones();
-            if dist <= max_distance
-                && best.as_ref().map_or(true, |(d, _, _)| dist < *d) {
-                    best = Some((dist, manifest_hash, doc_path));
-                }
+            if dist <= max_distance && best.as_ref().map_or(true, |(d, _, _)| dist < *d) {
+                best = Some((dist, manifest_hash, doc_path));
+            }
         }
         Ok(best.map(|(_, mh, dp)| (mh, dp)))
     }

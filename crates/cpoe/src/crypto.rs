@@ -61,12 +61,24 @@ fn hash_package_dir(dir: &Path) -> std::io::Result<([u8; 32], u64)> {
     let mut entries: Vec<(String, u64)> = Vec::new();
 
     fn walk(base: &Path, current: &Path, depth: u8, out: &mut Vec<(String, u64)>) {
-        if depth > 5 { return; }
-        let Ok(rd) = std::fs::read_dir(current) else { return };
+        if depth > 5 {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(current) else {
+            return;
+        };
         for entry in rd.flatten() {
-            let ft = match entry.file_type() { Ok(t) => t, Err(_) => continue };
+            let ft = match entry.file_type() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
             if ft.is_file() {
-                let rel = entry.path().strip_prefix(base).unwrap_or(&entry.path()).to_string_lossy().into_owned();
+                let rel = entry
+                    .path()
+                    .strip_prefix(base)
+                    .unwrap_or(&entry.path())
+                    .to_string_lossy()
+                    .into_owned();
                 let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                 out.push((rel, size));
             } else if ft.is_dir() {
@@ -192,7 +204,10 @@ pub fn compute_integrity_hmac(
 /// with existing HMAC chains. Changing to HKDF would invalidate all previously stored
 /// event integrity tags.
 pub fn derive_hmac_key(priv_key_seed: &[u8]) -> Zeroizing<Vec<u8>> {
-    assert!(priv_key_seed.len() >= 16, "derive_hmac_key: seed must be ≥16 bytes");
+    assert!(
+        priv_key_seed.len() >= 16,
+        "derive_hmac_key: seed must be ≥16 bytes"
+    );
     let mut hasher = Sha256::new();
     hasher.update(b"cpoe-hmac-key-v1");
     hasher.update(priv_key_seed);
@@ -326,11 +341,11 @@ pub fn restrict_permissions(path: &Path, mode: u32) -> std::io::Result<()> {
         // This is faster, locale-independent, and immune to PATH misconfiguration.
         use std::os::windows::ffi::OsStrExt;
         use windows::core::PCWSTR;
-        use windows::Win32::Security::Authorization::{
-            SetNamedSecurityInfoW, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
-            SE_FILE_OBJECT,
+        use windows::Win32::Security::Authorization::{SetNamedSecurityInfoW, SE_FILE_OBJECT};
+        use windows::Win32::Security::{
+            InitializeAcl, ACE_REVISION, ACL, DACL_SECURITY_INFORMATION,
+            PROTECTED_DACL_SECURITY_INFORMATION,
         };
-        use windows::Win32::Security::{InitializeAcl, ACL, PACL};
 
         // ACL_REVISION = 2 (Windows SDK constant; not re-exported by the windows crate).
         const ACL_REVISION: u32 = 2;
@@ -349,9 +364,9 @@ pub fn restrict_permissions(path: &Path, mode: u32) -> std::io::Result<()> {
         // SAFETY: `acl` is Box-allocated with correct ACL alignment; size matches.
         if let Err(e) = unsafe {
             InitializeAcl(
-                PACL(acl.as_mut() as *mut ACL),
+                acl.as_mut() as *mut ACL,
                 std::mem::size_of::<ACL>() as u32,
-                ACL_REVISION,
+                ACE_REVISION(ACL_REVISION),
             )
         } {
             return Err(std::io::Error::new(
@@ -366,13 +381,13 @@ pub fn restrict_permissions(path: &Path, mode: u32) -> std::io::Result<()> {
                 PCWSTR(wide.as_ptr()),
                 SE_FILE_OBJECT,
                 DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-                None,                                  // owner: unchanged
-                None,                                  // group: unchanged
-                Some(PACL(acl.as_mut() as *mut ACL)), // empty DACL: 0 ACEs = deny all
-                None,                                  // SACL: unchanged
+                None,                             // owner: unchanged
+                None,                             // group: unchanged
+                Some(acl.as_mut() as *const ACL), // empty DACL: 0 ACEs = deny all
+                None,                             // SACL: unchanged
             )
         };
-        if let Err(e) = result {
+        if let Err(e) = result.ok() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!("SetNamedSecurityInfoW failed: {e}"),
@@ -763,7 +778,10 @@ mod tests {
         }
 
         let result = hash_file_with_size(&path);
-        assert!(result.is_err(), "Expected error for file exceeding MAX_FILE_SIZE");
+        assert!(
+            result.is_err(),
+            "Expected error for file exceeding MAX_FILE_SIZE"
+        );
         assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
 
         std::fs::remove_file(&path).ok();
@@ -797,8 +815,7 @@ mod tests {
         let signing_key = SigningKey::from_bytes(&[0x11u8; 32]);
 
         let make_event = || {
-            let mut e =
-                crate::store::SecureEvent::new("/f.txt".to_string(), [0x00; 32], 0, None);
+            let mut e = crate::store::SecureEvent::new("/f.txt".to_string(), [0x00; 32], 0, None);
             e.event_hash = [0xCCu8; 32];
             e
         };
@@ -807,7 +824,10 @@ mod tests {
         let mut e2 = make_event();
         sign_event_lamport(&signing_key, &mut e1).unwrap();
         sign_event_lamport(&signing_key, &mut e2).unwrap();
-        assert_eq!(e1.lamport_signature, e2.lamport_signature, "same key+hash must produce same sig");
+        assert_eq!(
+            e1.lamport_signature, e2.lamport_signature,
+            "same key+hash must produce same sig"
+        );
         assert_eq!(e1.lamport_pubkey_fingerprint, e2.lamport_pubkey_fingerprint);
     }
 
@@ -817,8 +837,7 @@ mod tests {
         let signing_key = SigningKey::from_bytes(&[0x22u8; 32]);
 
         let make_event = |hash: [u8; 32]| {
-            let mut e =
-                crate::store::SecureEvent::new("/f.txt".to_string(), [0x00; 32], 0, None);
+            let mut e = crate::store::SecureEvent::new("/f.txt".to_string(), [0x00; 32], 0, None);
             e.event_hash = hash;
             e
         };
@@ -827,7 +846,10 @@ mod tests {
         let mut e2 = make_event([0xBBu8; 32]);
         sign_event_lamport(&signing_key, &mut e1).unwrap();
         sign_event_lamport(&signing_key, &mut e2).unwrap();
-        assert_ne!(e1.lamport_signature, e2.lamport_signature, "different hashes must yield different sigs");
+        assert_ne!(
+            e1.lamport_signature, e2.lamport_signature,
+            "different hashes must yield different sigs"
+        );
         assert_ne!(e1.lamport_pubkey_fingerprint, e2.lamport_pubkey_fingerprint);
     }
 }
