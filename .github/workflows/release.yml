@@ -222,6 +222,13 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Generate Generic Attestations
+        uses: actions/attest@v4.1.0
+        with:
+          subject-path: |
+            artifacts/writersproof-cli-*.tar.gz
+            artifacts/writersproof-cli-*.zip
+
       - name: Get previous tag
         id: prev_tag
         run: |
@@ -352,4 +359,3 @@ jobs:
               "version": "${{ needs.validate.outputs.version }}",
               "sha256_win": "${{ steps.hash.outputs.sha256_win }}"
             }
-
