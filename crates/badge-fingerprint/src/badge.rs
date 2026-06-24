@@ -38,6 +38,17 @@ impl Tier {
             Tier::Declared => "DECLARED",
         }
     }
+
+    /// Parse a tier from a credential string (case-insensitive). Unknown values
+    /// fall back to the lowest tier, `Declared`, so a forged or malformed value
+    /// can never inflate the displayed assurance.
+    pub fn from_slug(s: &str) -> Tier {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "verified" | "hardware_bound" => Tier::Verified,
+            "corroborated" | "attested_software" => Tier::Corroborated,
+            _ => Tier::Declared,
+        }
+    }
 }
 
 /// Authorship mode. Only `AiAssisted` renders stars.
@@ -46,6 +57,21 @@ pub enum Mode {
     HumanAuthored,
     AiAssisted,
     HumanRevised,
+}
+
+impl Mode {
+    /// Parse a mode from an OB3 authorship-mode slug or label (case-insensitive,
+    /// `_`/spaces normalized to `-`). Recognizes the engine's
+    /// `AuthorshipMode` slugs (`human-authored`, `ai-assisted-disclosed`,
+    /// `human-revised`). Unknown values fall back to `HumanAuthored`.
+    pub fn from_slug(s: &str) -> Mode {
+        let norm = s.trim().to_ascii_lowercase().replace([' ', '_'], "-");
+        match norm.as_str() {
+            "ai-assisted" | "ai-assisted-disclosed" | "ai-assisted-(disclosed)" => Mode::AiAssisted,
+            "human-revised" => Mode::HumanRevised,
+            _ => Mode::HumanAuthored,
+        }
+    }
 }
 
 // ---- Canvas geometry (fixed for all badges) -----------------------------------
@@ -526,5 +552,25 @@ mod tests {
         let ha = render_badge_svg("WP-AAAA-BBBB", Mode::HumanAuthored, Tier::Verified);
         // star glyphs use a filled path Z; AI badge has strictly more of them.
         assert!(ai.len() > ha.len());
+    }
+
+    #[test]
+    fn from_slug_parses_ob3_values() {
+        assert_eq!(Mode::from_slug("human-authored"), Mode::HumanAuthored);
+        assert_eq!(Mode::from_slug("ai-assisted-disclosed"), Mode::AiAssisted);
+        assert_eq!(Mode::from_slug("AI-Assisted (Disclosed)"), Mode::AiAssisted);
+        assert_eq!(Mode::from_slug("human-revised"), Mode::HumanRevised);
+        assert_eq!(Tier::from_slug("verified"), Tier::Verified);
+        assert_eq!(Tier::from_slug("hardware_bound"), Tier::Verified);
+        assert_eq!(Tier::from_slug("CORROBORATED"), Tier::Corroborated);
+    }
+
+    #[test]
+    fn from_slug_unknown_degrades_safely() {
+        // An unknown/forged mode can never gain AI stars; an unknown tier can
+        // never inflate above the lowest assurance.
+        assert_eq!(Mode::from_slug("bogus"), Mode::HumanAuthored);
+        assert_eq!(Tier::from_slug("bogus"), Tier::Declared);
+        assert_eq!(Tier::from_slug(""), Tier::Declared);
     }
 }

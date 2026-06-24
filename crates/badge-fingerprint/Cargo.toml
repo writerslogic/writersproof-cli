@@ -10,13 +10,28 @@ publish = false
 
 [lib]
 name = "badge_fingerprint"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 sha2 = "0.10.8"
 serde = { version = "1.0.217", features = ["derive"] }
+serde_json = { version = "1.0.135", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0.135"
+
+[features]
+default = []
+# Browser bindings for the verify portal: one Rust core renders badges natively
+# and in wasm so render == verify.
+wasm = ["dep:wasm-bindgen", "dep:serde_json"]
+
+# The crate is pure deterministic string/math work with no hot loops; the
+# bundled wasm-opt rejects newer wasm-bindgen output and buys us nothing on a
+# few-KB module, so skip it.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [[example]]
 name = "gallery"
