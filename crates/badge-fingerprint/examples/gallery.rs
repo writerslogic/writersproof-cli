@@ -92,15 +92,9 @@ fn main() {
 }
 
 fn gen_id(n: u32) -> String {
-    // deterministic-but-varied: hash the counter into two hex groups.
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(b"gallery-id");
-    h.update(n.to_be_bytes());
-    let d = h.finalize();
-    let a = u16::from_be_bytes([d[0], d[1]]);
-    let b = u16::from_be_bytes([d[2], d[3]]);
-    format!("WP-{a:04X}-{b:04X}")
+    // Real production short-ids, derived from a sample identifier so the gallery
+    // reflects the actual WP-XXXX-XXXX-XXXX-XXXX format and width.
+    badge_fingerprint::short_id_from_identifier(&format!("did:key:gallery-{n}"))
 }
 
 fn mode_str(m: Mode) -> &'static str {

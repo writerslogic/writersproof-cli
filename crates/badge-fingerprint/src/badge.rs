@@ -479,7 +479,7 @@ fn ribbon(s: &mut String, tier: Tier) {
 fn short_id_text(s: &mut String, short_id: &str) {
     write!(
         s,
-        "<text x=\"{CX}\" y=\"{}\" font-family=\"'SF Mono',Menlo,monospace\" font-size=\"18\" font-weight=\"600\" letter-spacing=\"2\" fill=\"{INK}\" text-anchor=\"middle\">{}</text>",
+        "<text x=\"{CX}\" y=\"{}\" font-family=\"'SF Mono',Menlo,monospace\" font-size=\"16\" font-weight=\"600\" letter-spacing=\"1\" fill=\"{INK}\" text-anchor=\"middle\">{}</text>",
         H - 16,
         xml_escape(short_id)
     )
