@@ -60,6 +60,10 @@ jobs:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     needs: validate
+    # Windows is non-blocking: an unproven windows-msvc build must never fail the
+    # macOS CLI release or the Homebrew update. If it fails, scoop simply isn't
+    # updated for this tag (the update-scoop job no-ops on the missing artifact).
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +74,10 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+            experimental: true
     steps:
       - uses: actions/checkout@v4
 
@@ -144,6 +152,18 @@ jobs:
           cp target/${{ matrix.target }}/release/writerslogic-native-messaging-host staging/ 2>/dev/null || true
           tar -czf "$ARCHIVE" -C staging .
           echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $TAG = "${{ needs.validate.outputs.tag }}"
+          $ARCHIVE = "writersproof-cli-$TAG-${{ matrix.target }}.zip"
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/writersproof-cli.exe" staging/
+          Copy-Item "target/${{ matrix.target }}/release/writerslogic-native-messaging-host.exe" staging/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path staging/* -DestinationPath $ARCHIVE -Force
+          "ARCHIVE=$ARCHIVE" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Generate SHA-256 checksum
         shell: bash
@@ -228,6 +248,7 @@ jobs:
           prerelease: ${{ contains(needs.validate.outputs.tag, '-') }}
           files: |
             artifacts/writersproof-cli-*.tar.gz
+            artifacts/writersproof-cli-*.zip
             artifacts/writersproof-cli-*.sha256
             artifacts/writersproof-cli-sbom.spdx.json
             artifacts/writersproof-cli-sbom.cdx.json
@@ -241,6 +262,12 @@ jobs:
             **macOS (Homebrew):**
             ```
             brew install writerslogic/tap/writersproof-cli
+            ```
+
+            **Windows (Scoop):**
+            ```
+            scoop bucket add writerslogic https://github.com/writerslogic/scoop-bucket
+            scoop install writerslogic
             ```
 
             ### Changelog
@@ -283,5 +310,46 @@ jobs:
               "version": "${{ needs.validate.outputs.version }}",
               "sha256_arm": "${{ steps.hashes.outputs.sha_arm }}",
               "sha256_x86": "${{ steps.hashes.outputs.sha_x86 }}"
+            }
+
+  update-scoop:
+    name: Update Scoop Bucket
+    runs-on: ubuntu-latest
+    needs: [validate, release]
+    if: "!contains(needs.validate.outputs.tag, '-')"
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: build-x86_64-pc-windows-msvc
+          path: artifacts
+          merge-multiple: true
+
+      - name: Compute SHA-256
+        id: hash
+        run: |
+          TAG=${{ needs.validate.outputs.tag }}
+          ZIP="artifacts/writersproof-cli-${TAG}-x86_64-pc-windows-msvc.zip"
+          # The Windows build is non-blocking; if it failed there is no artifact,
+          # so skip the scoop update rather than failing the release.
+          if [ ! -f "$ZIP" ]; then
+            echo "Windows artifact missing — skipping scoop update for ${TAG}."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "sha256_win=$(sha256sum "$ZIP" | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Update scoop manifest
+        if: steps.hash.outputs.skip != 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: writerslogic/scoop-bucket
+          event-type: update-manifest
+          client-payload: |
+            {
+              "tag": "${{ needs.validate.outputs.tag }}",
+              "version": "${{ needs.validate.outputs.version }}",
+              "sha256_win": "${{ steps.hash.outputs.sha256_win }}"
             }
 
