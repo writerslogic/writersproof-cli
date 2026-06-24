@@ -21,8 +21,10 @@ pub mod badge;
 pub mod features;
 pub mod fingerprint;
 pub mod fixed;
+pub mod short_id;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
 pub use badge::{render_badge_svg, render_fingerprint_svg, Mode, Tier};
 pub use features::{derive_features, FeatureVector, PatternClass};
+pub use short_id::short_id_from_identifier;

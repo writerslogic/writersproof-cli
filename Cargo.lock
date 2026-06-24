@@ -712,6 +712,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1526,6 +1527,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "authorproof-protocol",
+ "badge-fingerprint",
  "base64 0.22.1",
  "bincode",
  "bip39",

@@ -12,6 +12,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::badge::{render_badge_svg, render_fingerprint_svg, Mode, Tier};
 use crate::features::derive_features;
+use crate::short_id::short_id_from_identifier;
 
 /// Render the canonical badge SVG for a short-id, authorship mode, and assurance
 /// tier.
@@ -32,6 +33,14 @@ pub fn render_badge(short_id: &str, mode: &str, tier: &str) -> String {
 #[wasm_bindgen]
 pub fn render_fingerprint(short_id: &str) -> String {
     render_fingerprint_svg(short_id)
+}
+
+/// Derive the canonical `WP-XXXX-XXXX` short-id from an existing identifier (an
+/// author DID, or a verify.writersproof.com id). Lets the portal recompute the
+/// short-id and confirm it matches the value carried in the signed credential.
+#[wasm_bindgen]
+pub fn short_id_from_id(identifier: &str) -> String {
+    short_id_from_identifier(identifier)
 }
 
 /// Derive the raw feature vector `f(id)` as a JSON string, for channel-level

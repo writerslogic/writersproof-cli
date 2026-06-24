@@ -46,6 +46,11 @@ const ISSUER_PROFILE_NAME: &str = "WritersProof";
 /// Issuer profile canonical URL.
 const ISSUER_PROFILE_URL: &str = "https://writersproof.com";
 
+/// Base URL for the credential `id` — the verify portal landing page keyed by
+/// the `WP-XXXX-XXXX` short-id. The id both links to verification and seeds the
+/// deterministic badge fingerprint.
+const VERIFY_CREDENTIAL_BASE_URL: &str = "https://verify.writersproof.com/c";
+
 /// Stable base URI for achievement definitions. The achievement id is this base
 /// plus the authorship-mode slug, so each mode (Human-Authored, AI-Assisted,
 /// Human-Revised) is a distinct, dereferenceable achievement. The assurance
@@ -155,6 +160,10 @@ pub fn infer_authorship_mode(
 pub struct OpenBadgeCredential {
     #[serde(rename = "@context")]
     pub context: Vec<String>,
+    /// Credential identifier — the verify.writersproof.com URL carrying the
+    /// `WP-XXXX-XXXX` short-id. The badge fingerprint is a visual commitment to
+    /// this short-id, so the id both links to verification and seeds the badge.
+    pub id: String,
     #[serde(rename = "type")]
     pub credential_type: Vec<String>,
     /// Human-readable credential name (OB 3.0 recommends `name` on the credential).
@@ -383,8 +392,15 @@ fn build_open_badge_core(
         forensic_signals: None,
     };
 
+    // The badge short-id is derived deterministically from the author DID (the
+    // identifier already carried by the credential), so the verify portal can
+    // recompute it and the fingerprint is bound to a single identity system.
+    let short_id = badge_fingerprint::short_id_from_identifier(author_did);
+    let credential_id = format!("{VERIFY_CREDENTIAL_BASE_URL}/{short_id}");
+
     Ok(OpenBadgeCredential {
         context: vec![VC_V2_CONTEXT_URL.to_string(), OB3_CONTEXT_URL.to_string()],
+        id: credential_id,
         credential_type: vec![
             "VerifiableCredential".to_string(),
             "OpenBadgeCredential".to_string(),
@@ -666,6 +682,15 @@ mod tests {
             badge.context[1],
             "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json"
         );
+
+        // id is the verify-portal URL carrying the WP-XXXX-XXXX short-id,
+        // deterministically derived from the author DID.
+        let expected_short_id = badge_fingerprint::short_id_from_identifier(did);
+        assert_eq!(
+            badge.id,
+            format!("https://verify.writersproof.com/c/{expected_short_id}")
+        );
+        assert!(expected_short_id.starts_with("WP-"));
 
         // type: VerifiableCredential + OpenBadgeCredential.
         assert_eq!(

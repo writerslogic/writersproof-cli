@@ -124,6 +124,9 @@ unicode-normalization = "0.1"
 # AuthorProof Protocol
 authorproof-protocol = { path = "../authorproof-protocol" }
 
+# Deterministic badge short-id derivation (shared with the verify portal's wasm)
+badge-fingerprint = { path = "../badge-fingerprint" }
+
 # PoSME - Proof of Sequential Memory Execution
 posme = { path = "../posme", features = ["prover"], optional = true }
 
