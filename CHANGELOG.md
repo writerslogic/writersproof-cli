@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Added
+- VC-JWT (JOSE EdDSA) securing path for 1EdTech conformance
 - Add 'badge' command to render Open Badge SVG
 - Expose canonical badge rendering to native apps
 - Unambiguous, collision-resistant short-id (WP-XXXX-XXXX-XXXX-XXXX)
@@ -17,6 +18,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Badge-fingerprint crate — deterministic f(id) fingerprint badge generator
 
 ### Documentation
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
