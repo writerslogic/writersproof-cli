@@ -416,7 +416,7 @@ fn xml_escape(s: &str) -> String {
 /// (prefix/hyphens/check stripped), or the raw string for non-conformant input.
 /// Hashing the payload — not the display form — lets the prefix or check symbol
 /// evolve without re-keying any issued badge art (spec §8.1).
-fn fp_seed(short_id: &str) -> String {
+pub(crate) fn fp_seed(short_id: &str) -> String {
     crate::short_id::validate(short_id).unwrap_or_else(|| short_id.to_string())
 }
 
