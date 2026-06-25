@@ -271,31 +271,34 @@ pub fn ffi_text_fragment_store(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_text_fragment_lookup(fragment_hash_hex: String) -> Option<FfiTextFragment> {
     catch_ffi_panic!(None, {
-    log::debug!("ffi_text_fragment_lookup: fragment_hash_hex={}", fragment_hash_hex);
-    let hash_bytes = match crate::utils::crypto_types::HexHash::from_hex(&fragment_hash_hex) {
-        Ok(h) => h.0,
-        Err(_) => {
-            log::warn!("ffi_text_fragment_lookup: invalid hash hex (expected 64 hex chars)");
-            return None;
-        }
-    };
+        log::debug!(
+            "ffi_text_fragment_lookup: fragment_hash_hex={}",
+            fragment_hash_hex
+        );
+        let hash_bytes = match crate::utils::crypto_types::HexHash::from_hex(&fragment_hash_hex) {
+            Ok(h) => h.0,
+            Err(_) => {
+                log::warn!("ffi_text_fragment_lookup: invalid hash hex (expected 64 hex chars)");
+                return None;
+            }
+        };
 
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_text_fragment_lookup: failed to open store: {e}");
-            return None;
-        }
-    };
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_text_fragment_lookup: failed to open store: {e}");
+                return None;
+            }
+        };
 
-    match store.lookup_fragment_by_hash(&hash_bytes) {
-        Ok(Some(f)) => Some(to_ffi(&f)),
-        Ok(None) => None,
-        Err(e) => {
-            log::warn!("ffi_text_fragment_lookup: query failed: {e}");
-            None
+        match store.lookup_fragment_by_hash(&hash_bytes) {
+            Ok(Some(f)) => Some(to_ffi(&f)),
+            Ok(None) => None,
+            Err(e) => {
+                log::warn!("ffi_text_fragment_lookup: query failed: {e}");
+                None
+            }
         }
-    }
     })
 }
 
@@ -303,22 +306,25 @@ pub fn ffi_text_fragment_lookup(fragment_hash_hex: String) -> Option<FfiTextFrag
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_text_fragment_list_for_session(session_id: String) -> Vec<FfiTextFragment> {
     catch_ffi_panic!(vec![], {
-    log::debug!("ffi_text_fragment_list_for_session: session_id={}", session_id);
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_text_fragment_list_for_session: failed to open store: {e}");
-            return Vec::new();
-        }
-    };
+        log::debug!(
+            "ffi_text_fragment_list_for_session: session_id={}",
+            session_id
+        );
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_text_fragment_list_for_session: failed to open store: {e}");
+                return Vec::new();
+            }
+        };
 
-    match store.get_fragments_for_session(&session_id) {
-        Ok(frags) => frags.iter().map(to_ffi).collect(),
-        Err(e) => {
-            log::warn!("ffi_text_fragment_list_for_session: query failed: {e}");
-            Vec::new()
+        match store.get_fragments_for_session(&session_id) {
+            Ok(frags) => frags.iter().map(to_ffi).collect(),
+            Err(e) => {
+                log::warn!("ffi_text_fragment_list_for_session: query failed: {e}");
+                Vec::new()
+            }
         }
-    }
     })
 }
 
@@ -337,25 +343,27 @@ pub fn ffi_text_fragment_list_for_session(session_id: String) -> Vec<FfiTextFrag
 pub fn ffi_sentinel_record_paste_checkpoint_skipped() -> bool {
     use crate::ffi::types::catch_ffi_panic;
     catch_ffi_panic!(false, {
-    let sentinel = match super::sentinel::get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
-    use crate::RwLockRecover as _;
-    let focus = sentinel.current_focus()
-        .or_else(|| sentinel.targeted_path());
-    if let Some(ref path) = focus {
-        let mut sessions = sentinel.sessions.write_recover();
-        if let Some(session) = sessions.get_mut(path.as_str()) {
-            session.paste_checkpoint_skips = session.paste_checkpoint_skips.saturating_add(1);
-            log::info!(
-                "Paste checkpoint skipped for {:?} (total skips: {})",
-                path, session.paste_checkpoint_skips
-            );
-            return true;
+        let sentinel = match super::sentinel::get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
+        use crate::RwLockRecover as _;
+        let focus = sentinel
+            .current_focus()
+            .or_else(|| sentinel.targeted_path());
+        if let Some(ref path) = focus {
+            let mut sessions = sentinel.sessions.write_recover();
+            if let Some(session) = sessions.get_mut(path.as_str()) {
+                session.paste_checkpoint_skips = session.paste_checkpoint_skips.saturating_add(1);
+                log::info!(
+                    "Paste checkpoint skipped for {:?} (total skips: {})",
+                    path,
+                    session.paste_checkpoint_skips
+                );
+                return true;
+            }
         }
-    }
-    false
+        false
     })
 }
 
@@ -376,8 +384,7 @@ pub fn ffi_sentinel_cross_window_match(
 
     const MAX_STRING_LEN: usize = 1024;
     let source_app: String = source_app.chars().take(MAX_STRING_LEN).collect();
-    let source_window_title: String =
-        source_window_title.chars().take(MAX_STRING_LEN).collect();
+    let source_window_title: String = source_window_title.chars().take(MAX_STRING_LEN).collect();
 
     let sentinel = match super::sentinel::get_running_sentinel() {
         Some(s) => s,
@@ -779,14 +786,17 @@ pub fn ffi_embed_text_manifest(
         builder = builder.cert_der(cert_der);
     }
 
-    let jumbf = match builder.build_jumbf(&signing_key) {
-        Ok(j) => j,
-        Err(e) => return FfiAttestTextResult::err(format!("Failed to build C2PA manifest: {e}")),
-    };
-
-    // Encode the JUMBF as invisible variation selectors appended to the text.
-    let (wrapper, _exclusion_len) = authorproof_protocol::c2pa::text_embed::encode_text_manifest(&jumbf);
-    let embedded_text = format!("{text_content}{wrapper}");
+    // Delegate to attest_text, which resolves the c2pa.hash.data soft-binding
+    // exclusion to a fixpoint over the appended wrapper. The prior path
+    // (build_jumbf + naive append with no exclusion) produced a content binding
+    // a third-party C2PA verifier would reject.
+    let embedded_text =
+        match authorproof_protocol::c2pa::attest_text(&text_content, builder, &signing_key) {
+            Ok(t) => t,
+            Err(e) => {
+                return FfiAttestTextResult::err(format!("Failed to embed C2PA manifest: {e}"))
+            }
+        };
 
     FfiAttestTextResult::ok(
         attest_result.tier,
@@ -823,7 +833,13 @@ pub fn store_attestation_from_hash(content_hash: &str, app_bundle_id: &str) -> R
 
     let fragment = TextFragment {
         source_app_bundle_id: Some(app_bundle_id.to_string()).filter(|s| !s.is_empty()),
-        ..TextFragment::new(hash_bytes, session_id, signature.to_vec(), nonce.to_vec(), timestamp)
+        ..TextFragment::new(
+            hash_bytes,
+            session_id,
+            signature.to_vec(),
+            nonce.to_vec(),
+            timestamp,
+        )
     };
 
     let mut store = open_store().map_err(|e| e.to_string())?;
@@ -903,22 +919,22 @@ pub fn ffi_update_fragment_sync_state(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_pending_sync_count() -> i64 {
     catch_ffi_panic!(-1, {
-    log::debug!("ffi_get_pending_sync_count");
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_get_pending_sync_count: failed to open store: {e}");
-            return -1;
-        }
-    };
+        log::debug!("ffi_get_pending_sync_count");
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_get_pending_sync_count: failed to open store: {e}");
+                return -1;
+            }
+        };
 
-    match store.get_pending_sync_count() {
-        Ok(count) => count,
-        Err(e) => {
-            log::warn!("ffi_get_pending_sync_count: query failed: {e}");
-            -1
+        match store.get_pending_sync_count() {
+            Ok(count) => count,
+            Err(e) => {
+                log::warn!("ffi_get_pending_sync_count: query failed: {e}");
+                -1
+            }
         }
-    }
     })
 }
 
@@ -1346,7 +1362,11 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_attest_test");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("test temp dir path must be valid UTF-8"));
+        std::env::set_var(
+            "CPOE_DATA_DIR",
+            tmp.to_str()
+                .expect("test temp dir path must be valid UTF-8"),
+        );
         let init = crate::ffi::system::ffi_init();
         assert!(init.success, "init failed: {:?}", init.error_message);
 

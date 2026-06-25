@@ -66,6 +66,7 @@ fn default_output_path(file_path: &Path, format_lower: &str) -> PathBuf {
         "html" | "report" => format!("{}.report.html", name),
         "pdf" => format!("{}.report.pdf", name),
         "c2pa" => format!("{}.c2pa", name),
+        "c2pa-text" => format!("{}.c2pa.txt", name),
         "openbadge" => format!("{}.openbadge.json", name),
         "openbadge-jwt" => format!("{}.openbadge.jwt", name),
         "md" | "markdown" => format!("{}.evidence.md", name),

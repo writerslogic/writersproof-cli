@@ -33,11 +33,59 @@ pub(crate) fn cmd_verify(
     } else if matches!(ext, "db" | "sqlite") {
         verify_db(file_path, key, out)
     } else {
+        // Watermarked text carries an embedded C2PA manifest in variation
+        // selectors regardless of extension; detect it before reporting unknown.
+        if let Ok(text) = fs::read_to_string(file_path) {
+            if let Ok(v) = cpoe::authorproof_protocol::c2pa::verify_text(&text) {
+                return verify_c2pa_text(file_path, &v, out);
+            }
+        }
         Err(anyhow!(
-            "Unknown file format '{}'. Expected .json, .c2pa, or .db",
+            "Unknown file format '{}'. Expected .json, .c2pa, .db, or C2PA-embedded text",
             ext
         ))
     }
+}
+
+fn verify_c2pa_text(
+    file_path: &PathBuf,
+    v: &cpoe::authorproof_protocol::c2pa::TextVerification,
+    out: &OutputMode,
+) -> Result<()> {
+    let valid = v.is_valid();
+    if out.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "valid": valid,
+                "file": file_path.to_string_lossy(),
+                "format": "c2pa-text",
+                "signature_valid": v.signature_valid,
+                "content_hash_valid": v.content_hash_valid,
+                "structural_errors": v.structural_errors,
+            })
+        );
+    } else {
+        println!(
+            "C2PA text manifest: {}",
+            if valid { "VALID" } else { "INVALID" }
+        );
+        println!(
+            "  Signature: {}",
+            if v.signature_valid { "ok" } else { "FAILED" }
+        );
+        println!(
+            "  Content binding: {}",
+            if v.content_hash_valid { "ok" } else { "FAILED" }
+        );
+        if !v.structural_errors.is_empty() {
+            println!("  Structural errors: {}", v.structural_errors.join("; "));
+        }
+    }
+    if !valid {
+        return Err(anyhow!("Verification failed"));
+    }
+    Ok(())
 }
 
 fn verify_json(file_path: &PathBuf, output_war: Option<PathBuf>, out: &OutputMode) -> Result<()> {

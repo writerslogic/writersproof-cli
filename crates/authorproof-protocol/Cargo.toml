@@ -36,6 +36,7 @@ urlencoding = "2.1"
 log = "0.4"
 subtle = "2.6"
 hmac = "0.12.1"
+unicode-normalization = "0.1"
 cpoe-jitter = { path = "../cpoe-jitter" }
 posme = { path = "../posme", optional = true }
 
@@ -43,6 +44,11 @@ posme = { path = "../posme", optional = true }
 tempfile = "3"
 crc32fast = "1.4"
 c2pa = "0.84"
+criterion = "0.5"
+
+[[bench]]
+name = "codec_bench"
+harness = false
 
 [features]
 default = []

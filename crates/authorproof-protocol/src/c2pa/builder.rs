@@ -10,18 +10,18 @@ use super::jumbf::{
 };
 use super::types::{
     Action, ActionParameters, ActionsAssertion, AiDisclosureAssertion, AssertionMetadata,
-    AssetType, C2paClaim, C2paManifest, ClaimGeneratorInfo, CognitiveMarkersAssertion,
-    DataSource, EvidenceChainAssertion, ExclusionRange, ExternalReferenceAssertion,
-    ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri, C2paIngredient,
-    KeystrokeCadenceAssertion, LocalTimestampAssertion, MetadataAssertion,
-    ProcessProofAssertion, SoftwareAgent, VcReferenceAssertion,
+    AssetType, C2paClaim, C2paIngredient, C2paManifest, ClaimGeneratorInfo,
+    CognitiveMarkersAssertion, DataSource, EvidenceChainAssertion, ExclusionRange,
+    ExternalReferenceAssertion, ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri,
+    KeystrokeCadenceAssertion, LocalTimestampAssertion, MetadataAssertion, ProcessProofAssertion,
+    SoftwareAgent, VcReferenceAssertion,
 };
 use super::{
     ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_AI_DISCLOSURE, ASSERTION_LABEL_CAWG_IDENTITY,
-    ASSERTION_LABEL_CAWG_TDM, ASSERTION_LABEL_COGNITIVE_MARKERS,
-    ASSERTION_LABEL_EVIDENCE_CHAIN, ASSERTION_LABEL_EXTERNAL_REF, ASSERTION_LABEL_HASH_DATA,
-    ASSERTION_LABEL_INGREDIENT, ASSERTION_LABEL_KEYSTROKE_CADENCE, ASSERTION_LABEL_METADATA,
-    ASSERTION_LABEL_PROCESS_PROOF, ASSERTION_LABEL_VC_EMBEDDED, ASSERTION_LABEL_VC_REFERENCE,
+    ASSERTION_LABEL_CAWG_TDM, ASSERTION_LABEL_COGNITIVE_MARKERS, ASSERTION_LABEL_EVIDENCE_CHAIN,
+    ASSERTION_LABEL_EXTERNAL_REF, ASSERTION_LABEL_HASH_DATA, ASSERTION_LABEL_INGREDIENT,
+    ASSERTION_LABEL_KEYSTROKE_CADENCE, ASSERTION_LABEL_METADATA, ASSERTION_LABEL_PROCESS_PROOF,
+    ASSERTION_LABEL_VC_EMBEDDED, ASSERTION_LABEL_VC_REFERENCE,
 };
 
 /// C2PA 2.4 spec version for claim_generator_info.
@@ -55,6 +55,7 @@ pub struct C2paManifestBuilder {
     evidence_chain: Option<EvidenceChainAssertion>,
     vc_embedded_json: Option<String>,
     timestamp_token: Option<Vec<u8>>,
+    created_at: Option<String>,
 }
 
 impl C2paManifestBuilder {
@@ -90,6 +91,7 @@ impl C2paManifestBuilder {
             evidence_chain: None,
             vc_embedded_json: None,
             timestamp_token: None,
+            created_at: None,
         }
     }
 
@@ -176,7 +178,6 @@ impl C2paManifestBuilder {
         self
     }
 
-
     /// Set C2PA ingredients representing revision history.
     pub fn ingredients(mut self, ingredients: Vec<C2paIngredient>) -> Self {
         self.ingredients = ingredients;
@@ -245,6 +246,24 @@ impl C2paManifestBuilder {
         self
     }
 
+    /// Set the manifest creation timestamp (RFC 3339) for the `c2pa.created`
+    /// action. Defaults to the current time when unset; a fixed value makes the
+    /// built manifest byte-deterministic, which the text-embedding soft-binding
+    /// fixpoint relies on.
+    pub fn created_at(mut self, ts_rfc3339: String) -> Self {
+        self.created_at = Some(ts_rfc3339);
+        self
+    }
+
+    /// Set the creation timestamp only if one has not already been set, so a
+    /// caller-supplied value takes precedence.
+    pub fn created_at_if_unset(mut self, ts_rfc3339: String) -> Self {
+        if self.created_at.is_none() {
+            self.created_at = Some(ts_rfc3339);
+        }
+        self
+    }
+
     pub fn build_jumbf(self, signer: &dyn EvidenceSigner) -> Result<Vec<u8>> {
         let manifest = self.build_manifest(signer)?;
         encode_jumbf(&manifest)
@@ -257,7 +276,10 @@ impl C2paManifestBuilder {
         process_proof.composition_mode = self.composition_mode;
         process_proof.writing_mode = self.writing_mode;
 
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = self
+            .created_at
+            .clone()
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
         let actions_assertion = ActionsAssertion {
             actions: vec![Action {
@@ -270,7 +292,8 @@ impl C2paManifestBuilder {
                 })),
                 parameters: Some(ActionParameters {
                     description: Some(
-                        "Document authored with WritersProof Proof-of-Effort witnessing".to_string(),
+                        "Document authored with WritersProof Proof-of-Effort witnessing"
+                            .to_string(),
                     ),
                 }),
             }],
@@ -287,15 +310,18 @@ impl C2paManifestBuilder {
         };
 
         // Build the evidence chain from checkpoints (auto-generate if not set).
-        let evidence_chain = self.evidence_chain
+        let evidence_chain = self
+            .evidence_chain
             .unwrap_or_else(|| EvidenceChainAssertion::from_evidence(&self.evidence_packet));
 
         // Built once; same bytes are hashed for the claim and embedded in JUMBF.
         let hash_data_box =
             build_assertion_jumbf_cbor(ASSERTION_LABEL_HASH_DATA, &hash_data_assertion)?;
         let actions_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_ACTIONS, &actions_assertion)?;
-        let process_proof_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_PROCESS_PROOF, &process_proof)?;
-        let evidence_chain_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_EVIDENCE_CHAIN, &evidence_chain)?;
+        let process_proof_box =
+            build_assertion_jumbf_cbor(ASSERTION_LABEL_PROCESS_PROOF, &process_proof)?;
+        let evidence_chain_box =
+            build_assertion_jumbf_cbor(ASSERTION_LABEL_EVIDENCE_CHAIN, &evidence_chain)?;
 
         let manifest_label = &self.manifest_label;
 
@@ -321,19 +347,27 @@ impl C2paManifestBuilder {
 
         // Keystroke cadence assertion (optional, Pro tier).
         if let Some(ref cadence) = self.keystroke_cadence {
-            let cadence_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_KEYSTROKE_CADENCE, cadence)?;
+            let cadence_box =
+                build_assertion_jumbf_cbor(ASSERTION_LABEL_KEYSTROKE_CADENCE, cadence)?;
             push_hashed_assertion(
-                &mut assertion_boxes, &mut created_assertions,
-                cadence_box, manifest_label, ASSERTION_LABEL_KEYSTROKE_CADENCE,
+                &mut assertion_boxes,
+                &mut created_assertions,
+                cadence_box,
+                manifest_label,
+                ASSERTION_LABEL_KEYSTROKE_CADENCE,
             );
         }
 
         // Cognitive markers assertion (optional, Pro tier).
         if let Some(ref markers) = self.cognitive_markers {
-            let markers_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_COGNITIVE_MARKERS, markers)?;
+            let markers_box =
+                build_assertion_jumbf_cbor(ASSERTION_LABEL_COGNITIVE_MARKERS, markers)?;
             push_hashed_assertion(
-                &mut assertion_boxes, &mut created_assertions,
-                markers_box, manifest_label, ASSERTION_LABEL_COGNITIVE_MARKERS,
+                &mut assertion_boxes,
+                &mut created_assertions,
+                markers_box,
+                manifest_label,
+                ASSERTION_LABEL_COGNITIVE_MARKERS,
             );
         }
 
@@ -343,8 +377,11 @@ impl C2paManifestBuilder {
                 .map_err(|e| Error::Serialization(format!("VC JSON parse: {e}")))?;
             let vc_box = build_assertion_jumbf_json(ASSERTION_LABEL_VC_EMBEDDED, &vc_value)?;
             push_hashed_assertion(
-                &mut assertion_boxes, &mut created_assertions,
-                vc_box, manifest_label, ASSERTION_LABEL_VC_EMBEDDED,
+                &mut assertion_boxes,
+                &mut created_assertions,
+                vc_box,
+                manifest_label,
+                ASSERTION_LABEL_VC_EMBEDDED,
             );
         }
 
@@ -373,7 +410,9 @@ impl C2paManifestBuilder {
                 self.evidence_bytes.clone()
             } else {
                 crate::codec::encode_evidence(&self.evidence_packet).map_err(|e| {
-                    Error::Serialization(format!("C2PA: failed to re-encode evidence with tag: {e}"))
+                    Error::Serialization(format!(
+                        "C2PA: failed to re-encode evidence with tag: {e}"
+                    ))
                 })?
             };
             let evidence_hash = Sha256::digest(&tagged_evidence);
@@ -422,8 +461,7 @@ impl C2paManifestBuilder {
 
         // c2pa.ai-disclosure assertion (§12.8)
         if let Some(ref disclosure) = self.ai_disclosure {
-            let ai_box =
-                build_assertion_jumbf_json(ASSERTION_LABEL_AI_DISCLOSURE, disclosure)?;
+            let ai_box = build_assertion_jumbf_json(ASSERTION_LABEL_AI_DISCLOSURE, disclosure)?;
             push_hashed_assertion(
                 &mut assertion_boxes,
                 &mut created_assertions,
@@ -432,7 +470,6 @@ impl C2paManifestBuilder {
                 ASSERTION_LABEL_AI_DISCLOSURE,
             );
         }
-
 
         for (i, ingredient) in self.ingredients.iter().enumerate() {
             let label = format!("{ASSERTION_LABEL_INGREDIENT}.{i}");
@@ -480,10 +517,8 @@ impl C2paManifestBuilder {
         }
 
         if let Some(ref local_ts) = self.local_timestamp {
-            let ts_box = build_assertion_jumbf_json(
-                super::ASSERTION_LABEL_LOCAL_TIMESTAMP,
-                local_ts,
-            )?;
+            let ts_box =
+                build_assertion_jumbf_json(super::ASSERTION_LABEL_LOCAL_TIMESTAMP, local_ts)?;
             push_hashed_assertion(
                 &mut assertion_boxes,
                 &mut created_assertions,
@@ -509,7 +544,10 @@ impl C2paManifestBuilder {
 
         // §13.2: COSE_Sign1 with x5chain in protected header (C2PA 2.4)
         // cert_der takes precedence; cert_chain[0] is used as fallback end-entity cert.
-        let cert_der = self.cert_der.as_deref().or_else(|| self.cert_chain.first().map(|v| v.as_slice()));
+        let cert_der = self
+            .cert_der
+            .as_deref()
+            .or_else(|| self.cert_chain.first().map(|v| v.as_slice()));
         let claim_cbor = ciborium_to_vec(&claim)?;
         let mut signature = sign_c2pa_claim(&claim_cbor, signer, cert_der)?;
 

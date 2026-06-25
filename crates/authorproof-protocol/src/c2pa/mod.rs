@@ -6,14 +6,15 @@
 //! per C2PA 2.2 specification (2025-05-01). The manifest uses JUMBF
 //! (ISO 19566-5) box format with COSE_Sign1 signatures.
 
+mod builder;
 pub mod cert;
 pub mod embed;
+mod jumbf;
 pub mod standalone;
+pub mod text_attest;
 pub mod text_embed;
 pub mod timestamp;
 pub mod trust;
-mod builder;
-mod jumbf;
 mod types;
 mod validation;
 
@@ -21,21 +22,24 @@ mod validation;
 mod tests;
 
 pub use builder::C2paManifestBuilder;
-pub use embed::{embed_in_pdf, embed_manifest_in_pdf, hash_with_exclusions, sidecar_path, supports_embedding};
-pub use standalone::StandaloneManifestBuilder;
+pub use embed::{
+    embed_in_pdf, embed_manifest_in_pdf, hash_with_exclusions, sidecar_path, supports_embedding,
+};
 pub use jumbf::{decode_jumbf, encode_jumbf, verify_jumbf_structure};
+pub use standalone::StandaloneManifestBuilder;
+pub use text_attest::{attest_text, verify_text, TextVerification};
 pub use trust::{evaluate_trust, TrustLevel};
 pub use types::{
     Action, ActionParameters, ActionsAssertion, AiContentProfile, AiDisclosureAssertion,
-    AssertionMetadata, AssetInfo, AssetType, C2paClaim, C2paManifest, CadenceCorrections,
-    CadenceDwell, CadenceFatigue, CadenceSpectral, CadenceTiming, ClaimGeneratorInfo,
-    CognitiveLoadSignals, CognitiveMarkersAssertion, DataSource, EditMetricSignals,
-    ErrorEcologySignals, EvidenceChainAssertion, ExclusionRange, ExternalReferenceAssertion,
-    FocusSignals, ForensicSignalScores, HashDataAssertion, HashedExtUri, HashedUri,
-    HashExclusion, JitterSeal, JumbfInfo, KeystrokeCadenceAssertion, LikelihoodModelSignals,
-    LocalTimestampAssertion, MetadataAssertion, C2paIngredient, IngredientMetadata,
-    ProcessProofAssertion, RevisionTopologySignals, RevisionTypeBreakdown,
-    SessionStatsSignals, SoftwareAgent, ValidationResult, VcReferenceAssertion,
+    AssertionMetadata, AssetInfo, AssetType, C2paClaim, C2paIngredient, C2paManifest,
+    CadenceCorrections, CadenceDwell, CadenceFatigue, CadenceSpectral, CadenceTiming,
+    ClaimGeneratorInfo, CognitiveLoadSignals, CognitiveMarkersAssertion, DataSource,
+    EditMetricSignals, ErrorEcologySignals, EvidenceChainAssertion, ExclusionRange,
+    ExternalReferenceAssertion, FocusSignals, ForensicSignalScores, HashDataAssertion,
+    HashExclusion, HashedExtUri, HashedUri, IngredientMetadata, JitterSeal, JumbfInfo,
+    KeystrokeCadenceAssertion, LikelihoodModelSignals, LocalTimestampAssertion, MetadataAssertion,
+    ProcessProofAssertion, RevisionTopologySignals, RevisionTypeBreakdown, SessionStatsSignals,
+    SoftwareAgent, ValidationResult, VcReferenceAssertion,
 };
 pub use validation::{validate_manifest, verify_manifest_signature, verify_manifest_with_key};
 
