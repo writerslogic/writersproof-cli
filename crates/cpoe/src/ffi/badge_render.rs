@@ -15,7 +15,7 @@
 use crate::ffi::types::catch_ffi_panic;
 use badge_fingerprint::{render_badge_svg, short_id_from_identifier, Mode, Tier};
 
-/// Render the canonical badge SVG for a `WP-XXXX-XXXX` short-id.
+/// Render the canonical badge SVG for a `WP-XXX-XXX-XXX-C` short-id.
 ///
 /// `mode` accepts the engine's `AuthorshipMode` slugs (`human-authored`,
 /// `ai-assisted-disclosed`, `human-revised`); `tier` accepts
@@ -30,7 +30,7 @@ pub fn ffi_render_badge_svg(short_id: String, mode: String, tier: String) -> Str
     })
 }
 
-/// Derive the `WP-XXXX-XXXX` short-id from an identifier (an author DID, or a
+/// Derive the `WP-XXX-XXX-XXX-C` short-id from an identifier (an author DID, or a
 /// `verify.writersproof.com` credential id) and render the canonical badge SVG.
 ///
 /// Convenience for the apps: the credential carries the author DID, so the badge
@@ -43,7 +43,7 @@ pub fn ffi_render_badge_for_identifier(identifier: String, mode: String, tier: S
     })
 }
 
-/// Derive the canonical `WP-XXXX-XXXX` short-id from an identifier (author DID or
+/// Derive the canonical `WP-XXX-XXX-XXX-C` short-id from an identifier (author DID or
 /// verify-portal id). Lets the app display and link the same short-id carried in
 /// the signed credential.
 #[cfg_attr(feature = "ffi", uniffi::export)]

@@ -106,7 +106,7 @@ const PAPER: &str = "#ffffff";
 
 /// Render the full badge for an id. Frame identical across ids; print varies.
 pub fn render_badge_svg(short_id: &str, mode: Mode, tier: Tier) -> String {
-    let f = derive_features(short_id);
+    let f = derive_features(&fp_seed(short_id));
     let ink = tier.ink();
     let mut s = String::with_capacity(20_000);
 
@@ -146,7 +146,7 @@ pub fn render_badge_svg(short_id: &str, mode: Mode, tier: Tier) -> String {
 
 /// Render only the fingerprint (slot-sized square) for isolated testing.
 pub fn render_fingerprint_svg(short_id: &str) -> String {
-    let f = derive_features(short_id);
+    let f = derive_features(&fp_seed(short_id));
     let mut s = String::with_capacity(12_000);
     write!(
         s,
@@ -412,6 +412,14 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Fingerprint seed: the canonical 9-symbol payload of a conformant short-id
+/// (prefix/hyphens/check stripped), or the raw string for non-conformant input.
+/// Hashing the payload — not the display form — lets the prefix or check symbol
+/// evolve without re-keying any issued badge art (spec §8.1).
+fn fp_seed(short_id: &str) -> String {
+    crate::short_id::validate(short_id).unwrap_or_else(|| short_id.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +436,21 @@ mod tests {
         let a = render_fingerprint_svg("WP-1234-5678");
         let b = render_fingerprint_svg("WP-1234-5678");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn fingerprint_hashes_payload_not_display_form() {
+        // The print is f(payload): a conformant display short-id and its bare
+        // payload yield the same fingerprint, so prefix/check can change without
+        // re-keying art.
+        let did = "did:key:z6MkExample";
+        let display = crate::short_id::short_id_from_identifier(did);
+        let payload = crate::short_id::payload_from_identifier(did);
+        assert_ne!(display, payload);
+        assert_eq!(
+            render_fingerprint_svg(&display),
+            render_fingerprint_svg(&payload)
+        );
     }
 
     #[test]
