@@ -74,7 +74,12 @@ pub fn attest_text(
 ) -> Result<String> {
     let orig_len = text.len() as u64;
     let placeholder_hash = [0u8; 32];
-    let builder = builder.format("text/plain");
+    // Stamp one creation timestamp so every fixpoint rebuild is byte-identical;
+    // a fresh per-build `Utc::now()` could vary the manifest length and trip the
+    // stability check below. A caller-supplied `created_at` takes precedence.
+    let builder = builder
+        .format("text/plain")
+        .created_at_if_unset(chrono::Utc::now().to_rfc3339());
 
     // Fixpoint: the exclusion `length` field changes the manifest size, which
     // changes the wrapper length (e_target). Iterate until e_target is stable.
@@ -386,5 +391,74 @@ mod tests {
             let v = verify_text(&watermarked).expect("verify");
             assert!(v.is_valid(), "must verify for text len {}", t.len());
         }
+    }
+
+    #[test]
+    fn deterministic_with_fixed_timestamp() {
+        let key = signer();
+        let text = "Determinism requires a fixed creation timestamp.";
+        let ts = "2024-06-01T12:00:00+00:00".to_string();
+        let a = attest_text(text, builder().created_at(ts.clone()), &key).expect("attest a");
+        let b = attest_text(text, builder().created_at(ts), &key).expect("attest b");
+        assert_eq!(
+            a, b,
+            "same input + fixed timestamp must yield an identical watermark"
+        );
+        assert!(verify_text(&a).expect("verify").is_valid());
+    }
+
+    #[test]
+    fn wrapper_conforms_to_c2pa_text_spec() {
+        // Locks our output to the C2PA "Embedding Manifests into Unstructured
+        // Text" carrier format. Full third-party interop (e.g. another vendor's
+        // C2PA-text verifier) requires an external tool; this asserts the
+        // on-the-wire format such a verifier consumes.
+        let key = signer();
+        let text = "conformance check";
+        let watermarked = attest_text(text, builder(), &key).expect("attest");
+        let wrapper = &watermarked[text.len()..];
+
+        let mut chars = wrapper.chars();
+        assert_eq!(
+            chars.next(),
+            Some('\u{FEFF}'),
+            "wrapper must start with ZWNBSP"
+        );
+        for c in chars {
+            let cp = c as u32;
+            assert!(
+                (0xFE00..=0xFE0F).contains(&cp) || (0xE0100..=0xE01EF).contains(&cp),
+                "wrapper must contain only variation selectors; found U+{cp:04X}"
+            );
+        }
+
+        // The first 9 decoded bytes are the wrapper header: magic + version.
+        let header: Vec<u8> = wrapper
+            .chars()
+            .skip(1)
+            .take(9)
+            .map(|c| {
+                let cp = c as u32;
+                if (0xFE00..=0xFE0F).contains(&cp) {
+                    (cp - 0xFE00) as u8
+                } else {
+                    (cp - 0xE0100) as u8 + 16
+                }
+            })
+            .collect();
+        assert_eq!(&header[..8], b"C2PATXT\0", "magic bytes");
+        assert_eq!(header[8], 1, "wrapper version");
+
+        // Decodes to a manifest with a claim generator and a hash.data binding.
+        let jumbf = decode_text_manifest(&watermarked).expect("decode wrapper");
+        let manifest = decode_jumbf(&jumbf).expect("decode jumbf");
+        assert!(
+            !manifest.claim.claim_generator_info.name.is_empty(),
+            "claim generator present"
+        );
+        assert!(
+            extract_hash_data(&manifest).is_some(),
+            "hash.data assertion present"
+        );
     }
 }
