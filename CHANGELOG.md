@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Added
+- Human-authorship C2PA manifest embedded in plain text (#36)
 - Wasm bindings for validate + payload; seed features from payload
 - Coin-seal redesign + Crockford-32 9-char short-id with check
 - VC-JWT (JOSE EdDSA) securing path for 1EdTech conformance
@@ -23,6 +24,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Derive fingerprint from payload-only short-id; sync docs to v2
 
 ### Documentation
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
