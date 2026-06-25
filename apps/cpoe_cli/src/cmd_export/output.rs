@@ -16,8 +16,6 @@ use cpoe::war;
 
 use crate::output::OutputMode;
 
-
-
 /// Parameters for evidence output.
 pub(super) struct EvidenceOutputContext<'a> {
     pub(super) format_lower: &'a str,
@@ -40,8 +38,7 @@ pub(super) struct EvidenceOutputContext<'a> {
 
 pub(super) fn write_atomic(out_path: &Path, data: &[u8]) -> Result<()> {
     let dir = out_path.parent().unwrap_or(Path::new("."));
-    cpoe::store::check_disk_space(dir)
-        .context("pre-write disk space check")?;
+    cpoe::store::check_disk_space(dir).context("pre-write disk space check")?;
     let mut tmp =
         tempfile::NamedTempFile::new_in(dir).context("create temp file for atomic write")?;
     tmp.write_all(data).context("write evidence data")?;
@@ -186,8 +183,8 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
         "c2pa" => {
             use cpoe::authorproof_protocol::c2pa::C2paManifestBuilder;
             use cpoe::authorproof_protocol::rfc::{
-                self as proto_rfc, Checkpoint as ProtoCheckpoint,
-                DocumentRef as ProtoDocumentRef, HashValue as ProtoHashValue,
+                self as proto_rfc, Checkpoint as ProtoCheckpoint, DocumentRef as ProtoDocumentRef,
+                HashValue as ProtoHashValue,
             };
             use std::io::Read as _;
 
@@ -255,19 +252,15 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 baseline_verification: None,
             };
 
-            let evidence_cbor =
-                cpoe::authorproof_protocol::encode_evidence(&proto_packet)
-                    .map_err(|e| anyhow!("CBOR encode evidence packet: {}", e))?;
+            let evidence_cbor = cpoe::authorproof_protocol::encode_evidence(&proto_packet)
+                .map_err(|e| anyhow!("CBOR encode evidence packet: {}", e))?;
 
-            let mut doc_file = std::fs::File::open(file_path).with_context(|| {
-                format!("open document for hashing: {}", file_path.display())
-            })?;
+            let mut doc_file = std::fs::File::open(file_path)
+                .with_context(|| format!("open document for hashing: {}", file_path.display()))?;
             let mut hasher = sha2::Sha256::new();
             let mut buf = [0u8; 8192];
             loop {
-                let n = doc_file
-                    .read(&mut buf)
-                    .context("read document for hash")?;
+                let n = doc_file.read(&mut buf).context("read document for hash")?;
                 if n == 0 {
                     break;
                 }
@@ -280,13 +273,10 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "document".to_string());
 
-            let mut builder = C2paManifestBuilder::new(
-                proto_packet,
-                evidence_cbor.clone(),
-                doc_hash,
-            )
-            .document_filename(&doc_filename)
-            .title(&doc_filename);
+            let mut builder =
+                C2paManifestBuilder::new(proto_packet, evidence_cbor.clone(), doc_hash)
+                    .document_filename(&doc_filename)
+                    .title(&doc_filename);
 
             if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
                 let mime = match ext.to_lowercase().as_str() {
@@ -311,7 +301,12 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
             let regions = cpoe::forensics::build_edit_regions(events);
             let analysis_ctx = cpoe::forensics::AnalysisContext::default();
             let metrics = cpoe::forensics::analyze_forensics_ext(
-                &event_data, &regions, None, None, None, &analysis_ctx,
+                &event_data,
+                &regions,
+                None,
+                None,
+                None,
+                &analysis_ctx,
             );
             builder = cpoe::ffi::evidence_derivative::enrich_c2pa_builder(builder, &metrics);
 
@@ -320,28 +315,21 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 serde_json::from_value(ctx.packet.clone())
                     .context("create evidence packet for assertion")?;
             let policy = cpoe::trust_policy::profiles::basic();
-            if let Ok(block) = war::Block::from_packet_appraised(
-                &evidence_packet_engine,
-                ctx.signer,
-                &policy,
-            ) {
+            if let Ok(block) =
+                war::Block::from_packet_appraised(&evidence_packet_engine, ctx.signer, &policy)
+            {
                 if let Some(ear) = block.ear.as_ref() {
                     let provider = cpoe::tpm::detect_provider();
                     if let Some(did_suffix) =
-                        cpoe::identity::did_key_from_public(
-                            &ctx.signer.public_key(),
-                        )
+                        cpoe::identity::did_key_from_public(&ctx.signer.public_key())
                     {
-                        let author_did =
-                            format!("did:key:{}", did_suffix);
-                        if let Ok(vc) =
-                            war::profiles::vc::to_signed_verifiable_credential(
-                                ear, &author_did, &*provider,
-                            )
-                        {
-                            if let Ok(vc_json) =
-                                serde_json::to_string(&vc)
-                            {
+                        let author_did = format!("did:key:{}", did_suffix);
+                        if let Ok(vc) = war::profiles::vc::to_signed_verifiable_credential(
+                            ear,
+                            &author_did,
+                            &*provider,
+                        ) {
+                            if let Ok(vc_json) = serde_json::to_string(&vc) {
                                 builder = builder.vc_embedded(vc_json);
                             }
                         }
@@ -357,10 +345,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
 
             if verbose {
                 println!();
-                println!(
-                    "C2PA JUMBF manifest exported to: {}",
-                    out_path.display()
-                );
+                println!("C2PA JUMBF manifest exported to: {}", out_path.display());
                 println!("  Format: JUMBF binary sidecar (ISO 19566-5)");
                 println!("  Document hash: {}", hex::encode(doc_hash));
                 println!("  Checkpoints: {}", events.len());
@@ -368,7 +353,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 println!("  Evidence CBOR: {} bytes", evidence_cbor.len());
             }
         }
-        "openbadge" => {
+        "openbadge" | "openbadge-jwt" => {
             let evidence_packet: evidence::Packet = serde_json::from_value(ctx.packet.clone())
                 .context("create evidence packet for OpenBadge export")?;
             let policy = cpoe::trust_policy::profiles::basic();
@@ -414,34 +399,54 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
             );
 
             let provider = cpoe::tpm::detect_provider();
-            let mut badge = war::profiles::openbadge::to_signed_open_badge_credential(
-                ear,
-                &author_did,
-                mode,
-                &*provider,
-            )
-            .map_err(|e| anyhow!("build OpenBadge credential: {e}"))?;
 
-            let signals = cpoe::ffi::report::build_vc_forensic_signals(&metrics);
-            badge.enrich_forensic_signals(writing_mode, comp_mode, signals);
+            if *format_lower == "openbadge-jwt" {
+                // VC-JWT (JOSE / EdDSA) — the 1EdTech-certified JWT Proof Format.
+                let jwt = war::profiles::openbadge::to_jwt_secured_open_badge(
+                    ear,
+                    &author_did,
+                    mode,
+                    &*provider,
+                )
+                .map_err(|e| anyhow!("build OpenBadge VC-JWT: {e}"))?;
+                write_atomic(out_path, jwt.as_bytes())?;
 
-            let json =
-                serde_json::to_string_pretty(&badge).context("serialize OpenBadge credential")?;
-            write_atomic(out_path, json.as_bytes())?;
+                if verbose {
+                    println!();
+                    println!("Open Badges 3.0 VC-JWT exported to: {}", out_path.display());
+                    println!("  Subject: {author_did}");
+                    println!("  Checkpoints: {}", events.len());
+                }
+            } else {
+                let mut badge = war::profiles::openbadge::to_signed_open_badge_credential(
+                    ear,
+                    &author_did,
+                    mode,
+                    &*provider,
+                )
+                .map_err(|e| anyhow!("build OpenBadge credential: {e}"))?;
 
-            if verbose {
-                println!();
-                println!(
-                    "Open Badges 3.0 credential exported to: {}",
-                    out_path.display()
-                );
-                println!("  Subject: {}", badge.credential_subject.id);
-                println!(
-                    "  Achievement: {}",
-                    badge.credential_subject.achievement.name
-                );
-                println!("  Issuer: {} ({})", badge.issuer.name, badge.issuer.id);
-                println!("  Checkpoints: {}", events.len());
+                let signals = cpoe::ffi::report::build_vc_forensic_signals(&metrics);
+                badge.enrich_forensic_signals(writing_mode, comp_mode, signals);
+
+                let json = serde_json::to_string_pretty(&badge)
+                    .context("serialize OpenBadge credential")?;
+                write_atomic(out_path, json.as_bytes())?;
+
+                if verbose {
+                    println!();
+                    println!(
+                        "Open Badges 3.0 credential exported to: {}",
+                        out_path.display()
+                    );
+                    println!("  Subject: {}", badge.credential_subject.id);
+                    println!(
+                        "  Achievement: {}",
+                        badge.credential_subject.achievement.name
+                    );
+                    println!("  Issuer: {} ({})", badge.issuer.name, badge.issuer.id);
+                    println!("  Checkpoints: {}", events.len());
+                }
             }
         }
         "md" | "markdown" => {
@@ -552,7 +557,11 @@ pub(super) fn build_war_report(
         0.0
     } else {
         let s = events.iter().map(|e| e.forensic_score).sum::<f64>() / events.len() as f64;
-        if s.is_finite() { s } else { 0.0 }
+        if s.is_finite() {
+            s
+        } else {
+            0.0
+        }
     };
     let score = (avg_forensic * 100.0).clamp(0.0, 100.0) as u32;
     let verdict = Verdict::from_score_with_events(score, events.len());
@@ -817,11 +826,17 @@ fn enrich_report_vc(
     let regions = cpoe::forensics::build_edit_regions(events);
     let analysis_ctx = cpoe::forensics::AnalysisContext::default();
     let metrics = cpoe::forensics::analyze_forensics_ext(
-        &event_data, &regions, None, None, None, &analysis_ctx,
+        &event_data,
+        &regions,
+        None,
+        None,
+        None,
+        &analysis_ctx,
     );
     let writing_mode = metrics.writing_mode.as_ref().map(|wm| wm.mode.to_string());
     let comp_mode = metrics
-        .composition_mode.as_ref()
+        .composition_mode
+        .as_ref()
         .and_then(|c| c.dominant_mode)
         .map(|m| m.to_string());
     let signals = cpoe::ffi::report::build_vc_forensic_signals(&metrics);
@@ -845,20 +860,44 @@ fn build_c2pa_forensic_signals(
     }
     Some(war::profiles::c2pa::C2paForensicSignals {
         cognitive_load: metrics
-            .cognitive_load.as_ref().map(|c| c.composite_score).unwrap_or(0.0),
+            .cognitive_load
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
         revision_topology: metrics
-            .revision_topology.as_ref().map(|r| r.composite_score).unwrap_or(0.0),
+            .revision_topology
+            .as_ref()
+            .map(|r| r.composite_score)
+            .unwrap_or(0.0),
         error_ecology: metrics
-            .error_ecology.as_ref().map(|e| e.composite_score).unwrap_or(0.0),
+            .error_ecology
+            .as_ref()
+            .map(|e| e.composite_score)
+            .unwrap_or(0.0),
         likelihood_model: metrics
-            .likelihood_model.as_ref().map(|l| l.session_p_cognitive).unwrap_or(0.0),
+            .likelihood_model
+            .as_ref()
+            .map(|l| l.session_p_cognitive)
+            .unwrap_or(0.0),
         composition_mode: metrics
-            .composition_mode.as_ref().map(|c| c.composite_score).unwrap_or(0.0),
+            .composition_mode
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
         detour_ratio: metrics
-            .revision_topology.as_ref().map(|r| r.detour_ratio).unwrap_or(0.0),
+            .revision_topology
+            .as_ref()
+            .map(|r| r.detour_ratio)
+            .unwrap_or(0.0),
         leading_edge_divergence: metrics
-            .revision_topology.as_ref().map(|r| r.leading_edge_divergence).unwrap_or(0.0),
+            .revision_topology
+            .as_ref()
+            .map(|r| r.leading_edge_divergence)
+            .unwrap_or(0.0),
         insertion_point_entropy: metrics
-            .revision_topology.as_ref().map(|r| r.insertion_point_entropy).unwrap_or(0.0),
+            .revision_topology
+            .as_ref()
+            .map(|r| r.insertion_point_entropy)
+            .unwrap_or(0.0),
     })
 }

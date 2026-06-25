@@ -585,6 +585,154 @@ pub fn verify_cose_secured_open_badge(
         .map_err(|e| Error::evidence(format!("badge deserialization failed: {e}")))
 }
 
+/// JOSE `typ` header value for an Open Badges 3.0 VC-JWT, per the OB 3.0
+/// Implementation Guide (§8.2) JWT Proof Format examples.
+const OB_JWT_TYP: &str = "JWT";
+
+/// Registered media type for a JWT-secured Verifiable Credential.
+pub const OB_JWT_MEDIA_TYPE: &str = "application/vc+ld+json+jwt";
+
+/// Produce a VC-JWT (JOSE / `EdDSA`) secured Open Badges 3.0 credential.
+///
+/// This is the securing mechanism 1EdTech's OB 3.0 conformance certifies (the
+/// JWT Proof Format), alongside Data Integrity `eddsa-rdfc-2022`. The embedded
+/// `eddsa-jcs-2022` proof is NOT part of the 1EdTech-certified set, so this path
+/// is what an OB 3.0 verifier / certification harness consumes.
+///
+/// The compact JWS is `base64url(header).base64url(payload).base64url(sig)`:
+/// - Header: `{"alg":"EdDSA","typ":"JWT","kid":"<did>#key-1","jwk":{OKP/Ed25519}}`.
+///   The signer's public key is embedded as a JWK so verification is
+///   self-contained (mirroring the OB 3.0 impl-guide example).
+/// - Payload: the credential object at the top level (VCDM 2.0 style), plus the
+///   duplicated registered claims `iss` / `sub` / `jti` / `nbf` / `exp` / `iat`
+///   per the OB 3.0 JWT serialization.
+/// - Signature: `EdDSA` over the ASCII signing input by the device key.
+pub fn to_jwt_secured_open_badge(
+    ear: &EarToken,
+    author_did: &str,
+    mode: AuthorshipMode,
+    signer: &dyn tpm::Provider,
+) -> Result<String> {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+    let badge = build_open_badge_core(ear, author_did, mode)?;
+
+    let pub_key = signer.public_key();
+    if pub_key.len() != 32 {
+        return Err(Error::crypto(format!(
+            "expected 32-byte Ed25519 public key, got {}",
+            pub_key.len()
+        )));
+    }
+    let jwk = serde_json::json!({
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": URL_SAFE_NO_PAD.encode(&pub_key),
+    });
+    let header = serde_json::json!({
+        "alg": "EdDSA",
+        "typ": OB_JWT_TYP,
+        "kid": format!("{author_did}#key-1"),
+        "jwk": jwk,
+    });
+
+    // Credential object as the payload, augmented with the registered claims.
+    let mut payload = serde_json::to_value(&badge)
+        .map_err(|e| Error::evidence(format!("badge serialization failed: {e}")))?;
+    let exp = ear
+        .iat
+        .checked_add(MAX_BADGE_VALIDITY_DAYS * 86_400)
+        .ok_or_else(|| Error::evidence("EAR iat + validity overflows i64"))?;
+    if let serde_json::Value::Object(map) = &mut payload {
+        map.insert("iss".into(), serde_json::json!(badge.issuer.id));
+        map.insert("sub".into(), serde_json::json!(badge.credential_subject.id));
+        map.insert("jti".into(), serde_json::json!(badge.id));
+        map.insert("iat".into(), serde_json::json!(ear.iat));
+        map.insert("nbf".into(), serde_json::json!(ear.iat));
+        map.insert("exp".into(), serde_json::json!(exp));
+    } else {
+        return Err(Error::evidence("badge did not serialize to a JSON object"));
+    }
+
+    let header_b64 = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&header)
+            .map_err(|e| Error::evidence(format!("JWT header serialization failed: {e}")))?,
+    );
+    let payload_b64 = URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&payload)
+            .map_err(|e| Error::evidence(format!("JWT payload serialization failed: {e}")))?,
+    );
+
+    let signing_input = format!("{header_b64}.{payload_b64}");
+    let signature = signer
+        .sign(signing_input.as_bytes())
+        .map_err(|e| Error::crypto(format!("JWT signing failed: {e}")))?;
+    if signature.len() != 64 {
+        return Err(Error::crypto(format!(
+            "expected 64-byte Ed25519 signature, got {}",
+            signature.len()
+        )));
+    }
+    let sig_b64 = URL_SAFE_NO_PAD.encode(&signature);
+
+    Ok(format!("{signing_input}.{sig_b64}"))
+}
+
+/// Verify a VC-JWT (JOSE / `EdDSA`) secured Open Badge and return the credential.
+///
+/// Verifies the `EdDSA` signature over the compact JWS with `verifying_key`,
+/// then deserializes the payload into an [`OpenBadgeCredential`] (the registered
+/// JWT claims are ignored by the credential deserializer).
+pub fn verify_jwt_secured_open_badge(
+    jwt: &str,
+    verifying_key: &ed25519_dalek::VerifyingKey,
+) -> Result<OpenBadgeCredential> {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use ed25519_dalek::Verifier;
+
+    let parts: Vec<&str> = jwt.split('.').collect();
+    if parts.len() != 3 {
+        return Err(Error::crypto(format!(
+            "malformed JWT: expected 3 dot-separated parts, got {}",
+            parts.len()
+        )));
+    }
+
+    let header_bytes = URL_SAFE_NO_PAD
+        .decode(parts[0])
+        .map_err(|e| Error::crypto(format!("JWT header base64url decode failed: {e}")))?;
+    let header: serde_json::Value = serde_json::from_slice(&header_bytes)
+        .map_err(|e| Error::crypto(format!("JWT header JSON decode failed: {e}")))?;
+    match header.get("alg").and_then(|a| a.as_str()) {
+        Some("EdDSA") => {}
+        other => {
+            return Err(Error::crypto(format!(
+                "unsupported JWT alg: {other:?}; only EdDSA is supported"
+            )))
+        }
+    }
+
+    let sig_bytes = URL_SAFE_NO_PAD
+        .decode(parts[2])
+        .map_err(|e| Error::crypto(format!("JWT signature base64url decode failed: {e}")))?;
+    let signature = ed25519_dalek::Signature::from_slice(&sig_bytes)
+        .map_err(|e| Error::crypto(format!("invalid JWT signature: {e}")))?;
+
+    let signing_input = format!("{}.{}", parts[0], parts[1]);
+    verifying_key
+        .verify(signing_input.as_bytes(), &signature)
+        .map_err(|e| Error::crypto(format!("JWT signature verification failed: {e}")))?;
+
+    let payload_bytes = URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .map_err(|e| Error::crypto(format!("JWT payload base64url decode failed: {e}")))?;
+    serde_json::from_slice(&payload_bytes).map_err(|e| {
+        Error::evidence(format!(
+            "JWT payload is not a valid OpenBadgeCredential: {e}"
+        ))
+    })
+}
+
 impl OpenBadgeCredential {
     /// Enrich the carried process-attestation claims with forensic signals,
     /// mirroring [`super::vc::VerifiableCredential::enrich_forensic_signals`].
@@ -847,6 +995,95 @@ mod tests {
         );
         // COSE-secured credentials carry the proof in the envelope, not inline.
         assert!(decoded.proof.is_none());
+    }
+
+    #[test]
+    fn test_jwt_secured_open_badge_structure() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+        let (ear, _dir) = create_test_ear();
+        let provider = SoftwareProvider::new();
+        let did = "did:key:z6MkBadgeJwt";
+
+        let jwt = to_jwt_secured_open_badge(&ear, did, AuthorshipMode::HumanAuthored, &provider)
+            .expect("jwt");
+
+        let parts: Vec<&str> = jwt.split('.').collect();
+        assert_eq!(parts.len(), 3, "compact JWS has three parts");
+
+        // Header: EdDSA / JWT / embedded OKP Ed25519 JWK.
+        let header: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).unwrap()).unwrap();
+        assert_eq!(header["alg"], "EdDSA");
+        assert_eq!(header["typ"], "JWT");
+        assert_eq!(header["jwk"]["kty"], "OKP");
+        assert_eq!(header["jwk"]["crv"], "Ed25519");
+        assert!(header["jwk"]["x"].as_str().is_some());
+        assert_eq!(header["kid"], format!("{did}#key-1"));
+
+        // Payload: credential at top level + registered claims.
+        let payload: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).unwrap()).unwrap();
+        assert_eq!(payload["sub"], did);
+        assert_eq!(
+            payload["jti"],
+            format!(
+                "{VERIFY_CREDENTIAL_BASE_URL}/{}",
+                badge_fingerprint::short_id_from_identifier(did)
+            )
+        );
+        assert!(payload["iss"].as_str().is_some());
+        assert!(payload["nbf"].as_i64().is_some());
+        assert!(payload["exp"].as_i64().unwrap() > payload["nbf"].as_i64().unwrap());
+        // The OB 3.0 credential shape is preserved in the payload.
+        assert_eq!(payload["type"][1], "OpenBadgeCredential");
+    }
+
+    #[test]
+    fn test_jwt_secured_open_badge_verifies() {
+        let (ear, _dir) = create_test_ear();
+        let provider = SoftwareProvider::new();
+        let did = "did:key:z6MkBadgeJwtVerify";
+
+        let jwt =
+            to_jwt_secured_open_badge(&ear, did, AuthorshipMode::AiAssistedDisclosed, &provider)
+                .expect("jwt");
+
+        let pub_bytes = provider.public_key();
+        let vk = ed25519_dalek::VerifyingKey::from_bytes(
+            pub_bytes.as_slice().try_into().expect("32-byte key"),
+        )
+        .expect("verifying key");
+
+        let badge = verify_jwt_secured_open_badge(&jwt, &vk).expect("verify");
+        assert_eq!(badge.credential_subject.id, did);
+        assert_eq!(badge.credential_type[1], "OpenBadgeCredential");
+        assert_eq!(
+            badge.credential_subject.achievement.name,
+            "AI-Assisted (Disclosed)"
+        );
+    }
+
+    #[test]
+    fn test_jwt_tampered_payload_fails() {
+        let (ear, _dir) = create_test_ear();
+        let provider = SoftwareProvider::new();
+        let did = "did:key:z6MkBadgeJwtTamper";
+
+        let jwt = to_jwt_secured_open_badge(&ear, did, AuthorshipMode::HumanAuthored, &provider)
+            .expect("jwt");
+        let pub_bytes = provider.public_key();
+        let vk = ed25519_dalek::VerifyingKey::from_bytes(pub_bytes.as_slice().try_into().unwrap())
+            .unwrap();
+
+        // Flip the last character of the payload segment.
+        let mut parts: Vec<String> = jwt.split('.').map(String::from).collect();
+        let p = &mut parts[1];
+        let last = p.pop().unwrap();
+        p.push(if last == 'A' { 'B' } else { 'A' });
+        let tampered = parts.join(".");
+
+        assert!(verify_jwt_secured_open_badge(&tampered, &vk).is_err());
     }
 
     #[test]

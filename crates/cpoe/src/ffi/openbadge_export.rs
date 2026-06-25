@@ -80,6 +80,49 @@ pub fn ffi_export_openbadge_json(
     })
 }
 
+/// Export a VC-JWT (JOSE / `EdDSA`) secured Open Badges 3.0 credential.
+///
+/// This is the securing format 1EdTech's OB 3.0 conformance certifies (the JWT
+/// Proof Format). Writes the compact JWS string to `output_path`.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_export_openbadge_jwt(
+    evidence_path: String,
+    document_path: String,
+    output_path: String,
+) -> FfiResult {
+    catch_ffi_panic!(@err FfiResult, {
+    log::debug!(
+        "ffi_export_openbadge_jwt: evidence_path={} document_path={} output_path={}",
+        evidence_path, document_path, output_path
+    );
+
+    let out = try_ffi!(
+        crate::sentinel::helpers::validate_path(&output_path)
+            .map_err(|e| format!("Invalid output path: {e}")),
+        FfiResult
+    );
+
+    let signing_key = try_ffi!(crate::ffi::helpers::load_signing_key(), FfiResult);
+    let provider = crate::tpm::detect_provider();
+
+    let (ear, author_did, report) = try_ffi!(
+        build_ear_and_report_for_path(&evidence_path, &document_path, &signing_key),
+        FfiResult
+    );
+    let mode = openbadge_mode_from_report(&report);
+
+    let jwt = try_ffi!(
+        openbadge::to_jwt_secured_open_badge(&ear, &author_did, mode, &*provider)
+            .map_err(|e| e.to_string()),
+        FfiResult
+    );
+
+    try_ffi!(crate::ffi::helpers::atomic_write(&out, jwt.as_bytes()), FfiResult);
+
+    FfiResult::ok(format!("Exported VC-JWT OpenBadge credential to {}", out.display()))
+    })
+}
+
 /// Export a COSE_Sign1-secured Open Badges 3.0 credential (CBOR).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_openbadge_cbor(
