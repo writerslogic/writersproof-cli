@@ -27,4 +27,4 @@ pub mod wasm;
 
 pub use badge::{render_badge_svg, render_fingerprint_svg, Mode, Tier};
 pub use features::{derive_features, FeatureVector, PatternClass};
-pub use short_id::short_id_from_identifier;
+pub use short_id::{payload_from_identifier, short_id_from_identifier, validate};

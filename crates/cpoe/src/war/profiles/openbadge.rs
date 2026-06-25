@@ -392,11 +392,13 @@ fn build_open_badge_core(
         forensic_signals: None,
     };
 
-    // The badge short-id is derived deterministically from the author DID (the
-    // identifier already carried by the credential), so the verify portal can
-    // recompute it and the fingerprint is bound to a single identity system.
-    let short_id = badge_fingerprint::short_id_from_identifier(author_did);
-    let credential_id = format!("{VERIFY_CREDENTIAL_BASE_URL}/{short_id}");
+    // The credential id / verify URL uses the canonical PAYLOAD (the 9-symbol
+    // Crockford lookup key), not the human display form `WP-XXX-XXX-XXX-C`: the
+    // check symbol can be one of `* ~ $ =` which is unsafe in a URL path. The
+    // badge text shows the full display form; the portal recomputes both from
+    // this payload, keeping the fingerprint bound to a single identity system.
+    let payload = badge_fingerprint::payload_from_identifier(author_did);
+    let credential_id = format!("{VERIFY_CREDENTIAL_BASE_URL}/{payload}");
 
     Ok(OpenBadgeCredential {
         context: vec![VC_V2_CONTEXT_URL.to_string(), OB3_CONTEXT_URL.to_string()],
@@ -831,14 +833,14 @@ mod tests {
             "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json"
         );
 
-        // id is the verify-portal URL carrying the WP-XXXX-XXXX short-id,
-        // deterministically derived from the author DID.
-        let expected_short_id = badge_fingerprint::short_id_from_identifier(did);
+        // id is the verify-portal URL carrying the canonical payload (the
+        // 9-symbol Crockford lookup key), deterministically derived from the DID.
+        let expected_payload = badge_fingerprint::payload_from_identifier(did);
         assert_eq!(
             badge.id,
-            format!("https://verify.writersproof.com/c/{expected_short_id}")
+            format!("https://verify.writersproof.com/c/{expected_payload}")
         );
-        assert!(expected_short_id.starts_with("WP-"));
+        assert_eq!(expected_payload.len(), 9);
 
         // type: VerifiableCredential + OpenBadgeCredential.
         assert_eq!(
@@ -1029,7 +1031,7 @@ mod tests {
             payload["jti"],
             format!(
                 "{VERIFY_CREDENTIAL_BASE_URL}/{}",
-                badge_fingerprint::short_id_from_identifier(did)
+                badge_fingerprint::payload_from_identifier(did)
             )
         );
         assert!(payload["iss"].as_str().is_some());
