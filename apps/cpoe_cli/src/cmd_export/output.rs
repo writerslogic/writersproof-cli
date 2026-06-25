@@ -180,7 +180,7 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 );
             }
         }
-        "c2pa" => {
+        "c2pa" | "c2pa-text" => {
             use cpoe::authorproof_protocol::c2pa::C2paManifestBuilder;
             use cpoe::authorproof_protocol::rfc::{
                 self as proto_rfc, Checkpoint as ProtoCheckpoint, DocumentRef as ProtoDocumentRef,
@@ -337,20 +337,43 @@ pub(super) fn write_evidence_output(ctx: &EvidenceOutputContext<'_>) -> Result<(
                 }
             }
 
-            let jumbf_bytes = builder
-                .build_jumbf(ctx.signer)
-                .map_err(|e| anyhow!("C2PA JUMBF build failed: {}", e))?;
+            if *format_lower == "c2pa-text" {
+                let text = std::fs::read_to_string(file_path).with_context(|| {
+                    format!(
+                        "read text document for C2PA-text embed: {}",
+                        file_path.display()
+                    )
+                })?;
+                let watermarked =
+                    cpoe::authorproof_protocol::c2pa::attest_text(&text, builder, ctx.signer)
+                        .map_err(|e| anyhow!("C2PA text embed failed: {}", e))?;
+                write_atomic(out_path, watermarked.as_bytes())?;
 
-            write_atomic(out_path, &jumbf_bytes)?;
+                if verbose {
+                    println!();
+                    println!("C2PA manifest embedded into text: {}", out_path.display());
+                    println!("  Format: variation-selector carrier (C2PA text embedding)");
+                    println!("  Document hash: {}", hex::encode(doc_hash));
+                    println!("  Checkpoints: {}", events.len());
+                    println!("  Output size: {} bytes", watermarked.len());
+                    println!("  Evidence CBOR: {} bytes", evidence_cbor.len());
+                }
+            } else {
+                let jumbf_bytes = builder
+                    .build_jumbf(ctx.signer)
+                    .map_err(|e| anyhow!("C2PA JUMBF build failed: {}", e))?;
 
-            if verbose {
-                println!();
-                println!("C2PA JUMBF manifest exported to: {}", out_path.display());
-                println!("  Format: JUMBF binary sidecar (ISO 19566-5)");
-                println!("  Document hash: {}", hex::encode(doc_hash));
-                println!("  Checkpoints: {}", events.len());
-                println!("  Manifest size: {} bytes", jumbf_bytes.len());
-                println!("  Evidence CBOR: {} bytes", evidence_cbor.len());
+                write_atomic(out_path, &jumbf_bytes)?;
+
+                if verbose {
+                    println!();
+                    println!("C2PA JUMBF manifest exported to: {}", out_path.display());
+                    println!("  Format: JUMBF binary sidecar (ISO 19566-5)");
+                    println!("  Document hash: {}", hex::encode(doc_hash));
+                    println!("  Checkpoints: {}", events.len());
+                    println!("  Manifest size: {} bytes", jumbf_bytes.len());
+                    println!("  Evidence CBOR: {} bytes", evidence_cbor.len());
+                }
             }
         }
         "openbadge" | "openbadge-jwt" => {

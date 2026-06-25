@@ -104,7 +104,7 @@ pub enum Commands {
         /// Output file path (defaults to stdout for JSON)
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
-        /// Output format (json, html, pdf, c2pa, openbadge, openbadge-jwt)
+        /// Output format (json, html, pdf, c2pa, c2pa-text, openbadge, openbadge-jwt)
         #[arg(short = 'f', long, default_value = "json")]
         format: String,
         /// Disable temporal beacon attestation (caps security level at T2)
