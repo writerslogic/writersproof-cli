@@ -4,13 +4,14 @@
 
 pub mod archive;
 pub mod attestation;
+pub mod badge_render;
 pub mod beacon;
 pub mod chain;
+pub mod collaboration_ffi;
 pub mod content_witnessing;
 pub mod conv;
-pub mod collaboration_ffi;
-pub mod dictation_analytics;
 pub mod credentials;
+pub mod dictation_analytics;
 pub mod ephemeral;
 pub mod evidence;
 pub mod evidence_checkpoint;
@@ -45,12 +46,13 @@ pub mod did_webvh_ffi;
 
 pub use archive::*;
 pub use attestation::*;
+pub use badge_render::*;
 pub use beacon::*;
 pub use chain::*;
-pub use content_witnessing::*;
 pub use collaboration_ffi::*;
-pub use dictation_analytics::*;
+pub use content_witnessing::*;
 pub use credentials::*;
+pub use dictation_analytics::*;
 pub use ephemeral::*;
 pub use evidence_checkpoint::*;
 pub use evidence_derivative::*;
