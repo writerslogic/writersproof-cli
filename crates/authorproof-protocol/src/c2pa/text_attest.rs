@@ -24,6 +24,7 @@
 //! before computing the final hash, mirroring [`super::embed::embed_manifest_in_pdf`].
 
 use subtle::ConstantTimeEq;
+use unicode_normalization::UnicodeNormalization;
 
 use crate::crypto::EvidenceSigner;
 use crate::error::{Error, Result};
@@ -65,13 +66,20 @@ impl TextVerification {
 /// soft-binding exclusion to a fixpoint, computes the content hash, and appends
 /// the variation-selector wrapper.
 ///
-/// The original text is preserved verbatim as a prefix; the wrapper is appended
+/// The NFC-normalized text is preserved as a prefix; the wrapper is appended
 /// and consists solely of non-rendering characters (ZWNBSP + variation selectors).
 pub fn attest_text(
     text: &str,
     builder: C2paManifestBuilder,
     signer: &dyn EvidenceSigner,
 ) -> Result<String> {
+    // NFC-normalize per the C2PA "Embedding Manifests into Unstructured Text"
+    // spec: the content binding is computed over the canonical (NFC) form so it
+    // survives a downstream normalization pass. The watermark embeds the
+    // normalized text, and NFC is idempotent, so re-normalizing in transit is a
+    // no-op and the byte offsets below stay valid.
+    let text: String = text.nfc().collect();
+    let text = text.as_str();
     let orig_len = text.len() as u64;
     let placeholder_hash = [0u8; 32];
     // Stamp one creation timestamp so every fixpoint rebuild is byte-identical;
@@ -405,6 +413,33 @@ mod tests {
             "same input + fixed timestamp must yield an identical watermark"
         );
         assert!(verify_text(&a).expect("verify").is_valid());
+    }
+
+    #[test]
+    fn nfd_input_normalized_to_nfc_and_roundtrips() {
+        let key = signer();
+        let ts = "2024-06-01T12:00:00+00:00".to_string();
+        let nfd = "cafe\u{0301} re\u{0301}sume\u{0301}"; // combining acute accents
+        let nfc = "caf\u{00e9} r\u{00e9}sum\u{00e9}"; // precomposed
+
+        let watermarked = attest_text(nfd, builder().created_at(ts.clone()), &key).expect("attest");
+        // The embedded visible text is the canonical NFC form, not the raw NFD input.
+        assert!(
+            watermarked.starts_with(nfc),
+            "watermark prefix must be NFC-normalized"
+        );
+        assert!(
+            !watermarked.starts_with(nfd),
+            "raw NFD input must not be the prefix"
+        );
+        // It self-verifies against the embedded (NFC) content binding.
+        assert!(verify_text(&watermarked).expect("verify").is_valid());
+        // NFC and NFD inputs converge to a byte-identical watermark.
+        let from_nfc = attest_text(nfc, builder().created_at(ts), &key).expect("attest nfc");
+        assert_eq!(
+            watermarked, from_nfc,
+            "canonically-equivalent inputs must yield an identical watermark"
+        );
     }
 
     #[test]

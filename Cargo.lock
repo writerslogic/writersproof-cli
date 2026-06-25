@@ -671,6 +671,7 @@ dependencies = [
  "subtle 2.6.1",
  "tempfile",
  "thiserror 2.0.18",
+ "unicode-normalization",
  "urlencoding",
  "uuid",
  "x509-cert",

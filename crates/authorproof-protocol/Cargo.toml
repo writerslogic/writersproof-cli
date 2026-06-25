@@ -36,6 +36,7 @@ urlencoding = "2.1"
 log = "0.4"
 subtle = "2.6"
 hmac = "0.12.1"
+unicode-normalization = "0.1"
 cpoe-jitter = { path = "../cpoe-jitter" }
 posme = { path = "../posme", optional = true }
 
