@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Added
+- Wasm bindings for validate + payload; seed features from payload
+- Coin-seal redesign + Crockford-32 9-char short-id with check
 - VC-JWT (JOSE EdDSA) securing path for 1EdTech conformance
 - Add 'badge' command to render Open Badge SVG
 - Expose canonical badge rendering to native apps
@@ -17,7 +19,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Open Badges 3.0 credential export (engine + CLI)
 - Badge-fingerprint crate — deterministic f(id) fingerprint badge generator
 
+### Changed
+- Derive fingerprint from payload-only short-id; sync docs to v2
+
 ### Documentation
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
