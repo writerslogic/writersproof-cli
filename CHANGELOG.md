@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Added
+- Add 'badge' command to render Open Badge SVG
+- Expose canonical badge rendering to native apps
 - Unambiguous, collision-resistant short-id (WP-XXXX-XXXX-XXXX-XXXX)
 - Bind credential id to verify URL + deterministic badge short-id
 - Wasm bindings for the verify portal (render == verify)
@@ -15,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Badge-fingerprint crate — deterministic f(id) fingerprint badge generator
 
 ### Documentation
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
