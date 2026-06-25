@@ -651,6 +651,7 @@ dependencies = [
  "coset",
  "cpoe-jitter",
  "crc32fast",
+ "criterion 0.5.1",
  "der",
  "ecdsa",
  "ed25519-dalek",

@@ -43,6 +43,11 @@ posme = { path = "../posme", optional = true }
 tempfile = "3"
 crc32fast = "1.4"
 c2pa = "0.84"
+criterion = "0.5"
+
+[[bench]]
+name = "codec_bench"
+harness = false
 
 [features]
 default = []
