@@ -117,6 +117,16 @@ pub enum Commands {
         notarize: bool,
     },
 
+    /// Render the authorship badge (SVG) for an Open Badge credential
+    Badge {
+        /// Open Badge credential (.openbadge.json) to render the badge for
+        #[arg(short, long)]
+        credential: PathBuf,
+        /// Write the SVG here instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     /// Verify an evidence packet or database
     #[command(alias = "check")]
     Verify {
@@ -291,6 +301,7 @@ impl Commands {
                 | Commands::Calibrate
                 | Commands::Config { .. }
                 | Commands::Completions { .. }
+                | Commands::Badge { .. }
                 | Commands::Man
         )
     }

@@ -9,6 +9,7 @@ use clap::{CommandFactory, Parser};
 
 mod cli;
 mod cmd_attest;
+mod cmd_badge;
 mod cmd_beacon;
 mod cmd_commit;
 mod cmd_config;
@@ -86,6 +87,9 @@ async fn run() -> Result<()> {
                 &out,
             )
             .await?
+        }
+        Some(Commands::Badge { credential, output }) => {
+            cmd_badge::cmd_badge(&credential, output.as_deref(), &out)?
         }
         Some(Commands::Verify {
             file,
