@@ -53,7 +53,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy lints
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        # Not --all-features: the protocol crate's `wasm` feature pulls the
+        # nightly-only `ratchet` crate, which fails to compile on stable.
+        run: cargo clippy --workspace -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})
@@ -85,10 +87,12 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-test-
 
       - name: Run tests
-        run: cargo test --all-features
+        # Not --all-features: the protocol crate's `wasm` feature pulls the
+        # nightly-only `ratchet` crate, which fails to compile on stable.
+        run: cargo test --workspace
 
       - name: Run tests with release optimizations
-        run: cargo test --release --all-features
+        run: cargo test --release --workspace
 
   security:
     name: Security Audit
