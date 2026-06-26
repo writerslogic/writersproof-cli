@@ -113,6 +113,30 @@
   font-weight: 600;
   color: var(--navy-light);
 }
+.cr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  text-decoration: none;
+  font-family: var(--sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+}
+.cr-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid currentColor;
+  border-radius: 5px 5px 5px 0;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
 
 /* --- ENFSI scale --- */
 .enfsi-label {
@@ -415,10 +439,16 @@ table.data thead th { position: sticky; top: 0; background: var(--bg); z-index: 
 }
 
 /* --- Dimension analysis --- */
+.dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
 .dimension-card {
   border: 1px solid var(--border);
   padding: 16px 20px;
-  margin: 12px 0;
+  margin: 0;
   position: relative;
   background: var(--bg-warm);
 }

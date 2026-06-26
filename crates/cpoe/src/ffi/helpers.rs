@@ -126,8 +126,7 @@ pub(crate) fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), St
     let parent = path.parent().unwrap_or(std::path::Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(parent)
         .map_err(|e| format!("Failed to create temp file: {e}"))?;
-    std::io::Write::write_all(&mut tmp, data)
-        .map_err(|e| format!("Failed to write data: {e}"))?;
+    std::io::Write::write_all(&mut tmp, data).map_err(|e| format!("Failed to write data: {e}"))?;
     tmp.as_file()
         .sync_all()
         .map_err(|e| format!("Failed to sync to disk: {e}"))?;
@@ -170,8 +169,7 @@ pub(crate) fn load_api_key() -> Result<Zeroizing<String>, String> {
 
     let data_dir = require_data_dir()?;
     let key_path = data_dir.join("writersproof_api_key");
-    let key_file = std::fs::File::open(&key_path)
-        .map_err(|_| "API key not found".to_string())?;
+    let key_file = std::fs::File::open(&key_path).map_err(|_| "API key not found".to_string())?;
     let meta = key_file
         .metadata()
         .map_err(|_| "Cannot stat API key file".to_string())?;
@@ -187,8 +185,8 @@ pub(crate) fn load_api_key() -> Result<Zeroizing<String>, String> {
         f.read_to_end(&mut raw)
             .map_err(|_| "Failed to read API key".to_string())?;
     }
-    let mut key_str = String::from_utf8(raw.to_vec())
-        .map_err(|_| "API key is not valid UTF-8".to_string())?;
+    let mut key_str =
+        String::from_utf8(raw.to_vec()).map_err(|_| "API key is not valid UTF-8".to_string())?;
     let trimmed = key_str.trim().to_string();
     key_str.zeroize();
     Ok(Zeroizing::new(trimmed))
@@ -305,7 +303,11 @@ pub(crate) fn derive_hmac_from_signing_key() -> Option<Zeroizing<Vec<u8>>> {
         }
     };
     if !meta.is_file() || meta.len() > 1024 {
-        log::error!("Signing key file invalid: is_file={}, len={}", meta.is_file(), meta.len());
+        log::error!(
+            "Signing key file invalid: is_file={}, len={}",
+            meta.is_file(),
+            meta.len()
+        );
         return None;
     }
     let mut raw = Zeroizing::new(Vec::new());
@@ -433,16 +435,78 @@ pub(crate) fn build_edit_regions(
     crate::forensics::build_edit_regions(events)
 }
 
-/// Run the full forensics pipeline on stored events: convert to EventData,
-/// build edit regions, and call `analyze_forensics`.
+/// Resolve per-document keystroke jitter samples for forensic analysis.
+///
+/// The checkpoint store persists only checkpoint-level records (content hash,
+/// VDF, size delta) — it holds no per-keystroke timing. The behavioral timing
+/// series lives in the live sentinel session's jitter ring (per file), with the
+/// cross-session activity accumulator as a fallback. Without these, every
+/// cadence/biological/behavioral metric degenerates to zero — the root cause of
+/// empty forensic breakdowns in exported reports.
+///
+/// Priority:
+/// 1. Live sentinel session jitter ring for `path` (most accurate, per-file).
+/// 2. Global activity accumulator (cross-session behavioral fallback).
+pub(crate) fn resolve_jitter_samples(path: &str) -> Vec<crate::jitter::SimpleJitterSample> {
+    if !path.is_empty() {
+        if let Some(sentinel) = crate::ffi::sentinel::get_sentinel() {
+            if let Ok(session) = sentinel.session(path) {
+                let ring = session.jitter_ring.to_vec_chronological();
+                if ring.len() >= 2 {
+                    return ring;
+                }
+            }
+        }
+    }
+    use crate::RwLockRecover as _;
+    let accumulator = crate::fingerprint::global::get_global_accumulator();
+    let accumulator = accumulator.read_recover();
+    if accumulator.sample_count() >= 2 {
+        return accumulator.samples();
+    }
+    Vec::new()
+}
+
+/// Read the document at `path` as plain text for linguistic forensic analysis.
+/// RTF markup is stripped; binary/unsupported formats yield `None`.
+pub(crate) fn read_document_text(path: &str) -> Option<String> {
+    crate::sentinel::helpers::extract_plain_text(std::path::Path::new(path))
+}
+
+/// Run the full forensics pipeline on stored events, resolving the keystroke
+/// jitter series and document text from the events' file path.
 pub(crate) fn run_full_forensics(
     events: &[crate::store::SecureEvent],
 ) -> (
     crate::forensics::ForensicMetrics,
     std::collections::HashMap<i64, Vec<crate::forensics::RegionData>>,
 ) {
+    let path = events.first().map(|e| e.file_path.as_str()).unwrap_or("");
+    let jitter = resolve_jitter_samples(path);
+    let text = read_document_text(path);
+    run_full_forensics_with(events, &jitter, text.as_deref())
+}
+
+/// Run the forensics pipeline with explicitly-resolved jitter samples and
+/// document text. The report builder resolves these once (it also needs the
+/// jitter series for the writing-rhythm chart) and passes them here to avoid
+/// re-resolving the live session ring.
+pub(crate) fn run_full_forensics_with(
+    events: &[crate::store::SecureEvent],
+    jitter_samples: &[crate::jitter::SimpleJitterSample],
+    document_text: Option<&str>,
+) -> (
+    crate::forensics::ForensicMetrics,
+    std::collections::HashMap<i64, Vec<crate::forensics::RegionData>>,
+) {
     let event_data = events_to_forensic_data(events);
     let regions = build_edit_regions(events);
-    let metrics = crate::forensics::analyze_forensics(&event_data, &regions, None, None, None);
+    let jitter = if jitter_samples.len() >= 2 {
+        Some(jitter_samples)
+    } else {
+        None
+    };
+    let metrics =
+        crate::forensics::analyze_forensics(&event_data, &regions, jitter, None, document_text);
     (metrics, regions)
 }

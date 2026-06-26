@@ -82,9 +82,13 @@ pub enum Verdict {
 }
 
 /// Minimum number of checkpoint events required before a score-based
-/// verdict can be issued. Below this, the verdict is always
-/// `InsufficientData`.
-pub const MIN_VERDICT_EVENTS: usize = 10;
+/// verdict can be issued. Below this, the verdict is `InsufficientData`.
+///
+/// Kept equal to [`MIN_REPORT_CHECKPOINTS`] so the verdict gate and the
+/// evidence-sufficiency gate agree: whenever evidence is sufficient for an
+/// evaluative report, a determination is actually issued (never the
+/// contradictory "sufficient evidence but InsufficientData verdict").
+pub const MIN_VERDICT_EVENTS: usize = MIN_REPORT_CHECKPOINTS;
 
 // ---------------------------------------------------------------------------
 // Evidence sufficiency thresholds for evaluative reporting
@@ -120,11 +124,13 @@ pub const MIN_REPORT_KEYSTROKES: u64 = 50;
 /// with margin for windowed analysis.
 pub const MIN_REPORT_DURATION_SEC: f64 = 60.0;
 
-/// Minimum checkpoint count: from report_dimensions.rs EDIT_MIN_EVENTS
-/// (5). Below this, the edit topology dimension cannot compute revision
-/// patterns and the checkpoint chain is too shallow for forgery cost
-/// estimation.
-pub const MIN_REPORT_CHECKPOINTS: usize = 5;
+/// Minimum checkpoint count. The human-authorship determination rests on the
+/// behavioral keystroke evidence (keystrokes, duration, words above), not on
+/// checkpoint depth — a shallow chain only weakens forgery resistance, it does
+/// not invalidate the determination. A floor of 3 admits genuine short sessions
+/// (e.g. a few auto-checkpoints plus a manual one) while still rejecting
+/// trivially thin captures.
+pub const MIN_REPORT_CHECKPOINTS: usize = 3;
 
 /// Minimum word count: from cognitive_load.rs
 /// MIN_WORDS_FOR_CORRELATION (15) with margin. Below this, IKI-to-word
@@ -613,7 +619,12 @@ impl WarReport {
 mod tests {
     use super::*;
 
-    fn minimal_report(keystrokes: u64, duration_min: f64, checkpoints: usize, words: u64) -> WarReport {
+    fn minimal_report(
+        keystrokes: u64,
+        duration_min: f64,
+        checkpoints: usize,
+        words: u64,
+    ) -> WarReport {
         WarReport {
             report_id: "WAR-TEST".into(),
             algorithm_version: "v1.0.0".into(),
@@ -675,8 +686,8 @@ mod tests {
     }
 
     #[test]
-    fn insufficient_3_keystrokes_3_checkpoints() {
-        let r = minimal_report(3, 2.0, 3, 129);
+    fn insufficient_3_keystrokes_2_checkpoints() {
+        let r = minimal_report(3, 2.0, 2, 129);
         assert!(!r.evidence_is_sufficient());
         let gaps = r.sufficiency_gaps();
         assert!(gaps.iter().any(|g| g.contains("Keystrokes")));
@@ -684,6 +695,15 @@ mod tests {
         // Duration (120s >= 60s) and words (129 >= 20) pass
         assert!(!gaps.iter().any(|g| g.contains("Duration")));
         assert!(!gaps.iter().any(|g| g.contains("Words")));
+    }
+
+    #[test]
+    fn sufficient_with_three_checkpoints() {
+        // Genuine short session: real keystrokes/duration/words with the
+        // minimum (3) checkpoints is enough for an evaluative determination.
+        let r = minimal_report(200, 2.0, 3, 129);
+        assert!(r.evidence_is_sufficient());
+        assert!(r.sufficiency_gaps().is_empty());
     }
 
     #[test]
@@ -695,7 +715,7 @@ mod tests {
 
     #[test]
     fn insufficient_short_session() {
-        // 10 keystrokes (<50), 30s (<60s), 2 checkpoints (<5), 10 words (<20)
+        // 10 keystrokes (<50), 30s (<60s), 2 checkpoints (<3), 10 words (<20)
         let r = minimal_report(10, 0.5, 2, 10);
         assert!(!r.evidence_is_sufficient());
         let gaps = r.sufficiency_gaps();
@@ -704,8 +724,16 @@ mod tests {
 
     #[test]
     fn verdict_insufficient_below_min_events() {
-        let v = Verdict::from_score_with_events(85, 5);
+        let v = Verdict::from_score_with_events(85, 2);
         assert_eq!(v, Verdict::InsufficientData);
+    }
+
+    #[test]
+    fn verdict_issued_at_min_events() {
+        // A genuine short session (>= MIN_VERDICT_EVENTS checkpoints) must yield
+        // a real determination, not InsufficientData.
+        let v = Verdict::from_score_with_events(85, MIN_VERDICT_EVENTS);
+        assert_eq!(v, Verdict::VerifiedHuman);
     }
 
     #[test]

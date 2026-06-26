@@ -33,11 +33,29 @@ pub(super) const SEC_TEXT: &str = "Analyzed Text";
 pub(super) const SEC_VERIFY: &str = "Independent Verification";
 pub(super) const SEC_GLOSSARY: &str = "Glossary of Terms";
 
-pub(super) fn section_heading(html: &mut String, number: u32, title: &str) -> fmt::Result {
+/// Sequential section numbering assigned at render time. A section consumes a
+/// number only when it is actually emitted, so conditionally-skipped sections
+/// never leave gaps in the sequence.
+#[derive(Default)]
+pub(in crate::report::html) struct SectionCounter(u32);
+
+impl SectionCounter {
+    pub(in crate::report::html) fn next(&mut self) -> u32 {
+        self.0 += 1;
+        self.0
+    }
+}
+
+pub(super) fn section_heading(
+    html: &mut String,
+    sc: &mut SectionCounter,
+    title: &str,
+) -> fmt::Result {
     write!(
         html,
         r#"<h2><span class="section-number">{}.</span> {}</h2>"#,
-        number, title
+        sc.next(),
+        title
     )
 }
 

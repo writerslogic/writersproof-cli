@@ -7,6 +7,7 @@ use super::*;
 
 pub(in crate::report::html) fn write_certification(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.verdict == Verdict::InsufficientData {
@@ -26,7 +27,7 @@ pub(in crate::report::html) fn write_certification(
 
     write!(
         html,
-        r#"<h2><span class="section-number">15.</span> Certification of Findings</h2>
+        r#"<h2><span class="section-number">{sec}.</span> Certification of Findings</h2>
 <p>Having examined the process evidence, cryptographic checkpoint chain, and per-dimension
 analysis for the document identified by SHA-256 digest <code>{hash}</code>,
 I evaluate the evidence under two competing propositions:</p>
@@ -50,6 +51,7 @@ with the protocol specified in <code>draft-condrey-cpoe-protocol-00</code>.</p>
 <div style="font-weight:600;margin-top:4px">{date}</div></div>
 </div>
 "#,
+        sec = sc.next(),
         hash = html_escape(&doc_hash_short),
         date = html_escape(&date_short),
     )
@@ -57,6 +59,7 @@ with the protocol specified in <code>draft-condrey-cpoe-protocol-00</code>.</p>
 
 pub(in crate::report::html) fn write_fre_certification(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.verdict == Verdict::InsufficientData {
@@ -72,7 +75,7 @@ pub(in crate::report::html) fn write_fre_certification(
 
     write!(
         html,
-        r#"<h2><span class="section-number">16.</span> Certificate of Cryptographic Proof</h2>
+        r#"<h2><span class="section-number">{sec}.</span> Certificate of Cryptographic Proof</h2>
 <div style="margin:12px 0;padding:16px;border:1px solid #1a1a1a;border-radius:4px">
 <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#666;margin-bottom:8px">
 Federal Rule of Evidence 902(13) Certification</div>
@@ -108,6 +111,7 @@ fingerprint <code>{sk}</code>.</li>
 </ol>
 </div>
 "#,
+        sec = sc.next(),
         report_id = html_escape(&r.report_id),
         version = html_escape(&r.algorithm_version),
         date = html_escape(&date_short),
@@ -117,6 +121,7 @@ fingerprint <code>{sk}</code>.</li>
 
 pub(in crate::report::html) fn write_references(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.verdict == Verdict::InsufficientData {
@@ -125,7 +130,7 @@ pub(in crate::report::html) fn write_references(
 
     write!(
         html,
-        r#"<h2><span class="section-number">17.</span> References</h2>
+        r#"<h2><span class="section-number">{sec}.</span> References</h2>
 <ol style="font-size:12px;line-height:1.6;margin-left:20px">
 <li>European Network of Forensic Science Institutes. <em>ENFSI Guideline for Evaluative Reporting
 in Forensic Science.</em> ENFSI, March 2015.</li>
@@ -148,5 +153,6 @@ Methodology.</em> WritersLogic Technical Report, 2026.</li>
 526 U.S. 137 (1999).</li>
 </ol>
 "#,
+        sec = sc.next(),
     )
 }

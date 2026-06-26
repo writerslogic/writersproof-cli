@@ -56,7 +56,11 @@ pub(in crate::report::html) fn write_examination_metadata(
         hash = html_escape(&doc_hash_short),
         sessions = r.session_count,
         s_plural = if r.session_count == 1 { "" } else { "s" },
-        dur = if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
+        dur = if r.total_duration_min.is_finite() {
+            r.total_duration_min
+        } else {
+            0.0
+        },
     )
 }
 
@@ -101,7 +105,11 @@ pub(in crate::report::html) fn write_executive_summary(
         .filter(|f| f.signal == FlagSignal::Synthetic)
         .count();
 
-    let dur = if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 };
+    let dur = if r.total_duration_min.is_finite() {
+        r.total_duration_min
+    } else {
+        0.0
+    };
     let duration_desc = if dur < 1.0 {
         "less than one minute".to_string()
     } else if dur < 60.0 {

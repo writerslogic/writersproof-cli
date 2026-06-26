@@ -4,9 +4,10 @@ use super::*;
 
 pub(in crate::report::html) fn write_methodology(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
-    section_heading(html, 2, SEC_METHODOLOGY)?;
+    section_heading(html, sc, SEC_METHODOLOGY)?;
     html.push_str(TMPL_METHODOLOGY);
 
     if let Some(ref m) = r.methodology {
@@ -27,9 +28,10 @@ pub(in crate::report::html) fn write_methodology(
 
 pub(in crate::report::html) fn write_chain_of_custody(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
-    section_heading(html, 3, SEC_CHAIN)?;
+    section_heading(html, sc, SEC_CHAIN)?;
     write!(
         html,
         r#"<p>The following identifiers establish the provenance and integrity of the evidence examined in this report. The document hash can be independently computed from the original file to confirm it matches the evidence record.</p>
@@ -67,7 +69,11 @@ pub(in crate::report::html) fn write_chain_of_custody(
         r.evidence_bundle_version,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
-        if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
+        if r.total_duration_min.is_finite() {
+            r.total_duration_min
+        } else {
+            0.0
+        },
         format_number(r.revision_events),
     );
     row(html, "Evidence Bundle", &bundle)?;
@@ -151,114 +157,16 @@ pub(in crate::report::html) fn write_provenance_breakdown(
     Ok(())
 }
 
-pub(in crate::report::html) fn write_category_scores(
-    html: &mut String,
-    r: &WarReport,
-) -> fmt::Result {
-    if r.dimensions.is_empty() {
-        return Ok(());
-    }
-    write!(
-        html,
-        r#"<div class="category-scores"><div class="score-bars"><h3>Dimension Scores</h3>"#
-    )?;
-    for d in &r.dimensions {
-        write!(
-            html,
-            r#"<div class="score-bar-row">
-<span class="score-bar-label" style="color:{color}">{name}</span>
-<div class="score-bar-track"><div class="score-bar-fill" style="width:{score}%;background:{color}"></div></div>
-<span class="score-bar-value">{score}</span>
-</div>"#,
-            name = html_escape(&d.name),
-            score = d.score.min(100),
-            color = sanitize_css_color(&d.color),
-        )?;
-    }
-    write_category_composite_note(html, r)?;
-    write!(html, "</div>")?;
-
-    let has_meaningful_flow = r.writing_flow.len() >= 5
-        && r.writing_flow.iter().any(|p| p.intensity > 0.0);
-    if has_meaningful_flow {
-        write_writing_flow(html, r)?;
-    }
-
-    writeln!(html, "</div>")
-}
-
-fn write_category_composite_note(html: &mut String, r: &WarReport) -> fmt::Result {
-    let all_pass = r.dimensions.iter().all(|d| d.score >= 60);
-    let contradicts = r.dimensions.iter().any(|d| d.score < 40);
-    if contradicts {
-        write!(
-            html,
-            r#"<p class="composite-note">Note: One or more dimensions scored below the acceptance threshold, indicating potential anomalies requiring further examination.</p>"#,
-        )
-    } else if all_pass {
-        write!(
-            html,
-            r#"<p class="composite-note">All dimensions exceed the minimum threshold of 60. No dimension contradicts the composite determination.</p>"#
-        )
-    } else {
-        Ok(())
-    }
-}
-
-fn write_writing_flow(html: &mut String, r: &WarReport) -> fmt::Result {
-    write!(
-        html,
-        r#"<div><h3>Writing Flow (Fig. 1)</h3><div class="flow-chart">"#
-    )?;
-    let max_intensity = r
-        .writing_flow
-        .iter()
-        .map(|p| if p.intensity.is_finite() { p.intensity } else { 0.0 })
-        .fold(0.0_f64, f64::max)
-        .max(0.01);
-    for point in &r.writing_flow {
-        let intensity = if point.intensity.is_finite() { point.intensity } else { 0.0 };
-        let pct = (intensity / max_intensity * 100.0).min(100.0);
-        let color = match point.phase.as_str() {
-            "drafting" => "#3d7a4a",
-            "revising" => "#2c5282",
-            "polish" => "#5b3c8b",
-            "pause" => "#d8d8d5",
-            _ => "#6b6b6b",
-        };
-        write!(
-            html,
-            r#"<div class="flow-bar" style="height:{pct:.0}%;background:{color}"></div>"#
-        )?;
-    }
-    write!(html, "</div>")?;
-    if let (Some(first), Some(last)) = (r.writing_flow.first(), r.writing_flow.last()) {
-        let first_min = if first.offset_min.is_finite() { first.offset_min } else { 0.0 };
-        let last_min = if last.offset_min.is_finite() { last.offset_min } else { 0.0 };
-        write!(
-            html,
-            r#"<div class="flow-labels"><span>{:.0}:00</span><span style="color:#3d7a4a">Drafting</span><span style="color:#d8d8d5">Pause</span><span style="color:#2c5282">Revising</span><span style="color:#5b3c8b">Polish</span><span>{:.0}:{:02.0}</span></div>"#,
-            first_min,
-            last_min as u64,
-            ((last_min % 1.0) * 60.0) as u64,
-        )?;
-    }
-    write!(
-        html,
-        r#"<p class="flow-caption">Fig. 1: Keystroke intensity over time. Irregular cadence with natural pauses is characteristic of human cognitive processing; automated input typically produces uniform intensity without semantic-boundary pauses.</p>"#
-    )?;
-    write!(html, "</div>")
-}
-
 pub(in crate::report::html) fn write_process_evidence(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     let p = &r.process;
-    section_heading(html, 4, SEC_PROCESS)?;
+    section_heading(html, sc, SEC_PROCESS)?;
     write!(
         html,
-        r#"<p>The following metrics were captured by the CPoE proof daemon during the writing process. Each metric is derived from real-time behavioral observation and is cryptographically bound to the checkpoint chain (see Section 8).</p>
+        r#"<p>The following metrics were captured by the CPoE proof daemon during the writing process. Each metric is derived from real-time behavioral observation and is cryptographically bound to the checkpoint chain (see the Checkpoint Chain Integrity section).</p>
 <div class="evidence-grid">"#
     )?;
 
@@ -349,12 +257,20 @@ fn write_evidence_paste_ratio(html: &mut String, p: &ProcessEvidence) -> fmt::Re
         r#"<div class="evidence-card"><h4><span class="exhibit-badge">C</span> Paste Analysis</h4>"#
     )?;
     if let Some(pr) = p.paste_ratio_pct.filter(|v| v.is_finite()) {
-        let paste_color = if pr < 20.0 { "var(--accent)" } else if pr < 50.0 { "var(--caution)" } else { "var(--alert)" };
+        let paste_color = if pr < 20.0 {
+            "var(--accent)"
+        } else if pr < 50.0 {
+            "var(--caution)"
+        } else {
+            "var(--alert)"
+        };
         write!(html, r#"<div class="metric">{:.1}% of total text"#, pr)?;
         if let Some(ops) = p.paste_operations {
             write!(html, " ({} operations)", ops)?;
         }
-        write!(html, r#"</div>
+        write!(
+            html,
+            r#"</div>
 <div class="forgery-bar"><div class="forgery-fill" style="width:{pct:.0}%;background:{color}"></div></div>"#,
             pct = pr.min(100.0),
             color = paste_color,
@@ -393,14 +309,23 @@ fn write_evidence_keystroke_dynamics(html: &mut String, p: &ProcessEvidence) -> 
         r#"<div class="evidence-card"><h4><span class="exhibit-badge">D</span> Keystroke Dynamics</h4>"#
     )?;
     if let Some(cv) = p.iki_cv.filter(|v| v.is_finite()) {
-        let cv_color = if cv > 0.3 { "var(--accent)" } else if cv > 0.15 { "var(--caution)" } else { "var(--alert)" };
+        let cv_color = if cv > 0.3 {
+            "var(--accent)"
+        } else if cv > 0.15 {
+            "var(--caution)"
+        } else {
+            "var(--alert)"
+        };
         let cv_pct = (cv * 100.0).min(100.0);
         write!(html, r#"<div class="metric">IKI CV: {:.2}"#, cv)?;
         if let Some(bg) = p.bigram_consistency.filter(|v| v.is_finite()) {
             write!(html, " | Bigram consistency: {:.2}", bg)?;
         }
-        write!(html, r#"</div>
-<div class="forgery-bar"><div class="forgery-fill" style="width:{cv_pct:.0}%;background:{cv_color}"></div></div>"#)?;
+        write!(
+            html,
+            r#"</div>
+<div class="forgery-bar"><div class="forgery-fill" style="width:{cv_pct:.0}%;background:{cv_color}"></div></div>"#
+        )?;
         let note = if cv > 0.4 {
             "High inter-keystroke interval variability indicates natural, human-like typing \
              rhythm with variable cognitive load throughout the session."
@@ -494,15 +419,15 @@ fn write_evidence_swf(html: &mut String, p: &ProcessEvidence) -> fmt::Result {
     if let Some(hrs) = p.swf_backdating_hours.filter(|v| v.is_finite()) {
         write!(
             html,
-            r#"<div class="note">Each checkpoint contains a PoSME timing proof that required real wall-clock time to compute. \
-            Fabricating this evidence chain after the fact would require approximately {:.0} hours of sequential computation, \
+            r#"<div class="note">Each checkpoint contains a PoSME timing proof that required real wall-clock time to compute. 
+            Fabricating this evidence chain after the fact would require approximately {:.0} hours of sequential computation, 
             making backdating computationally infeasible for practical purposes.</div>"#,
             hrs
         )?;
     } else {
         write!(
             html,
-            r#"<div class="note">PoSME checkpoints provide cryptographic proof that writing occurred over real elapsed time. \
+            r#"<div class="note">PoSME checkpoints provide cryptographic proof that writing occurred over real elapsed time. 
             The sequential nature of PoSME computation prevents after-the-fact fabrication.</div>"#
         )?;
     }

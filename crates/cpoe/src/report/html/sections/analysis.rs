@@ -4,21 +4,30 @@ use super::*;
 
 pub(in crate::report::html) fn write_session_timeline(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.sessions.is_empty() {
         return Ok(());
     }
-    section_heading(html, 5, SEC_TIMELINE)?;
+    section_heading(html, sc, SEC_TIMELINE)?;
     writeln!(
         html,
         r#"<p>The document was composed across {} session{}, totaling approximately {:.0} minutes of active writing time.</p>"#,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
-        if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
+        if r.total_duration_min.is_finite() {
+            r.total_duration_min
+        } else {
+            0.0
+        },
     )?;
     for s in &r.sessions {
-        let dur = if s.duration_min.is_finite() { s.duration_min } else { 0.0 };
+        let dur = if s.duration_min.is_finite() {
+            s.duration_min
+        } else {
+            0.0
+        };
         let dur_pct = (dur / r.total_duration_min.max(1.0) * 100.0).min(100.0);
         write!(
             html,
@@ -44,25 +53,32 @@ pub(in crate::report::html) fn write_session_timeline(
 
 pub(in crate::report::html) fn write_dimension_analysis(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.dimensions.is_empty() {
         return Ok(());
     }
-    let dim_count = r.dimensions.iter().filter(|d| !d.analysis.is_empty()).count();
+    let dim_count = r
+        .dimensions
+        .iter()
+        .filter(|d| !d.analysis.is_empty())
+        .count();
     let min_score = r.dimensions.iter().map(|d| d.score).min().unwrap_or(0);
     write!(
         html,
-        r#"<h2><span class="section-number">6.</span> {title} <span class="section-metric">{count} dimensions, lowest {min}</span></h2>"#,
+        r#"<h2><span class="section-number">{n}.</span> {title} <span class="section-metric">{count} dimensions, lowest {min}</span></h2>"#,
+        n = sc.next(),
         title = SEC_DIMENSIONS,
         count = dim_count,
         min = min_score,
     )?;
     writeln!(
         html,
-        r#"<p>Each analytical dimension is evaluated independently against both H\u{{2081}} and H\u{{2082}}. \
-The per-dimension scores and likelihood ratios below contribute to the composite determination in Section 1.</p>"#
+        r#"<p>Each analytical dimension is evaluated independently against both H<sub>1</sub> and H<sub>2</sub>. 
+The per-dimension scores and likelihood ratios below contribute to the composite determination above.</p>"#
     )?;
+    writeln!(html, r#"<div class="dimension-grid">"#)?;
     for d in &r.dimensions {
         if d.analysis.is_empty() {
             continue;
@@ -109,11 +125,13 @@ The per-dimension scores and likelihood ratios below contribute to the composite
         }
         writeln!(html, "</div>")?;
     }
+    writeln!(html, "</div>")?;
     Ok(())
 }
 
 pub(in crate::report::html) fn write_dimension_lr_table(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.dimensions.is_empty() {
@@ -121,23 +139,32 @@ pub(in crate::report::html) fn write_dimension_lr_table(
     }
     write!(
         html,
-        r#"<h2><span class="section-number">7.</span> {title} <span class="section-metric">LR = {lr}</span></h2>"#,
+        r#"<h2><span class="section-number">{n}.</span> {title} <span class="section-metric">LR = {lr}</span></h2>"#,
+        n = sc.next(),
         title = SEC_STATISTICS,
         lr = format_lr(r.likelihood_ratio),
     )?;
     writeln!(
         html,
-        r#"<p>The likelihood ratio (LR) quantifies the evidential weight of each dimension. An LR greater than 1 supports H\u{{2081}} \
-(human authorship); an LR less than 1 supports H\u{{2082}} (automated generation). The log<sub>10</sub>(LR) is provided \
-for comparison with published forensic scales. See the Glossary (Section 15) for term definitions.</p>"#
+        r#"<p>The likelihood ratio (LR) quantifies the evidential weight of each dimension. An LR greater than 1 supports H<sub>1</sub> 
+(human authorship); an LR less than 1 supports H<sub>2</sub> (automated generation). The log<sub>10</sub>(LR) is provided 
+for comparison with published forensic scales. See the Glossary for term definitions.</p>"#
     )?;
     write!(
         html,
         r#"<table class="data"><thead><tr><th>Dimension</th><th>Score</th><th>LR</th><th>Log<sub>10</sub> LR</th><th>Confidence</th><th>Key Discriminator</th></tr></thead><tbody>"#
     )?;
     for d in &r.dimensions {
-        let conf_pct = if d.confidence.is_finite() { (d.confidence * 100.0).min(100.0) } else { 0.0 };
-        let log_lr = if d.log_lr.is_finite() { format!("{:.2}", d.log_lr) } else { "N/A".to_string() };
+        let conf_pct = if d.confidence.is_finite() {
+            (d.confidence * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+        let log_lr = if d.log_lr.is_finite() {
+            format!("{:.2}", d.log_lr)
+        } else {
+            "N/A".to_string()
+        };
         write!(
             html,
             r#"<tr><td style="color:{color};font-weight:600">{name}</td><td>{score}</td><td>{lr}</td><td>{log_lr}</td><td><div class="confidence-bar" style="width:{conf_pct:.0}px;background:{color}"></div></td><td>{disc}</td></tr>"#,
@@ -168,24 +195,29 @@ for comparison with published forensic scales. See the Glossary (Section 15) for
 
 pub(in crate::report::html) fn write_checkpoint_chain(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.checkpoints.is_empty() {
         return Ok(());
     }
-    let total_elapsed: f64 = r.checkpoints.iter()
+    let total_elapsed: f64 = r
+        .checkpoints
+        .iter()
         .filter_map(|cp| cp.elapsed_ms)
-        .sum::<u64>() as f64 / 1000.0;
+        .sum::<u64>() as f64
+        / 1000.0;
     write!(
         html,
-        r#"<h2><span class="section-number">8.</span> {title} <span class="section-metric">{count} checkpoints, {elapsed:.0}s total</span></h2>"#,
+        r#"<h2><span class="section-number">{n}.</span> {title} <span class="section-metric">{count} checkpoints, {elapsed:.0}s total</span></h2>"#,
+        n = sc.next(),
         title = SEC_CHECKPOINTS,
         count = r.checkpoints.len(),
         elapsed = total_elapsed,
     )?;
     writeln!(
         html,
-        r#"<p>Each checkpoint records a cryptographic hash of the document state at a point in time. The chain is linked by including \
+        r#"<p>Each checkpoint records a cryptographic hash of the document state at a point in time. The chain is linked by including 
 the previous checkpoint's hash in each successive entry, forming a tamper-evident log.</p>"#
     )?;
     write!(html, r#"<div class="checkpoint-timeline">"#)?;
@@ -205,15 +237,24 @@ the previous checkpoint's hash in each successive entry, forming a tamper-eviden
         let vdf_badge = cp
             .vdf_iterations
             .filter(|&v| v > 0)
-            .map(|v| format!(r#"<span class="cp-badge">{} iterations</span>"#, format_number(v)))
+            .map(|v| {
+                format!(
+                    r#"<span class="cp-badge">{} iterations</span>"#,
+                    format_number(v)
+                )
+            })
             .unwrap_or_default();
         let elapsed_label = match (prev_ts, Some(cp.timestamp)) {
             (Some(prev), Some(cur)) => {
                 let delta = cur.signed_duration_since(prev);
                 let secs = delta.num_seconds().unsigned_abs();
-                if secs < 60 { format!("{}s", secs) }
-                else if secs < 3600 { format!("{}m {}s", secs / 60, secs % 60) }
-                else { format!("{}h {}m", secs / 3600, (secs % 3600) / 60) }
+                if secs < 60 {
+                    format!("{}s", secs)
+                } else if secs < 3600 {
+                    format!("{}m {}s", secs / 60, secs % 60)
+                } else {
+                    format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+                }
             }
             _ => String::new(),
         };
@@ -226,7 +267,11 @@ the previous checkpoint's hash in each successive entry, forming a tamper-eviden
             full_hash = html_escape(&cp.content_hash),
             size = format_bytes(cp.content_size),
             vdf = vdf_badge,
-            elapsed = if elapsed_label.is_empty() { String::new() } else { format!(r#" <span class="cp-meta">+{elapsed_label}</span>"#) },
+            elapsed = if elapsed_label.is_empty() {
+                String::new()
+            } else {
+                format!(r#" <span class="cp-meta">+{elapsed_label}</span>"#)
+            },
         )?;
         prev_ts = Some(cp.timestamp);
     }
@@ -235,6 +280,7 @@ the previous checkpoint's hash in each successive entry, forming a tamper-eviden
 
 pub(in crate::report::html) fn write_forgery_resistance(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if r.forgery.components.is_empty() {
@@ -243,24 +289,46 @@ pub(in crate::report::html) fn write_forgery_resistance(
     let forge_time = format_duration_human(r.forgery.estimated_forge_time_sec);
     write!(
         html,
-        r#"<h2><span class="section-number">9.</span> {title} <span class="section-metric">{tier}, {time} to forge</span></h2>"#,
+        r#"<h2><span class="section-number">{n}.</span> {title} <span class="section-metric">{tier}, {time} to forge</span></h2>"#,
+        n = sc.next(),
         title = SEC_FORGERY,
         tier = html_escape(&r.forgery.tier),
         time = forge_time,
     )?;
 
     // Stacked cost bar showing relative contribution of each component.
-    let total_cost: f64 = r.forgery.components.iter()
-        .map(|c| if c.cost_cpu_sec.is_finite() { c.cost_cpu_sec } else { 0.0 })
-        .sum::<f64>().max(1.0);
-    let bar_colors = ["#1a4d2e", "#2c5282", "#5b3c8b", "#8b6914", "#3d7a4a", "#b45309", "#6b6b6b", "#8b1a1a"];
-    write!(html, r#"<div style="display:flex;height:18px;border:1px solid var(--border);margin:12px 0;overflow:hidden">"#)?;
+    let total_cost: f64 = r
+        .forgery
+        .components
+        .iter()
+        .map(|c| {
+            if c.cost_cpu_sec.is_finite() {
+                c.cost_cpu_sec
+            } else {
+                0.0
+            }
+        })
+        .sum::<f64>()
+        .max(1.0);
+    let bar_colors = [
+        "#1a4d2e", "#2c5282", "#5b3c8b", "#8b6914", "#3d7a4a", "#b45309", "#6b6b6b", "#8b1a1a",
+    ];
+    write!(
+        html,
+        r#"<div style="display:flex;height:18px;border:1px solid var(--border);margin:12px 0;overflow:hidden">"#
+    )?;
     for (i, c) in r.forgery.components.iter().enumerate() {
-        let cost = if c.cost_cpu_sec.is_finite() { c.cost_cpu_sec } else { 0.0 };
+        let cost = if c.cost_cpu_sec.is_finite() {
+            c.cost_cpu_sec
+        } else {
+            0.0
+        };
         let pct = (cost / total_cost * 100.0).max(0.5);
         let bg = bar_colors.get(i % bar_colors.len()).unwrap_or(&"#6b6b6b");
         let opacity = if c.present { "1" } else { "0.3" };
-        write!(html, r#"<div style="width:{pct:.1}%;background:{bg};opacity:{opacity}" title="{name}: {cost_h}"></div>"#,
+        write!(
+            html,
+            r#"<div style="width:{pct:.1}%;background:{bg};opacity:{opacity}" title="{name}: {cost_h}"></div>"#,
             name = html_escape(&c.name),
             cost_h = format_duration_human(c.cost_cpu_sec),
         )?;
@@ -290,7 +358,11 @@ pub(in crate::report::html) fn write_forgery_resistance(
     writeln!(html, "</tbody></table>")
 }
 
-pub(in crate::report::html) fn write_flags(html: &mut String, r: &WarReport) -> fmt::Result {
+pub(in crate::report::html) fn write_flags(
+    html: &mut String,
+    sc: &mut SectionCounter,
+    r: &WarReport,
+) -> fmt::Result {
     if r.flags.is_empty() {
         return Ok(());
     }
@@ -306,13 +378,16 @@ pub(in crate::report::html) fn write_flags(html: &mut String, r: &WarReport) -> 
         .count();
     write!(
         html,
-        r#"<h2><span class="section-number">10.</span> {} <span class="section-metric">{} human, {} synthetic</span></h2>"#,
-        SEC_FLAGS, pos, neg
+        r#"<h2><span class="section-number">{n}.</span> {} <span class="section-metric">{} human, {} synthetic</span></h2>"#,
+        SEC_FLAGS,
+        pos,
+        neg,
+        n = sc.next(),
     )?;
     writeln!(
         html,
-        r#"<p>The following behavioral signals were detected during analysis. Human indicators corroborate H\u{{2081}}; \
-synthetic indicators, if present, corroborate H\u{{2082}} and may warrant further investigation.</p>"#
+        r#"<p>The following behavioral signals were detected during analysis. Human indicators corroborate H<sub>1</sub>; 
+synthetic indicators, if present, corroborate H<sub>2</sub> and may warrant further investigation.</p>"#
     )?;
     write!(
         html,
@@ -341,8 +416,12 @@ synthetic indicators, if present, corroborate H\u{{2082}} and may warrant furthe
     writeln!(html, "</tbody></table>")
 }
 
-pub(in crate::report::html) fn write_scope(html: &mut String, r: &WarReport) -> fmt::Result {
-    section_heading(html, 11, SEC_SCOPE)?;
+pub(in crate::report::html) fn write_scope(
+    html: &mut String,
+    sc: &mut SectionCounter,
+    r: &WarReport,
+) -> fmt::Result {
+    section_heading(html, sc, SEC_SCOPE)?;
     html.push_str(TMPL_SCOPE);
 
     if !r.limitations.is_empty() {
@@ -360,13 +439,14 @@ pub(in crate::report::html) fn write_scope(html: &mut String, r: &WarReport) -> 
 
 pub(in crate::report::html) fn write_analyzed_text(
     html: &mut String,
+    sc: &mut SectionCounter,
     r: &WarReport,
 ) -> fmt::Result {
     if let Some(ref text) = r.analyzed_text {
-        section_heading(html, 12, SEC_TEXT)?;
+        section_heading(html, sc, SEC_TEXT)?;
         write!(
             html,
-            r#"<p>The following text was submitted for examination. Its SHA-256 hash has been verified against the chain-of-evidence record in Section 3.</p>
+            r#"<p>The following text was submitted for examination. Its SHA-256 hash has been verified against the chain-of-evidence record.</p>
 <div class="analyzed-text">{}</div>
 "#,
             html_escape(text)
@@ -377,14 +457,18 @@ pub(in crate::report::html) fn write_analyzed_text(
 
 pub(in crate::report::html) fn write_verification_instructions(
     html: &mut String,
+    sc: &mut SectionCounter,
 ) -> fmt::Result {
-    section_heading(html, 13, SEC_VERIFY)?;
+    section_heading(html, sc, SEC_VERIFY)?;
     html.push_str(TMPL_VERIFICATION);
     Ok(())
 }
 
-pub(in crate::report::html) fn write_glossary(html: &mut String) -> fmt::Result {
-    section_heading(html, 14, SEC_GLOSSARY)?;
+pub(in crate::report::html) fn write_glossary(
+    html: &mut String,
+    sc: &mut SectionCounter,
+) -> fmt::Result {
+    section_heading(html, sc, SEC_GLOSSARY)?;
     html.push_str(TMPL_GLOSSARY);
     Ok(())
 }

@@ -53,6 +53,13 @@ pub struct FfiWarReport {
     pub is_sample: bool,
     pub evidence_hash: Option<String>,
     pub methodology: Option<FfiStatisticalMethodology>,
+    /// Whether the captured evidence meets the validated thresholds for an
+    /// evaluative forensic determination. When `false`, the UI must block
+    /// export and surface `evidence_gaps` rather than save a neutral report.
+    pub meets_evidence_threshold: bool,
+    /// Human-readable list of unmet evidence thresholds (empty when
+    /// `meets_evidence_threshold` is `true`).
+    pub evidence_gaps: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

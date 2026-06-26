@@ -18,6 +18,11 @@ pub fn render_html(r: &WarReport) -> String {
 }
 
 fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
+    // Section numbers are assigned in render order so the numbered "spine" of
+    // the report always reads sequentially, regardless of which optional
+    // sections are present.
+    let mut sc = sections::SectionCounter::default();
+
     css::write_head(html, r)?;
 
     // Document title
@@ -30,7 +35,7 @@ fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
     sections::write_executive_summary(html, r)?;
 
     // Declaration of findings (score, verdict, LR, ENFSI)
-    sections::write_verdict(html, r)?;
+    sections::write_verdict(html, &mut sc, r)?;
 
     let sufficient = r.evidence_is_sufficient();
 
@@ -40,10 +45,10 @@ fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
         write_insufficient_notice(html, r)?;
 
         // Still show: chain of evidence, scope/limitations, verification, glossary
-        sections::write_chain_of_custody(html, r)?;
-        sections::write_scope(html, r)?;
-        sections::write_verification_instructions(html)?;
-        sections::write_glossary(html)?;
+        sections::write_chain_of_custody(html, &mut sc, r)?;
+        sections::write_scope(html, &mut sc, r)?;
+        sections::write_verification_instructions(html, &mut sc)?;
+        sections::write_glossary(html, &mut sc)?;
         sections::write_footer(html, r)?;
         return write!(html, "</div></body></html>");
     }
@@ -57,47 +62,50 @@ fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
     sections::write_key_findings(html, r)?;
 
     // ── PART 2: BEHAVIORAL ANALYSIS (intended to be read) ──
-    // Dimension scores, category breakdowns, writing flow — the analytical core.
-    sections::write_dimension_analysis(html, r)?;
-    sections::write_category_scores(html, r)?;
+    // Dimension scores and writing flow — the analytical core.
+    sections::write_dimension_analysis(html, &mut sc, r)?;
     sections::write_forensic_breakdown(html, r)?;
-    sections::write_session_timeline(html, r)?;
+    sections::write_session_timeline(html, &mut sc, r)?;
     sections::write_edit_topology(html, r)?;
     sections::write_activity_contexts(html, r)?;
 
     // ── PART 3: EVIDENCE CHAIN (intended to be read) ──
     // Provenance, process evidence, chain of custody.
     sections::write_provenance_breakdown(html, r)?;
-    sections::write_process_evidence(html, r)?;
-    sections::write_chain_of_custody(html, r)?;
+    sections::write_process_evidence(html, &mut sc, r)?;
+    sections::write_chain_of_custody(html, &mut sc, r)?;
     sections::write_declaration_summary(html, r)?;
     sections::write_hardware_attestation(html, r)?;
-    sections::write_forgery_resistance(html, r)?;
+    sections::write_forgery_resistance(html, &mut sc, r)?;
 
-    // ── PART 4: METHODOLOGY & SCOPE ──
-    sections::write_methodology(html, r)?;
-    sections::write_scope(html, r)?;
-    sections::write_flags(html, r)?;
+    // ── PART 4: ANALYSIS FLAGS, METHODOLOGY & SCOPE ──
+    // Flags precede methodology and scope/limitations/admissibility.
+    sections::write_flags(html, &mut sc, r)?;
+    sections::write_methodology(html, &mut sc, r)?;
+    sections::write_scope(html, &mut sc, r)?;
     sections::write_anomalies_detail(html, r)?;
 
     // ── PART 5: REFERENCE DATA (for legal/technical use, not casual reading) ──
     writeln!(html, r#"<div class="reference-appendix">"#)?;
     writeln!(html, r#"<h2>Reference Appendix</h2>"#)?;
-    writeln!(html, r#"<p class="chart-caption">The following sections contain raw technical data provided for legal verification and reproducibility. The visual charts and analysis above are the intended reading material.</p>"#)?;
-    sections::write_dimension_lr_table(html, r)?;
-    sections::write_checkpoint_chain(html, r)?;
+    writeln!(
+        html,
+        r#"<p class="chart-caption">The following sections contain raw technical data provided for legal verification and reproducibility. The visual charts and analysis above are the intended reading material.</p>"#
+    )?;
+    sections::write_dimension_lr_table(html, &mut sc, r)?;
+    sections::write_checkpoint_chain(html, &mut sc, r)?;
     sections::write_key_hierarchy(html, r)?;
-    sections::write_analyzed_text(html, r)?;
-    sections::write_verification_instructions(html)?;
-    sections::write_glossary(html)?;
+    sections::write_analyzed_text(html, &mut sc, r)?;
+    sections::write_verification_instructions(html, &mut sc)?;
+    sections::write_glossary(html, &mut sc)?;
     sections::write_verifiable_credential(html, r)?;
     sections::write_embedded_evidence(html, r)?;
     writeln!(html, "</div>")?;
 
     // ── LEGAL CERTIFICATIONS ──
-    sections::write_certification(html, r)?;
-    sections::write_fre_certification(html, r)?;
-    sections::write_references(html, r)?;
+    sections::write_certification(html, &mut sc, r)?;
+    sections::write_fre_certification(html, &mut sc, r)?;
+    sections::write_references(html, &mut sc, r)?;
     sections::write_footer(html, r)?;
 
     write!(html, "</div></body></html>")
@@ -112,7 +120,10 @@ fn write_visual_overview(html: &mut String, r: &WarReport) -> std::fmt::Result {
     let flow_svg = charts::writing_flow_chart(&r.writing_flow);
     if !flow_svg.is_empty() {
         writeln!(html, r#"<h3>Writing Rhythm</h3>"#)?;
-        writeln!(html, r#"<p class="chart-caption">Typing intensity over time. Peaks indicate active composition; valleys indicate pauses for thought or revision.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p class="chart-caption">Typing intensity over time. Peaks indicate active composition; valleys indicate pauses for thought or revision.</p>"#
+        )?;
         writeln!(html, "{flow_svg}")?;
     }
 
@@ -120,7 +131,10 @@ fn write_visual_overview(html: &mut String, r: &WarReport) -> std::fmt::Result {
     let dim_svg = charts::dimension_bar_chart(&r.dimensions);
     if !dim_svg.is_empty() {
         writeln!(html, r#"<h3>Analysis Dimensions</h3>"#)?;
-        writeln!(html, r#"<p class="chart-caption">Per-dimension assessment scores. Green (&ge;70) indicates strong human authorship signals; amber (40&ndash;69) is mixed; red (&lt;40) is suspicious.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p class="chart-caption">Per-dimension assessment scores. Green (&ge;70) indicates strong human authorship signals; amber (40&ndash;69) is mixed; red (&lt;40) is suspicious.</p>"#
+        )?;
         writeln!(html, "{dim_svg}")?;
     }
 
@@ -128,12 +142,18 @@ fn write_visual_overview(html: &mut String, r: &WarReport) -> std::fmt::Result {
     let cp_svg = charts::checkpoint_velocity_chart(&r.checkpoints);
     if !cp_svg.is_empty() {
         writeln!(html, r#"<h3>Document Growth</h3>"#)?;
-        writeln!(html, r#"<p class="chart-caption">Document size at each checkpoint. Steady growth with revision dips is characteristic of human composition.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p class="chart-caption">Document size at each checkpoint. Steady growth with revision dips is characteristic of human composition.</p>"#
+        )?;
         writeln!(html, "{cp_svg}")?;
     }
 
     if flow_svg.is_empty() && dim_svg.is_empty() && cp_svg.is_empty() {
-        writeln!(html, r#"<p>Insufficient data for visual charts. See detailed tables below.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p>Insufficient data for visual charts. See detailed tables below.</p>"#
+        )?;
     }
 
     Ok(())
@@ -148,7 +168,8 @@ fn write_insufficient_notice(html: &mut String, r: &WarReport) -> std::fmt::Resu
     let checkpoints = r.checkpoints.len();
     let words = r.document_words.unwrap_or(0);
 
-    write!(html,
+    write!(
+        html,
         r#"<div class="info-box" style="border-left:4px solid #757575;margin:24px 0;padding:16px 20px">
 <h2 style="margin:0 0 8px;color:#757575">Examination Withheld</h2>
 <p>The captured evidence does not meet the validated minimum thresholds required for
@@ -200,8 +221,11 @@ evidence. The report will issue an evaluative finding once all thresholds are me
     if !gaps.is_empty() {
         for lim in &r.limitations {
             if lim.contains("Evidence below validated thresholds") {
-                write!(html, "<p style=\"color:#666;font-size:12px\"><em>{}</em></p>",
-                    html_escape(lim))?;
+                write!(
+                    html,
+                    "<p style=\"color:#666;font-size:12px\"><em>{}</em></p>",
+                    html_escape(lim)
+                )?;
                 break;
             }
         }

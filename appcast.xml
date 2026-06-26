@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>WritersProof Updates</title>
+    <link>https://writerslogic.com/appcast.xml</link>
+    <description>WritersProof automatic update feed</description>
+    <language>en</language>
+    <item>
+      <title>WritersProof 1.4.0</title>
+      <pubDate>Wed, 24 Jun 2026 00:48:12 -0700</pubDate>
+      <sparkle:version>202606240034</sparkle:version>
+      <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://updates.writerslogic.com/WritersProof-1.4.0.dmg"
+        length="29616621"
+        type="application/octet-stream"
+        sparkle:edSignature="6x4qyfIZNawHqW3Cq2l/CzXNyKkgnyRhUMYXbqbUyguyWzl2glspxWOBcEXN9m3uKvYBcms5J2YvyQqg4ly0Cg=="
+      />
+    </item>
+  </channel>
+</rss>
