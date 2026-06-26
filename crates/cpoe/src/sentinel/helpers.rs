@@ -2627,10 +2627,9 @@ fn extract_word_count_tex(path: &Path) -> Option<u64> {
                     if matches!(
                         cmd.as_str(),
                         "textbf" | "textit" | "emph" | "underline" | "text"
-                    ) {
-                        if chars.peek() == Some(&'{') {
-                            chars.next();
-                        }
+                    ) && chars.peek() == Some(&'{')
+                    {
+                        chars.next();
                     }
                 }
                 '{' | '}' if !in_math => {}

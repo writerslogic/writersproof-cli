@@ -40,7 +40,12 @@ pub fn ffi_export_evidence_json(path: String, tier: String, output: String) -> F
 /// Export stored events for a file as a CBOR evidence packet at the given tier.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_export_evidence(path: String, tier: String, output: String) -> FfiResult {
-    log::debug!("ffi_export_evidence: path={} tier={} output={}", path, tier, output);
+    log::debug!(
+        "ffi_export_evidence: path={} tier={} output={}",
+        path,
+        tier,
+        output
+    );
     catch_ffi_panic!(@err FfiResult, {
         super::types::run_on_stack(move || export_evidence_inner(path, tier, output, None, None))
     })
@@ -56,7 +61,14 @@ pub fn ffi_export_evidence_range(
     start_ns: i64,
     end_ns: i64,
 ) -> FfiResult {
-    log::debug!("ffi_export_evidence_range: path={} tier={} output={} start_ns={} end_ns={}", path, tier, output, start_ns, end_ns);
+    log::debug!(
+        "ffi_export_evidence_range: path={} tier={} output={} start_ns={} end_ns={}",
+        path,
+        tier,
+        output,
+        start_ns,
+        end_ns
+    );
     catch_ffi_panic!(@err FfiResult, {
         super::types::run_on_stack(move || export_evidence_inner(path, tier, output, Some(start_ns), Some(end_ns)))
     })
@@ -394,7 +406,11 @@ pub(crate) fn build_wire_packet_with_ai(
                     lims.push(format!("ai-disclosure: {trimmed}"));
                 }
             }
-            if lims.is_empty() { None } else { Some(lims) }
+            if lims.is_empty() {
+                None
+            } else {
+                Some(lims)
+            }
         },
         profile: None,
         presence_challenges: None,
@@ -407,14 +423,17 @@ pub(crate) fn build_wire_packet_with_ai(
             super::sentinel::get_sentinel()
                 .and_then(|s| {
                     let sessions = s.sessions();
-                    sessions.iter().find(|sess| sess.path == path).map(|sess| {
-                        u64::from(sess.session_number) + 1
-                    })
+                    sessions
+                        .iter()
+                        .find(|sess| sess.path == path)
+                        .map(|sess| u64::from(sess.session_number) + 1)
                 })
                 .or_else(|| {
-                    store.load_document_stats(&path).ok().flatten().map(|stats| {
-                        u64::try_from(stats.session_count).unwrap_or(1).max(1)
-                    })
+                    store
+                        .load_document_stats(&path)
+                        .ok()
+                        .flatten()
+                        .map(|stats| u64::try_from(stats.session_count).unwrap_or(1).max(1))
                 })
         },
         physical_liveness: None,
@@ -547,22 +566,28 @@ pub(crate) fn collect_ai_tool_limitations(path: &str) -> Option<Vec<String>> {
     Some(limitations)
 }
 
-fn collect_export_attestation(path: &str) -> Option<authorproof_protocol::rfc::wire_types::ExportAttestationWire> {
+fn collect_export_attestation(
+    path: &str,
+) -> Option<authorproof_protocol::rfc::wire_types::ExportAttestationWire> {
     let sentinel = get_sentinel()?;
     let sessions = sentinel.sessions.read_recover();
     let session = sessions.get(path)?;
     let att = session.export_attestation.as_ref()?;
-    Some(authorproof_protocol::rfc::wire_types::ExportAttestationWire {
-        source_session_id: att.source_session_id.clone(),
-        bundle_hash: att.bundle_hash.clone(),
-        output_hash: att.output_hash.clone(),
-        output_path_hash: att.output_path_hash.clone(),
-        source_checkpoint_ns: att.source_checkpoint_ns,
-        export_detected_ns: att.export_detected_ns,
-    })
+    Some(
+        authorproof_protocol::rfc::wire_types::ExportAttestationWire {
+            source_session_id: att.source_session_id.clone(),
+            bundle_hash: att.bundle_hash.clone(),
+            output_hash: att.output_hash.clone(),
+            output_path_hash: att.output_path_hash.clone(),
+            source_checkpoint_ns: att.source_checkpoint_ns,
+            export_detected_ns: att.export_detected_ns,
+        },
+    )
 }
 
-fn collect_document_structure(path: &str) -> Option<authorproof_protocol::rfc::wire_types::DocumentStructureWire> {
+fn collect_document_structure(
+    path: &str,
+) -> Option<authorproof_protocol::rfc::wire_types::DocumentStructureWire> {
     let sentinel = get_sentinel()?;
     let sessions = sentinel.sessions.read_recover();
     let session = sessions.get(path)?;
@@ -578,20 +603,26 @@ fn collect_document_structure(path: &str) -> Option<authorproof_protocol::rfc::w
             .map(crate::utils::duration_to_ms)
             .unwrap_or(0)
     };
-    let entries = map.uuid_to_title.iter().map(|(uuid, title)| {
-        authorproof_protocol::rfc::wire_types::DocumentStructureEntryWire {
-            uuid: uuid.clone(),
-            title: title.clone(),
-            depth: 0,
-            item_type: "Text".to_string(),
-        }
-    }).collect();
-    Some(authorproof_protocol::rfc::wire_types::DocumentStructureWire {
-        document_path_hash: hex::encode(blake3::hash(path.as_bytes()).as_bytes()),
-        entries,
-        source_hash: map.scrivx_hash.clone(),
-        captured_at_ms,
-    })
+    let entries = map
+        .uuid_to_title
+        .iter()
+        .map(
+            |(uuid, title)| authorproof_protocol::rfc::wire_types::DocumentStructureEntryWire {
+                uuid: uuid.clone(),
+                title: title.clone(),
+                depth: 0,
+                item_type: "Text".to_string(),
+            },
+        )
+        .collect();
+    Some(
+        authorproof_protocol::rfc::wire_types::DocumentStructureWire {
+            document_path_hash: hex::encode(blake3::hash(path.as_bytes()).as_bytes()),
+            entries,
+            source_hash: map.scrivx_hash.clone(),
+            captured_at_ms,
+        },
+    )
 }
 
 fn build_continuation_summary(
@@ -605,7 +636,7 @@ fn build_continuation_summary(
     // Build a deterministic series ID from the document path so continuations
     // across sessions share the same series. Uses SHA-256 truncated to UUID format.
     let series_id = {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let hash = Sha256::digest(path.as_bytes());
         let mut bytes = [0u8; 16];
         bytes.copy_from_slice(&hash[..16]);
@@ -616,20 +647,25 @@ fn build_continuation_summary(
     } else {
         None
     };
-    Some(authorproof_protocol::rfc::wire_types::ContinuationSummaryWire {
-        series_id: series_id.to_string(),
-        total_checkpoints: u64::try_from(stats.total_checkpoints).unwrap_or(0),
-        total_chars: 0,
-        packets_in_series: u32::try_from(stats.session_count).unwrap_or(u32::MAX),
-        series_started_at_ms: started_ms,
-    })
+    Some(
+        authorproof_protocol::rfc::wire_types::ContinuationSummaryWire {
+            series_id: series_id.to_string(),
+            total_checkpoints: u64::try_from(stats.total_checkpoints).unwrap_or(0),
+            total_chars: 0,
+            packets_in_series: u32::try_from(stats.session_count).unwrap_or(u32::MAX),
+            series_started_at_ms: started_ms,
+        },
+    )
 }
 
 /// Read `repair-log.json` from the data directory and return limitation strings
 /// for each recorded integrity repair event.
 fn collect_repair_history(data_dir: &std::path::Path) -> Vec<String> {
     let log_path = data_dir.join("repair-log.json");
-    if std::fs::metadata(&log_path).map(|m| m.len() > 10 * 1024 * 1024).unwrap_or(false) {
+    if std::fs::metadata(&log_path)
+        .map(|m| m.len() > 10 * 1024 * 1024)
+        .unwrap_or(false)
+    {
         log::warn!("repair-log.json too large, skipping");
         return vec![];
     }
@@ -879,13 +915,11 @@ fn enrich_checkpoints(
                     vec![]
                 }
             };
-            cp.jitter_binding = Some(
-                authorproof_protocol::rfc::wire_types::JitterBindingWire {
-                    intervals,
-                    entropy_estimate: entropy_centibits,
-                    jitter_seal,
-                },
-            );
+            cp.jitter_binding = Some(authorproof_protocol::rfc::wire_types::JitterBindingWire {
+                intervals,
+                entropy_estimate: entropy_centibits,
+                jitter_seal,
+            });
         }
 
         // Edit graph hash: SHA-256 of cumulative edit positions up to this checkpoint.
@@ -961,7 +995,8 @@ fn build_baseline_verification(
         .iter()
         .map(|s| s.duration_since_last_ns / 1_000_000)
         .collect();
-    let iki_counts = crate::analysis::histogram::edge_histogram(&iki_ms_vals, &IKI_HIST_EDGES_MS, 9);
+    let iki_counts =
+        crate::analysis::histogram::edge_histogram(&iki_ms_vals, &IKI_HIST_EDGES_MS, 9);
     let mut iki_histogram = [0.0f64; 9];
     let total_samples = iki_ms_vals.len() as f64;
     if total_samples > 0.0 {
@@ -1011,11 +1046,13 @@ fn build_baseline_verification(
         keystroke_count: jitter_samples.len() as u64,
     };
 
-    Some(authorproof_protocol::rfc::wire_types::BaselineVerification {
-        digest: None, // Populated by cross-session baseline manager (not available at export)
-        session_summary: summary,
-        digest_signature: None, // Signed by baseline manager
-    })
+    Some(
+        authorproof_protocol::rfc::wire_types::BaselineVerification {
+            digest: None, // Populated by cross-session baseline manager (not available at export)
+            session_summary: summary,
+            digest_signature: None, // Signed by baseline manager
+        },
+    )
 }
 
 /// Collect dictation-related limitations from sentinel session.
@@ -1080,7 +1117,7 @@ fn collect_composition_mode_limitations(path: &str, event_count: usize) -> Vec<S
     };
 
     let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
-    let pastes: Vec<_> = session.paste_context.iter().cloned().collect();
+    let pastes: Vec<_> = session.paste_context.to_vec();
     let cm = match crate::forensics::composition_mode::analyze_composition_mode(
         &switches,
         &pastes,
@@ -1125,57 +1162,55 @@ fn collect_composition_mode_limitations(path: &str, event_count: usize) -> Vec<S
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_compact_ref(path: String) -> String {
     catch_ffi_panic!(String::new(), {
-    log::debug!("ffi_get_compact_ref: path={}", path);
-    let path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(_) => return String::new(),
-    };
+        log::debug!("ffi_get_compact_ref: path={}", path);
+        let path = match crate::sentinel::helpers::validate_path(&path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => return String::new(),
+        };
 
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(_) => return String::new(),
-    };
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(_) => return String::new(),
+        };
 
-    let events = match store.get_events_for_file(&path) {
-        Ok(e) => e,
-        Err(_) => return String::new(),
-    };
+        let events = match store.get_events_for_file(&path) {
+            Ok(e) => e,
+            Err(_) => return String::new(),
+        };
 
-    if events.is_empty() {
-        return String::new();
-    }
-
-    let last_event = &events[events.len() - 1];
-    let hash_hex = hex::encode(last_event.event_hash);
-    let hash_prefix = &hash_hex[..hash_hex.len().min(12)];
-    let count = events.len();
-
-    // Sign the compact ref with the device key for verifiable VC binding.
-    let (author_did, vc_sig) = match crate::ffi::helpers::load_signing_key() {
-        Ok(sk) => {
-            let did = crate::identity::did_key_from_public(
-                sk.verifying_key().as_bytes(),
-            )
-            .unwrap_or_default();
-            let payload = format!("cpoe-ref:writerslogic:{hash_prefix}:{count}:{did}");
-            let sig = {
-                use ed25519_dalek::Signer;
-                sk.sign(payload.as_bytes())
-            };
-            (did, format!("f{}", hex::encode(sig.to_bytes())))
+        if events.is_empty() {
+            return String::new();
         }
-        Err(_) => (String::new(), String::new()),
-    };
 
-    if author_did.is_empty() {
-        format!("cpoe-ref:writerslogic:{hash_prefix}:{count}")
-    } else {
-        format!(
-            "cpoe-ref:writerslogic:{hash_prefix}:{count}\n\
+        let last_event = &events[events.len() - 1];
+        let hash_hex = hex::encode(last_event.event_hash);
+        let hash_prefix = &hash_hex[..hash_hex.len().min(12)];
+        let count = events.len();
+
+        // Sign the compact ref with the device key for verifiable VC binding.
+        let (author_did, vc_sig) = match crate::ffi::helpers::load_signing_key() {
+            Ok(sk) => {
+                let did = crate::identity::did_key_from_public(sk.verifying_key().as_bytes())
+                    .unwrap_or_default();
+                let payload = format!("cpoe-ref:writerslogic:{hash_prefix}:{count}:{did}");
+                let sig = {
+                    use ed25519_dalek::Signer;
+                    sk.sign(payload.as_bytes())
+                };
+                (did, format!("f{}", hex::encode(sig.to_bytes())))
+            }
+            Err(_) => (String::new(), String::new()),
+        };
+
+        if author_did.is_empty() {
+            format!("cpoe-ref:writerslogic:{hash_prefix}:{count}")
+        } else {
+            format!(
+                "cpoe-ref:writerslogic:{hash_prefix}:{count}\n\
              did:{author_did}\n\
              sig:{vc_sig}"
-        )
-    }
+            )
+        }
     })
 }
 
@@ -1302,18 +1337,19 @@ fn build_forensic_summary(
         .map(|wm| wm.mode.to_string())
         .unwrap_or_else(|| "insufficient".to_string());
 
-    let (editing_ratio, session_keystroke_count) = if let Some(sentinel) = super::sentinel::get_sentinel() {
-        let sessions = sentinel.sessions();
-        let session = sessions
-            .iter()
-            .find(|s| s.path == path);
-        (
-            session.map(|s| s.semantic_counts.editing_ratio()).unwrap_or(0.0),
-            session.map(|s| s.keystroke_count),
-        )
-    } else {
-        (0.0, None)
-    };
+    let (editing_ratio, session_keystroke_count) =
+        if let Some(sentinel) = super::sentinel::get_sentinel() {
+            let sessions = sentinel.sessions();
+            let session = sessions.iter().find(|s| s.path == path);
+            (
+                session
+                    .map(|s| s.semantic_counts.editing_ratio())
+                    .unwrap_or(0.0),
+                session.map(|s| s.keystroke_count),
+            )
+        } else {
+            (0.0, None)
+        };
 
     let keystroke_count = session_keystroke_count.unwrap_or_else(|| {
         crate::ffi::helpers::open_store()
@@ -1325,7 +1361,10 @@ fn build_forensic_summary(
 
     use crate::utils::finite_or;
     let cv = if mean_iki_ms > 0.0 && metrics.cadence.std_dev_iki_ns.is_finite() {
-        finite_or(metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns, 0.0)
+        finite_or(
+            metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns,
+            0.0,
+        )
     } else {
         0.0
     };
@@ -1338,33 +1377,62 @@ fn build_forensic_summary(
         hurst_exponent: metrics.hurst_exponent.filter(|h| h.is_finite()),
         keystroke_count,
         editing_ratio: finite_or(editing_ratio, 0.0),
-        checkpoint_count: events.iter().filter(|e| e.context_type.as_deref() == Some("checkpoint")).count() as u64,
+        checkpoint_count: events
+            .iter()
+            .filter(|e| e.context_type.as_deref() == Some("checkpoint"))
+            .count() as u64,
         assessment_score: finite_or(metrics.assessment_score.get(), 0.0),
         coefficient_of_variation: finite_or(cv, 0.0),
         biological_cadence_score: finite_or(metrics.biological_cadence_score.get(), 0.0),
         timing_entropy: finite_or(metrics.primary.timing_entropy, 0.0),
         pause_entropy: finite_or(metrics.primary.pause_entropy, 0.0),
         cognitive_load_score: metrics.cognitive_load.as_ref().map(|cl| cl.composite_score),
-        revision_topology_score: metrics.revision_topology.as_ref().map(|rt| rt.composite_score),
+        revision_topology_score: metrics
+            .revision_topology
+            .as_ref()
+            .map(|rt| rt.composite_score),
         error_ecology_score: metrics.error_ecology.as_ref().map(|ee| ee.composite_score),
-        likelihood_p_cognitive: metrics.likelihood_model.as_ref().map(|lm| lm.session_p_cognitive),
+        likelihood_p_cognitive: metrics
+            .likelihood_model
+            .as_ref()
+            .map(|lm| lm.session_p_cognitive),
         forgery_difficulty: metrics.forgery_cost.as_ref().map(|f| f.overall_difficulty),
         cross_modal_score: metrics.cross_modal.as_ref().map(|cm| cm.score),
         snr_db: metrics.snr.as_ref().map(|s| s.snr_db),
         lyapunov_exponent: metrics.lyapunov.as_ref().map(|l| l.exponent),
-        transcription_suspicious: metrics.transcription_suspicion.as_ref().is_some_and(|t| t.is_suspicious),
-        composition_mode: metrics.composition_mode.as_ref().and_then(|cm| cm.dominant_mode.map(|m| m.to_string())),
+        transcription_suspicious: metrics
+            .transcription_suspicion
+            .as_ref()
+            .is_some_and(|t| t.is_suspicious),
+        composition_mode: metrics
+            .composition_mode
+            .as_ref()
+            .and_then(|cm| cm.dominant_mode.map(|m| m.to_string())),
         active_probes_score: metrics.active_probes.as_ref().map(|ap| ap.combined_score),
         error_topology_score: metrics.error_topology.as_ref().map(|et| et.score),
-        spectral_slope: metrics.spectral_analysis.as_ref().map(|pn| pn.spectral_slope),
-        spectral_noise_type: metrics.spectral_analysis.as_ref().map(|pn| format!("{:?}", pn.noise_type)),
-        baseline_deviation: metrics.baseline_comparison.as_ref().map(|bc| bc.mahalanobis_distance),
+        spectral_slope: metrics
+            .spectral_analysis
+            .as_ref()
+            .map(|pn| pn.spectral_slope),
+        spectral_noise_type: metrics
+            .spectral_analysis
+            .as_ref()
+            .map(|pn| format!("{:?}", pn.noise_type)),
+        baseline_deviation: metrics
+            .baseline_comparison
+            .as_ref()
+            .map(|bc| bc.mahalanobis_distance),
         ai_fluency_flag: metrics.ai_fluency_flag,
         paste_content_breakdown: metrics.composition_mode.as_ref().map(|cm| {
             let b = &cm.paste_content_breakdown;
             let sat = |v: usize| -> u32 { u32::try_from(v).unwrap_or(u32::MAX) };
-            [sat(b.prose_count), sat(b.structured_data_count), sat(b.media_count),
-             sat(b.formatting_only_count), sat(b.mixed_count)]
+            [
+                sat(b.prose_count),
+                sat(b.structured_data_count),
+                sat(b.media_count),
+                sat(b.formatting_only_count),
+                sat(b.mixed_count),
+            ]
         }),
     })
 }
@@ -1394,8 +1462,8 @@ fn collect_project_files(
     let siblings: Vec<_> = all_files
         .into_iter()
         .filter(|(path, _, _)| {
-            let canonical = std::fs::canonicalize(path)
-                .unwrap_or_else(|_| std::path::PathBuf::from(path));
+            let canonical =
+                std::fs::canonicalize(path).unwrap_or_else(|_| std::path::PathBuf::from(path));
             if canonical == canonical_primary {
                 return false;
             }
@@ -1412,8 +1480,8 @@ fn collect_project_files(
         .iter()
         .map(|(path, _last_ts, event_count)| {
             // Relative path from project root for cleaner display
-            let canonical_path = std::fs::canonicalize(path)
-                .unwrap_or_else(|_| std::path::PathBuf::from(path));
+            let canonical_path =
+                std::fs::canonicalize(path).unwrap_or_else(|_| std::path::PathBuf::from(path));
             let rel_path = canonical_path
                 .strip_prefix(&canonical_root)
                 .map(|p| p.to_string_lossy().to_string())
@@ -1705,7 +1773,10 @@ mod tests {
             .map(|i| IKI_HIST_EDGES_MS[(i % 9) as usize] + 10)
             .collect();
         let e = estimate_entropy_centibits(&intervals);
-        assert!(e > 200, "uniform distribution should have high entropy, got {e}");
+        assert!(
+            e > 200,
+            "uniform distribution should have high entropy, got {e}"
+        );
     }
 
     #[test]

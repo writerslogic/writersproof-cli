@@ -81,19 +81,27 @@ pub fn ffi_sentinel_inject_keystroke_v3(
 ) -> bool {
     use crate::ffi::types::catch_ffi_panic;
     catch_ffi_panic!(false, {
-    inject_keystroke_inner_v3(
-        timestamp_ns,
-        keycode,
-        zone,
-        source_state_id,
-        keyboard_type,
-        source_pid,
-        char_value,
-        coalesced_count,
-        crate::sentinel::types::ModifierFlags(modifier_flags_raw),
-        if dwell_time_ns > 0 { Some(dwell_time_ns) } else { None },
-        if flight_time_ns > 0 { Some(flight_time_ns) } else { None },
-    )
+        inject_keystroke_inner_v3(
+            timestamp_ns,
+            keycode,
+            zone,
+            source_state_id,
+            keyboard_type,
+            source_pid,
+            char_value,
+            coalesced_count,
+            crate::sentinel::types::ModifierFlags(modifier_flags_raw),
+            if dwell_time_ns > 0 {
+                Some(dwell_time_ns)
+            } else {
+                None
+            },
+            if flight_time_ns > 0 {
+                Some(flight_time_ns)
+            } else {
+                None
+            },
+        )
     })
 }
 
@@ -121,17 +129,17 @@ pub fn ffi_sentinel_inject_keystroke_v2(
 ) -> bool {
     use crate::ffi::types::catch_ffi_panic;
     catch_ffi_panic!(false, {
-    inject_keystroke_inner(
-        timestamp_ns,
-        keycode,
-        zone,
-        source_state_id,
-        keyboard_type,
-        source_pid,
-        char_value,
-        coalesced_count,
-        crate::sentinel::types::ModifierFlags(modifier_flags_raw),
-    )
+        inject_keystroke_inner(
+            timestamp_ns,
+            keycode,
+            zone,
+            source_state_id,
+            keyboard_type,
+            source_pid,
+            char_value,
+            coalesced_count,
+            crate::sentinel::types::ModifierFlags(modifier_flags_raw),
+        )
     })
 }
 
@@ -150,17 +158,17 @@ pub fn ffi_sentinel_inject_keystroke(
 ) -> bool {
     use crate::ffi::types::catch_ffi_panic;
     catch_ffi_panic!(false, {
-    inject_keystroke_inner(
-        timestamp_ns,
-        keycode,
-        zone,
-        source_state_id,
-        keyboard_type,
-        source_pid,
-        char_value,
-        coalesced_count,
-        crate::sentinel::types::ModifierFlags::default(),
-    )
+        inject_keystroke_inner(
+            timestamp_ns,
+            keycode,
+            zone,
+            source_state_id,
+            keyboard_type,
+            source_pid,
+            char_value,
+            coalesced_count,
+            crate::sentinel::types::ModifierFlags::default(),
+        )
     })
 }
 
@@ -274,7 +282,10 @@ fn inject_keystroke_inner_v3(
             Some(start) => {
                 let elapsed_ms = now.duration_since(start).as_millis() as u64;
                 let carry = if elapsed_ms < 2000 {
-                    window.count.saturating_mul(1000u64.saturating_sub(elapsed_ms.min(1000))) / 1000
+                    window
+                        .count
+                        .saturating_mul(1000u64.saturating_sub(elapsed_ms.min(1000)))
+                        / 1000
                 } else {
                     0
                 };
@@ -341,7 +352,10 @@ fn inject_keystroke_inner_v3(
     let is_unverified_ffi = source_state_id == 0 && keyboard_type == 0 && source_pid == 0;
     log::trace!(
         "[FFI_INJECT] source: state_id={} kbd_type={} pid={} unverified={}",
-        source_state_id, keyboard_type, source_pid, is_unverified_ffi
+        source_state_id,
+        keyboard_type,
+        source_pid,
+        is_unverified_ffi
     );
     if !is_unverified_ffi {
         if keyboard_type == 0 {
@@ -405,11 +419,17 @@ fn inject_keystroke_inner_v3(
     // when the user switches to a non-excluded app and current_focus is briefly None.
     let focus = sentinel.current_focus().or_else(|| {
         let tp = sentinel.targeted_path()?;
-        let has_focus = sentinel.sessions.read_recover()
+        let has_focus = sentinel
+            .sessions
+            .read_recover()
             .get(&tp)
             .map(|s| s.has_focus)
             .unwrap_or(false);
-        if has_focus { Some(tp) } else { None }
+        if has_focus {
+            Some(tp)
+        } else {
+            None
+        }
     });
     log::debug!("[FFI_INJECT] focus={:?} keycode={}", focus, keycode);
     if let Some(ref path) = focus {
@@ -432,7 +452,7 @@ fn inject_keystroke_inner_v3(
                 semantic,
                 session.keystroke_count
             );
-            session.jitter_ring.push(sample.clone());
+            session.jitter_ring.push(sample);
             let pushed = true;
 
             let validation = crate::forensics::validate_keystroke_event(
@@ -455,7 +475,8 @@ fn inject_keystroke_inner_v3(
             if validation.confidence < min_confidence {
                 log::debug!(
                     "[FFI_INJECT] REJECTED keystroke: confidence {:.2} < {:.2}",
-                    validation.confidence, min_confidence
+                    validation.confidence,
+                    min_confidence
                 );
                 session.keystroke_count = session.keystroke_count.saturating_sub(increment);
                 if pushed {

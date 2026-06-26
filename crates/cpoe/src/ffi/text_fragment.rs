@@ -414,6 +414,7 @@ pub fn ffi_sentinel_cross_window_match(
 /// before any Rust-side size check runs, so oversized pastes allocate memory
 /// regardless of the guard below.
 #[cfg_attr(feature = "ffi", uniffi::export)]
+#[allow(clippy::too_many_arguments)] // FFI signature mirrors the paste-event fields the UI captures
 pub fn ffi_sentinel_record_paste(
     char_count: i64,
     pasted_text: String,

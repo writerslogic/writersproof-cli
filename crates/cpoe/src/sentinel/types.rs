@@ -253,9 +253,13 @@ impl JitterRingBuffer {
             self.buf.pop()
         } else {
             // Post-wrap: rewind head. The sample is still in buf but logically removed.
-            self.head = if self.head == 0 { self.capacity - 1 } else { self.head - 1 };
+            self.head = if self.head == 0 {
+                self.capacity - 1
+            } else {
+                self.head - 1
+            };
             self.len -= 1;
-            Some(self.buf[self.head].clone())
+            Some(self.buf[self.head])
         }
     }
 
@@ -267,7 +271,11 @@ impl JitterRingBuffer {
         if self.buf.len() < self.capacity {
             self.buf.last()
         } else {
-            let idx = if self.head == 0 { self.capacity - 1 } else { self.head - 1 };
+            let idx = if self.head == 0 {
+                self.capacity - 1
+            } else {
+                self.head - 1
+            };
             Some(&self.buf[idx])
         }
     }
@@ -280,7 +288,11 @@ impl JitterRingBuffer {
         if self.buf.len() < self.capacity {
             self.buf.last_mut()
         } else {
-            let idx = if self.head == 0 { self.capacity - 1 } else { self.head - 1 };
+            let idx = if self.head == 0 {
+                self.capacity - 1
+            } else {
+                self.head - 1
+            };
             Some(&mut self.buf[idx])
         }
     }
@@ -363,16 +375,18 @@ impl JitterRingBuffer {
         let mut result = Vec::with_capacity(count);
         for offset in (1..=count).rev() {
             let idx = (self.head + self.capacity - offset) % self.capacity;
-            result.push(self.buf[idx].clone());
+            result.push(self.buf[idx]);
         }
         result
     }
 
     /// Iterate samples in reverse chronological order (newest first).
     pub fn iter_rev(&self) -> JitterRingRevIter<'_> {
-        JitterRingRevIter { ring: self, offset: 0 }
+        JitterRingRevIter {
+            ring: self,
+            offset: 0,
+        }
     }
-
 }
 
 pub(crate) struct JitterRingRevIter<'a> {
@@ -1380,12 +1394,7 @@ impl SemanticAccumulator {
     /// Total editing keystrokes (deletions + undo/redo + cut/paste + select-all).
     /// Mirrors `KeystrokeSemantic::is_editing()`.
     pub fn total_editing(&self) -> u64 {
-        self.total_deletions()
-            + self.undo
-            + self.redo
-            + self.cut
-            + self.paste
-            + self.select_all
+        self.total_deletions() + self.undo + self.redo + self.cut + self.paste + self.select_all
     }
 
     /// Ratio of editing keystrokes to total keystrokes.
@@ -1686,19 +1695,17 @@ impl DocumentSession {
         if self.edit_context_proofs.len() >= MAX_PROOFS {
             return;
         }
-        if let Some(proof) = EditContextProof::compute(
-            content_hash,
-            document_bytes,
-            cursor_offset,
-            timestamp_ns,
-        ) {
+        if let Some(proof) =
+            EditContextProof::compute(content_hash, document_bytes, cursor_offset, timestamp_ns)
+        {
             self.edit_context_proofs.push(proof);
         }
     }
 
     /// Total keystrokes across all sessions including current.
     pub fn total_keystrokes(&self) -> u64 {
-        self.cumulative_keystrokes_base.saturating_add(self.keystroke_count)
+        self.cumulative_keystrokes_base
+            .saturating_add(self.keystroke_count)
     }
 
     /// Real-time WPM from the last 60 seconds of jitter samples.
@@ -1737,7 +1744,8 @@ impl DocumentSession {
 
     /// Total focus duration across all sessions including current.
     pub fn total_focus_ms_cumulative(&self) -> i64 {
-        self.cumulative_focus_ms_base.saturating_add(self.total_focus_ms)
+        self.cumulative_focus_ms_base
+            .saturating_add(self.total_focus_ms)
     }
 
     pub fn focus_gained(&mut self) {
@@ -2024,35 +2032,74 @@ const SKIP_TITLE_FRAGMENTS: &[&str] = &[
 /// from terminal window titles (e.g. "vim — filename — 80×24").
 const TERMINAL_EDITOR_NAMES: &[&str] = &[
     // Vi family
-    "vim", "nvim", "vi", "gvim", "mvim", "macvim", "nvi", "elvis",
+    "vim",
+    "nvim",
+    "vi",
+    "gvim",
+    "mvim",
+    "macvim",
+    "nvi",
+    "elvis",
     // Emacs family
-    "emacs", "xemacs", "mg", "zemacs",
+    "emacs",
+    "xemacs",
+    "mg",
+    "zemacs",
     // Nano/pico family
-    "nano", "pico", "tilde",
+    "nano",
+    "pico",
+    "tilde",
     // Modern terminal editors
-    "helix", "hx",
-    "kakoune", "kak",
+    "helix",
+    "hx",
+    "kakoune",
+    "kak",
     "micro",
     "amp",
-    "zee", "zi",
+    "zee",
+    "zi",
     "ox",
     "mle",
     "dte",
     "vis",
     // Classic editors
-    "joe", "jstar", "jpico", "jmacs",
-    "ed", "ex", "sed",
+    "joe",
+    "jstar",
+    "jpico",
+    "jmacs",
+    "ed",
+    "ex",
+    "sed",
     "ne",
     "mcedit",
     "fte",
     "le",
     "diakonos",
     // Shells
-    "bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh",
-    "elvish", "nushell", "nu", "ion", "xonsh", "oil", "osh",
-    "powershell", "pwsh",
+    "bash",
+    "zsh",
+    "fish",
+    "sh",
+    "dash",
+    "ksh",
+    "tcsh",
+    "csh",
+    "elvish",
+    "nushell",
+    "nu",
+    "ion",
+    "xonsh",
+    "oil",
+    "osh",
+    "powershell",
+    "pwsh",
     // Terminal multiplexers
-    "tmux", "screen", "zellij", "byobu", "dtach", "abduco",
+    "tmux",
+    "screen",
+    "zellij",
+    "byobu",
+    "dtach",
+    "abduco",
     // Terminal emulator process names (when they appear as bare segments)
     "login",
 ];
@@ -2097,9 +2144,7 @@ pub fn infer_document_path_from_title_with_bundle(
                 break;
             }
         }
-        working = working
-            .trim_end_matches(" (+)")
-            .trim_end_matches(" [+]");
+        working = working.trim_end_matches(" (+)").trim_end_matches(" [+]");
     }
 
     let accept_bare = is_title_inferred || is_terminal;
@@ -2177,19 +2222,30 @@ pub(super) fn is_terminal_bundle(bundle_id: &str) -> bool {
 /// Editor suffix markers stripped from terminal window titles before parsing.
 const EDITOR_TITLE_MARKERS: &[&str] = &[
     // Vi family
-    " - VIM", " - Vi IMproved", " - GVIM", " - NVIM", " - NeoVim",
+    " - VIM",
+    " - Vi IMproved",
+    " - GVIM",
+    " - NVIM",
+    " - NeoVim",
     // Emacs family
-    " - GNU Emacs", " - Emacs", " - XEmacs",
+    " - GNU Emacs",
+    " - Emacs",
+    " - XEmacs",
     // Nano/pico
-    " - GNU nano", " - Pico", " - tilde",
+    " - GNU nano",
+    " - Pico",
+    " - tilde",
     // Modern terminal editors
-    " - Helix", " - hx",
-    " - Kakoune", " - kak",
+    " - Helix",
+    " - hx",
+    " - Kakoune",
+    " - kak",
     " - Micro",
     " - Amp",
     " - Vis",
     // Classic editors
-    " - Joe", " - JOE",
+    " - Joe",
+    " - JOE",
     " - ne",
     " - mcedit",
     " - ed",
@@ -2225,10 +2281,7 @@ pub struct TitlePathHint {
 ///
 /// Returns `None` if the title does not contain separators or the extracted
 /// filename looks like a non-document title (e.g. "Settings").
-pub fn extract_title_path_hint(
-    title: &str,
-    bundle_id: Option<&str>,
-) -> Option<TitlePathHint> {
+pub fn extract_title_path_hint(title: &str, bundle_id: Option<&str>) -> Option<TitlePathHint> {
     if title.is_empty() {
         return None;
     }
@@ -2276,9 +2329,8 @@ pub fn extract_title_path_hint(
         "Hemingway Editor",
     ];
 
-    let is_app_suffix = |s: &str| -> bool {
-        APP_SUFFIXES.iter().any(|a| s.eq_ignore_ascii_case(a))
-    };
+    let is_app_suffix =
+        |s: &str| -> bool { APP_SUFFIXES.iter().any(|a| s.eq_ignore_ascii_case(a)) };
 
     let filename;
     let mut project_folder = None;
@@ -2337,9 +2389,7 @@ pub fn extract_title_path_hint(
     // "main.rs [writerslogic]" → filename="main.rs", project="writerslogic"
     let (clean_filename, bracket_project) = extract_bracket_project(filename);
 
-    let project_folder = bracket_project
-        .map(|p| p.to_string())
-        .or(project_folder);
+    let project_folder = bracket_project.map(|p| p.to_string()).or(project_folder);
 
     Some(TitlePathHint {
         filename: clean_filename.to_string(),
@@ -2399,8 +2449,17 @@ pub fn resolve_title_hint_to_path(hint: &TitlePathHint, pid: Option<u32>) -> Opt
     if let Some(ref folder) = hint.project_folder {
         let home = dirs::home_dir()?;
         const PROJECT_ROOTS: &[&str] = &[
-            "", "Documents", "Desktop", "Developer", "Projects",
-            "Code", "src", "repos", "workspace", "dev", "Sites",
+            "",
+            "Documents",
+            "Desktop",
+            "Developer",
+            "Projects",
+            "Code",
+            "src",
+            "repos",
+            "workspace",
+            "dev",
+            "Sites",
         ];
         for root in PROJECT_ROOTS {
             let base = if root.is_empty() {
@@ -2472,7 +2531,10 @@ fn looks_like_file_path(s: &str) -> bool {
 
 /// True if `s` is a known terminal editor, shell, multiplexer, or tty device name.
 fn is_terminal_noise(s: &str) -> bool {
-    if TERMINAL_EDITOR_NAMES.iter().any(|n| s.eq_ignore_ascii_case(n)) {
+    if TERMINAL_EDITOR_NAMES
+        .iter()
+        .any(|n| s.eq_ignore_ascii_case(n))
+    {
         return true;
     }
     // macOS tty device names: ttys000..ttys999
