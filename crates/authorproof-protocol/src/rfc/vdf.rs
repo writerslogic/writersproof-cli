@@ -150,7 +150,11 @@ impl VdfProofRfc {
             }
             if !self.is_duration_within_spec_bounds() {
                 let expected = self.minimum_elapsed_ms().unwrap_or(0);
-                let ratio = if expected > 0 { self.duration_ms as f64 / expected as f64 } else { 0.0 };
+                let ratio = if expected > 0 {
+                    self.duration_ms as f64 / expected as f64
+                } else {
+                    0.0
+                };
                 errors.push(format!(
                     "duration ratio {ratio:.2}x outside spec bounds [{SWF_MIN_DURATION_FACTOR}x, {SWF_MAX_DURATION_FACTOR}x]",
                 ));

@@ -65,13 +65,20 @@ pub(crate) fn posme_step_light(
     let old = arena[w as usize];
     let new_data = posme_hash(&[&old.data, &cursor, &old.causal]);
     let new_causal = posme_hash(&[&old.causal, &cursor, &i2osp(t)]);
-    let new_block = Block { data: new_data, causal: new_causal };
+    let new_block = Block {
+        data: new_data,
+        causal: new_causal,
+    };
     arena[w as usize] = new_block;
     tree.update(w, &new_block);
     let root_after = tree.root();
     let transcript = posme_hash(&[t_prev, &i2osp(t), &cursor, &root_after]);
 
-    StepResult { write_addr: w, root_after, transcript }
+    StepResult {
+        write_addr: w,
+        root_after,
+        transcript,
+    }
 }
 
 /// Full step with witness capture. Stack-allocated arrays, no heap allocation.
@@ -102,7 +109,10 @@ pub(crate) fn posme_step(
     let old_block = arena[w as usize];
     let new_data = posme_hash(&[&old_block.data, &cursor, &old_block.causal]);
     let new_causal = posme_hash(&[&old_block.causal, &cursor, &i2osp(t)]);
-    let new_block = Block { data: new_data, causal: new_causal };
+    let new_block = Block {
+        data: new_data,
+        causal: new_causal,
+    };
     arena[w as usize] = new_block;
     tree.update(w, &new_block);
     let root_after = tree.root();

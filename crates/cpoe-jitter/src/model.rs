@@ -240,7 +240,13 @@ impl HumanModel {
                         intervals_us[pos], MAX_PLAUSIBLE_IKI_US
                     ),
                 }],
-                stats: SequenceStats { count: 0, mean: 0.0, std_dev: 0.0, min: 0, max: 0 },
+                stats: SequenceStats {
+                    count: 0,
+                    mean: 0.0,
+                    std_dev: 0.0,
+                    min: 0,
+                    max: 0,
+                },
             };
         }
         let oor = out_of_range_anomaly(
@@ -251,10 +257,7 @@ impl HumanModel {
             "IKI",
         );
         // Safe cast: all values are <= MAX_PLAUSIBLE_IKI_US (600M) < u32::MAX (4.2B).
-        let capped: Vec<u32> = intervals_us
-            .iter()
-            .map(|&v| v as u32)
-            .collect();
+        let capped: Vec<u32> = intervals_us.iter().map(|&v| v as u32).collect();
 
         let (perfect_count, perfect_pairs) = self.compute_perfect_counts_jitters(&capped);
         let pattern = self.detect_repeating_pattern_jitters(&capped);
@@ -405,7 +408,11 @@ impl HumanModel {
     /// Returns (perfect_count, total_pairs) for integer ratio comparison.
     fn compute_perfect_counts_jitters(&self, jitters: &[Jitter]) -> (usize, usize) {
         let perfect_count = jitters.windows(2).filter(|w| w[0] == w[1]).count();
-        let pairs = if jitters.len() > 1 { jitters.len() - 1 } else { 0 };
+        let pairs = if jitters.len() > 1 {
+            jitters.len() - 1
+        } else {
+            0
+        };
         (perfect_count, pairs)
     }
 
@@ -439,5 +446,4 @@ impl HumanModel {
         }
         None
     }
-
 }

@@ -184,6 +184,9 @@ mod tests {
     fn test_entropy_avalanche() {
         let e1 = AmbientSensing::capture();
         let e2 = AmbientSensing::capture();
-        assert_ne!(e1.hash, e2.hash, "Sequential captures should differ due to timing jitter");
+        assert_ne!(
+            e1.hash, e2.hash,
+            "Sequential captures should differ due to timing jitter"
+        );
     }
 }

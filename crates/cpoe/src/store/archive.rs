@@ -172,10 +172,8 @@ impl SecureStore {
         let archive_tmp_str = archive_tmp_path
             .to_str()
             .ok_or_else(|| anyhow!("Archive path is not valid UTF-8"))?;
-        self.conn.execute(
-            "ATTACH DATABASE ? AS archive_db",
-            params![archive_tmp_str],
-        )?;
+        self.conn
+            .execute("ATTACH DATABASE ? AS archive_db", params![archive_tmp_str])?;
 
         // Use a closure so we can detach on both success and failure paths.
         let atomic_result = (|| -> anyhow::Result<()> {
@@ -270,8 +268,8 @@ impl SecureStore {
             }
 
             // Update the active DB integrity record.
-            let (_old_count, _last_verified_seq, old_chain_hash): (i64, i64, Vec<u8>) =
-                tx.query_row(
+            let (_old_count, _last_verified_seq, old_chain_hash): (i64, i64, Vec<u8>) = tx
+                .query_row(
                     "SELECT event_count, last_verified_sequence, chain_hash \
                      FROM main.integrity WHERE id = 1",
                     [],
@@ -337,9 +335,8 @@ impl SecureStore {
         // mode for read-only use.
         {
             let archive_conn = Connection::open(&archive_tmp_path)?;
-            archive_conn.execute_batch(
-                "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;",
-            )?;
+            archive_conn
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")?;
         }
 
         // Transaction committed: promote the tmp archive to its final name.
@@ -525,7 +522,10 @@ impl SecureStore {
              ORDER BY id ASC",
         )?;
 
-        let rows = stmt.query_map(params![file_path, start_ns, end_ns], Self::row_to_event_with_hmac)?;
+        let rows = stmt.query_map(
+            params![file_path, start_ns, end_ns],
+            Self::row_to_event_with_hmac,
+        )?;
         let mut events = Vec::new();
         for row in rows {
             let (event, stored_hmac) = row?;
@@ -591,30 +591,24 @@ impl SecureStore {
     /// The archive's last event_hash must equal the active DB's earliest
     /// event's previous_hash (or the integrity record's chain if no events remain
     /// from before the archive cutoff).
-    pub fn verify_archive_chain_link(
-        &self,
-        archive_path: &Path,
-    ) -> anyhow::Result<bool> {
+    pub fn verify_archive_chain_link(&self, archive_path: &Path) -> anyhow::Result<bool> {
         let archive_conn = Connection::open_with_flags(
             archive_path,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
 
         // Get the archive's chain_hash (last event hash).
-        let archive_chain_hash: Vec<u8> = archive_conn.query_row(
-            "SELECT chain_hash FROM integrity WHERE id = 1",
-            [],
-            |row| row.get(0),
-        )?;
+        let archive_chain_hash: Vec<u8> =
+            archive_conn.query_row("SELECT chain_hash FROM integrity WHERE id = 1", [], |row| {
+                row.get(0)
+            })?;
 
         // Get the active DB's first event's previous_hash.
-        let first_prev_hash: Option<Vec<u8>> = match self
-            .conn
-            .query_row(
-                "SELECT previous_hash FROM secure_events ORDER BY id ASC LIMIT 1",
-                [],
-                |row| row.get(0),
-            ) {
+        let first_prev_hash: Option<Vec<u8>> = match self.conn.query_row(
+            "SELECT previous_hash FROM secure_events ORDER BY id ASC LIMIT 1",
+            [],
+            |row| row.get(0),
+        ) {
             Ok(v) => Some(v),
             Err(rusqlite::Error::QueryReturnedNoRows) => None,
             Err(e) => return Err(e.into()),

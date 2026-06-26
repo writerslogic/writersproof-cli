@@ -24,12 +24,7 @@ pub fn recover_session(
 ) -> Result<Session, KeyHierarchyError> {
     // Constant-time zero check: prevents timing side-channels that could
     // distinguish "zero session_id" from "non-zero session_id" comparisons.
-    if subtle::ConstantTimeEq::ct_eq(
-        &recovery.certificate.session_id[..],
-        &[0u8; 32][..],
-    )
-    .into()
-    {
+    if subtle::ConstantTimeEq::ct_eq(&recovery.certificate.session_id[..], &[0u8; 32][..]).into() {
         return Err(KeyHierarchyError::NoRecoveryData);
     }
 

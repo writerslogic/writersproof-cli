@@ -739,7 +739,10 @@ fn test_wal_recover_clean_returns_no_lost() {
     wal.flush().expect("flush");
 
     let report = wal.recover().expect("recover clean WAL");
-    assert_eq!(report.lost_count, 0, "clean WAL must report zero lost entries");
+    assert_eq!(
+        report.lost_count, 0,
+        "clean WAL must report zero lost entries"
+    );
     assert_eq!(wal.entry_count(), 2);
     assert!(wal.verify().expect("verify").valid);
 
@@ -762,13 +765,17 @@ fn test_wal_recover_trailing_corruption_truncates() {
     corrupt_file(&path, entry2_sig_offset, 0xFF, 1);
 
     let report = wal.recover().expect("recover should succeed");
-    assert!(report.lost_count > 0, "must report lost entries after truncation");
+    assert!(
+        report.lost_count > 0,
+        "must report lost entries after truncation"
+    );
     assert_eq!(report.truncated_at_sequence, 2, "truncated at sequence 2");
     assert_eq!(wal.entry_count(), 2, "entries 0 and 1 survive");
     assert!(wal.verify().expect("verify").valid);
 
     // Append still works after recovery.
-    wal.append(EntryType::Heartbeat, vec![99]).expect("append after recovery");
+    wal.append(EntryType::Heartbeat, vec![99])
+        .expect("append after recovery");
     assert_eq!(wal.entry_count(), 3);
     assert!(wal.verify().expect("verify post-append").valid);
 
@@ -815,7 +822,8 @@ fn test_wal_recover_partial_frame_unclean_shutdown() {
             .append(true)
             .open(&path)
             .expect("open for partial write");
-        f.write_all(&150u32.to_be_bytes()).expect("write partial length prefix");
+        f.write_all(&150u32.to_be_bytes())
+            .expect("write partial length prefix");
         f.sync_all().expect("sync");
     }
 
@@ -855,7 +863,8 @@ fn test_wal_append_after_reopen_on_corrupted_wal_is_valid() {
     assert_eq!(wal2.entry_count(), 1);
 
     // Append must produce a verifiable chain — would fail with a contaminated hasher.
-    wal2.append(EntryType::Heartbeat, vec![99]).expect("append after reopen");
+    wal2.append(EntryType::Heartbeat, vec![99])
+        .expect("append after reopen");
     assert_eq!(wal2.entry_count(), 2);
     let v = wal2.verify().expect("verify");
     assert!(v.valid, "chain must be valid after append on reopened WAL");

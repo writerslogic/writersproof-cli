@@ -39,12 +39,18 @@ pub struct ProcessProofAssertion {
     /// Estimated adversary effort to forge this evidence [0.0, 1.0].
     #[serde(rename = "forgeryDifficulty", skip_serializing_if = "Option::is_none")]
     pub forgery_difficulty: Option<f64>,
-    #[serde(rename = "transcriptionSuspicious", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "transcriptionSuspicious",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub transcription_suspicious: Option<bool>,
     #[serde(rename = "aiFluencyFlag", skip_serializing_if = "Option::is_none")]
     pub ai_fluency_flag: Option<bool>,
     /// Count of successful analysis modules (out of 18).
-    #[serde(rename = "analysisCompleteness", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "analysisCompleteness",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub analysis_completeness: Option<u32>,
     #[serde(rename = "processStart", skip_serializing_if = "Option::is_none")]
     pub process_start: Option<String>,
@@ -123,7 +129,10 @@ pub struct KeystrokeCadenceAssertion {
     pub spectral: Option<CadenceSpectral>,
     #[serde(rename = "hurstExponent", skip_serializing_if = "Option::is_none")]
     pub hurst_exponent: Option<f64>,
-    #[serde(rename = "biologicalCadenceScore", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "biologicalCadenceScore",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub biological_cadence_score: Option<f64>,
 }
 
@@ -637,7 +646,6 @@ pub struct AiContentProfile {
     #[serde(rename = "humanOversightLevel")]
     pub human_oversight_level: String,
 }
-
 
 /// C2PA ingredient representing a prior version of the asset.
 #[derive(Debug, Clone, Serialize, Deserialize)]

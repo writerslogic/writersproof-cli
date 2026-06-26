@@ -160,7 +160,13 @@ impl<T: serde::Serialize> SecureSender<T> {
 
         let ciphertext = self
             .cipher
-            .encrypt(nonce, Payload { msg: plaintext.as_ref(), aad: &nonce_bytes })
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: plaintext.as_ref(),
+                    aad: &nonce_bytes,
+                },
+            )
             .map_err(|_| SecureChannelSendError::Encryption)?;
 
         self.tx
@@ -202,7 +208,13 @@ impl<T: serde::de::DeserializeOwned> SecureReceiver<T> {
 
         let mut plaintext = self
             .cipher
-            .decrypt(nonce, Payload { msg: msg.ciphertext.as_ref(), aad: &nonce_bytes })
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: msg.ciphertext.as_ref(),
+                    aad: &nonce_bytes,
+                },
+            )
             .map_err(|_| {
                 log::warn!(
                     "secure channel: AEAD decryption failed (possible tampering or key mismatch)"

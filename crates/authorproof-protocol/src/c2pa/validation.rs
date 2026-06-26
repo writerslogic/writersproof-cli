@@ -110,11 +110,8 @@ pub fn validate_manifest(manifest: &C2paManifest) -> ValidationResult {
             continue;
         }
         let computed_hash = hash_assertion_box(&box_bytes[8..], manifest.claim.alg.as_deref());
-        if subtle::ConstantTimeEq::ct_eq(
-            assertion_ref.hash.as_slice(),
-            computed_hash.as_slice(),
-        )
-        .unwrap_u8()
+        if subtle::ConstantTimeEq::ct_eq(assertion_ref.hash.as_slice(), computed_hash.as_slice())
+            .unwrap_u8()
             == 0
         {
             errors.push(format!(
@@ -206,10 +203,7 @@ pub fn verify_manifest_signature(manifest: &C2paManifest) -> Result<bool> {
 }
 
 /// Verify the COSE_Sign1 signature on a manifest against a known Ed25519 public key.
-pub fn verify_manifest_with_key(
-    manifest: &C2paManifest,
-    public_key: &[u8; 32],
-) -> Result<bool> {
+pub fn verify_manifest_with_key(manifest: &C2paManifest, public_key: &[u8; 32]) -> Result<bool> {
     let mut sign1 = coset::CoseSign1::from_slice(&manifest.signature)
         .map_err(|e| Error::Crypto(format!("failed to parse COSE_Sign1: {e}")))?;
 
@@ -279,4 +273,3 @@ fn url_has_label(url: &str, label: &str) -> bool {
         && url.as_bytes()[url.len() - label.len() - 1] == b'/'
         && url.ends_with(label)
 }
-

@@ -215,5 +215,4 @@ mod tests {
             EAT_PROFILE_URI
         );
     }
-
 }

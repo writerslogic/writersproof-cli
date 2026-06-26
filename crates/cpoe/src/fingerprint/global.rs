@@ -21,9 +21,10 @@ static GLOBAL_ACCUMULATOR: OnceLock<Arc<RwLock<ActivityFingerprintAccumulator>>>
 
 /// Get or initialize the global fingerprint accumulator.
 pub fn get_global_accumulator() -> Arc<RwLock<ActivityFingerprintAccumulator>> {
-    Arc::clone(GLOBAL_ACCUMULATOR.get_or_init(|| {
-        Arc::new(RwLock::new(ActivityFingerprintAccumulator::new()))
-    }))
+    Arc::clone(
+        GLOBAL_ACCUMULATOR
+            .get_or_init(|| Arc::new(RwLock::new(ActivityFingerprintAccumulator::new()))),
+    )
 }
 
 /// Set whether the sentinel is currently feeding the accumulator.

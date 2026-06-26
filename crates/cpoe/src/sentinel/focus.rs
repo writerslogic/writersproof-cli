@@ -259,11 +259,14 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
 
                 // Terminal editor detection: override path/app when an editor
                 // is running inside a terminal, regardless of app-switch state.
-                let is_terminal = super::terminal_editors::is_terminal_emulator_bundle(&current_app)
-                    || super::terminal_editors::is_terminal_emulator_name(&current_app);
+                let is_terminal =
+                    super::terminal_editors::is_terminal_emulator_bundle(&current_app)
+                        || super::terminal_editors::is_terminal_emulator_name(&current_app);
                 if is_terminal {
                     if let Some(pid) = info.pid {
-                        if let Some(editor_info) = super::terminal_editors::detect_editor_in_terminal(pid) {
+                        if let Some(editor_info) =
+                            super::terminal_editors::detect_editor_in_terminal(pid)
+                        {
                             info.application = format!("terminal.editor.{}", editor_info.editor);
                             if let Some(ref fp) = editor_info.file_path {
                                 info.path = Some(fp.clone());
@@ -271,7 +274,11 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         }
                     } else {
                         let title_revealed = info.title.reveal();
-                        if let Some((editor, file)) = super::terminal_editors::parse_terminal_title_for_editor(&title_revealed) {
+                        if let Some((editor, file)) =
+                            super::terminal_editors::parse_terminal_title_for_editor(
+                                &title_revealed,
+                            )
+                        {
                             let p = std::path::Path::new(&file);
                             if !p.is_absolute() || p.exists() {
                                 info.application = format!("terminal.editor.{}", editor);
@@ -289,7 +296,10 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     if info.path.is_some() && info.path != last_path {
                         log::debug!(
                             "[POLL] intra-app doc switch: {:?} -> {:?} (win {:?} -> {:?})",
-                            last_path, info.path, last_window_number, info.window_number
+                            last_path,
+                            info.path,
+                            last_window_number,
+                            info.window_number
                         );
                     }
 
@@ -331,7 +341,8 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     } else if info.path.is_some() && info.path != last_path {
                         log::debug!(
                             "[POLL] intra-app path change: {:?} -> {:?}",
-                            last_path, info.path
+                            last_path,
+                            info.path
                         );
                         let app_name = info.application.clone();
                         if is_terminal || config.is_app_allowed(&info.application, &app_name) {
@@ -367,7 +378,9 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                     // Different app detected.
                     log::debug!(
                         "[POLL] app switch: {} -> {} (path={:?})",
-                        last_app, current_app, info.path
+                        last_app,
+                        current_app,
+                        info.path
                     );
 
                     // Track focus bounces at the moment of detection, not after
@@ -400,7 +413,9 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                         if started.elapsed() >= effective_debounce {
                             log::debug!(
                                 "[POLL] debounce expired: {} -> {} (elapsed={:?}ms)",
-                                lost_app, current_app, started.elapsed().as_millis()
+                                lost_app,
+                                current_app,
+                                started.elapsed().as_millis()
                             );
                             if !lost_app.is_empty() {
                                 send_or_break!(FocusEvent {
@@ -423,7 +438,8 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                             let effective_app = info.application.clone();
                             let effective_app_name = effective_app.clone();
 
-                            let app_allowed = if config.is_app_allowed(&effective_app, &effective_app_name)
+                            let app_allowed = if config
+                                .is_app_allowed(&effective_app, &effective_app_name)
                                 || discovered_apps.contains(&current_app)
                                 || discovered_apps.contains(&effective_app)
                             {
@@ -432,13 +448,13 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
                                 effective_path.is_some()
                             } else if let Some(pid) = info.pid {
                                 if super::app_discovery::probe_runtime_text_editing(
-                                    &current_app, pid,
-                                ).is_some() {
+                                    &current_app,
+                                    pid,
+                                )
+                                .is_some()
+                                {
                                     discovered_apps.insert(current_app.clone());
-                                    log::info!(
-                                        "auto-discovered writing app: {}",
-                                        current_app,
-                                    );
+                                    log::info!("auto-discovered writing app: {}", current_app,);
                                     true
                                 } else {
                                     false
@@ -449,7 +465,9 @@ impl<P: WindowProvider + ?Sized> SentinelFocusTracker for PollingSentinelFocusTr
 
                             log::debug!(
                                 "[POLL] app_allowed={} app={} path={:?}",
-                                app_allowed, effective_app, effective_path
+                                app_allowed,
+                                effective_app,
+                                effective_path
                             );
                             if app_allowed {
                                 send_or_break!(FocusEvent {
@@ -554,9 +572,9 @@ impl HybridFocusTracker {
     /// Attempt to create a hybrid tracker. Returns `None` if AXObserver cannot
     /// be initialized (falls back to pure polling in the caller).
     pub fn try_new(config: Arc<SentinelConfig>) -> Option<Self> {
-        let window_provider = Arc::new(super::macos_focus::MacOSFocusMonitor::new(
-            Arc::clone(&config),
-        ));
+        let window_provider = Arc::new(super::macos_focus::MacOSFocusMonitor::new(Arc::clone(
+            &config,
+        )));
 
         let ax_provider =
             super::macos_focus::AXObserverFocusProvider::try_new(Arc::clone(&window_provider))?;
@@ -695,7 +713,8 @@ impl SentinelFocusTracker for HybridFocusTracker {
                     .map(|t| t.elapsed() >= AX_SILENCE_THRESHOLD)
                     .unwrap_or(true);
 
-                let path_differs = last_emitted_path.as_ref()
+                let path_differs = last_emitted_path
+                    .as_ref()
                     .map(|p| *p != event.path)
                     .unwrap_or(true);
 
@@ -883,10 +902,15 @@ mod tests {
 
         // Should only see the initial FocusGained, no FocusLost.
         assert!(
-            events.iter().all(|e| e.event_type != FocusEventType::FocusLost),
+            events
+                .iter()
+                .all(|e| e.event_type != FocusEventType::FocusLost),
             "Spurious FocusLost during Mission Control bounce"
         );
-        assert_eq!(events.first().unwrap().event_type, FocusEventType::FocusGained);
+        assert_eq!(
+            events.first().unwrap().event_type,
+            FocusEventType::FocusGained
+        );
     }
 
     #[tokio::test]
@@ -911,7 +935,11 @@ mod tests {
             "Should emit FocusLost for app.a after debounce"
         );
         assert!(
-            types.iter().filter(|t| ***t == FocusEventType::FocusGained).count() >= 2,
+            types
+                .iter()
+                .filter(|t| ***t == FocusEventType::FocusGained)
+                .count()
+                >= 2,
             "Should emit FocusGained for both app.a (initial) and app.b"
         );
     }
@@ -972,7 +1000,9 @@ mod tests {
         let events = collect_events(MockWindowProvider::new(seq), test_config(50), 200).await;
 
         assert!(
-            events.iter().all(|e| e.event_type != FocusEventType::FocusLost),
+            events
+                .iter()
+                .all(|e| e.event_type != FocusEventType::FocusLost),
             "Full-screen transition should not cause FocusLost"
         );
     }

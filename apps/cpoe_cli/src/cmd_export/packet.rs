@@ -424,11 +424,21 @@ fn aggregate_semantic_summaries(events: &[cpoe::SecureEvent]) -> serde_json::Val
 
     // Use the last event's semantic summary as the cumulative snapshot,
     // since SemanticAccumulator accumulates over the entire session.
-    if let Some(last_summary) = events.iter().rev().find_map(|ev| ev.semantic_summary.as_ref()) {
+    if let Some(last_summary) = events
+        .iter()
+        .rev()
+        .find_map(|ev| ev.semantic_summary.as_ref())
+    {
         if let Ok(acc) = serde_json::from_str::<serde_json::Value>(last_summary) {
             characters = acc.get("characters").and_then(|v| v.as_u64()).unwrap_or(0);
-            delete_backward = acc.get("delete_backward").and_then(|v| v.as_u64()).unwrap_or(0);
-            delete_forward = acc.get("delete_forward").and_then(|v| v.as_u64()).unwrap_or(0);
+            delete_backward = acc
+                .get("delete_backward")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            delete_forward = acc
+                .get("delete_forward")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             delete_word = acc.get("delete_word").and_then(|v| v.as_u64()).unwrap_or(0);
             delete_line = acc.get("delete_line").and_then(|v| v.as_u64()).unwrap_or(0);
             undo = acc.get("undo").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -440,7 +450,10 @@ fn aggregate_semantic_summaries(events: &[cpoe::SecureEvent]) -> serde_json::Val
             navigation = acc.get("navigation").and_then(|v| v.as_u64()).unwrap_or(0);
             find = acc.get("find").and_then(|v| v.as_u64()).unwrap_or(0);
             save = acc.get("save").and_then(|v| v.as_u64()).unwrap_or(0);
-            other_shortcut = acc.get("other_shortcut").and_then(|v| v.as_u64()).unwrap_or(0);
+            other_shortcut = acc
+                .get("other_shortcut")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             tab = acc.get("tab").and_then(|v| v.as_u64()).unwrap_or(0);
             r#return = acc.get("return").and_then(|v| v.as_u64()).unwrap_or(0);
             found_any = true;

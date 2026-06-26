@@ -114,9 +114,8 @@ fn split_sentences(text: &str) -> Vec<String> {
 
 /// Common abbreviations that end with '.' but do not end a sentence.
 const ABBREVIATIONS: &[&str] = &[
-    "Dr", "Mr", "Mrs", "Ms", "Prof", "Sr", "Jr", "St", "Rev", "Gen", "Gov",
-    "Sgt", "Cpl", "Pvt", "Lt", "Col", "Capt", "Cmdr", "Adm", "Maj",
-    "vs", "etc", "approx", "dept", "est", "vol", "no",
+    "Dr", "Mr", "Mrs", "Ms", "Prof", "Sr", "Jr", "St", "Rev", "Gen", "Gov", "Sgt", "Cpl", "Pvt",
+    "Lt", "Col", "Capt", "Cmdr", "Adm", "Maj", "vs", "etc", "approx", "dept", "est", "vol", "no",
     "i.e", "e.g", "cf", "al",
 ];
 
@@ -129,7 +128,9 @@ fn is_abbreviation(chars: &[char], dot_pos: usize) -> bool {
     }
     let word: String = chars[end..dot_pos].iter().collect();
     // Strip inner dots for comparison ("i.e" → "ie" won't match, but we keep "i.e" in the list)
-    ABBREVIATIONS.iter().any(|&abbr| word.eq_ignore_ascii_case(abbr))
+    ABBREVIATIONS
+        .iter()
+        .any(|&abbr| word.eq_ignore_ascii_case(abbr))
 }
 
 /// Check if position `i` (a sentence-ending punctuation) is likely a real
@@ -172,10 +173,7 @@ fn split_blocks(text: &str) -> Vec<String> {
 /// Match segments from a source document against segments from a derived
 /// document. Returns indices of source segments that appear in the derived
 /// document, enabling derivation proofs without exposing the full source.
-pub fn match_segments(
-    source: &[ContentSegment],
-    derived: &[ContentSegment],
-) -> Vec<SegmentMatch> {
+pub fn match_segments(source: &[ContentSegment], derived: &[ContentSegment]) -> Vec<SegmentMatch> {
     use std::collections::HashMap;
     let source_map: HashMap<[u8; 32], &ContentSegment> =
         source.iter().map(|s| (s.hash, s)).collect();

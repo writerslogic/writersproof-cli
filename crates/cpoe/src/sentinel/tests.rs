@@ -235,11 +235,7 @@ fn test_title_hint_zed_em_dash() {
 
 #[test]
 fn test_title_hint_zed_single_file() {
-    let hint = extract_title_path_hint(
-        "scratch.rs \u{2014} Zed",
-        Some("dev.zed.Zed"),
-    )
-    .unwrap();
+    let hint = extract_title_path_hint("scratch.rs \u{2014} Zed", Some("dev.zed.Zed")).unwrap();
     assert_eq!(hint.filename, "scratch.rs");
     assert_eq!(hint.project_folder, None);
 }
@@ -257,22 +253,15 @@ fn test_title_hint_sublime_text() {
 
 #[test]
 fn test_title_hint_nova_middot() {
-    let hint = extract_title_path_hint(
-        "styles.css \u{00B7} Nova",
-        Some("com.panic.Nova"),
-    )
-    .unwrap();
+    let hint = extract_title_path_hint("styles.css \u{00B7} Nova", Some("com.panic.Nova")).unwrap();
     assert_eq!(hint.filename, "styles.css");
     assert_eq!(hint.project_folder, None);
 }
 
 #[test]
 fn test_title_hint_obsidian_vault() {
-    let hint = extract_title_path_hint(
-        "My Note - My Vault - Obsidian",
-        Some("md.obsidian"),
-    )
-    .unwrap();
+    let hint =
+        extract_title_path_hint("My Note - My Vault - Obsidian", Some("md.obsidian")).unwrap();
     assert_eq!(hint.filename, "My Note");
     assert_eq!(hint.project_folder.as_deref(), Some("My Vault"));
 }
@@ -281,11 +270,7 @@ fn test_title_hint_obsidian_vault() {
 fn test_title_hint_obsidian_two_segments() {
     // "Note - Obsidian": Obsidian parser sees left as note, right as vault
     // but "Obsidian" is in APP_SUFFIXES so it should just be filename.
-    let hint = extract_title_path_hint(
-        "Draft Chapter - Obsidian",
-        Some("md.obsidian"),
-    )
-    .unwrap();
+    let hint = extract_title_path_hint("Draft Chapter - Obsidian", Some("md.obsidian")).unwrap();
     assert_eq!(hint.filename, "Draft Chapter");
 }
 
@@ -300,10 +285,8 @@ fn test_title_hint_rejects_settings() {
 
 #[test]
 fn test_title_hint_rejects_untitled() {
-    let result = extract_title_path_hint(
-        "Untitled - Cursor",
-        Some("com.todesktop.230313mzl4w4u92"),
-    );
+    let result =
+        extract_title_path_hint("Untitled - Cursor", Some("com.todesktop.230313mzl4w4u92"));
     assert!(result.is_none());
 }
 
@@ -777,7 +760,10 @@ fn test_session_activity_type() {
     for _ in 0..5 {
         composing.record(KS::DeleteBackward);
     }
-    assert_eq!(composing.session_activity_type(), Some(SessionActivityType::Composing));
+    assert_eq!(
+        composing.session_activity_type(),
+        Some(SessionActivityType::Composing)
+    );
 
     let mut editing = SemanticAccumulator::default();
     for _ in 0..30 {
@@ -789,7 +775,10 @@ fn test_session_activity_type() {
     for _ in 0..30 {
         editing.record(KS::Undo);
     }
-    assert_eq!(editing.session_activity_type(), Some(SessionActivityType::Editing));
+    assert_eq!(
+        editing.session_activity_type(),
+        Some(SessionActivityType::Editing)
+    );
 
     assert_eq!(SemanticAccumulator::default().session_activity_type(), None);
 }
@@ -839,7 +828,10 @@ fn test_permission_state_keystroke_allowed() {
 fn test_permission_state_as_str() {
     use super::permission_monitor::PermissionState;
     assert_eq!(PermissionState::Full.as_str(), "full");
-    assert_eq!(PermissionState::KeystrokeDegraded.as_str(), "keystroke_degraded");
+    assert_eq!(
+        PermissionState::KeystrokeDegraded.as_str(),
+        "keystroke_degraded"
+    );
     assert_eq!(PermissionState::Revoked.as_str(), "revoked");
 }
 
@@ -848,8 +840,8 @@ fn test_sentinel_has_permission_state_field() {
     let dir = tempfile::tempdir().expect("tempdir");
     let config = SentinelConfig::default().with_writersproof_dir(dir.path());
     let sentinel = Sentinel::new(config).expect("sentinel creation");
-    use crate::MutexRecover;
     use super::permission_monitor::PermissionState;
+    use crate::MutexRecover;
     let state = *sentinel.permission_state.lock_recover();
     assert_eq!(state, PermissionState::Full);
 }

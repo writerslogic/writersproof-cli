@@ -37,19 +37,19 @@ fn load_config() -> Result<crate::config::CpoeConfig, String> {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_excluded_paths() -> Vec<String> {
     catch_ffi_panic!(Vec::new(), {
-    log::debug!("ffi_config_get_excluded_paths called");
-    match load_config() {
-        Ok(c) => c
-            .sentinel
-            .excluded_paths
-            .iter()
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect(),
-        Err(e) => {
-            log::warn!("ffi_config_get_excluded_paths: {e}");
-            Vec::new()
+        log::debug!("ffi_config_get_excluded_paths called");
+        match load_config() {
+            Ok(c) => c
+                .sentinel
+                .excluded_paths
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect(),
+            Err(e) => {
+                log::warn!("ffi_config_get_excluded_paths: {e}");
+                Vec::new()
+            }
         }
-    }
     })
 }
 
@@ -96,14 +96,14 @@ pub fn ffi_config_remove_excluded_path(path: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_allowed_extensions() -> Vec<String> {
     catch_ffi_panic!(Vec::new(), {
-    log::debug!("ffi_config_get_allowed_extensions called");
-    match load_config() {
-        Ok(c) => c.sentinel.allowed_extensions,
-        Err(e) => {
-            log::warn!("ffi_config_get_allowed_extensions: {e}");
-            Vec::new()
+        log::debug!("ffi_config_get_allowed_extensions called");
+        match load_config() {
+            Ok(c) => c.sentinel.allowed_extensions,
+            Err(e) => {
+                log::warn!("ffi_config_get_allowed_extensions: {e}");
+                Vec::new()
+            }
         }
-    }
     })
 }
 
@@ -150,11 +150,11 @@ pub fn ffi_config_remove_allowed_extension(extension: String) -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_config_get_research_enabled() -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_config_get_research_enabled called");
-    match load_config() {
-        Ok(c) => c.research.contribute_to_research,
-        Err(_) => false,
-    }
+        log::debug!("ffi_config_get_research_enabled called");
+        match load_config() {
+            Ok(c) => c.research.contribute_to_research,
+            Err(_) => false,
+        }
     })
 }
 
@@ -178,7 +178,10 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_config_test");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("temp dir path is not valid UTF-8"));
+        std::env::set_var(
+            "CPOE_DATA_DIR",
+            tmp.to_str().expect("temp dir path is not valid UTF-8"),
+        );
 
         // Add a path
         let result = ffi_config_add_excluded_path("/usr/local/exclude_me".to_string());
@@ -210,7 +213,10 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_config_test_ext");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("temp dir path is not valid UTF-8"));
+        std::env::set_var(
+            "CPOE_DATA_DIR",
+            tmp.to_str().expect("temp dir path is not valid UTF-8"),
+        );
 
         // Add an extension
         let result = ffi_config_add_allowed_extension(".xyz".to_string());
@@ -249,7 +255,10 @@ mod tests {
         let _lock = crate::ffi::helpers::lock_ffi_env();
         let tmp = std::env::temp_dir().join("cpoe_config_test_dup");
         let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("CPOE_DATA_DIR", tmp.to_str().expect("temp dir path is not valid UTF-8"));
+        std::env::set_var(
+            "CPOE_DATA_DIR",
+            tmp.to_str().expect("temp dir path is not valid UTF-8"),
+        );
 
         ffi_config_add_excluded_path("/tmp/dup_test".to_string());
         ffi_config_add_excluded_path("/tmp/dup_test".to_string());

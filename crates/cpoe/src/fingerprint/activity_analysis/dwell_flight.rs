@@ -159,8 +159,7 @@ impl FlightTimeDistribution {
 
         let mut histogram = vec![0.0; FLIGHT_HISTOGRAM_BUCKETS];
         for &v in &durations_ms {
-            let bucket =
-                ((v / FLIGHT_BUCKET_WIDTH_MS) as usize).min(FLIGHT_HISTOGRAM_BUCKETS - 1);
+            let bucket = ((v / FLIGHT_BUCKET_WIDTH_MS) as usize).min(FLIGHT_HISTOGRAM_BUCKETS - 1);
             histogram[bucket] += 1.0;
         }
         normalize_histogram(&mut histogram);

@@ -126,8 +126,7 @@ pub(crate) fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), St
     let parent = path.parent().unwrap_or(std::path::Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(parent)
         .map_err(|e| format!("Failed to create temp file: {e}"))?;
-    std::io::Write::write_all(&mut tmp, data)
-        .map_err(|e| format!("Failed to write data: {e}"))?;
+    std::io::Write::write_all(&mut tmp, data).map_err(|e| format!("Failed to write data: {e}"))?;
     tmp.as_file()
         .sync_all()
         .map_err(|e| format!("Failed to sync to disk: {e}"))?;
@@ -170,8 +169,7 @@ pub(crate) fn load_api_key() -> Result<Zeroizing<String>, String> {
 
     let data_dir = require_data_dir()?;
     let key_path = data_dir.join("writersproof_api_key");
-    let key_file = std::fs::File::open(&key_path)
-        .map_err(|_| "API key not found".to_string())?;
+    let key_file = std::fs::File::open(&key_path).map_err(|_| "API key not found".to_string())?;
     let meta = key_file
         .metadata()
         .map_err(|_| "Cannot stat API key file".to_string())?;
@@ -187,8 +185,8 @@ pub(crate) fn load_api_key() -> Result<Zeroizing<String>, String> {
         f.read_to_end(&mut raw)
             .map_err(|_| "Failed to read API key".to_string())?;
     }
-    let mut key_str = String::from_utf8(raw.to_vec())
-        .map_err(|_| "API key is not valid UTF-8".to_string())?;
+    let mut key_str =
+        String::from_utf8(raw.to_vec()).map_err(|_| "API key is not valid UTF-8".to_string())?;
     let trimmed = key_str.trim().to_string();
     key_str.zeroize();
     Ok(Zeroizing::new(trimmed))
@@ -305,7 +303,11 @@ pub(crate) fn derive_hmac_from_signing_key() -> Option<Zeroizing<Vec<u8>>> {
         }
     };
     if !meta.is_file() || meta.len() > 1024 {
-        log::error!("Signing key file invalid: is_file={}, len={}", meta.is_file(), meta.len());
+        log::error!(
+            "Signing key file invalid: is_file={}, len={}",
+            meta.is_file(),
+            meta.len()
+        );
         return None;
     }
     let mut raw = Zeroizing::new(Vec::new());

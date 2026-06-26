@@ -48,13 +48,16 @@ impl DocumentDirectoryWatcher {
                         notify::EventKind::Modify(_) => ChangeEventType::Modified,
                         _ => continue,
                     };
-                    if tx.blocking_send(ChangeEvent {
-                        event_type: change_type,
-                        path: path.to_string_lossy().into_owned(),
-                        hash: None,
-                        size: None,
-                        timestamp: SystemTime::now(),
-                    }).is_err() {
+                    if tx
+                        .blocking_send(ChangeEvent {
+                            event_type: change_type,
+                            path: path.to_string_lossy().into_owned(),
+                            hash: None,
+                            size: None,
+                            timestamp: SystemTime::now(),
+                        })
+                        .is_err()
+                    {
                         log::error!("document_watcher: event loop closed, dropping FS event");
                         return;
                     }
@@ -124,7 +127,10 @@ impl DocumentDirectoryWatcher {
 impl std::fmt::Debug for DocumentDirectoryWatcher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DocumentDirectoryWatcher")
-            .field("watched_dirs", &self.dir_sessions.keys().collect::<Vec<_>>())
+            .field(
+                "watched_dirs",
+                &self.dir_sessions.keys().collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -136,7 +142,10 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn make_watcher() -> (DocumentDirectoryWatcher, tokio::sync::mpsc::Receiver<ChangeEvent>) {
+    fn make_watcher() -> (
+        DocumentDirectoryWatcher,
+        tokio::sync::mpsc::Receiver<ChangeEvent>,
+    ) {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
         let watcher = DocumentDirectoryWatcher::new(tx).expect("watcher creation");
         (watcher, rx)

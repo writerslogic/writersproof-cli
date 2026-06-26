@@ -154,7 +154,9 @@ impl SecureStore {
         start_ns: i64,
         end_ns: i64,
     ) -> anyhow::Result<Vec<SecureEvent>> {
-        let path = path.as_ref().to_str()
+        let path = path
+            .as_ref()
+            .to_str()
             .ok_or_else(|| anyhow::anyhow!("non-UTF-8 file path: {:?}", path.as_ref()))?;
         let query = "SELECT id, device_id, machine_id, timestamp_ns, file_path, \
                 content_hash, file_size, size_delta, previous_hash, event_hash, hmac, \
@@ -188,7 +190,9 @@ impl SecureStore {
         path: impl AsRef<Path>,
         limit: Option<u32>,
     ) -> anyhow::Result<Vec<SecureEvent>> {
-        let path = path.as_ref().to_str()
+        let path = path
+            .as_ref()
+            .to_str()
             .ok_or_else(|| anyhow::anyhow!("non-UTF-8 file path: {:?}", path.as_ref()))?;
         let base_query = "SELECT id, device_id, machine_id, timestamp_ns, file_path, \
                 content_hash, file_size, size_delta, previous_hash, event_hash, hmac, \
@@ -208,9 +212,7 @@ impl SecureStore {
 
         let mut events = Vec::new();
         let rows: Box<dyn Iterator<Item = rusqlite::Result<(SecureEvent, Vec<u8>)>>> = match limit {
-            Some(n) => {
-                Box::new(stmt.query_map(params![path, n], Self::row_to_event_with_hmac)?)
-            }
+            Some(n) => Box::new(stmt.query_map(params![path, n], Self::row_to_event_with_hmac)?),
             None => Box::new(stmt.query_map(params![path], Self::row_to_event_with_hmac)?),
         };
         for row in rows {
@@ -248,7 +250,9 @@ impl SecureStore {
 
     /// Deserialize a row into a `SecureEvent` and its stored HMAC bytes.
     /// The SELECT must include `hmac` at column index 10 (after `event_hash`).
-    pub(crate) fn row_to_event_with_hmac(row: &rusqlite::Row<'_>) -> rusqlite::Result<(SecureEvent, Vec<u8>)> {
+    pub(crate) fn row_to_event_with_hmac(
+        row: &rusqlite::Row<'_>,
+    ) -> rusqlite::Result<(SecureEvent, Vec<u8>)> {
         let stored_hmac: Vec<u8> = row.get(10)?;
         let event = Self::row_to_event(row)?;
         Ok((event, stored_hmac))

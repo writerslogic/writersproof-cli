@@ -253,8 +253,14 @@ pub(crate) fn build_ear_and_report_for_path(
         pop_forensic_summary: None,
         pop_chain_length: Some(report.checkpoints.len() as u64),
         pop_chain_duration: chain_duration,
-        pop_process_start: report.checkpoints.first().map(|cp| cp.timestamp.to_rfc3339()),
-        pop_process_end: report.checkpoints.last().map(|cp| cp.timestamp.to_rfc3339()),
+        pop_process_start: report
+            .checkpoints
+            .first()
+            .map(|cp| cp.timestamp.to_rfc3339()),
+        pop_process_end: report
+            .checkpoints
+            .last()
+            .map(|cp| cp.timestamp.to_rfc3339()),
         pop_absence_claims: None,
         pop_warnings: None,
     };
@@ -272,15 +278,11 @@ pub(crate) fn build_ear_and_report_for_path(
     Ok((ear, author_did, report))
 }
 
-
 fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     crate::ffi::helpers::atomic_write(path, data)
 }
 
-fn verify_cbor_vc(
-    data: &[u8],
-    verifying_key: &ed25519_dalek::VerifyingKey,
-) -> FfiVcVerifyResult {
+fn verify_cbor_vc(data: &[u8], verifying_key: &ed25519_dalek::VerifyingKey) -> FfiVcVerifyResult {
     match vc::verify_cose_secured_vc(data, verifying_key) {
         Ok(credential) => {
             let now = chrono::Utc::now();
@@ -317,10 +319,7 @@ fn verify_cbor_vc(
     }
 }
 
-fn verify_json_vc(
-    data: &[u8],
-    verifying_key: &ed25519_dalek::VerifyingKey,
-) -> FfiVcVerifyResult {
+fn verify_json_vc(data: &[u8], verifying_key: &ed25519_dalek::VerifyingKey) -> FfiVcVerifyResult {
     let credential: vc::VerifiableCredential = match serde_json::from_slice(data) {
         Ok(c) => c,
         Err(e) => {

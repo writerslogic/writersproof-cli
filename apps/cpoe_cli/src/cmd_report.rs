@@ -43,9 +43,7 @@ fn cmd_report_json(path: &str, out: &OutputMode) -> Result<()> {
 
     check_ffi_result(result.success, &result.error_message)?;
 
-    let report = result
-        .report
-        .ok_or_else(|| anyhow!("Report was empty"))?;
+    let report = result.report.ok_or_else(|| anyhow!("Report was empty"))?;
 
     if out.quiet {
         return Ok(());

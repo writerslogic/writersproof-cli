@@ -65,8 +65,18 @@ pub const KNOWN_AI_APP_BUNDLE_IDS: &[&str] = &[
 ];
 
 const AI_HEURISTIC_SIGNALS: &[&str] = &[
-    "openai", "chatgpt", "claude", "anthropic", "gemini", "copilot",
-    "gpt", "llm", "perplexity", "mistral", "cohere", "bard",
+    "openai",
+    "chatgpt",
+    "claude",
+    "anthropic",
+    "gemini",
+    "copilot",
+    "gpt",
+    "llm",
+    "perplexity",
+    "mistral",
+    "cohere",
+    "bard",
 ];
 
 pub fn is_likely_ai_tool(bundle_id: &str, window_title: &str) -> bool {

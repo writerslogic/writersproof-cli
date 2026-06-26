@@ -121,10 +121,7 @@ impl AiDisclosureLevel {
 
     /// Generate HTML `<meta>` tag for AI content disclosure.
     pub fn to_html_meta_tag(&self) -> String {
-        format!(
-            r#"<meta name="ai-disclosure" content="{}">"#,
-            self.as_str()
-        )
+        format!(r#"<meta name="ai-disclosure" content="{}">"#, self.as_str())
     }
 
     /// Generate an HTML element attribute string (e.g., `ai-disclosure="ai-assisted"`).
@@ -181,10 +178,12 @@ impl AiDisclosureAttributes {
     /// Create attributes from a CPoE declaration and optional evidence URL.
     pub fn from_declaration(decl: &Declaration, evidence_url: Option<String>) -> Self {
         let level = AiDisclosureLevel::from_ai_extent(decl.max_ai_extent());
-        let (model, provider) = decl.ai_tools.first().map_or(
-            (Option::None, Option::None),
-            |t| (Some(t.tool.clone()), t.version.clone()),
-        );
+        let (model, provider) = decl
+            .ai_tools
+            .first()
+            .map_or((Option::None, Option::None), |t| {
+                (Some(t.tool.clone()), t.version.clone())
+            });
         Self {
             level,
             model,
@@ -245,10 +244,7 @@ impl AiDisclosureAttributes {
             attrs.push(format!(r#"ai-model="{}""#, html_escape_attr(model)));
         }
         if let Some(ref provider) = self.provider {
-            attrs.push(format!(
-                r#"ai-provider="{}""#,
-                html_escape_attr(provider)
-            ));
+            attrs.push(format!(r#"ai-provider="{}""#, html_escape_attr(provider)));
         }
         if let Some(ref prompt_url) = self.prompt_url {
             attrs.push(format!(
@@ -729,7 +725,10 @@ mod tests {
             evidence_url: None,
         };
         let header = attrs.to_ietf_header();
-        assert_eq!(header, r#"mode=ai-originated; model="gpt-4"; provider="OpenAI""#);
+        assert_eq!(
+            header,
+            r#"mode=ai-originated; model="gpt-4"; provider="OpenAI""#
+        );
     }
 
     #[test]
@@ -760,8 +759,7 @@ mod tests {
             serde_json::from_str(r#""autonomous""#).expect("deserialize");
         assert_eq!(autonomous, AiDisclosureLevel::Autonomous);
 
-        let mixed: AiDisclosureLevel =
-            serde_json::from_str(r#""mixed""#).expect("deserialize");
+        let mixed: AiDisclosureLevel = serde_json::from_str(r#""mixed""#).expect("deserialize");
         assert_eq!(mixed, AiDisclosureLevel::Mixed);
 
         assert_eq!(

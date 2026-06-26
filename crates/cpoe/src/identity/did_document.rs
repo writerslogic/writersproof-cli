@@ -72,7 +72,11 @@ pub fn did_key_from_public(public_key: &[u8]) -> Option<String> {
 /// multicodec prefix `0xed01`). For `did:web`, a WritersProof API service
 /// endpoint is included.
 pub fn generate_did_document(did: &str, public_key: &[u8]) -> DidDocument {
-    log::debug!("generate_did_document: did={}, key_len={}", did, public_key.len());
+    log::debug!(
+        "generate_did_document: did={}, key_len={}",
+        did,
+        public_key.len()
+    );
     let multibase = encode_multibase_ed25519(public_key);
     let key_id = format!("{}#keys-1", did);
 

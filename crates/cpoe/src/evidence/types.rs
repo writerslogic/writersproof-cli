@@ -10,9 +10,9 @@ use crate::analysis::{BehavioralFingerprint, ForgeryAnalysis};
 use crate::collaboration;
 use crate::continuation;
 use crate::declaration;
+use crate::evidence::provenance;
 use crate::jitter;
 use crate::presence;
-use crate::evidence::provenance;
 use crate::tpm;
 use crate::vdf;
 use authorproof_protocol::rfc::{BiologyInvariantClaim, JitterBinding, TimeEvidence};
@@ -698,7 +698,6 @@ pub struct DictationEvent {
     pub plausibility_score: f64,
 
     // Hardened anti-forgery fields — populated by the sentinel via FFI callbacks.
-
     /// PID of com.apple.SpeechRecognitionCore as observed by Endpoint Security EXEC.
     /// 0 = not verified via ES (ES entitlement unavailable or process not observed).
     pub es_speech_pid: u32,

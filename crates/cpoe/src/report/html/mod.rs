@@ -83,7 +83,10 @@ fn render_html_inner(html: &mut String, r: &WarReport) -> std::fmt::Result {
     // ── PART 5: REFERENCE DATA (for legal/technical use, not casual reading) ──
     writeln!(html, r#"<div class="reference-appendix">"#)?;
     writeln!(html, r#"<h2>Reference Appendix</h2>"#)?;
-    writeln!(html, r#"<p class="chart-caption">The following sections contain raw technical data provided for legal verification and reproducibility. The visual charts and analysis above are the intended reading material.</p>"#)?;
+    writeln!(
+        html,
+        r#"<p class="chart-caption">The following sections contain raw technical data provided for legal verification and reproducibility. The visual charts and analysis above are the intended reading material.</p>"#
+    )?;
     sections::write_dimension_lr_table(html, r)?;
     sections::write_checkpoint_chain(html, r)?;
     sections::write_key_hierarchy(html, r)?;
@@ -112,7 +115,10 @@ fn write_visual_overview(html: &mut String, r: &WarReport) -> std::fmt::Result {
     let flow_svg = charts::writing_flow_chart(&r.writing_flow);
     if !flow_svg.is_empty() {
         writeln!(html, r#"<h3>Writing Rhythm</h3>"#)?;
-        writeln!(html, r#"<p class="chart-caption">Typing intensity over time. Peaks indicate active composition; valleys indicate pauses for thought or revision.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p class="chart-caption">Typing intensity over time. Peaks indicate active composition; valleys indicate pauses for thought or revision.</p>"#
+        )?;
         writeln!(html, "{flow_svg}")?;
     }
 
@@ -120,7 +126,10 @@ fn write_visual_overview(html: &mut String, r: &WarReport) -> std::fmt::Result {
     let dim_svg = charts::dimension_bar_chart(&r.dimensions);
     if !dim_svg.is_empty() {
         writeln!(html, r#"<h3>Analysis Dimensions</h3>"#)?;
-        writeln!(html, r#"<p class="chart-caption">Per-dimension assessment scores. Green (&ge;70) indicates strong human authorship signals; amber (40&ndash;69) is mixed; red (&lt;40) is suspicious.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p class="chart-caption">Per-dimension assessment scores. Green (&ge;70) indicates strong human authorship signals; amber (40&ndash;69) is mixed; red (&lt;40) is suspicious.</p>"#
+        )?;
         writeln!(html, "{dim_svg}")?;
     }
 
@@ -128,12 +137,18 @@ fn write_visual_overview(html: &mut String, r: &WarReport) -> std::fmt::Result {
     let cp_svg = charts::checkpoint_velocity_chart(&r.checkpoints);
     if !cp_svg.is_empty() {
         writeln!(html, r#"<h3>Document Growth</h3>"#)?;
-        writeln!(html, r#"<p class="chart-caption">Document size at each checkpoint. Steady growth with revision dips is characteristic of human composition.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p class="chart-caption">Document size at each checkpoint. Steady growth with revision dips is characteristic of human composition.</p>"#
+        )?;
         writeln!(html, "{cp_svg}")?;
     }
 
     if flow_svg.is_empty() && dim_svg.is_empty() && cp_svg.is_empty() {
-        writeln!(html, r#"<p>Insufficient data for visual charts. See detailed tables below.</p>"#)?;
+        writeln!(
+            html,
+            r#"<p>Insufficient data for visual charts. See detailed tables below.</p>"#
+        )?;
     }
 
     Ok(())
@@ -148,7 +163,8 @@ fn write_insufficient_notice(html: &mut String, r: &WarReport) -> std::fmt::Resu
     let checkpoints = r.checkpoints.len();
     let words = r.document_words.unwrap_or(0);
 
-    write!(html,
+    write!(
+        html,
         r#"<div class="info-box" style="border-left:4px solid #757575;margin:24px 0;padding:16px 20px">
 <h2 style="margin:0 0 8px;color:#757575">Examination Withheld</h2>
 <p>The captured evidence does not meet the validated minimum thresholds required for
@@ -200,8 +216,11 @@ evidence. The report will issue an evaluative finding once all thresholds are me
     if !gaps.is_empty() {
         for lim in &r.limitations {
             if lim.contains("Evidence below validated thresholds") {
-                write!(html, "<p style=\"color:#666;font-size:12px\"><em>{}</em></p>",
-                    html_escape(lim))?;
+                write!(
+                    html,
+                    "<p style=\"color:#666;font-size:12px\"><em>{}</em></p>",
+                    html_escape(lim)
+                )?;
                 break;
             }
         }

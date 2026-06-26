@@ -46,8 +46,7 @@ impl KeystrokeBinding {
         use sha2::Sha256;
         type HmacSha256 = Hmac<Sha256>;
 
-        let mut mac =
-            HmacSha256::new_from_slice(session_key).expect("HMAC accepts any key size");
+        let mut mac = HmacSha256::new_from_slice(session_key).expect("HMAC accepts any key size");
         mac.update(&key_code.to_le_bytes());
         mac.update(&timestamp_ns.to_le_bytes());
         mac.update(&sequence.to_le_bytes());
@@ -56,7 +55,13 @@ impl KeystrokeBinding {
         let mut binding_mac = [0u8; 32];
         binding_mac.copy_from_slice(&result);
 
-        Self { key_code, timestamp_ns, sequence, counter_value, binding_mac }
+        Self {
+            key_code,
+            timestamp_ns,
+            sequence,
+            counter_value,
+            binding_mac,
+        }
     }
 
     /// Verify this binding against the session key in constant time.
@@ -99,8 +104,13 @@ impl KeystrokeBindingChain {
         session_key: &[u8; 32],
     ) -> &KeystrokeBinding {
         let counter_value = crate::phys::read_hardware_counter();
-        let binding =
-            KeystrokeBinding::new(key_code, timestamp_ns, self.next_sequence, counter_value, session_key);
+        let binding = KeystrokeBinding::new(
+            key_code,
+            timestamp_ns,
+            self.next_sequence,
+            counter_value,
+            session_key,
+        );
         self.next_sequence = self.next_sequence.saturating_add(1);
         self.bindings.push(binding);
         self.bindings.last().expect("just pushed")
@@ -530,14 +540,13 @@ impl EvidenceChain {
         // regardless of earlier failures, preventing a timing side-channel that
         // would reveal the position of the first failing record.
         use subtle::Choice;
-        let result: Choice = self
-            .records
-            .iter()
-            .zip(inputs.iter())
-            .fold(Choice::from(1u8), |acc, (evidence, input)| {
+        let result: Choice = self.records.iter().zip(inputs.iter()).fold(
+            Choice::from(1u8),
+            |acc, (evidence, input)| {
                 let ok = Choice::from(u8::from(evidence.verify(secret, input, engine)));
                 acc & ok
-            });
+            },
+        );
         result.unwrap_u8() == 1
     }
 }

@@ -71,19 +71,21 @@ impl MacOSFocusMonitor {
             // fall back to CGWindowList (works in App Sandbox without special perms).
             let doc_path = self.get_document_path_via_ax(pid);
             let (cg_title, cg_window_number) = self.get_cgwindow_info(pid);
-            let window_title = self
-                .get_window_title_via_ax(pid)
-                .or(cg_title);
+            let window_title = self.get_window_title_via_ax(pid).or(cg_title);
             let title_str = window_title.unwrap_or_default();
 
             // Check if the focused window is a dialog/sheet before running
             // the full path resolution chain.  Uses the same AX query as
             // query_focused_window_attribute to avoid a redundant AX traversal.
-            let is_dialog = self.query_focused_window_attribute(pid, "AXSubrole")
+            let is_dialog = self
+                .query_focused_window_attribute(pid, "AXSubrole")
                 .map(|sr| matches!(sr.as_str(), "AXDialog" | "AXSystemDialog" | "AXSheet"))
                 .unwrap_or(false);
             if is_dialog {
-                log::debug!("[AX_PROBE] dialog/sheet focused for pid {} — non-document", pid);
+                log::debug!(
+                    "[AX_PROBE] dialog/sheet focused for pid {} — non-document",
+                    pid
+                );
                 let _: () = msg_send![pool, drain];
                 return Some(WindowInfo {
                     is_document: false,
@@ -114,19 +116,28 @@ impl MacOSFocusMonitor {
                     &title_str,
                     Some(&bundle_id_str),
                 )?;
-                log::debug!("[AX_PROBE] title inferred: {:?} (absolute={})", inferred, std::path::Path::new(&inferred).is_absolute());
+                log::debug!(
+                    "[AX_PROBE] title inferred: {:?} (absolute={})",
+                    inferred,
+                    std::path::Path::new(&inferred).is_absolute()
+                );
                 if std::path::Path::new(&inferred).is_absolute() {
                     return Some(inferred);
                 }
-                let open_docs =
-                    super::process_files::open_documents_for_pid(pid as u32);
-                log::trace!("[AX_PROBE] FD scan: {} open docs for pid {}", open_docs.len(), pid);
+                let open_docs = super::process_files::open_documents_for_pid(pid as u32);
+                log::trace!(
+                    "[AX_PROBE] FD scan: {} open docs for pid {}",
+                    open_docs.len(),
+                    pid
+                );
                 if let Some(matched) = open_docs.iter().find(|f| {
-                    let name_match = f.path
+                    let name_match = f
+                        .path
                         .file_name()
                         .map(|n| n.to_string_lossy().eq_ignore_ascii_case(&inferred))
                         .unwrap_or(false);
-                    let stem_match = f.path
+                    let stem_match = f
+                        .path
                         .file_stem()
                         .map(|s| s.to_string_lossy().eq_ignore_ascii_case(&inferred))
                         .unwrap_or(false);
@@ -141,12 +152,14 @@ impl MacOSFocusMonitor {
                 // the title-inferred name.
                 for f in &open_docs {
                     for ancestor in f.path.ancestors() {
-                        let ext_match = ancestor.extension()
+                        let ext_match = ancestor
+                            .extension()
                             .and_then(|e| e.to_str())
                             .map(|e| BUNDLE_EXTS.contains(&e))
                             .unwrap_or(false);
                         if ext_match {
-                            let stem_match = ancestor.file_stem()
+                            let stem_match = ancestor
+                                .file_stem()
                                 .map(|s| s.to_string_lossy().eq_ignore_ascii_case(&inferred))
                                 .unwrap_or(false);
                             if stem_match {
@@ -160,14 +173,12 @@ impl MacOSFocusMonitor {
                 // Try to resolve the filename using folder hints from the title
                 // before falling back to title://. This upgrades Electron editors
                 // from Heuristic to Partial confidence.
-                if let Some(hint) = super::types::extract_title_path_hint(
-                    &title_str,
-                    Some(&bundle_id_str),
-                ) {
-                    if let Some(resolved) = super::types::resolve_title_hint_to_path(
-                        &hint,
-                        Some(pid as u32),
-                    ) {
+                if let Some(hint) =
+                    super::types::extract_title_path_hint(&title_str, Some(&bundle_id_str))
+                {
+                    if let Some(resolved) =
+                        super::types::resolve_title_hint_to_path(&hint, Some(pid as u32))
+                    {
                         log::debug!("[AX_PROBE] title hint resolved: {:?}", resolved);
                         return Some(resolved);
                     }
@@ -181,23 +192,20 @@ impl MacOSFocusMonitor {
             // bundle root instead of the nested path.
             let doc_path = doc_path.or_else(|| {
                 log::trace!("[AX_PROBE] last resort FD scan for pid {}", pid);
-                let open_docs =
-                    super::process_files::open_documents_for_pid(pid as u32);
-                let found = open_docs
-                    .into_iter()
-                    .find(|f| f.writable)
-                    .map(|f| {
-                        for ancestor in f.path.ancestors() {
-                            let is_bundle = ancestor.extension()
-                                .and_then(|e| e.to_str())
-                                .map(|e| BUNDLE_EXTS.contains(&e))
-                                .unwrap_or(false);
-                            if is_bundle {
-                                return ancestor.to_string_lossy().into_owned();
-                            }
+                let open_docs = super::process_files::open_documents_for_pid(pid as u32);
+                let found = open_docs.into_iter().find(|f| f.writable).map(|f| {
+                    for ancestor in f.path.ancestors() {
+                        let is_bundle = ancestor
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|e| BUNDLE_EXTS.contains(&e))
+                            .unwrap_or(false);
+                        if is_bundle {
+                            return ancestor.to_string_lossy().into_owned();
                         }
-                        f.path.to_string_lossy().into_owned()
-                    });
+                    }
+                    f.path.to_string_lossy().into_owned()
+                });
                 log::trace!("[AX_PROBE] FD writable result: {:?}", found);
                 found
             });
@@ -209,7 +217,11 @@ impl MacOSFocusMonitor {
                     } else {
                         title_str.clone()
                     };
-                    log::trace!("[AX_PROBE] final title:// fallback: {}/{}", bundle_id_str, suffix);
+                    log::trace!(
+                        "[AX_PROBE] final title:// fallback: {}/{}",
+                        bundle_id_str,
+                        suffix
+                    );
                     Some(format!("title://{}/{}", bundle_id_str, suffix))
                 } else {
                     None
@@ -246,8 +258,8 @@ impl MacOSFocusMonitor {
     fn get_document_path_via_ax(&self, pid: i32) -> Option<String> {
         // Try AXDocument on the focused window first (native Cocoa apps).
         for attr_source in &[
-            (true, "AXDocument"),   // focused window
-            (false, "AXDocument"),  // focused element
+            (true, "AXDocument"),  // focused window
+            (false, "AXDocument"), // focused element
         ] {
             let raw = if attr_source.0 {
                 self.query_focused_window_attribute(pid, attr_source.1)
@@ -389,7 +401,11 @@ impl MacOSFocusMonitor {
                         name_ptr as core_foundation::string::CFStringRef,
                     );
                     let s = name.to_string();
-                    if s.is_empty() { None } else { Some(s) }
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s)
+                    }
                 } else {
                     None
                 };
@@ -409,7 +425,10 @@ impl MacOSFocusMonitor {
             let app = ax_create_application(pid)?;
             let window = match ax_child(app, "AXFocusedWindow") {
                 Some(w) => w,
-                None => { ax_release(app); return None; }
+                None => {
+                    ax_release(app);
+                    return None;
+                }
             };
             let result = ax_read_string(window, attribute);
             ax_release(window);
@@ -425,7 +444,10 @@ impl MacOSFocusMonitor {
             let app = ax_create_application(pid)?;
             let elem = match ax_child(app, "AXFocusedUIElement") {
                 Some(e) => e,
-                None => { ax_release(app); return None; }
+                None => {
+                    ax_release(app);
+                    return None;
+                }
             };
             let result = ax_read_string(elem, attribute);
             ax_release(elem);
@@ -460,7 +482,11 @@ extern "C" {
 /// Create an AXUIElement for a process, returning `None` if the pid is invalid.
 unsafe fn ax_create_application(pid: i32) -> Option<*mut std::ffi::c_void> {
     let el = AXUIElementCreateApplication(pid);
-    if el.is_null() { None } else { Some(el) }
+    if el.is_null() {
+        None
+    } else {
+        Some(el)
+    }
 }
 
 /// Copy a single AX attribute from `element` as a raw CF pointer.
@@ -474,14 +500,15 @@ unsafe fn ax_child(
     let attr = CFString::new(attribute);
     let mut value: *const std::ffi::c_void = std::ptr::null();
     let err = AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut value);
-    if err == 0 && !value.is_null() { Some(value as *mut _) } else { None }
+    if err == 0 && !value.is_null() {
+        Some(value as *mut _)
+    } else {
+        None
+    }
 }
 
 /// Read an AX attribute from `element` as a `String`.
-unsafe fn ax_read_string(
-    element: *mut std::ffi::c_void,
-    attribute: &str,
-) -> Option<String> {
+unsafe fn ax_read_string(element: *mut std::ffi::c_void, attribute: &str) -> Option<String> {
     use core_foundation::base::{CFType, TCFType};
     use core_foundation::string::CFString;
     let child = ax_child(element, attribute)?;
@@ -540,16 +567,14 @@ extern "C" {
         element: *mut std::ffi::c_void,
         notification: core_foundation::string::CFStringRef,
     ) -> i32;
-    fn AXObserverGetRunLoopSource(
-        observer: *mut std::ffi::c_void,
-    ) -> *mut std::ffi::c_void;
+    fn AXObserverGetRunLoopSource(observer: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
 }
 
 type AXObserverCallback = extern "C" fn(
-    *mut std::ffi::c_void,  // observer
-    *mut std::ffi::c_void,  // element
+    *mut std::ffi::c_void,                // observer
+    *mut std::ffi::c_void,                // element
     core_foundation::string::CFStringRef, // notification
-    *mut std::ffi::c_void,  // refcon
+    *mut std::ffi::c_void,                // refcon
 );
 
 /// Shared state passed through the AXObserver callback refcon pointer.
@@ -620,24 +645,27 @@ extern "C" fn ax_observer_callback(
             focus_str.as_concrete_TypeRef() as *const _,
         ) != 0
     };
-    let is_title_change = !is_focus_change && unsafe {
-        use core_foundation::base::TCFType;
-        use core_foundation::string::CFString;
-        let title_str = CFString::from_static_string("AXTitleChanged");
-        core_foundation_sys::base::CFEqual(
-            notification as *const _,
-            title_str.as_concrete_TypeRef() as *const _,
-        ) != 0
-    };
-    let is_value_change = !is_focus_change && !is_title_change && unsafe {
-        use core_foundation::base::TCFType;
-        use core_foundation::string::CFString;
-        let value_str = CFString::from_static_string("AXValueChanged");
-        core_foundation_sys::base::CFEqual(
-            notification as *const _,
-            value_str.as_concrete_TypeRef() as *const _,
-        ) != 0
-    };
+    let is_title_change = !is_focus_change
+        && unsafe {
+            use core_foundation::base::TCFType;
+            use core_foundation::string::CFString;
+            let title_str = CFString::from_static_string("AXTitleChanged");
+            core_foundation_sys::base::CFEqual(
+                notification as *const _,
+                title_str.as_concrete_TypeRef() as *const _,
+            ) != 0
+        };
+    let is_value_change = !is_focus_change
+        && !is_title_change
+        && unsafe {
+            use core_foundation::base::TCFType;
+            use core_foundation::string::CFString;
+            let value_str = CFString::from_static_string("AXValueChanged");
+            core_foundation_sys::base::CFEqual(
+                notification as *const _,
+                value_str.as_concrete_TypeRef() as *const _,
+            ) != 0
+        };
 
     // When the focused window changes, re-register AXTitleChanged and
     // kAXValueChanged on the new window/element.
@@ -758,11 +786,8 @@ fn update_watched_window(ctx: &AXObserverRefcon) {
     let old_window = ctx.watched_window.get();
     if !old_window.is_null() {
         unsafe {
-            let _ = AXObserverRemoveNotification(
-                observer,
-                old_window,
-                title_str.as_concrete_TypeRef(),
-            );
+            let _ =
+                AXObserverRemoveNotification(observer, old_window, title_str.as_concrete_TypeRef());
             ax_release(old_window);
         }
         ctx.watched_window.set(std::ptr::null_mut());
@@ -821,7 +846,9 @@ fn update_watched_window(ctx: &AXObserverRefcon) {
             ctx.watched_element.set(el);
         } else {
             // Not a text element; release immediately.
-            unsafe { ax_release(el); }
+            unsafe {
+                ax_release(el);
+            }
         }
     }
 }
@@ -933,8 +960,8 @@ fn ax_observer_run_loop(
 
     // Tear down the current observer (if any).
     let teardown = |observer: &mut *mut std::ffi::c_void,
-                        app_el: &mut *mut std::ffi::c_void,
-                        refcon: &mut *mut AXObserverRefcon| {
+                    app_el: &mut *mut std::ffi::c_void,
+                    refcon: &mut *mut AXObserverRefcon| {
         // Release the watched window's AXTitleChanged registration first.
         if !refcon.is_null() {
             let watched = unsafe { (**refcon).watched_window.get() };
@@ -947,14 +974,15 @@ fn ax_observer_run_loop(
                     );
                     ax_release(watched);
                 }
-                unsafe { (**refcon).watched_window.set(std::ptr::null_mut()); }
+                unsafe {
+                    (**refcon).watched_window.set(std::ptr::null_mut());
+                }
             }
             // Release the watched element's kAXValueChanged registration.
             let watched_el = unsafe { (**refcon).watched_element.get() };
             if !watched_el.is_null() && !observer.is_null() {
                 unsafe {
-                    let kax_value_changed =
-                        CFString::from_static_string("AXValueChanged");
+                    let kax_value_changed = CFString::from_static_string("AXValueChanged");
                     let _ = AXObserverRemoveNotification(
                         *observer,
                         watched_el,
@@ -962,7 +990,9 @@ fn ax_observer_run_loop(
                     );
                     ax_release(watched_el);
                 }
-                unsafe { (**refcon).watched_element.set(std::ptr::null_mut()); }
+                unsafe {
+                    (**refcon).watched_element.set(std::ptr::null_mut());
+                }
             }
         }
         if !observer.is_null() && !app_el.is_null() {
@@ -981,10 +1011,14 @@ fn ax_observer_run_loop(
             }
         }
         if !observer.is_null() {
-            unsafe { CFRelease(*observer); }
+            unsafe {
+                CFRelease(*observer);
+            }
         }
         if !app_el.is_null() {
-            unsafe { CFRelease(*app_el); }
+            unsafe {
+                CFRelease(*app_el);
+            }
         }
         if !refcon.is_null() {
             // SAFETY: We leaked this Box in setup; reclaim it now.
@@ -1001,14 +1035,22 @@ fn ax_observer_run_loop(
             let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
             let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
             let app: *mut Object = msg_send![workspace, frontmostApplication];
-            let p: i32 = if app.is_null() { -1 } else { msg_send![app, processIdentifier] };
+            let p: i32 = if app.is_null() {
+                -1
+            } else {
+                msg_send![app, processIdentifier]
+            };
             let _: () = msg_send![pool, drain];
             p
         };
 
         if pid > 0 && pid != current_pid {
             // Frontmost app changed; tear down old observer and create new one.
-            teardown(&mut current_observer, &mut current_app_element, &mut current_refcon);
+            teardown(
+                &mut current_observer,
+                &mut current_app_element,
+                &mut current_refcon,
+            );
             current_pid = pid;
 
             let refcon_box = Box::new(AXObserverRefcon {
@@ -1026,9 +1068,7 @@ fn ax_observer_run_loop(
 
             let mut observer: *mut std::ffi::c_void = std::ptr::null_mut();
             // SAFETY: AXObserverCreate writes to `observer` on success (return 0).
-            let err = unsafe {
-                AXObserverCreate(pid, ax_observer_callback, &mut observer)
-            };
+            let err = unsafe { AXObserverCreate(pid, ax_observer_callback, &mut observer) };
             if err != 0 || observer.is_null() {
                 log::debug!("AXObserver: cannot observe pid {pid} (err={err})");
                 // Reclaim the refcon we just leaked.
@@ -1044,7 +1084,9 @@ fn ax_observer_run_loop(
             let app_element = unsafe { AXUIElementCreateApplication(pid) };
             if app_element.is_null() {
                 log::debug!("AXObserver: cannot create element for pid {pid}");
-                unsafe { CFRelease(observer); }
+                unsafe {
+                    CFRelease(observer);
+                }
                 let _ = unsafe { Box::from_raw(current_refcon) };
                 current_refcon = std::ptr::null_mut();
                 current_pid = -1;
@@ -1108,7 +1150,11 @@ fn ax_observer_run_loop(
     }
 
     // Clean up on exit.
-    teardown(&mut current_observer, &mut current_app_element, &mut current_refcon);
+    teardown(
+        &mut current_observer,
+        &mut current_app_element,
+        &mut current_refcon,
+    );
     log::debug!("AXObserver: run loop exited");
 }
 

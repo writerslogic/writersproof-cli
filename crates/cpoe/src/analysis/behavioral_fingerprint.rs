@@ -349,7 +349,10 @@ impl BehavioralFingerprint {
     /// Returns `None` when the baseline has zero standard deviation on any
     /// dimension (insufficient training data). The caller should persist the
     /// returned comparison result alongside the evidence packet.
-    pub fn compare_to_baseline(&self, baseline: &BehavioralFingerprint) -> Option<BaselineComparison> {
+    pub fn compare_to_baseline(
+        &self,
+        baseline: &BehavioralFingerprint,
+    ) -> Option<BaselineComparison> {
         // Feature vector: [mean_iki, std_iki, burst_length_mean, sentence_pause_mean, thinking_freq]
         let current = [
             self.keystroke_interval_mean,
@@ -581,7 +584,10 @@ mod tests {
         let b = BehavioralFingerprint::from_samples(&mock_samples(&intervals_b));
         let result = a.compare_to_baseline(&b);
         if let Some(cmp) = result {
-            assert!(!cmp.is_anomalous, "Similar fingerprints should not be anomalous");
+            assert!(
+                !cmp.is_anomalous,
+                "Similar fingerprints should not be anomalous"
+            );
         }
     }
 

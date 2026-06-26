@@ -63,6 +63,6 @@ pub use enums::{
 };
 pub use hash::{CompactRef, HashValue, TimeWindow};
 pub use packet::{
-    ContinuationSummaryWire, DocumentStructureEntryWire, DocumentStructureWire,
-    EvidencePacketWire, ExportAttestationWire, ForensicSummaryWire, ProjectFileRef,
+    ContinuationSummaryWire, DocumentStructureEntryWire, DocumentStructureWire, EvidencePacketWire,
+    ExportAttestationWire, ForensicSummaryWire, ProjectFileRef,
 };

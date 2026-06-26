@@ -284,8 +284,7 @@ pub fn get_or_create_puf() -> Result<Box<dyn PufProvider>, KeyHierarchyError> {
 }
 
 fn writersproof_dir() -> PathBuf {
-    crate::utils::get_legacy_data_dir()
-        .unwrap_or_else(|| PathBuf::from(".writersproof"))
+    crate::utils::get_legacy_data_dir().unwrap_or_else(|| PathBuf::from(".writersproof"))
 }
 
 struct HardwarePUF {

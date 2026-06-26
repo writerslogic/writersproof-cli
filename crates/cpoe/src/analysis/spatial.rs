@@ -106,7 +106,14 @@ impl<'a> KdTree<'a> {
         let query = self.get_point(query_idx);
         let mut best_idx = usize::MAX;
         let mut best_dist_sq = f64::INFINITY;
-        self.nn_search(0, query, query_idx, min_temporal_sep, &mut best_idx, &mut best_dist_sq);
+        self.nn_search(
+            0,
+            query,
+            query_idx,
+            min_temporal_sep,
+            &mut best_idx,
+            &mut best_dist_sq,
+        );
         if best_dist_sq.is_finite() {
             Some((best_idx, best_dist_sq))
         } else {
@@ -149,13 +156,27 @@ impl<'a> KdTree<'a> {
         };
 
         if let Some(child) = first {
-            self.nn_search(child, query, query_point_idx, min_sep, best_idx, best_dist_sq);
+            self.nn_search(
+                child,
+                query,
+                query_point_idx,
+                min_sep,
+                best_idx,
+                best_dist_sq,
+            );
         }
 
         // Only visit the farther subtree if the splitting plane is closer than current best
         if diff_sq < *best_dist_sq {
             if let Some(child) = second {
-                self.nn_search(child, query, query_point_idx, min_sep, best_idx, best_dist_sq);
+                self.nn_search(
+                    child,
+                    query,
+                    query_point_idx,
+                    min_sep,
+                    best_idx,
+                    best_dist_sq,
+                );
             }
         }
     }

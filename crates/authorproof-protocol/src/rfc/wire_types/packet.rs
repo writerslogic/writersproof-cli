@@ -481,7 +481,8 @@ impl EvidencePacketWire {
             if name.len() > MAX_STRING_LEN {
                 return Err(CodecError::Validation(format!(
                     "document_filename too long: {} (max {})",
-                    name.len(), MAX_STRING_LEN
+                    name.len(),
+                    MAX_STRING_LEN
                 )));
             }
             if name.contains('\0') {

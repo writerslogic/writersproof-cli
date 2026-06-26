@@ -46,10 +46,7 @@ impl BoundedLruCache {
     }
 
     /// Look up an entry and promote it to most-recently-used if found.
-    fn get(
-        &mut self,
-        key: &str,
-    ) -> Option<&ForensicCacheEntry> {
+    fn get(&mut self, key: &str) -> Option<&ForensicCacheEntry> {
         if self.map.contains_key(key) {
             // Promote to most-recently-used by moving to back of order queue.
             if let Some(pos) = self.order.iter().position(|k| k == key) {
@@ -101,10 +98,7 @@ pub(crate) struct EventStats {
     pub(crate) doc_size: i64,
 }
 
-fn compute_event_stats(
-    events: &[crate::store::SecureEvent],
-    ips: u64,
-) -> Option<EventStats> {
+fn compute_event_stats(events: &[crate::store::SecureEvent], ips: u64) -> Option<EventStats> {
     let last = events.last()?;
     let doc_hash = hex::encode(last.content_hash);
     let doc_size = last.file_size;
@@ -332,19 +326,18 @@ fn load_signing_key_and_seed() -> (Option<ed25519_dalek::SigningKey>, String, St
             let vk = signing_key.verifying_key();
             let fp = hex::encode(&vk.as_bytes()[..4]);
 
-            let seed_hex = match crate::utils::key_derivation::derive_guilloche_seed(
-                signing_key.as_bytes(),
-            ) {
-                Ok(mut seed) => {
-                    let result = hex::encode(seed);
-                    seed.zeroize();
-                    result
-                }
-                Err(e) => {
-                    log::error!("HKDF expand failed for guilloche seed: {e}");
-                    String::new()
-                }
-            };
+            let seed_hex =
+                match crate::utils::key_derivation::derive_guilloche_seed(signing_key.as_bytes()) {
+                    Ok(mut seed) => {
+                        let result = hex::encode(seed);
+                        seed.zeroize();
+                        result
+                    }
+                    Err(e) => {
+                        log::error!("HKDF expand failed for guilloche seed: {e}");
+                        String::new()
+                    }
+                };
 
             (fp, seed_hex)
         }
@@ -367,12 +360,10 @@ fn get_forensics_cached(
 ) {
     let cache_key = file_path_str.to_string();
     let hit = {
-        let mut cache = forensic_cache()
-            .lock()
-            .unwrap_or_else(|p| {
-                log::warn!("forensic_cache mutex poisoned; recovering cached value");
-                p.into_inner()
-            });
+        let mut cache = forensic_cache().lock().unwrap_or_else(|p| {
+            log::warn!("forensic_cache mutex poisoned; recovering cached value");
+            p.into_inner()
+        });
         cache
             .get(&cache_key)
             .filter(|e| e.event_count == events.len())
@@ -394,9 +385,7 @@ fn get_forensics_cached(
             let (m_raw, r_raw) = crate::ffi::helpers::run_full_forensics(events);
             let m = Arc::new(m_raw);
             let r = Arc::new(r_raw);
-            let mut cache = forensic_cache()
-                .lock()
-                .unwrap_or_else(|p| p.into_inner());
+            let mut cache = forensic_cache().lock().unwrap_or_else(|p| p.into_inner());
             cache.insert(
                 cache_key,
                 ForensicCacheEntry {
@@ -474,7 +463,8 @@ fn blend_topology_score(
 ) -> (u32, Verdict, f64, EnfsiTier) {
     let topology_assessment = finite_or(metrics.assessment_score.get(), 0.0);
     if topology_assessment > 0.0 && event_count >= crate::report::MIN_VERDICT_EVENTS {
-        let blended = (avg_forensic * W_FORENSIC + topology_assessment * W_TOPOLOGY).clamp(0.0, 1.0);
+        let blended =
+            (avg_forensic * W_FORENSIC + topology_assessment * W_TOPOLOGY).clamp(0.0, 1.0);
         let s = (blended * 100.0) as u32;
         let v = Verdict::from_score_with_events(s, event_count);
         let l = compute_likelihood_ratio(s);
@@ -658,9 +648,7 @@ fn build_activity_contexts(sessions: &[ReportSession]) -> Vec<ActivityContext> {
             period_type: "writing_session".into(),
             start: s.start,
             end: s.start
-                + chrono::Duration::seconds(
-                    (s.duration_min.clamp(0.0, 525_960.0) * 60.0) as i64,
-                ),
+                + chrono::Duration::seconds((s.duration_min.clamp(0.0, 525_960.0) * 60.0) as i64),
             duration_min: s.duration_min,
             note: Some(s.summary.clone()),
         })
@@ -691,7 +679,10 @@ fn build_writing_flow(events: &[crate::store::SecureEvent]) -> Vec<FlowDataPoint
 pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String), String> {
     const MAX_PATH_LEN: usize = 4096;
     if path.len() > MAX_PATH_LEN {
-        return Err(format!("Path exceeds maximum length of {} bytes", MAX_PATH_LEN));
+        return Err(format!(
+            "Path exceeds maximum length of {} bytes",
+            MAX_PATH_LEN
+        ));
     }
     let (file_path_str, store, events) = crate::ffi::helpers::load_events_for_path(path)?;
     let file_path = std::path::PathBuf::from(&file_path_str);
@@ -755,7 +746,8 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         .map(|sess| sess.total_keystrokes())
         .filter(|&k| k > 0)
         .or_else(|| {
-            doc_stats.as_ref()
+            doc_stats
+                .as_ref()
                 .map(|d| d.total_keystrokes.max(0) as u64)
                 .filter(|&k| k > 0)
         })
@@ -766,7 +758,10 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
     // Update the keystroke flag with the real count (flags were built with the
     // checkpoint-based estimate before doc_stats/sentinel data was available).
     if real_keystrokes != stats.keystroke_estimate {
-        if let Some(ks_flag) = flags.iter_mut().find(|f| f.category == "Keystroke Activity") {
+        if let Some(ks_flag) = flags
+            .iter_mut()
+            .find(|f| f.category == "Keystroke Activity")
+        {
             ks_flag.flag = format!("{} Keystrokes", real_keystrokes);
             ks_flag.signal = if real_keystrokes > 200 {
                 FlagSignal::Human
@@ -823,7 +818,11 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
                             "User skipped {} mandatory paste checkpoint{} during this session. \
                              Pasted content is undocumented.",
                             session.paste_checkpoint_skips,
-                            if session.paste_checkpoint_skips == 1 { "" } else { "s" }
+                            if session.paste_checkpoint_skips == 1 {
+                                ""
+                            } else {
+                                "s"
+                            }
                         ),
                         signal: FlagSignal::Synthetic,
                     });
@@ -874,11 +873,13 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         document_sentences: None,
         document_paragraphs: None,
         evidence_bundle_version: format!("Signed v{} (T{})", env!("CARGO_PKG_VERSION"), tier_num),
-        session_count: doc_stats.as_ref()
+        session_count: doc_stats
+            .as_ref()
             .map(|d| d.session_count as usize)
             .filter(|&c| c > 0)
             .unwrap_or(sessions.len()),
-        total_duration_min: doc_stats.as_ref()
+        total_duration_min: doc_stats
+            .as_ref()
             .map(|d| d.total_focus_ms as f64 / 60_000.0)
             .filter(|&m| m > 0.0)
             .unwrap_or(stats.total_min),
@@ -923,7 +924,8 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
         provenance_breakdown: None,
     };
 
-    war_report.verifiable_credential_json = build_vc_json(&war_report, loaded_key.as_ref(), &metrics);
+    war_report.verifiable_credential_json =
+        build_vc_json(&war_report, loaded_key.as_ref(), &metrics);
     war_report.provenance_breakdown = compute_provenance(&store);
 
     // Sanity check: if the session recorded no paste events but provenance
@@ -972,104 +974,118 @@ pub(crate) fn build_war_report_for_path(path: &str) -> Result<(WarReport, String
 /// Build a WAR report and return structured data suitable for native UI rendering.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_build_war_report(path: String) -> FfiWarReportResult {
-    catch_ffi_panic!(FfiWarReportResult {
-        success: false,
-        report: None,
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    super::types::run_on_stack(move || {
-    log::debug!("ffi_build_war_report: path={}", path);
-    match build_war_report_for_path(&path) {
-        Ok((report, guilloche_seed_hex)) => FfiWarReportResult {
-            success: true,
-            report: Some(convert_war_report(&report, &guilloche_seed_hex)),
-            error_message: None,
-        },
-        Err(e) => FfiWarReportResult {
+    catch_ffi_panic!(
+        FfiWarReportResult {
             success: false,
             report: None,
-            error_message: Some(e),
+            error_message: Some("engine internal error".to_string()),
         },
-    }
-    })
-    })
+        {
+            super::types::run_on_stack(move || {
+                log::debug!("ffi_build_war_report: path={}", path);
+                match build_war_report_for_path(&path) {
+                    Ok((report, guilloche_seed_hex)) => FfiWarReportResult {
+                        success: true,
+                        report: Some(convert_war_report(&report, &guilloche_seed_hex)),
+                        error_message: None,
+                    },
+                    Err(e) => FfiWarReportResult {
+                        success: false,
+                        report: None,
+                        error_message: Some(e),
+                    },
+                }
+            })
+        }
+    )
 }
 
 /// Build a WAR report and render it as an HTML string.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_render_war_html(path: String) -> FfiHtmlResult {
-    catch_ffi_panic!(FfiHtmlResult {
-        success: false,
-        html: None,
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    super::types::run_on_stack(move || {
-    log::debug!("ffi_render_war_html: path={}", path);
-    match build_war_report_for_path(&path) {
-        Ok((report, _)) => {
-            let html = render_html(&report);
-            FfiHtmlResult {
-                success: true,
-                html: Some(html),
-                error_message: None,
-            }
-        }
-        Err(e) => FfiHtmlResult {
+    catch_ffi_panic!(
+        FfiHtmlResult {
             success: false,
             html: None,
-            error_message: Some(e),
+            error_message: Some("engine internal error".to_string()),
         },
-    }
-    })
-    })
+        {
+            super::types::run_on_stack(move || {
+                log::debug!("ffi_render_war_html: path={}", path);
+                match build_war_report_for_path(&path) {
+                    Ok((report, _)) => {
+                        let html = render_html(&report);
+                        FfiHtmlResult {
+                            success: true,
+                            html: Some(html),
+                            error_message: None,
+                        }
+                    }
+                    Err(e) => FfiHtmlResult {
+                        success: false,
+                        html: None,
+                        error_message: Some(e),
+                    },
+                }
+            })
+        }
+    )
 }
 
 /// Build a WAR report, render as PDF, and embed a C2PA manifest with VC.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_render_war_pdf(path: String) -> FfiPdfResult {
-    catch_ffi_panic!(FfiPdfResult {
-        success: false,
-        pdf_bytes: None,
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    super::types::run_on_stack(move || {
-    log::debug!("ffi_render_war_pdf: path={}", path);
-    match build_war_report_for_path(&path) {
-        Ok((report, guilloche_seed_hex)) => {
-            let seed: Option<[u8; 64]> = hex::decode(&guilloche_seed_hex)
-                .ok()
-                .and_then(|b| <[u8; 64]>::try_from(b).ok());
-            let pdf_bytes = match crate::report::pdf::render_pdf(&report, seed.as_ref()) {
-                Ok(b) => b,
-                Err(e) => return FfiPdfResult {
-                    success: false,
-                    pdf_bytes: None,
-                    error_message: Some(format!("PDF rendering failed: {e}")),
-                },
-            };
-
-            // Embed C2PA manifest in the PDF. Best-effort: if it fails,
-            // return the unsigned PDF rather than failing the entire export.
-            let final_pdf = embed_c2pa_in_report_pdf(&path, &pdf_bytes, &report)
-                .unwrap_or_else(|e| {
-                    log::warn!("C2PA embedding in PDF failed (returning unsigned PDF): {e}");
-                    pdf_bytes
-                });
-
-            FfiPdfResult {
-                success: true,
-                pdf_bytes: Some(final_pdf),
-                error_message: None,
-            }
-        }
-        Err(e) => FfiPdfResult {
+    catch_ffi_panic!(
+        FfiPdfResult {
             success: false,
             pdf_bytes: None,
-            error_message: Some(e),
+            error_message: Some("engine internal error".to_string()),
         },
-    }
-    })
-    })
+        {
+            super::types::run_on_stack(move || {
+                log::debug!("ffi_render_war_pdf: path={}", path);
+                match build_war_report_for_path(&path) {
+                    Ok((report, guilloche_seed_hex)) => {
+                        let seed: Option<[u8; 64]> = hex::decode(&guilloche_seed_hex)
+                            .ok()
+                            .and_then(|b| <[u8; 64]>::try_from(b).ok());
+                        let pdf_bytes = match crate::report::pdf::render_pdf(&report, seed.as_ref())
+                        {
+                            Ok(b) => b,
+                            Err(e) => {
+                                return FfiPdfResult {
+                                    success: false,
+                                    pdf_bytes: None,
+                                    error_message: Some(format!("PDF rendering failed: {e}")),
+                                }
+                            }
+                        };
+
+                        // Embed C2PA manifest in the PDF. Best-effort: if it fails,
+                        // return the unsigned PDF rather than failing the entire export.
+                        let final_pdf = embed_c2pa_in_report_pdf(&path, &pdf_bytes, &report)
+                            .unwrap_or_else(|e| {
+                                log::warn!(
+                                    "C2PA embedding in PDF failed (returning unsigned PDF): {e}"
+                                );
+                                pdf_bytes
+                            });
+
+                        FfiPdfResult {
+                            success: true,
+                            pdf_bytes: Some(final_pdf),
+                            error_message: None,
+                        }
+                    }
+                    Err(e) => FfiPdfResult {
+                        success: false,
+                        pdf_bytes: None,
+                        error_message: Some(e),
+                    },
+                }
+            })
+        }
+    )
 }
 
 /// Embed a C2PA JUMBF manifest directly into PDF bytes.
@@ -1081,10 +1097,15 @@ fn embed_c2pa_in_report_pdf(
     use authorproof_protocol::c2pa::C2paManifestBuilder;
 
     // Build an evidence packet for the document.
-    let (_wire_packet, evidence_bytes, _) =
-        crate::ffi::evidence_export::build_wire_packet(path.to_string(), "standard".into(), None, None)?;
+    let (_wire_packet, evidence_bytes, _) = crate::ffi::evidence_export::build_wire_packet(
+        path.to_string(),
+        "standard".into(),
+        None,
+        None,
+    )?;
 
-    let evidence_packet = crate::ffi::evidence_derivative::decode_evidence_for_c2pa(&evidence_bytes)?;
+    let evidence_packet =
+        crate::ffi::evidence_derivative::decode_evidence_for_c2pa(&evidence_bytes)?;
 
     let doc_hash: [u8; 32] = {
         let mut hasher = Sha256::new();
@@ -1118,9 +1139,9 @@ fn embed_c2pa_in_report_pdf(
         crate::ffi::vc_export::build_ear_for_path(path, path, &signing_key)
     {
         let provider = crate::tpm::detect_provider();
-        if let Ok(vc) = crate::war::profiles::vc::to_signed_verifiable_credential(
-            &ear, &author_did, &*provider,
-        ) {
+        if let Ok(vc) =
+            crate::war::profiles::vc::to_signed_verifiable_credential(&ear, &author_did, &*provider)
+        {
             if let Ok(embed) = serde_json::to_string(&vc) {
                 builder = builder.vc_embedded(embed);
             }
@@ -1232,14 +1253,17 @@ fn convert_war_report(r: &WarReport, guilloche_seed_hex: &str) -> FfiWarReport {
             signature_valid: d.signature_valid,
             created_at_epoch_ms: d.created_at.timestamp_millis(),
         }),
-        key_hierarchy_summary: r.key_hierarchy_summary.as_ref().map(|k| FfiKeyHierarchyInfo {
-            master_fingerprint: k.master_fingerprint.clone(),
-            device_id: k.device_id.clone(),
-            session_id: k.session_id.clone(),
-            ratchet_count: k.ratchet_count,
-            checkpoint_signatures: k.checkpoint_signatures as u32,
-            session_started_epoch_ms: k.session_started.timestamp_millis(),
-        }),
+        key_hierarchy_summary: r
+            .key_hierarchy_summary
+            .as_ref()
+            .map(|k| FfiKeyHierarchyInfo {
+                master_fingerprint: k.master_fingerprint.clone(),
+                device_id: k.device_id.clone(),
+                session_id: k.session_id.clone(),
+                ratchet_count: k.ratchet_count,
+                checkpoint_signatures: k.checkpoint_signatures as u32,
+                session_started_epoch_ms: k.session_started.timestamp_millis(),
+            }),
         physical_context: r.physical_context.as_ref().map(|p| FfiPhysicalContextInfo {
             clock_skew_ns: p.clock_skew_ns,
             thermal_proxy: p.thermal_proxy,
@@ -1367,7 +1391,8 @@ pub(crate) fn detect_sessions_from_events(
     }
 
     use crate::forensics::types::DEFAULT_SESSION_GAP_SEC;
-    let gap_ns: i64 = (DEFAULT_SESSION_GAP_SEC * 1_000_000_000.0).clamp(0.0, i64::MAX as f64) as i64;
+    let gap_ns: i64 =
+        (DEFAULT_SESSION_GAP_SEC * 1_000_000_000.0).clamp(0.0, i64::MAX as f64) as i64;
     let mut sessions = Vec::new();
     let mut session_start = 0usize;
 
@@ -1646,10 +1671,7 @@ fn build_vc_json(
     let signer = crate::tpm::SoftwareProvider::from_signing_key(signing_key.clone());
     match crate::war::profiles::vc::to_signed_verifiable_credential(&ear, &author_did, &signer) {
         Ok(mut vc) => {
-            let writing_mode = metrics
-                .writing_mode
-                .as_ref()
-                .map(|wm| wm.mode.to_string());
+            let writing_mode = metrics.writing_mode.as_ref().map(|wm| wm.mode.to_string());
             let comp_mode = metrics
                 .composition_mode
                 .as_ref()
@@ -1730,11 +1752,11 @@ pub fn build_vc_forensic_signals(
         },
         mean_iki_ms: Some(metrics.cadence.mean_iki_ns / 1_000_000.0)
             .filter(|v| v.is_finite() && *v > 0.0),
-        correction_ratio: Some(metrics.cadence.correction_ratio.get())
-            .filter(|v| v.is_finite()),
-        keystroke_count: Some(metrics.cadence.burst_count as u64 + metrics.cadence.pause_count as u64),
+        correction_ratio: Some(metrics.cadence.correction_ratio.get()).filter(|v| v.is_finite()),
+        keystroke_count: Some(
+            metrics.cadence.burst_count as u64 + metrics.cadence.pause_count as u64,
+        ),
         hurst_exponent: metrics.hurst_exponent.filter(|h| h.is_finite()),
-        forensic_score: Some(metrics.assessment_score.get())
-            .filter(|v| v.is_finite()),
+        forensic_score: Some(metrics.assessment_score.get()).filter(|v| v.is_finite()),
     })
 }

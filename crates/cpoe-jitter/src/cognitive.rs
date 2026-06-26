@@ -50,12 +50,10 @@ pub struct TimedKeystroke {
 /// Top 50 most common English bigrams (sorted for binary search).
 /// Source: Peter Norvig corpus analysis / Mayzner & Tresselt.
 const COMMON_BIGRAMS: &[[u8; 2]] = &[
-    *b"al", *b"an", *b"ar", *b"as", *b"at", *b"be", *b"ce", *b"ch",
-    *b"co", *b"de", *b"ea", *b"ed", *b"en", *b"er", *b"es", *b"ha",
-    *b"he", *b"hi", *b"ic", *b"in", *b"io", *b"is", *b"it", *b"le",
-    *b"li", *b"ll", *b"ma", *b"me", *b"nd", *b"ne", *b"ng", *b"nt",
-    *b"of", *b"om", *b"on", *b"or", *b"ou", *b"ra", *b"re", *b"ri",
-    *b"ro", *b"se", *b"si", *b"st", *b"te", *b"th", *b"ti", *b"to",
+    *b"al", *b"an", *b"ar", *b"as", *b"at", *b"be", *b"ce", *b"ch", *b"co", *b"de", *b"ea", *b"ed",
+    *b"en", *b"er", *b"es", *b"ha", *b"he", *b"hi", *b"ic", *b"in", *b"io", *b"is", *b"it", *b"le",
+    *b"li", *b"ll", *b"ma", *b"me", *b"nd", *b"ne", *b"ng", *b"nt", *b"of", *b"om", *b"on", *b"or",
+    *b"ou", *b"ra", *b"re", *b"ri", *b"ro", *b"se", *b"si", *b"st", *b"te", *b"th", *b"ti", *b"to",
     *b"ur", *b"ve",
 ];
 
@@ -83,7 +81,9 @@ fn histogram_median_value(hist: &[u32], total: u32, bin_width: u64) -> f64 {
 /// Analyze cognitive vs transcriptive writing from timed keystrokes.
 ///
 /// Requires at least 20 keystrokes and 3 sentence boundaries for meaningful results.
-pub fn analyze_cognitive_temporal(keystrokes: &[TimedKeystroke]) -> Option<CognitiveTemporalMetrics> {
+pub fn analyze_cognitive_temporal(
+    keystrokes: &[TimedKeystroke],
+) -> Option<CognitiveTemporalMetrics> {
     if keystrokes.len() < 20 {
         return None;
     }
@@ -92,10 +92,7 @@ pub fn analyze_cognitive_temporal(keystrokes: &[TimedKeystroke]) -> Option<Cogni
     let bigram_metrics = compute_bigram_fluency(keystrokes);
     let modality = compute_iki_modality(keystrokes);
 
-    let sid_score = sentence_initiation_to_probability(
-        sentence_metrics.0,
-        sentence_metrics.1,
-    );
+    let sid_score = sentence_initiation_to_probability(sentence_metrics.0, sentence_metrics.1);
     let bigram_score = bigram_fluency_to_probability(bigram_metrics.0);
 
     // Combine all three temporal signals with confidence-adaptive weighting.
@@ -105,7 +102,9 @@ pub fn analyze_cognitive_temporal(keystrokes: &[TimedKeystroke]) -> Option<Cogni
     let cognitive_probability = if sentence_metrics.2 >= 3 && bigram_metrics.1 >= 30 {
         let bigram_confidence = (bigram_score - 0.5).abs() * 2.0;
         let bigram_weight = 0.2 * bigram_confidence;
-        sid_score * 0.45 + modality * 0.35 + bigram_score * bigram_weight
+        sid_score * 0.45
+            + modality * 0.35
+            + bigram_score * bigram_weight
             + sid_score * (0.2 - bigram_weight) // redistribute unused bigram weight to SID
     } else if sentence_metrics.2 >= 3 {
         sid_score * 0.6 + modality * 0.4
@@ -147,8 +146,7 @@ fn compute_sentence_initiation(keystrokes: &[TimedKeystroke]) -> Option<(f64, f6
                 sentence_count += 1;
             }
         } else {
-            let bin =
-                (ks.iki_us / MEDIAN_BIN_WIDTH_US).min((MEDIAN_NUM_BINS - 1) as u64) as usize;
+            let bin = (ks.iki_us / MEDIAN_BIN_WIDTH_US).min((MEDIAN_NUM_BINS - 1) as u64) as usize;
             within_hist[bin] += 1;
             within_count += 1;
         }
@@ -159,8 +157,7 @@ fn compute_sentence_initiation(keystrokes: &[TimedKeystroke]) -> Option<(f64, f6
     }
 
     // Approximate median from histogram (5 ms resolution).
-    let median_within =
-        histogram_median_value(&within_hist, within_count, MEDIAN_BIN_WIDTH_US);
+    let median_within = histogram_median_value(&within_hist, within_count, MEDIAN_BIN_WIDTH_US);
     if median_within < 1.0 {
         return None;
     }
@@ -210,8 +207,7 @@ fn compute_bigram_fluency(keystrokes: &[TimedKeystroke]) -> (f64, usize) {
             continue; // Skip zero or >2s gaps (not typing speed)
         }
 
-        let bin = (pair[1].iki_us / MEDIAN_BIN_WIDTH_US)
-            .min((MEDIAN_NUM_BINS - 1) as u64) as usize;
+        let bin = (pair[1].iki_us / MEDIAN_BIN_WIDTH_US).min((MEDIAN_NUM_BINS - 1) as u64) as usize;
         let bigram = [prev, curr];
         if is_common_bigram(&bigram) {
             common_hist[bin] += 1;
@@ -228,10 +224,8 @@ fn compute_bigram_fluency(keystrokes: &[TimedKeystroke]) -> (f64, usize) {
     }
 
     // Approximate median from histogram bins.
-    let median_common =
-        histogram_median_value(&common_hist, common_count, MEDIAN_BIN_WIDTH_US);
-    let median_rare =
-        histogram_median_value(&rare_hist, rare_count, MEDIAN_BIN_WIDTH_US);
+    let median_common = histogram_median_value(&common_hist, common_count, MEDIAN_BIN_WIDTH_US);
+    let median_rare = histogram_median_value(&rare_hist, rare_count, MEDIAN_BIN_WIDTH_US);
 
     if median_common < 1.0 {
         return (1.0, total);
@@ -417,11 +411,13 @@ mod tests {
         let metrics = analyze_cognitive_temporal(&ks).unwrap();
         assert!(
             metrics.sentence_initiation_ratio > 5.0,
-            "ratio={}", metrics.sentence_initiation_ratio
+            "ratio={}",
+            metrics.sentence_initiation_ratio
         );
         assert!(
             metrics.cognitive_probability > 0.6,
-            "prob={}", metrics.cognitive_probability
+            "prob={}",
+            metrics.cognitive_probability
         );
     }
 
@@ -431,19 +427,29 @@ mod tests {
         let metrics = analyze_cognitive_temporal(&ks).unwrap();
         assert!(
             metrics.sentence_initiation_ratio < 4.0,
-            "ratio={}", metrics.sentence_initiation_ratio
+            "ratio={}",
+            metrics.sentence_initiation_ratio
         );
         assert!(
             metrics.cognitive_probability < 0.5,
-            "prob={}", metrics.cognitive_probability
+            "prob={}",
+            metrics.cognitive_probability
         );
     }
 
     #[test]
     fn test_insufficient_data_returns_none() {
         let ks = vec![
-            TimedKeystroke { iki_us: 100_000, char_byte: b'a', after_sentence_end: false },
-            TimedKeystroke { iki_us: 100_000, char_byte: b'b', after_sentence_end: false },
+            TimedKeystroke {
+                iki_us: 100_000,
+                char_byte: b'a',
+                after_sentence_end: false,
+            },
+            TimedKeystroke {
+                iki_us: 100_000,
+                char_byte: b'b',
+                after_sentence_end: false,
+            },
         ];
         assert!(analyze_cognitive_temporal(&ks).is_none());
     }

@@ -366,7 +366,8 @@ pub(crate) async fn cmd_track_smart(
             let requested = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
 
             if let Some(ref tracked) = session_path {
-                let tracked_canonical = fs::canonicalize(tracked).unwrap_or_else(|_| PathBuf::from(tracked));
+                let tracked_canonical =
+                    fs::canonicalize(tracked).unwrap_or_else(|_| PathBuf::from(tracked));
                 if tracked_canonical == requested {
                     if !out.quiet {
                         println!("Tracking session active. Creating checkpoint...");

@@ -226,8 +226,7 @@ impl Chain {
                          (chain predates spec-correct H(document-ref) computation)"
                     );
                     report.warnings.push(
-                        "checkpoint 0: legacy all-zeros genesis prev_hash accepted"
-                            .to_string(),
+                        "checkpoint 0: legacy all-zeros genesis prev_hash accepted".to_string(),
                     );
                 }
             }
@@ -324,8 +323,7 @@ impl Chain {
                         if vdf.iterations < self.metadata.vdf_params.min_iterations {
                             report.warnings.push(format!(
                                 "checkpoint {i}: VDF iterations {} below minimum {}",
-                                vdf.iterations,
-                                self.metadata.vdf_params.min_iterations
+                                vdf.iterations, self.metadata.vdf_params.min_iterations
                             ));
                         }
                     }
@@ -507,5 +505,4 @@ impl Chain {
         }
         Ok(())
     }
-
 }

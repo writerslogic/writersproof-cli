@@ -43,8 +43,9 @@ fn has_column(conn: &rusqlite::Connection, table: &str, col: &str) -> anyhow::Re
 
 impl SecureStore {
     pub(crate) fn init_schema(&self) -> anyhow::Result<()> {
-        let on_disk_version: i64 =
-            self.conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        let on_disk_version: i64 = self
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if on_disk_version > SCHEMA_VERSION {
             anyhow::bail!(
                 "Database schema version {} is newer than this app supports ({}). \
@@ -388,9 +389,8 @@ impl SecureStore {
         }
 
         if on_disk_version < SCHEMA_VERSION {
-            self.conn.execute_batch(&format!(
-                "PRAGMA user_version={SCHEMA_VERSION};"
-            ))?;
+            self.conn
+                .execute_batch(&format!("PRAGMA user_version={SCHEMA_VERSION};"))?;
         }
 
         Ok(())
@@ -518,7 +518,11 @@ impl SecureStore {
                 }
 
                 // Total event count must match the integrity record.
-                if last_verified_seq.checked_add(count).ok_or_else(|| anyhow!("event count overflow"))? != event_count {
+                if last_verified_seq
+                    .checked_add(count)
+                    .ok_or_else(|| anyhow!("event count overflow"))?
+                    != event_count
+                {
                     return Err(anyhow!("Event count mismatch"));
                 }
 

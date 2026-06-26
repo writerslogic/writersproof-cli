@@ -474,9 +474,13 @@ fn test_range_proof_cross_peak_n5() {
     let peaks = mmr.get_peaks().expect("peaks");
     assert_eq!(peaks.len(), 2, "n=5 should have 2 peaks");
 
-    let proof = mmr.generate_range_proof(0, 4).expect("generate range proof");
+    let proof = mmr
+        .generate_range_proof(0, 4)
+        .expect("generate range proof");
     let data: Vec<Vec<u8>> = (0..5u64).map(|i| i.to_le_bytes().to_vec()).collect();
-    proof.verify(&data).expect("cross-peak range proof should verify");
+    proof
+        .verify(&data)
+        .expect("cross-peak range proof should verify");
 }
 
 mod prop_tests {

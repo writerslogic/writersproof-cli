@@ -50,10 +50,14 @@ pub(crate) fn save(dir: &Path, index: &SessionIndex) {
 
 /// Look up a recent prior session for `url`. Returns `None` if none exists
 /// or the record is older than `MAX_AGE_NS`.
-pub(crate) fn lookup_recent<'a>(index: &'a SessionIndex, url: &str, now_ns: u64) -> Option<&'a SessionRecord> {
-    index.get(url).filter(|r| {
-        now_ns.saturating_sub(r.last_active_ns) < MAX_AGE_NS
-    })
+pub(crate) fn lookup_recent<'a>(
+    index: &'a SessionIndex,
+    url: &str,
+    now_ns: u64,
+) -> Option<&'a SessionRecord> {
+    index
+        .get(url)
+        .filter(|r| now_ns.saturating_sub(r.last_active_ns) < MAX_AGE_NS)
 }
 
 /// Upsert the session record for `url`, then persist to disk.
@@ -66,12 +70,15 @@ pub(crate) fn upsert_and_save(
     now_ns: u64,
 ) {
     let mut index = load(dir);
-    index.insert(url.to_string(), SessionRecord {
-        session_id: session_id.to_string(),
-        cumulative_chars,
-        last_ordinal,
-        last_active_ns: now_ns,
-    });
+    index.insert(
+        url.to_string(),
+        SessionRecord {
+            session_id: session_id.to_string(),
+            cumulative_chars,
+            last_ordinal,
+            last_active_ns: now_ns,
+        },
+    );
     // Evict entries older than MAX_AGE_NS to bound file growth.
     index.retain(|_, r| now_ns.saturating_sub(r.last_active_ns) < MAX_AGE_NS);
     save(dir, &index);

@@ -38,10 +38,7 @@ macro_rules! par_join7 {
         let ((a, b, c), (d, e, f, g)) = rayon::join(
             || par_join3!($a, $b, $c),
             || {
-                let ((d, e), (f, g)) = rayon::join(
-                    || rayon::join($d, $e),
-                    || rayon::join($f, $g),
-                );
+                let ((d, e), (f, g)) = rayon::join(|| rayon::join($d, $e), || rayon::join($f, $g));
                 (d, e, f, g)
             },
         );
@@ -273,14 +270,20 @@ pub fn analyze_forensics_ext_with_focus(
 
     if let Ok(primary) = primary_r {
         metrics.primary = primary;
-        metrics.analysis_status.mark_completed(AnalysisKind::PrimaryMetrics);
+        metrics
+            .analysis_status
+            .mark_completed(AnalysisKind::PrimaryMetrics);
     } else {
-        metrics.analysis_status.mark_failed(AnalysisKind::PrimaryMetrics);
+        metrics
+            .analysis_status
+            .mark_failed(AnalysisKind::PrimaryMetrics);
     }
 
     if let Some(bio_score) = bio_r {
         metrics.biological_cadence_score = Probability::clamp(bio_score);
-        metrics.analysis_status.mark_completed(AnalysisKind::BiologicalCadence);
+        metrics
+            .analysis_status
+            .mark_completed(AnalysisKind::BiologicalCadence);
     }
 
     if let Some((fingerprint, forgery)) = behav_r {
@@ -288,13 +291,16 @@ pub fn analyze_forensics_ext_with_focus(
             metrics.baseline_comparison = fingerprint.compare_to_baseline(baseline);
         }
         metrics.behavioral = Some(fingerprint);
-        metrics.analysis_status.mark_completed(AnalysisKind::Behavioral);
+        metrics
+            .analysis_status
+            .mark_completed(AnalysisKind::Behavioral);
         metrics.forgery_analysis = Some(forgery);
     }
 
     // Active probes analysis (Galton invariant + reflex gate)
     metrics.active_probes = if let Some(samples) = jitter_samples {
-        let probe_samples: Vec<crate::analysis::ProbeSample> = samples.iter()
+        let probe_samples: Vec<crate::analysis::ProbeSample> = samples
+            .iter()
             .map(|s| crate::analysis::ProbeSample {
                 timestamp_ns: s.timestamp_ns,
                 interval_ms: s.duration_since_last_ns as f64 / 1_000_000.0,
@@ -303,7 +309,8 @@ pub fn analyze_forensics_ext_with_focus(
             })
             .collect();
         if probe_samples.len() >= 30 {
-            let mut ikis: Vec<f64> = samples.iter()
+            let mut ikis: Vec<f64> = samples
+                .iter()
                 .map(|s| s.duration_since_last_ns as f64 / 1_000_000.0)
                 .filter(|&v| v > 0.0)
                 .collect();
@@ -322,7 +329,8 @@ pub fn analyze_forensics_ext_with_focus(
     // Language classification scores
     if let Some(text) = document_text {
         if text.len() >= 50 {
-            metrics.language_scores = Some(crate::analysis::LanguageClassifier::default().score_all(text));
+            metrics.language_scores =
+                Some(crate::analysis::LanguageClassifier::default().score_all(text));
         }
     }
 
@@ -330,11 +338,15 @@ pub fn analyze_forensics_ext_with_focus(
     if let (Some(model), Some(text)) = (perplexity_model, document_text) {
         let score = model.perplexity_or_default(text);
         metrics.perplexity_score = if score.is_finite() {
-            metrics.analysis_status.mark_completed(AnalysisKind::Perplexity);
+            metrics
+                .analysis_status
+                .mark_completed(AnalysisKind::Perplexity);
             score
         } else {
             log::warn!("perplexity_score is non-finite ({score}); substituting 1.0");
-            metrics.analysis_status.mark_failed(AnalysisKind::Perplexity);
+            metrics
+                .analysis_status
+                .mark_failed(AnalysisKind::Perplexity);
             1.0
         };
         if metrics.perplexity_score > PERPLEXITY_ANOMALY_THRESHOLD {
@@ -356,7 +368,9 @@ pub fn analyze_forensics_ext_with_focus(
     // ── Cadence + IKI (sequential — downstream steg/entropy depend on it) ─
     if let Some(samples) = jitter_samples {
         metrics.cadence = analyze_cadence(samples);
-        metrics.analysis_status.mark_completed(AnalysisKind::Cadence);
+        metrics
+            .analysis_status
+            .mark_completed(AnalysisKind::Cadence);
 
         let iki_intervals: Vec<f64> = samples
             .windows(2)
@@ -368,8 +382,7 @@ pub fn analyze_forensics_ext_with_focus(
             .filter(|&d| d > 0.0)
             .collect();
         if iki_intervals.len() >= 2 {
-            metrics.typing_metrics =
-                Some(super::types::TypingMetrics::from_iki_ns(&iki_intervals));
+            metrics.typing_metrics = Some(super::types::TypingMetrics::from_iki_ns(&iki_intervals));
         }
 
         // Per-type entropy (draft-condrey-rats-pop spec compliance).
@@ -384,8 +397,7 @@ pub fn analyze_forensics_ext_with_focus(
                 };
                 timing_hist[bin] += 1;
             }
-            metrics.primary.timing_entropy =
-                super::topology::shannon_entropy(&timing_hist);
+            metrics.primary.timing_entropy = super::topology::shannon_entropy(&timing_hist);
 
             let pause_threshold_ns = 1_000_000_000.0;
             let pauses: Vec<f64> = iki_intervals
@@ -400,8 +412,7 @@ pub fn analyze_forensics_ext_with_focus(
                     let bin = ((p_sec - 1.0).max(0.0).floor() as usize).min(9);
                     pause_hist[bin] += 1;
                 }
-                metrics.primary.pause_entropy =
-                    super::topology::shannon_entropy(&pause_hist);
+                metrics.primary.pause_entropy = super::topology::shannon_entropy(&pause_hist);
             }
         }
 
@@ -444,7 +455,7 @@ pub fn analyze_forensics_ext_with_focus(
                 || {
                     if run_labyrinth {
                         let params = if let Some(root) = context.vdf_merkle_root {
-                            use sha2::{Sha256, Digest};
+                            use sha2::{Digest, Sha256};
                             let derived = Sha256::new()
                                 .chain_update(b"cpoe-takens-embedding-v1")
                                 .chain_update(root)
@@ -498,7 +509,9 @@ pub fn analyze_forensics_ext_with_focus(
                         metrics.anomaly_count += 1;
                     }
                     metrics.lyapunov = Some(lyap);
-                    metrics.analysis_status.mark_completed(AnalysisKind::Lyapunov);
+                    metrics
+                        .analysis_status
+                        .mark_completed(AnalysisKind::Lyapunov);
                 }
                 Err(e) => {
                     log::debug!("Lyapunov analysis skipped: {}", e);
@@ -513,11 +526,15 @@ pub fn analyze_forensics_ext_with_focus(
                         metrics.anomaly_count += 1;
                     }
                     metrics.iki_compression = Some(comp);
-                    metrics.analysis_status.mark_completed(AnalysisKind::IkiCompression);
+                    metrics
+                        .analysis_status
+                        .mark_completed(AnalysisKind::IkiCompression);
                 }
                 Err(e) => {
                     log::debug!("IKI compression analysis skipped: {}", e);
-                    metrics.analysis_status.mark_failed(AnalysisKind::IkiCompression);
+                    metrics
+                        .analysis_status
+                        .mark_failed(AnalysisKind::IkiCompression);
                 }
             }
 
@@ -527,7 +544,9 @@ pub fn analyze_forensics_ext_with_focus(
                     metrics.anomaly_count += 1;
                 }
                 metrics.labyrinth = Some(lab);
-                metrics.analysis_status.mark_completed(AnalysisKind::Labyrinth);
+                metrics
+                    .analysis_status
+                    .mark_completed(AnalysisKind::Labyrinth);
             } else if let Some(Err(_)) = lab_r {
                 metrics.analysis_status.mark_failed(AnalysisKind::Labyrinth);
             }
@@ -544,7 +563,9 @@ pub fn analyze_forensics_ext_with_focus(
                 metrics.cadence.repair_locality_mean_offset = Some(repair.mean_offset_chars);
                 metrics.cadence.repair_locality_cv = Some(repair.offset_cv);
                 metrics.repair_locality = Some(repair);
-                metrics.analysis_status.mark_completed(AnalysisKind::RepairLocality);
+                metrics
+                    .analysis_status
+                    .mark_completed(AnalysisKind::RepairLocality);
             }
 
             // Merge fatigue
@@ -552,12 +573,15 @@ pub fn analyze_forensics_ext_with_focus(
                 metrics.cadence.fatigue_trajectory_residual = Some(fatigue.residual_sse);
                 metrics.cadence.fatigue_phase = Some(fatigue.dominant_phase);
                 metrics.fatigue_trajectory = Some(fatigue);
-                metrics.analysis_status.mark_completed(AnalysisKind::Fatigue);
+                metrics
+                    .analysis_status
+                    .mark_completed(AnalysisKind::Fatigue);
             }
 
             // Error topology (correction patterns, key adjacency)
             metrics.error_topology = {
-                let events: Vec<crate::analysis::TopologyEvent> = samples.iter()
+                let events: Vec<crate::analysis::TopologyEvent> = samples
+                    .iter()
                     .map(|s| crate::analysis::TopologyEvent {
                         timestamp_ns: s.timestamp_ns,
                         event_type: if s.zone == super::constants::CORRECTION_ZONE {
@@ -572,7 +596,9 @@ pub fn analyze_forensics_ext_with_focus(
                 crate::analysis::analyze_error_topology(&events).ok()
             };
             if let Some(ref et) = metrics.error_topology {
-                if !et.is_valid || et.score < 0.3 { metrics.anomaly_count += 1; }
+                if !et.is_valid || et.score < 0.3 {
+                    metrics.anomaly_count += 1;
+                }
             }
         }
 
@@ -583,36 +609,47 @@ pub fn analyze_forensics_ext_with_focus(
         );
         metrics.cognitive_load = cog_r;
         if metrics.cognitive_load.is_some() {
-            metrics.analysis_status.mark_completed(AnalysisKind::CognitiveLoad);
+            metrics
+                .analysis_status
+                .mark_completed(AnalysisKind::CognitiveLoad);
         }
         metrics.error_ecology = eco_r;
         if metrics.error_ecology.is_some() {
-            metrics.analysis_status.mark_completed(AnalysisKind::ErrorEcology);
+            metrics
+                .analysis_status
+                .mark_completed(AnalysisKind::ErrorEcology);
         }
 
         // Likelihood model (depends on behavioral fingerprint — sequential)
-        metrics.likelihood_model =
-            super::likelihood_model::analyze_likelihood_model_with_priors(
-                samples,
-                metrics.behavioral.as_ref(),
-            );
+        metrics.likelihood_model = super::likelihood_model::analyze_likelihood_model_with_priors(
+            samples,
+            metrics.behavioral.as_ref(),
+        );
         if metrics.likelihood_model.is_some() {
-            metrics.analysis_status.mark_completed(AnalysisKind::LikelihoodModel);
+            metrics
+                .analysis_status
+                .mark_completed(AnalysisKind::LikelihoodModel);
         }
 
         // Spectral analysis (pink noise classification)
         if iki_intervals.len() >= 32 {
-            metrics.spectral_analysis = crate::analysis::analyze_pink_noise(&iki_intervals, 1000.0).ok();
+            metrics.spectral_analysis =
+                crate::analysis::analyze_pink_noise(&iki_intervals, 1000.0).ok();
         }
         if let Some(ref pn) = metrics.spectral_analysis {
-            if matches!(pn.noise_type, crate::analysis::NoiseType::White | crate::analysis::NoiseType::Black) {
+            if matches!(
+                pn.noise_type,
+                crate::analysis::NoiseType::White | crate::analysis::NoiseType::Black
+            ) {
                 metrics.anomaly_count += 1;
             }
         }
     }
 
     metrics.velocity = super::velocity::analyze_velocity(sorted);
-    metrics.analysis_status.mark_completed(AnalysisKind::Velocity);
+    metrics
+        .analysis_status
+        .mark_completed(AnalysisKind::Velocity);
     metrics.session_stats = compute_session_stats(sorted);
     metrics.checkpoint_count = context.checkpoint_count as usize;
 
@@ -641,7 +678,9 @@ pub fn analyze_forensics_ext_with_focus(
         };
         metrics.anomaly_count += cm_penalty;
         metrics.cross_modal = Some(cm_result);
-        metrics.analysis_status.mark_completed(AnalysisKind::CrossModal);
+        metrics
+            .analysis_status
+            .mark_completed(AnalysisKind::CrossModal);
     }
 
     // Exclude primary-metric anomalies from the score because compute_assessment_score
@@ -676,7 +715,9 @@ pub fn analyze_forensics_ext_with_focus(
     // Revision topology (depends on sorted events, needed before enrichment)
     metrics.revision_topology = super::revision_topology::analyze_revision_topology(sorted);
     if metrics.revision_topology.is_some() {
-        metrics.analysis_status.mark_completed(AnalysisKind::RevisionTopology);
+        metrics
+            .analysis_status
+            .mark_completed(AnalysisKind::RevisionTopology);
     }
 
     // Apply enhanced signal adjustments to assessment score
@@ -724,8 +765,7 @@ pub fn analyze_forensics_ext_with_focus(
     let failed = metrics.analysis_status.failed_count();
     if failed > 0 {
         let penalty = 0.03 * failed as f64; // 3% per failed analysis
-        metrics.assessment_score =
-            Probability::clamp(metrics.assessment_score.get() - penalty);
+        metrics.assessment_score = Probability::clamp(metrics.assessment_score.get() - penalty);
     }
 
     metrics.risk_level = determine_risk_level(metrics.assessment_score.get(), events.len());
@@ -747,10 +787,7 @@ pub fn analyze_forensics_ext_with_focus(
             .map(|r| r.composite_score),
         error_ecology_score: metrics.error_ecology.as_ref().map(|e| e.composite_score),
         likelihood_p_cognitive: metrics.likelihood_model.as_ref().map(|l| l.composite_score),
-        composition_mode_score: metrics
-            .composition_mode
-            .as_ref()
-            .map(|c| c.composite_score),
+        composition_mode_score: metrics.composition_mode.as_ref().map(|c| c.composite_score),
     };
     super::writing_mode::enrich_writing_mode(&mut wm, &enhanced);
     metrics.writing_mode = Some(wm);
@@ -777,14 +814,14 @@ pub fn per_checkpoint_flags(
     let mut flags = Vec::with_capacity(checkpoints.len());
 
     for (idx, cp) in checkpoints.iter().enumerate() {
-        let cp_ts = cp.timestamp.timestamp_nanos_opt().unwrap_or_else(|| {
-            cp.timestamp.timestamp().saturating_mul(1_000_000_000)
-        });
+        let cp_ts = cp
+            .timestamp
+            .timestamp_nanos_opt()
+            .unwrap_or_else(|| cp.timestamp.timestamp().saturating_mul(1_000_000_000));
         let prev_ts = if idx > 0 {
             let prev = &checkpoints[idx - 1].timestamp;
-            prev.timestamp_nanos_opt().unwrap_or_else(|| {
-                prev.timestamp().saturating_mul(1_000_000_000)
-            })
+            prev.timestamp_nanos_opt()
+                .unwrap_or_else(|| prev.timestamp().saturating_mul(1_000_000_000))
         } else {
             0
         };

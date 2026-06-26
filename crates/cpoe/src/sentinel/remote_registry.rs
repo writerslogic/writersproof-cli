@@ -6,7 +6,7 @@
 //! Ed25519. Verified entries are merged into the `AppRegistry` with priority:
 //! user > remote > builtin. If the fetch fails, the cached local copy is used.
 
-use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -24,10 +24,8 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 /// before deployment. Generate with `wld keygen --purpose update-signing`
 /// and store the private half in the CI signing HSM.
 const SIGNING_PUBKEY: [u8; 32] = [
-    0x8a, 0x3b, 0x5c, 0x7d, 0x9e, 0x1f, 0x2a, 0x4b,
-    0x6c, 0x8d, 0xae, 0xcf, 0xe0, 0x11, 0x32, 0x53,
-    0x74, 0x95, 0xb6, 0xd7, 0xf8, 0x19, 0x3a, 0x5b,
-    0x7c, 0x9d, 0xbe, 0xdf, 0x00, 0x21, 0x42, 0x63,
+    0x8a, 0x3b, 0x5c, 0x7d, 0x9e, 0x1f, 0x2a, 0x4b, 0x6c, 0x8d, 0xae, 0xcf, 0xe0, 0x11, 0x32, 0x53,
+    0x74, 0x95, 0xb6, 0xd7, 0xf8, 0x19, 0x3a, 0x5b, 0x7c, 0x9d, 0xbe, 0xdf, 0x00, 0x21, 0x42, 0x63,
 ];
 
 #[derive(Deserialize)]
@@ -64,30 +62,24 @@ pub fn load_remote_apps(data_dir: &Path) -> Vec<RemoteApp> {
 
     if should_refresh(&cache_path) {
         let bg_cache_path = cache_path.clone();
-        std::thread::spawn(move || {
-            match fetch_and_verify() {
-                Ok(apps) => {
-                    let count = apps.len();
-                    if let Ok(json) = serde_json::to_string_pretty(&serde_json::json!({
-                        "fetched_at": SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        "apps": apps,
-                    })) {
-                        match crate::crypto::atomic_write(&bg_cache_path, json.as_bytes()) {
-                            Ok(()) => log::info!(
-                                "Remote app registry refreshed: {count} entries"
-                            ),
-                            Err(e) => log::warn!(
-                                "Remote registry fetched but cache write failed: {e}"
-                            ),
-                        }
+        std::thread::spawn(move || match fetch_and_verify() {
+            Ok(apps) => {
+                let count = apps.len();
+                if let Ok(json) = serde_json::to_string_pretty(&serde_json::json!({
+                    "fetched_at": SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    "apps": apps,
+                })) {
+                    match crate::crypto::atomic_write(&bg_cache_path, json.as_bytes()) {
+                        Ok(()) => log::info!("Remote app registry refreshed: {count} entries"),
+                        Err(e) => log::warn!("Remote registry fetched but cache write failed: {e}"),
                     }
                 }
-                Err(e) => {
-                    log::warn!("Remote registry background fetch failed: {e}");
-                }
+            }
+            Err(e) => {
+                log::warn!("Remote registry background fetch failed: {e}");
             }
         });
     }
@@ -143,21 +135,19 @@ fn fetch_and_verify() -> Result<Vec<RemoteApp>, String> {
 
     // Signature is computed over the canonical JSON of the apps array, not the
     // full response (which includes the signature field itself).
-    let apps_json = serde_json::to_vec(&file.apps)
-        .map_err(|e| format!("re-serialize apps: {e}"))?;
+    let apps_json =
+        serde_json::to_vec(&file.apps).map_err(|e| format!("re-serialize apps: {e}"))?;
     verify_signature(&apps_json, &file.signature)?;
 
     Ok(file.apps)
 }
 
 fn verify_signature(payload: &[u8], hex_sig: &str) -> Result<(), String> {
-    let sig_bytes =
-        hex::decode(hex_sig).map_err(|e| format!("decode signature hex: {e}"))?;
-    let sig = Signature::from_slice(&sig_bytes)
-        .map_err(|e| format!("parse signature: {e}"))?;
+    let sig_bytes = hex::decode(hex_sig).map_err(|e| format!("decode signature hex: {e}"))?;
+    let sig = Signature::from_slice(&sig_bytes).map_err(|e| format!("parse signature: {e}"))?;
 
-    let pubkey = VerifyingKey::from_bytes(&SIGNING_PUBKEY)
-        .map_err(|e| format!("parse public key: {e}"))?;
+    let pubkey =
+        VerifyingKey::from_bytes(&SIGNING_PUBKEY).map_err(|e| format!("parse public key: {e}"))?;
 
     pubkey
         .verify(payload, &sig)

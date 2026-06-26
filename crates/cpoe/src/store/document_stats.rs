@@ -86,7 +86,10 @@ impl SecureStore {
     /// Load stats for a title:// session by matching the prefix before `#w`.
     /// When an app restarts, the CGWindowID changes, so exact path match fails.
     /// Returns the most recently tracked session for the same title:// base.
-    pub fn load_title_session_stats(&self, title_path: &str) -> anyhow::Result<Option<DocumentStats>> {
+    pub fn load_title_session_stats(
+        &self,
+        title_path: &str,
+    ) -> anyhow::Result<Option<DocumentStats>> {
         let base = match title_path.rfind("#w") {
             Some(pos) => &title_path[..pos],
             None => title_path,

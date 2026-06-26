@@ -67,7 +67,11 @@ impl StyleFingerprint {
 
     /// Weighted merge by `total_chars`.
     pub fn merge(&mut self, other: &StyleFingerprint) {
-        log::debug!("StyleFingerprint::merge: self_chars={}, other_chars={}", self.total_chars, other.total_chars);
+        log::debug!(
+            "StyleFingerprint::merge: self_chars={}, other_chars={}",
+            self.total_chars,
+            other.total_chars
+        );
         let total = self.total_chars + other.total_chars;
         if total == 0 {
             return;
@@ -94,8 +98,8 @@ impl StyleFingerprint {
 
         self.correction_rate =
             self.correction_rate * self_weight + other.correction_rate * other_weight;
-        self.word_length_entropy = self.word_length_entropy * self_weight
-            + other.word_length_entropy * other_weight;
+        self.word_length_entropy =
+            self.word_length_entropy * self_weight + other.word_length_entropy * other_weight;
         self.word_length_transition_entropy = self.word_length_transition_entropy * self_weight
             + other.word_length_transition_entropy * other_weight;
         self.total_chars = total;
@@ -128,8 +132,7 @@ impl StyleFingerprint {
             self.word_length_transition_entropy,
             other.word_length_transition_entropy,
         );
-        let word_len_sim =
-            word_len_hist_sim * 0.60 + entropy_sim * 0.20 + trans_entropy_sim * 0.20;
+        let word_len_sim = word_len_hist_sim * 0.60 + entropy_sim * 0.20 + trans_entropy_sim * 0.20;
 
         let punct_sim = self
             .punctuation_signature
@@ -428,9 +431,7 @@ impl WordPatternSignature {
 
     pub fn merge(&mut self, other: &Self) {
         for i in 0..WORD_PATTERN_MINHASH_SLOTS {
-            if i < self.length_bigram_minhash.len()
-                && i < other.length_bigram_minhash.len()
-            {
+            if i < self.length_bigram_minhash.len() && i < other.length_bigram_minhash.len() {
                 self.length_bigram_minhash[i] =
                     self.length_bigram_minhash[i].min(other.length_bigram_minhash[i]);
             }
@@ -444,9 +445,7 @@ impl WordPatternSignature {
 
     pub fn similarity(&self, other: &Self) -> f64 {
         let min_bigrams = 20_u64;
-        let jaccard = if self.total_bigrams < min_bigrams
-            || other.total_bigrams < min_bigrams
-        {
+        let jaccard = if self.total_bigrams < min_bigrams || other.total_bigrams < min_bigrams {
             0.5
         } else {
             let matches = self
@@ -471,8 +470,7 @@ impl WordPatternSignature {
             let mut mag_b = 0.0_f64;
             for k in &all_keys {
                 let a = *self.punct_word_patterns.get(*k).unwrap_or(&0.0) as f64;
-                let b =
-                    *other.punct_word_patterns.get(*k).unwrap_or(&0.0) as f64;
+                let b = *other.punct_word_patterns.get(*k).unwrap_or(&0.0) as f64;
                 dot += a * b;
                 mag_a += a * a;
                 mag_b += b * b;
@@ -513,14 +511,14 @@ impl Default for SentenceRhythm {
 
 impl SentenceRhythm {
     pub fn merge(&mut self, other: &Self, self_weight: f64, other_weight: f64) {
-        self.mean_sentence_length = self.mean_sentence_length * self_weight
-            + other.mean_sentence_length * other_weight;
-        self.sentence_length_std = self.sentence_length_std * self_weight
-            + other.sentence_length_std * other_weight;
+        self.mean_sentence_length =
+            self.mean_sentence_length * self_weight + other.mean_sentence_length * other_weight;
+        self.sentence_length_std =
+            self.sentence_length_std * self_weight + other.sentence_length_std * other_weight;
         self.question_ratio =
             self.question_ratio * self_weight + other.question_ratio * other_weight;
-        self.exclamation_ratio = self.exclamation_ratio * self_weight
-            + other.exclamation_ratio * other_weight;
+        self.exclamation_ratio =
+            self.exclamation_ratio * self_weight + other.exclamation_ratio * other_weight;
         self.total_sentences += other.total_sentences;
     }
 
@@ -528,18 +526,14 @@ impl SentenceRhythm {
         if self.total_sentences < 3 || other.total_sentences < 3 {
             return 0.5;
         }
-        let len_sim =
-            relative_sim(self.mean_sentence_length, other.mean_sentence_length);
-        let std_sim =
-            relative_sim(self.sentence_length_std, other.sentence_length_std);
-        let q_sim =
-            1.0 - (self.question_ratio - other.question_ratio).abs().min(1.0);
+        let len_sim = relative_sim(self.mean_sentence_length, other.mean_sentence_length);
+        let std_sim = relative_sim(self.sentence_length_std, other.sentence_length_std);
+        let q_sim = 1.0 - (self.question_ratio - other.question_ratio).abs().min(1.0);
         let e_sim = 1.0
             - (self.exclamation_ratio - other.exclamation_ratio)
                 .abs()
                 .min(1.0);
-        (len_sim * 0.4 + std_sim * 0.2 + q_sim * 0.2 + e_sim * 0.2)
-            .clamp(0.0, 1.0)
+        (len_sim * 0.4 + std_sim * 0.2 + q_sim * 0.2 + e_sim * 0.2).clamp(0.0, 1.0)
     }
 }
 
@@ -727,9 +721,7 @@ impl StyleCollector {
                         .or_insert(0) += 1;
                 }
                 if let Some(punct) = self.preceding_punctuation {
-                    self.fingerprint
-                        .word_pattern
-                        .record_punct_word(punct, len);
+                    self.fingerprint.word_pattern.record_punct_word(punct, len);
                 }
                 self.previous_word_length = Some(len);
             }
@@ -812,8 +804,7 @@ impl StyleCollector {
                     entropy -= p * p.log2();
                 }
             }
-            fp.word_length_transition_entropy =
-                if entropy.is_finite() { entropy } else { 0.0 };
+            fp.word_length_transition_entropy = if entropy.is_finite() { entropy } else { 0.0 };
         }
 
         if self.total_chars > 0 {
@@ -852,8 +843,7 @@ impl StyleCollector {
 
             // Correction burst mean (same as mean_consecutive_backspaces).
             if run_count > 0 {
-                fp.backspace_signature.correction_burst_mean =
-                    run_sum as f64 / run_count as f64;
+                fp.backspace_signature.correction_burst_mean = run_sum as f64 / run_count as f64;
             }
 
             // Deletion type rates (from semantic classification).
@@ -876,10 +866,8 @@ impl StyleCollector {
                 .sum::<f64>()
                 / n;
             let std = variance.sqrt();
-            fp.sentence_rhythm.mean_sentence_length =
-                if mean.is_finite() { mean } else { 0.0 };
-            fp.sentence_rhythm.sentence_length_std =
-                if std.is_finite() { std } else { 0.0 };
+            fp.sentence_rhythm.mean_sentence_length = if mean.is_finite() { mean } else { 0.0 };
+            fp.sentence_rhythm.sentence_length_std = if std.is_finite() { std } else { 0.0 };
             fp.sentence_rhythm.total_sentences = self.sentence_count as u64;
             if self.sentence_count > 0 {
                 fp.sentence_rhythm.question_ratio =
@@ -1031,11 +1019,7 @@ mod tests {
         sig.record_punct_word(',', 3);
 
         let sim = sig.similarity(&sig);
-        assert!(
-            sim > 0.85,
-            "Self-similarity should be high, got {}",
-            sim
-        );
+        assert!(sim > 0.85, "Self-similarity should be high, got {}", sim);
 
         let other = WordPatternSignature::default();
         let sim2 = sig.similarity(&other);

@@ -413,6 +413,7 @@ pub fn ffi_sentinel_cross_window_match(
 /// (10 MiB) before calling this function. UniFFI allocates the full String
 /// before any Rust-side size check runs, so oversized pastes allocate memory
 /// regardless of the guard below.
+#[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_record_paste(
     char_count: i64,

@@ -93,8 +93,7 @@ pub fn detect_co_edited_files(
                 None => continue,
             };
 
-            let max_gap_ms =
-                i64::try_from(MAX_CO_EDIT_GAP.as_millis()).unwrap_or(i64::MAX);
+            let max_gap_ms = i64::try_from(MAX_CO_EDIT_GAP.as_millis()).unwrap_or(i64::MAX);
 
             // For each time A loses focus, check if B gains focus around
             // that time (B has a regained_at near A's lost_at). Then check
@@ -316,10 +315,7 @@ mod tests {
         ];
 
         // A-C: 2 cycles
-        let c_switches = vec![
-            make_switch(1000, 3000),
-            make_switch(6000, 8000),
-        ];
+        let c_switches = vec![make_switch(1000, 3000), make_switch(6000, 8000)];
 
         sessions.insert("/a.md".to_string(), mock_session("/a.md", a_switches));
         sessions.insert("/b.md".to_string(), mock_session("/b.md", b_switches));

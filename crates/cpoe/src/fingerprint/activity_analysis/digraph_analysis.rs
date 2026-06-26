@@ -167,10 +167,7 @@ impl WeightedDistribution for DigraphProfile {
 
     fn weighted_merge(&mut self, other: &Self, self_weight: f64, other_weight: f64) {
         for (key, other_timing) in &other.digraph_timings {
-            let entry = self
-                .digraph_timings
-                .entry(*key)
-                .or_default();
+            let entry = self.digraph_timings.entry(*key).or_default();
             let weighted_self = entry.count as f64 * self_weight;
             let weighted_other = other_timing.count as f64 * other_weight;
             let total = weighted_self + weighted_other;

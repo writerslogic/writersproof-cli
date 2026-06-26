@@ -103,8 +103,7 @@ impl ContentFingerprint {
     ///
     /// Returns `false` if either document is too short for reliable comparison.
     pub fn is_similar(&self, other: &Self) -> bool {
-        if self.char_count < MIN_CHARS_FOR_COMPARISON
-            || other.char_count < MIN_CHARS_FOR_COMPARISON
+        if self.char_count < MIN_CHARS_FOR_COMPARISON || other.char_count < MIN_CHARS_FOR_COMPARISON
         {
             return false;
         }
@@ -201,7 +200,8 @@ mod tests {
 
     #[test]
     fn test_identical_text_zero_distance() {
-        let text = "The quick brown fox jumps over the lazy dog. This is a longer sentence for testing.";
+        let text =
+            "The quick brown fox jumps over the lazy dog. This is a longer sentence for testing.";
         let fp1 = ContentFingerprint::from_text(text);
         let fp2 = ContentFingerprint::from_text(text);
         assert_eq!(fp1.distance(&fp2), 0);
@@ -225,7 +225,8 @@ mod tests {
 
     #[test]
     fn test_different_documents_large_distance() {
-        let text1 = "The principles of quantum mechanics govern the behavior of subatomic particles \
+        let text1 =
+            "The principles of quantum mechanics govern the behavior of subatomic particles \
                       in ways that challenge our classical intuition about the physical world.";
         let text2 = "Chocolate chip cookies require flour, sugar, butter, eggs, and vanilla extract. \
                       Preheat the oven to three hundred and fifty degrees before mixing ingredients.";
@@ -273,7 +274,8 @@ mod tests {
     fn test_cross_app_match_found() {
         let text = "A long document about software engineering practices and design patterns \
                     that spans multiple paragraphs for reliable fingerprinting.";
-        let text_edited = "A long document about software engineering practices and design patterns \
+        let text_edited =
+            "A long document about software engineering practices and design patterns \
                            that spans several paragraphs for reliable fingerprinting.";
 
         let fp_existing = ContentFingerprint::from_text(text);
@@ -298,11 +300,7 @@ mod tests {
                     that spans multiple paragraphs for reliable fingerprinting.";
         let fp = ContentFingerprint::from_text(text);
 
-        let existing = vec![(
-            "session-1".to_string(),
-            "com.apple.Pages".to_string(),
-            fp,
-        )];
+        let existing = vec![("session-1".to_string(), "com.apple.Pages".to_string(), fp)];
 
         // Same app — should NOT match.
         let link = find_cross_app_match("session-2", "com.apple.Pages", &fp, &existing);
@@ -320,11 +318,7 @@ mod tests {
              bake at three hundred fifty degrees for twelve minutes.",
         );
 
-        let existing = vec![(
-            "session-1".to_string(),
-            "com.apple.Pages".to_string(),
-            fp1,
-        )];
+        let existing = vec![("session-1".to_string(), "com.apple.Pages".to_string(), fp1)];
 
         let link = find_cross_app_match("session-2", "com.microsoft.Word", &fp2, &existing);
         assert!(link.is_none(), "dissimilar content should not match");

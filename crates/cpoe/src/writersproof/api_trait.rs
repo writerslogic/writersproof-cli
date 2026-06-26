@@ -8,7 +8,8 @@
 use super::types::{
     AnchorRequest, AnchorResponse, BeaconResponse, ChallengeResponse, CredentialIssueRequest,
     CredentialIssueResponse, CredentialStatusResponse, EnrollRequest, EnrollResponse, Hex64,
-    PublishRequest, PublishResponse, PulseResponse, TextAttestationRequest, TextAttestationResponse,
+    PublishRequest, PublishResponse, PulseResponse, TextAttestationRequest,
+    TextAttestationResponse,
 };
 use crate::error::Result;
 

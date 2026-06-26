@@ -15,10 +15,18 @@ pub(in crate::report::html) fn write_session_timeline(
         r#"<p>The document was composed across {} session{}, totaling approximately {:.0} minutes of active writing time.</p>"#,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
-        if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
+        if r.total_duration_min.is_finite() {
+            r.total_duration_min
+        } else {
+            0.0
+        },
     )?;
     for s in &r.sessions {
-        let dur = if s.duration_min.is_finite() { s.duration_min } else { 0.0 };
+        let dur = if s.duration_min.is_finite() {
+            s.duration_min
+        } else {
+            0.0
+        };
         let dur_pct = (dur / r.total_duration_min.max(1.0) * 100.0).min(100.0);
         write!(
             html,
@@ -49,7 +57,11 @@ pub(in crate::report::html) fn write_dimension_analysis(
     if r.dimensions.is_empty() {
         return Ok(());
     }
-    let dim_count = r.dimensions.iter().filter(|d| !d.analysis.is_empty()).count();
+    let dim_count = r
+        .dimensions
+        .iter()
+        .filter(|d| !d.analysis.is_empty())
+        .count();
     let min_score = r.dimensions.iter().map(|d| d.score).min().unwrap_or(0);
     write!(
         html,
@@ -136,8 +148,16 @@ for comparison with published forensic scales. See the Glossary (Section 15) for
         r#"<table class="data"><thead><tr><th>Dimension</th><th>Score</th><th>LR</th><th>Log<sub>10</sub> LR</th><th>Confidence</th><th>Key Discriminator</th></tr></thead><tbody>"#
     )?;
     for d in &r.dimensions {
-        let conf_pct = if d.confidence.is_finite() { (d.confidence * 100.0).min(100.0) } else { 0.0 };
-        let log_lr = if d.log_lr.is_finite() { format!("{:.2}", d.log_lr) } else { "N/A".to_string() };
+        let conf_pct = if d.confidence.is_finite() {
+            (d.confidence * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+        let log_lr = if d.log_lr.is_finite() {
+            format!("{:.2}", d.log_lr)
+        } else {
+            "N/A".to_string()
+        };
         write!(
             html,
             r#"<tr><td style="color:{color};font-weight:600">{name}</td><td>{score}</td><td>{lr}</td><td>{log_lr}</td><td><div class="confidence-bar" style="width:{conf_pct:.0}px;background:{color}"></div></td><td>{disc}</td></tr>"#,
@@ -173,9 +193,12 @@ pub(in crate::report::html) fn write_checkpoint_chain(
     if r.checkpoints.is_empty() {
         return Ok(());
     }
-    let total_elapsed: f64 = r.checkpoints.iter()
+    let total_elapsed: f64 = r
+        .checkpoints
+        .iter()
         .filter_map(|cp| cp.elapsed_ms)
-        .sum::<u64>() as f64 / 1000.0;
+        .sum::<u64>() as f64
+        / 1000.0;
     write!(
         html,
         r#"<h2><span class="section-number">8.</span> {title} <span class="section-metric">{count} checkpoints, {elapsed:.0}s total</span></h2>"#,
@@ -205,15 +228,24 @@ the previous checkpoint's hash in each successive entry, forming a tamper-eviden
         let vdf_badge = cp
             .vdf_iterations
             .filter(|&v| v > 0)
-            .map(|v| format!(r#"<span class="cp-badge">{} iterations</span>"#, format_number(v)))
+            .map(|v| {
+                format!(
+                    r#"<span class="cp-badge">{} iterations</span>"#,
+                    format_number(v)
+                )
+            })
             .unwrap_or_default();
         let elapsed_label = match (prev_ts, Some(cp.timestamp)) {
             (Some(prev), Some(cur)) => {
                 let delta = cur.signed_duration_since(prev);
                 let secs = delta.num_seconds().unsigned_abs();
-                if secs < 60 { format!("{}s", secs) }
-                else if secs < 3600 { format!("{}m {}s", secs / 60, secs % 60) }
-                else { format!("{}h {}m", secs / 3600, (secs % 3600) / 60) }
+                if secs < 60 {
+                    format!("{}s", secs)
+                } else if secs < 3600 {
+                    format!("{}m {}s", secs / 60, secs % 60)
+                } else {
+                    format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+                }
             }
             _ => String::new(),
         };
@@ -226,7 +258,11 @@ the previous checkpoint's hash in each successive entry, forming a tamper-eviden
             full_hash = html_escape(&cp.content_hash),
             size = format_bytes(cp.content_size),
             vdf = vdf_badge,
-            elapsed = if elapsed_label.is_empty() { String::new() } else { format!(r#" <span class="cp-meta">+{elapsed_label}</span>"#) },
+            elapsed = if elapsed_label.is_empty() {
+                String::new()
+            } else {
+                format!(r#" <span class="cp-meta">+{elapsed_label}</span>"#)
+            },
         )?;
         prev_ts = Some(cp.timestamp);
     }
@@ -250,17 +286,38 @@ pub(in crate::report::html) fn write_forgery_resistance(
     )?;
 
     // Stacked cost bar showing relative contribution of each component.
-    let total_cost: f64 = r.forgery.components.iter()
-        .map(|c| if c.cost_cpu_sec.is_finite() { c.cost_cpu_sec } else { 0.0 })
-        .sum::<f64>().max(1.0);
-    let bar_colors = ["#1a4d2e", "#2c5282", "#5b3c8b", "#8b6914", "#3d7a4a", "#b45309", "#6b6b6b", "#8b1a1a"];
-    write!(html, r#"<div style="display:flex;height:18px;border:1px solid var(--border);margin:12px 0;overflow:hidden">"#)?;
+    let total_cost: f64 = r
+        .forgery
+        .components
+        .iter()
+        .map(|c| {
+            if c.cost_cpu_sec.is_finite() {
+                c.cost_cpu_sec
+            } else {
+                0.0
+            }
+        })
+        .sum::<f64>()
+        .max(1.0);
+    let bar_colors = [
+        "#1a4d2e", "#2c5282", "#5b3c8b", "#8b6914", "#3d7a4a", "#b45309", "#6b6b6b", "#8b1a1a",
+    ];
+    write!(
+        html,
+        r#"<div style="display:flex;height:18px;border:1px solid var(--border);margin:12px 0;overflow:hidden">"#
+    )?;
     for (i, c) in r.forgery.components.iter().enumerate() {
-        let cost = if c.cost_cpu_sec.is_finite() { c.cost_cpu_sec } else { 0.0 };
+        let cost = if c.cost_cpu_sec.is_finite() {
+            c.cost_cpu_sec
+        } else {
+            0.0
+        };
         let pct = (cost / total_cost * 100.0).max(0.5);
         let bg = bar_colors.get(i % bar_colors.len()).unwrap_or(&"#6b6b6b");
         let opacity = if c.present { "1" } else { "0.3" };
-        write!(html, r#"<div style="width:{pct:.1}%;background:{bg};opacity:{opacity}" title="{name}: {cost_h}"></div>"#,
+        write!(
+            html,
+            r#"<div style="width:{pct:.1}%;background:{bg};opacity:{opacity}" title="{name}: {cost_h}"></div>"#,
             name = html_escape(&c.name),
             cost_h = format_duration_human(c.cost_cpu_sec),
         )?;
@@ -375,9 +432,7 @@ pub(in crate::report::html) fn write_analyzed_text(
     Ok(())
 }
 
-pub(in crate::report::html) fn write_verification_instructions(
-    html: &mut String,
-) -> fmt::Result {
+pub(in crate::report::html) fn write_verification_instructions(html: &mut String) -> fmt::Result {
     section_heading(html, 13, SEC_VERIFY)?;
     html.push_str(TMPL_VERIFICATION);
     Ok(())

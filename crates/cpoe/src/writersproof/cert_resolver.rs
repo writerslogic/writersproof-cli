@@ -154,13 +154,11 @@ mod tests {
         use rustls::client::danger::{
             HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
         };
-        use rustls::pki_types::{
-            CertificateDer, PrivateSec1KeyDer, ServerName, UnixTime,
-        };
+        use rustls::pki_types::{CertificateDer, PrivateSec1KeyDer, ServerName, UnixTime};
         use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
         use rustls::{
-            ClientConnection, DigitallySignedStruct, DistinguishedName,
-            ServerConfig, ServerConnection, SignatureScheme,
+            ClientConnection, DigitallySignedStruct, DistinguishedName, ServerConfig,
+            ServerConnection, SignatureScheme,
         };
 
         // -- Real P-256 provider --
@@ -296,8 +294,9 @@ mod tests {
         let server_sk = P256SigningKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
 
         // -- Client side: generate cert + resolver --
-        let client_provider: Arc<dyn Provider + Send + Sync> =
-            Arc::new(RealP256Provider { signing_key: client_sk });
+        let client_provider: Arc<dyn Provider + Send + Sync> = Arc::new(RealP256Provider {
+            signing_key: client_sk,
+        });
         let client_cert =
             super::super::client_cert::generate_client_cert_for_test(client_provider.as_ref());
         let signing_key = Arc::new(HardwareSigningKey::new(client_provider));
@@ -311,8 +310,9 @@ mod tests {
         // -- Server side: generate cert + config --
         let server_secret = p256::SecretKey::from(&server_sk);
         let server_sec1 = server_secret.to_sec1_der().unwrap();
-        let server_provider: Arc<dyn Provider + Send + Sync> =
-            Arc::new(RealP256Provider { signing_key: server_sk });
+        let server_provider: Arc<dyn Provider + Send + Sync> = Arc::new(RealP256Provider {
+            signing_key: server_sk,
+        });
         let server_cert =
             super::super::client_cert::generate_client_cert_for_test(server_provider.as_ref());
 
@@ -328,8 +328,7 @@ mod tests {
         let mut client =
             ClientConnection::new(Arc::new(client_config), "localhost".try_into().unwrap())
                 .expect("client connection");
-        let mut server =
-            ServerConnection::new(Arc::new(server_config)).expect("server connection");
+        let mut server = ServerConnection::new(Arc::new(server_config)).expect("server connection");
 
         // Pump data between client and server until handshake completes.
         let mut buf = Vec::new();
@@ -355,11 +354,19 @@ mod tests {
             }
         }
 
-        assert!(!client.is_handshaking(), "client handshake did not complete");
-        assert!(!server.is_handshaking(), "server handshake did not complete");
+        assert!(
+            !client.is_handshaking(),
+            "client handshake did not complete"
+        );
+        assert!(
+            !server.is_handshaking(),
+            "server handshake did not complete"
+        );
 
         // Verify the server received the client cert.
-        let peer_certs = server.peer_certificates().expect("server should see client cert");
+        let peer_certs = server
+            .peer_certificates()
+            .expect("server should see client cert");
         assert_eq!(peer_certs.len(), 1);
         assert_eq!(peer_certs[0].as_ref(), client_cert.as_ref());
     }

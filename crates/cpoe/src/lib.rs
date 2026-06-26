@@ -51,9 +51,9 @@ pub mod verify;
 pub mod wal;
 
 pub mod anchors;
-pub mod integrity;
 pub mod credentials;
 pub mod declaration;
+pub mod integrity;
 pub mod report;
 pub mod research;
 pub mod transcription;
@@ -99,10 +99,10 @@ pub use crate::collaboration::{
     MergeStrategy, TimeInterval,
 };
 pub use crate::continuation::{ContinuationSection, ContinuationSummary};
-pub use crate::physics::PhysicalContext;
 pub use crate::evidence::provenance::{
     DerivationClaim, DerivationType, ProvenanceLink, ProvenanceMetadata, ProvenanceSection,
 };
+pub use crate::physics::PhysicalContext;
 pub use crate::research::{
     AnonymizedSession, ResearchCollector, ResearchDataExport, ResearchUploader, UploadResult,
 };

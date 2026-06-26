@@ -428,6 +428,9 @@ fn compute_planning_pause_rate(ikis: &[f64]) -> Option<f64> {
     if ikis.len() < 10 {
         return None;
     }
-    let pauses = ikis.iter().filter(|&&iki| iki > PAUSE_THRESHOLD_NS_F64).count();
+    let pauses = ikis
+        .iter()
+        .filter(|&&iki| iki > PAUSE_THRESHOLD_NS_F64)
+        .count();
     Some(pauses as f64 / (ikis.len() + 1) as f64)
 }

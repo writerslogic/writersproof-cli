@@ -416,35 +416,35 @@ impl Default for SentinelConfig {
             ],
             track_unknown_apps: true,
             excluded_paths: {
-                let home = dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("/nonexistent"));
+                let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/nonexistent"));
                 let lib = home.join("Library");
                 vec![
-                PathBuf::from("/tmp"),
-                PathBuf::from("/var"),
-                PathBuf::from("/private/tmp"),
-                // Exclude ~/Library subdirectories that contain caches, state,
-                // and framework data — but NOT ~/Library/Mobile Documents which
-                // is iCloud Drive (Desktop & Documents folders live there when
-                // iCloud sync is enabled).
-                lib.join("Application Support"),
-                lib.join("Caches"),
-                lib.join("Preferences"),
-                lib.join("Logs"),
-                lib.join("Cookies"),
-                lib.join("Containers"),
-                lib.join("Group Containers"),
-                lib.join("Saved Application State"),
-                lib.join("Developer"),
-                lib.join("Frameworks"),
-                PathBuf::from("node_modules"),
-                PathBuf::from(".git"),
-                PathBuf::from("DerivedData"),
-                PathBuf::from("build"),
-                PathBuf::from("target"),
-                PathBuf::from("dist"),
-                PathBuf::from(".venv"),
-            ]},
+                    PathBuf::from("/tmp"),
+                    PathBuf::from("/var"),
+                    PathBuf::from("/private/tmp"),
+                    // Exclude ~/Library subdirectories that contain caches, state,
+                    // and framework data — but NOT ~/Library/Mobile Documents which
+                    // is iCloud Drive (Desktop & Documents folders live there when
+                    // iCloud sync is enabled).
+                    lib.join("Application Support"),
+                    lib.join("Caches"),
+                    lib.join("Preferences"),
+                    lib.join("Logs"),
+                    lib.join("Cookies"),
+                    lib.join("Containers"),
+                    lib.join("Group Containers"),
+                    lib.join("Saved Application State"),
+                    lib.join("Developer"),
+                    lib.join("Frameworks"),
+                    PathBuf::from("node_modules"),
+                    PathBuf::from(".git"),
+                    PathBuf::from("DerivedData"),
+                    PathBuf::from("build"),
+                    PathBuf::from("target"),
+                    PathBuf::from("dist"),
+                    PathBuf::from(".venv"),
+                ]
+            },
             allowed_extensions: vec![
                 // Plain text
                 "txt", "md", "markdown", "text", "rtf", // Writing apps
@@ -452,10 +452,10 @@ impl Default for SentinelConfig {
                 "doc", "docx", "odt", "pages", "wpd", "wri", "epub",
                 // Presentation formats
                 "key", "pptx", "ppt", // Publishing / layout
-                "indd", "idml", // Novel / story writing
+                "indd", "idml",  // Novel / story writing
                 "story", // Affinity suite
                 "afpub", "afdesign", "afphoto", // Outlining / structured writing
-                "opml", "itmz", "mm", // Screenplay / script formats
+                "opml", "itmz", "mm",    // Screenplay / script formats
                 "draft", // Markup
                 "tex", "latex", "org", "rst", "adoc", "asciidoc", // Web writing
                 "html", "htm", // Email

@@ -116,7 +116,11 @@ impl EntropyValidator {
 
         // Calculate statistics
         let (mean_iki, std_dev) = crate::utils::mean_and_std_dev(&ikis_ms);
-        let cv = if mean_iki.abs() > f64::EPSILON { std_dev / mean_iki } else { 0.0 };
+        let cv = if mean_iki.abs() > f64::EPSILON {
+            std_dev / mean_iki
+        } else {
+            0.0
+        };
 
         // Calculate Shannon entropy from IKI distribution
         let entropy = self.calculate_shannon_entropy(&ikis_ms);

@@ -34,18 +34,11 @@ const CACHE_TTL: Duration = Duration::from_secs(1);
 
 /// Known document file extensions (lowercase, without dot).
 const DOCUMENT_EXTENSIONS: &[&str] = &[
-    "txt", "md", "markdown", "rtf", "rtfd",
-    "doc", "docx", "odt", "pages",
-    "tex", "latex", "bib",
-    "fountain", "fdx", "scriv", "tbx",
-    "html", "htm", "xml",
-    "json", "yaml", "yml", "toml", "ini", "cfg",
-    "rs", "py", "js", "ts", "jsx", "tsx", "go", "java", "c", "cpp", "h", "hpp",
-    "swift", "kt", "rb", "php", "cs", "fs",
-    "sh", "bash", "zsh", "fish",
-    "css", "scss", "less",
-    "sql", "graphql",
-    "r", "jl", "m", "nb",
+    "txt", "md", "markdown", "rtf", "rtfd", "doc", "docx", "odt", "pages", "tex", "latex", "bib",
+    "fountain", "fdx", "scriv", "tbx", "html", "htm", "xml", "json", "yaml", "yml", "toml", "ini",
+    "cfg", "rs", "py", "js", "ts", "jsx", "tsx", "go", "java", "c", "cpp", "h", "hpp", "swift",
+    "kt", "rb", "php", "cs", "fs", "sh", "bash", "zsh", "fish", "css", "scss", "less", "sql",
+    "graphql", "r", "jl", "m", "nb",
 ];
 
 /// Path prefixes that indicate system/temporary files, not user documents.
@@ -195,10 +188,10 @@ mod ffi_defs {
     #[repr(C)]
     #[derive(Clone, Copy)]
     pub struct proc_vnodepathinfo {
-        pub pvi_cdir_vi: [u8; 152],      // vnode_info (opaque)
-        pub pvi_cdir_path: [u8; 1024],   // cwd path
-        pub pvi_rdir_vi: [u8; 152],      // vnode_info (opaque)
-        pub pvi_rdir_path: [u8; 1024],   // root path
+        pub pvi_cdir_vi: [u8; 152],    // vnode_info (opaque)
+        pub pvi_cdir_path: [u8; 1024], // cwd path
+        pub pvi_rdir_vi: [u8; 152],    // vnode_info (opaque)
+        pub pvi_rdir_path: [u8; 1024], // root path
     }
 
     extern "C" {
@@ -228,15 +221,7 @@ fn enumerate_fds_platform(pid: u32) -> Vec<OpenFile> {
     // Step 1: Get the list of FDs for this process.
     let fd_info_size = mem::size_of::<proc_fdinfo>() as i32;
     // First call with null buffer to get required size.
-    let buf_size = unsafe {
-        proc_pidinfo(
-            pid as i32,
-            PROC_PIDLISTFDS,
-            0,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
+    let buf_size = unsafe { proc_pidinfo(pid as i32, PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0) };
     if buf_size <= 0 || buf_size % fd_info_size != 0 {
         log::trace!(
             "proc_pidinfo(PROC_PIDLISTFDS) returned {} for pid {} (expected multiple of {})",
@@ -512,14 +497,11 @@ fn enumerate_fds_platform(pid: u32) -> Vec<OpenFile> {
         return Vec::new();
     }
     let info = unsafe { &*(buffer.as_ptr() as *const HandleInfoEx) };
-    let entries_ptr = unsafe {
-        buffer
-            .as_ptr()
-            .add(std::mem::size_of::<HandleInfoEx>()) as *const HandleEntryEx
-    };
+    let entries_ptr =
+        unsafe { buffer.as_ptr().add(std::mem::size_of::<HandleInfoEx>()) as *const HandleEntryEx };
 
-    let max_entries = (buffer.len() - std::mem::size_of::<HandleInfoEx>())
-        / std::mem::size_of::<HandleEntryEx>();
+    let max_entries =
+        (buffer.len() - std::mem::size_of::<HandleInfoEx>()) / std::mem::size_of::<HandleEntryEx>();
 
     let process_handle = unsafe {
         match OpenProcess(PROCESS_DUP_HANDLE, false, pid) {
@@ -557,15 +539,17 @@ fn enumerate_fds_platform(pid: u32) -> Vec<OpenFile> {
 
         let file_type = unsafe { GetFileType(dup) };
         if file_type != FILE_TYPE_DISK {
-            unsafe { let _ = CloseHandle(dup); }
+            unsafe {
+                let _ = CloseHandle(dup);
+            }
             continue;
         }
 
         let mut name_buf = [0u16; 1024];
-        let len = unsafe {
-            GetFinalPathNameByHandleW(dup, &mut name_buf, VOLUME_NAME_DOS)
-        };
-        unsafe { let _ = CloseHandle(dup); }
+        let len = unsafe { GetFinalPathNameByHandleW(dup, &mut name_buf, VOLUME_NAME_DOS) };
+        unsafe {
+            let _ = CloseHandle(dup);
+        }
 
         if len == 0 || len as usize >= name_buf.len() {
             continue;
@@ -580,7 +564,9 @@ fn enumerate_fds_platform(pid: u32) -> Vec<OpenFile> {
         });
     }
 
-    unsafe { let _ = CloseHandle(process_handle); }
+    unsafe {
+        let _ = CloseHandle(process_handle);
+    }
     results
 }
 
@@ -616,11 +602,7 @@ fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
     }
 
     unsafe {
-        let handle = OpenProcess(
-            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-            false,
-            pid,
-        ).ok()?;
+        let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid).ok()?;
 
         let result = (|| -> Option<PathBuf> {
             let mut pbi = std::mem::zeroed::<ProcessBasicInformation>();
@@ -644,7 +626,8 @@ fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
                 &mut params_ptr as *mut _ as *mut c_void,
                 std::mem::size_of::<*mut c_void>(),
                 None,
-            ).ok()?;
+            )
+            .ok()?;
             if params_ptr.is_null() {
                 return None;
             }
@@ -659,7 +642,8 @@ fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
                 &mut length as *mut _ as *mut c_void,
                 2,
                 None,
-            ).ok()?;
+            )
+            .ok()?;
             if length == 0 || length > 2048 {
                 return None;
             }
@@ -672,7 +656,8 @@ fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
                 &mut buffer_ptr as *mut _ as *mut c_void,
                 std::mem::size_of::<*mut u16>(),
                 None,
-            ).ok()?;
+            )
+            .ok()?;
             if buffer_ptr.is_null() {
                 return None;
             }
@@ -685,7 +670,8 @@ fn cwd_for_pid_platform(pid: u32) -> Option<PathBuf> {
                 path_buf.as_mut_ptr() as *mut c_void,
                 length as usize,
                 None,
-            ).ok()?;
+            )
+            .ok()?;
 
             let path_str = String::from_utf16_lossy(&path_buf);
             let trimmed = path_str.trim_end_matches('\\');
@@ -765,8 +751,7 @@ mod tests {
         // and verify our own process can find it.
         let dir = tempfile::tempdir().expect("create temp dir");
         let file_path = dir.path().join("test_document.txt");
-        let mut f =
-            std::fs::File::create(&file_path).expect("create temp file");
+        let mut f = std::fs::File::create(&file_path).expect("create temp file");
         f.write_all(b"hello").expect("write temp file");
         // Keep f open (don't drop it yet).
 
@@ -791,7 +776,9 @@ mod tests {
 
         let docs = open_documents_for_pid(pid);
         let canonical = std::fs::canonicalize(&file_path).unwrap_or(file_path.clone());
-        let found = docs.iter().any(|d| d.path == file_path || d.path == canonical);
+        let found = docs
+            .iter()
+            .any(|d| d.path == file_path || d.path == canonical);
         assert!(
             found,
             "Expected to find {:?} in open documents for self (pid {}), got: {:?}",
@@ -806,7 +793,7 @@ mod tests {
         use crate::MutexRecover;
 
         let pid = 99999; // Unlikely to be a real process.
-        // Prime the cache with a fake entry.
+                         // Prime the cache with a fake entry.
         {
             let mut guard = FD_CACHE.lock_recover();
             let cache = guard.get_or_insert_with(HashMap::new);
@@ -840,7 +827,7 @@ mod tests {
         use crate::MutexRecover;
 
         let pid = 99998; // Unlikely to be a real process.
-        // Insert an already-expired cache entry.
+                         // Insert an already-expired cache entry.
         {
             let mut guard = FD_CACHE.lock_recover();
             let cache = guard.get_or_insert_with(HashMap::new);
@@ -859,13 +846,10 @@ mod tests {
         // Should NOT return the cached entry; will re-enumerate (and get empty
         // since pid 99998 doesn't exist).
         let docs = open_documents_for_pid(pid);
-        let has_expired = docs.iter().any(|d| {
-            d.path == PathBuf::from("/fake/expired.txt")
-        });
-        assert!(
-            !has_expired,
-            "Expired cache entry should not be returned"
-        );
+        let has_expired = docs
+            .iter()
+            .any(|d| d.path == PathBuf::from("/fake/expired.txt"));
+        assert!(!has_expired, "Expired cache entry should not be returned");
 
         // Clean up.
         {

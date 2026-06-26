@@ -116,9 +116,7 @@ where
     #[cfg(target_os = "macos")]
     {
         // SAFETY: pthread_self() and pthread_get_stacksize_np() are always safe.
-        let stack_size = unsafe {
-            libc::pthread_get_stacksize_np(libc::pthread_self())
-        };
+        let stack_size = unsafe { libc::pthread_get_stacksize_np(libc::pthread_self()) };
         if stack_size >= HEAVY_FFI_STACK_SIZE {
             return f();
         }

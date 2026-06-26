@@ -105,10 +105,7 @@ pub(crate) fn analyze_browser_jitter(intervals: &[u64]) -> Option<BrowserJitterF
     let regularity_ratio = within_5pct as f64 / intervals.len() as f64;
 
     // 10ms = 10_000µs; check for multiples of 10_000
-    let rounded = intervals
-        .iter()
-        .filter(|&&v| v % 10_000 == 0)
-        .count();
+    let rounded = intervals.iter().filter(|&&v| v % 10_000 == 0).count();
     let rounding_ratio = rounded as f64 / intervals.len() as f64;
 
     let verdict = if cv < SYNTHETIC_CV_THRESHOLD
@@ -138,10 +135,7 @@ pub(crate) fn analyze_browser_jitter(intervals: &[u64]) -> Option<BrowserJitterF
 /// A healthy session has a ratio near 1.0 (each native keystroke has a
 /// matching browser keystroke). Significant divergence indicates either
 /// keystroke injection (native >> browser) or a capture gap.
-pub(crate) fn validate_dual_source(
-    browser_count: u64,
-    native_count: u64,
-) -> (&'static str, f64) {
+pub(crate) fn validate_dual_source(browser_count: u64, native_count: u64) -> (&'static str, f64) {
     if native_count == 0 {
         return ("insufficient_data", 0.0);
     }

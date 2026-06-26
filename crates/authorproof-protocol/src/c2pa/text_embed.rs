@@ -7,7 +7,6 @@
 //! manifest is encoded as a Unicode Variation Selector character that is
 //! visually non-rendering.
 
-
 /// Magic bytes: "C2PATXT\0" (0x4332504154585400)
 const MAGIC: [u8; 8] = [0x43, 0x32, 0x50, 0x41, 0x54, 0x58, 0x54, 0x00];
 const VERSION: u8 = 1;
@@ -141,9 +140,8 @@ pub fn decode_text_manifest(text: &str) -> Result<Vec<u8>, &'static str> {
         }
 
         // Read manifest length (big-endian u32).
-        let manifest_len = u32::from_be_bytes([
-            vs_bytes[9], vs_bytes[10], vs_bytes[11], vs_bytes[12],
-        ]) as usize;
+        let manifest_len =
+            u32::from_be_bytes([vs_bytes[9], vs_bytes[10], vs_bytes[11], vs_bytes[12]]) as usize;
 
         if vs_bytes.len() < HEADER_SIZE + manifest_len {
             return Err("manifest.text.corruptedWrapper: truncated manifest");

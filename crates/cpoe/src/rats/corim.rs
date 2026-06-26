@@ -260,7 +260,8 @@ mod tests {
         let rv = CpoeReferenceValues::default();
         // Verify CoRIM defaults match the actual code constants they reference.
         assert!(
-            (rv.min_entropy_bits - crate::checkpoint::timing::ENTROPY_THRESHOLD_STANDARD).abs() < f64::EPSILON,
+            (rv.min_entropy_bits - crate::checkpoint::timing::ENTROPY_THRESHOLD_STANDARD).abs()
+                < f64::EPSILON,
             "min_entropy_bits should match timing::ENTROPY_THRESHOLD_STANDARD"
         );
         // VDF bounds: verify::SWF_DURATION_RATIO_MIN / MAX

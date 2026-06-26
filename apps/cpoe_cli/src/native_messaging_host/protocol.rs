@@ -9,7 +9,6 @@ pub(crate) const MAX_MESSAGE_LENGTH: usize = 1_048_576;
 
 pub(crate) const PROTOCOL_VERSION: u32 = 1;
 
-
 /// Return request type name without PII (document URLs/titles).
 pub(crate) fn request_type_name(req: &Request) -> &'static str {
     match req {

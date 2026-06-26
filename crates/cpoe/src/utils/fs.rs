@@ -17,19 +17,12 @@ use crate::error::{Error, Result};
 /// On Unix: uses `O_NOFOLLOW` to reject symlinks at the final component.
 /// Rejects paths containing `..` after canonicalization (defense-in-depth).
 pub fn open_validated(path: &Path) -> Result<(PathBuf, File)> {
-    let canonical = path.canonicalize().map_err(|e| {
-        Error::io(format!(
-            "failed to canonicalize {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| Error::io(format!("failed to canonicalize {}: {}", path.display(), e)))?;
 
     // Defense-in-depth: canonicalize should resolve all .., but verify
-    if canonical
-        .components()
-        .any(|c| c == Component::ParentDir)
-    {
+    if canonical.components().any(|c| c == Component::ParentDir) {
         return Err(Error::io(format!(
             "path traversal detected after canonicalization: {}",
             canonical.display()
@@ -53,9 +46,8 @@ pub fn open_validated(path: &Path) -> Result<(PathBuf, File)> {
     };
 
     #[cfg(not(unix))]
-    let file = File::open(&canonical).map_err(|e| {
-        Error::io(format!("failed to open {}: {}", canonical.display(), e))
-    })?;
+    let file = File::open(&canonical)
+        .map_err(|e| Error::io(format!("failed to open {}: {}", canonical.display(), e)))?;
 
     Ok((canonical, file))
 }
@@ -65,9 +57,9 @@ pub fn open_validated(path: &Path) -> Result<(PathBuf, File)> {
 /// Canonicalizes the parent directory, validates against traversal, then
 /// creates or truncates the file. Returns the canonical path and open handle.
 pub fn create_validated(path: &Path) -> Result<(PathBuf, File)> {
-    let parent = path.parent().ok_or_else(|| {
-        Error::io("path has no parent directory".to_string())
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| Error::io("path has no parent directory".to_string()))?;
 
     let canonical_parent = parent.canonicalize().map_err(|e| {
         Error::io(format!(
@@ -87,9 +79,9 @@ pub fn create_validated(path: &Path) -> Result<(PathBuf, File)> {
         )));
     }
 
-    let file_name = path.file_name().ok_or_else(|| {
-        Error::io("path has no file name".to_string())
-    })?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| Error::io("path has no file name".to_string()))?;
     let canonical_path = canonical_parent.join(file_name);
 
     #[cfg(unix)]
@@ -133,18 +125,11 @@ pub fn create_validated(path: &Path) -> Result<(PathBuf, File)> {
 /// (e.g., database lookups) but do NOT need to read file contents.
 /// For any I/O operation, prefer [`open_validated`] or [`create_validated`].
 pub fn canonicalize_validated(path: &Path) -> Result<PathBuf> {
-    let canonical = path.canonicalize().map_err(|e| {
-        Error::io(format!(
-            "failed to canonicalize {}: {}",
-            path.display(),
-            e
-        ))
-    })?;
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| Error::io(format!("failed to canonicalize {}: {}", path.display(), e)))?;
 
-    if canonical
-        .components()
-        .any(|c| c == Component::ParentDir)
-    {
+    if canonical.components().any(|c| c == Component::ParentDir) {
         return Err(Error::io(format!(
             "path traversal detected after canonicalization: {}",
             canonical.display()
@@ -152,13 +137,8 @@ pub fn canonicalize_validated(path: &Path) -> Result<PathBuf> {
     }
 
     // Reject symlinks at the final component
-    let meta = std::fs::symlink_metadata(&canonical).map_err(|e| {
-        Error::io(format!(
-            "failed to stat {}: {}",
-            canonical.display(),
-            e
-        ))
-    })?;
+    let meta = std::fs::symlink_metadata(&canonical)
+        .map_err(|e| Error::io(format!("failed to stat {}: {}", canonical.display(), e)))?;
     if meta.file_type().is_symlink() {
         return Err(Error::io(format!(
             "symlink not allowed: {}",

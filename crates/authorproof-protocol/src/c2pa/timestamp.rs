@@ -21,8 +21,7 @@ use sha2::{Digest, Sha256};
 // ---------------------------------------------------------------------------
 
 /// id-sha256 (2.16.840.1.101.3.4.2.1).
-const SHA256_OID: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
+const SHA256_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
 
 // ---------------------------------------------------------------------------
 // TimeStampReq builder
@@ -87,8 +86,7 @@ pub fn build_timestamp_request(signature_hash: &[u8; 32]) -> Vec<u8> {
     let version = [0x02, 0x01, 0x01]; // INTEGER 1
 
     // -- TimeStampReq SEQUENCE --
-    let inner_len =
-        version.len() + msg_imprint.len() + nonce_int.len() + cert_req.len();
+    let inner_len = version.len() + msg_imprint.len() + nonce_int.len() + cert_req.len();
     let mut req = vec![0x30];
     der_push_length(&mut req, inner_len);
     req.extend_from_slice(&version);
@@ -208,10 +206,9 @@ pub fn build_sigtst_header(timestamp_token: &[u8]) -> coset::Header {
     )]);
 
     let mut header = coset::Header::default();
-    header.rest.push((
-        coset::Label::Text("sigTst".to_string()),
-        tst_tokens,
-    ));
+    header
+        .rest
+        .push((coset::Label::Text("sigTst".to_string()), tst_tokens));
     header
 }
 
@@ -229,7 +226,11 @@ pub fn inject_timestamp_into_cose(
 
     let mut sign1 = coset::CoseSign1::from_tagged_slice(cose_sign1_bytes)
         .or_else(|_| coset::CoseSign1::from_slice(cose_sign1_bytes))
-        .map_err(|e| Error::Crypto(format!("failed to parse COSE_Sign1 for timestamp injection: {e}")))?;
+        .map_err(|e| {
+            Error::Crypto(format!(
+                "failed to parse COSE_Sign1 for timestamp injection: {e}"
+            ))
+        })?;
 
     let sigtst_header = build_sigtst_header(timestamp_token);
     sign1.unprotected.rest.extend(sigtst_header.rest);
@@ -528,8 +529,7 @@ mod tests {
         // Build a COSE_Sign1 and inject a timestamp into it.
         let signing_key = ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]);
         let payload = b"test-claim-payload";
-        let cose_bytes =
-            crate::crypto::sign_evidence_cose(payload, &signing_key).expect("sign");
+        let cose_bytes = crate::crypto::sign_evidence_cose(payload, &signing_key).expect("sign");
 
         let fake_token = vec![0x30, 0x03, 0x01, 0x02, 0x03]; // minimal DER SEQUENCE
         let modified = inject_timestamp_into_cose(&cose_bytes, &fake_token).expect("inject");
@@ -542,14 +542,14 @@ mod tests {
             .rest
             .iter()
             .find(|(label, _)| *label == coset::Label::Text("sigTst".to_string()));
-        assert!(sigtst_entry.is_some(), "sigTst must be present in unprotected header");
+        assert!(
+            sigtst_entry.is_some(),
+            "sigTst must be present in unprotected header"
+        );
 
         // Original signature should still verify (unprotected header is not signed).
-        let verified = crate::crypto::verify_evidence_cose(
-            &modified,
-            &signing_key.verifying_key(),
-        )
-        .expect("signature must still verify after timestamp injection");
+        let verified = crate::crypto::verify_evidence_cose(&modified, &signing_key.verifying_key())
+            .expect("signature must still verify after timestamp injection");
         assert_eq!(verified, payload);
     }
 

@@ -233,10 +233,12 @@ fn std_dev(vals: &[f64]) -> f64 {
 
 #[test]
 fn crossley_exact_metrics_on_transcribed_logs() {
-    let raw_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/data/crossley/raw_transcribed");
+    let raw_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/crossley/raw_transcribed");
     if !raw_dir.exists() {
-        eprintln!("SKIP: Crossley raw transcribed data not found at {:?}", raw_dir);
+        eprintln!(
+            "SKIP: Crossley raw transcribed data not found at {:?}",
+            raw_dir
+        );
         return;
     }
 
@@ -272,24 +274,35 @@ fn crossley_exact_metrics_on_transcribed_logs() {
         }
     }
 
-    assert!(file_count >= 10, "Need at least 10 transcribed samples, got {}", file_count);
+    assert!(
+        file_count >= 10,
+        "Need at least 10 transcribed samples, got {}",
+        file_count
+    );
 
-    println!("\n=== Crossley Exact Metrics: Transcribed (N={}) ===", file_count);
+    println!(
+        "\n=== Crossley Exact Metrics: Transcribed (N={}) ===",
+        file_count
+    );
     println!(
         "  detour_ratio:           mean={:.4} sd={:.4}",
-        mean(&detour_ratios), std_dev(&detour_ratios)
+        mean(&detour_ratios),
+        std_dev(&detour_ratios)
     );
     println!(
         "  leading_edge_divergence: mean={:.4} sd={:.4}",
-        mean(&leds), std_dev(&leds)
+        mean(&leds),
+        std_dev(&leds)
     );
     println!(
         "  insertion_point_entropy:  mean={:.4} sd={:.4}",
-        mean(&entropies), std_dev(&entropies)
+        mean(&entropies),
+        std_dev(&entropies)
     );
     println!(
         "  composite_score:          mean={:.4} sd={:.4}",
-        mean(&composite_scores), std_dev(&composite_scores)
+        mean(&composite_scores),
+        std_dev(&composite_scores)
     );
 
     // Transcribed essays should show low detour and LED.
@@ -309,8 +322,7 @@ fn crossley_exact_metrics_on_transcribed_logs() {
 
 #[test]
 fn crossley_proxy_auc_calibration() {
-    let data_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/data/crossley");
+    let data_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/crossley");
     let authentic_path = data_dir.join("keystroke_analytics_original_essays_anon.csv");
     let transcribed_path = data_dir.join("keystroke_analytics_transcribed_essays_anon.csv");
 
@@ -347,7 +359,11 @@ fn crossley_proxy_auc_calibration() {
     let auc_led = wilcoxon_auc(&auth_led, &trans_led);
     let auc_entropy = wilcoxon_auc(&auth_entropy, &trans_entropy);
 
-    println!("\n=== Crossley Proxy AUC (N_auth={}, N_trans={}) ===", authentic.len(), transcribed.len());
+    println!(
+        "\n=== Crossley Proxy AUC (N_auth={}, N_trans={}) ===",
+        authentic.len(),
+        transcribed.len()
+    );
     println!("  detour_proxy  AUC: {:.4}", auc_detour);
     println!("  led_proxy     AUC: {:.4}", auc_led);
     println!("  entropy_proxy AUC: {:.4}", auc_entropy);
@@ -355,18 +371,24 @@ fn crossley_proxy_auc_calibration() {
     println!("\n--- Distribution stats ---");
     println!(
         "  detour_proxy:  auth mean={:.4} sd={:.4}  |  trans mean={:.4} sd={:.4}",
-        mean(&auth_detour), std_dev(&auth_detour),
-        mean(&trans_detour), std_dev(&trans_detour)
+        mean(&auth_detour),
+        std_dev(&auth_detour),
+        mean(&trans_detour),
+        std_dev(&trans_detour)
     );
     println!(
         "  led_proxy:     auth mean={:.4} sd={:.4}  |  trans mean={:.4} sd={:.4}",
-        mean(&auth_led), std_dev(&auth_led),
-        mean(&trans_led), std_dev(&trans_led)
+        mean(&auth_led),
+        std_dev(&auth_led),
+        mean(&trans_led),
+        std_dev(&trans_led)
     );
     println!(
         "  entropy_proxy: auth mean={:.4} sd={:.4}  |  trans mean={:.4} sd={:.4}",
-        mean(&auth_entropy), std_dev(&auth_entropy),
-        mean(&trans_entropy), std_dev(&trans_entropy)
+        mean(&auth_entropy),
+        std_dev(&auth_entropy),
+        mean(&trans_entropy),
+        std_dev(&trans_entropy)
     );
 
     // Compute optimal weights proportional to AUC excess over chance (0.5).
@@ -381,9 +403,21 @@ fn crossley_proxy_auc_calibration() {
         let w_entropy = excess_entropy / total_excess;
 
         println!("\n--- AUC-proportional weights (new signal budget = 0.50) ---");
-        println!("  W_DETOUR:  {:.3} → composite weight {:.3}", w_detour, w_detour * 0.50);
-        println!("  W_LED:     {:.3} → composite weight {:.3}", w_led, w_led * 0.50);
-        println!("  W_ENTROPY: {:.3} → composite weight {:.3}", w_entropy, w_entropy * 0.50);
+        println!(
+            "  W_DETOUR:  {:.3} → composite weight {:.3}",
+            w_detour,
+            w_detour * 0.50
+        );
+        println!(
+            "  W_LED:     {:.3} → composite weight {:.3}",
+            w_led,
+            w_led * 0.50
+        );
+        println!(
+            "  W_ENTROPY: {:.3} → composite weight {:.3}",
+            w_entropy,
+            w_entropy * 0.50
+        );
         println!("\n  Recommended constants for revision_topology.rs:");
         println!("    const W_DETOUR: f64 = {:.2};", w_detour * 0.50);
         println!("    const W_LED: f64 = {:.2};", w_led * 0.50);

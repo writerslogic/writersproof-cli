@@ -142,10 +142,7 @@ fn make_dimension(
     }
 }
 
-fn build_temporal_dimension(
-    stats: &EventStats,
-    event_count: usize,
-) -> DimensionScore {
+fn build_temporal_dimension(stats: &EventStats, event_count: usize) -> DimensionScore {
     let score: u32 = {
         let has_vdf = stats.total_iterations > 0;
         let dense_enough = event_count >= TEMPORAL_MIN_EVENTS;
@@ -196,7 +193,10 @@ fn build_edit_dimension(
             "Edit Pattern Authenticity",
             0,
             EDIT_CONFIDENCE_SPARSE,
-            format!("{} events (minimum {} required)", event_count, EDIT_MIN_EVENTS),
+            format!(
+                "{} events (minimum {} required)",
+                event_count, EDIT_MIN_EVENTS
+            ),
             "Insufficient checkpoint events to evaluate edit patterns.".into(),
         );
     }
@@ -213,8 +213,8 @@ fn build_edit_dimension(
         } else {
             EDIT_RI_SCORE_ABSENT
         };
-        ((topo * EDIT_TOPOLOGY_WEIGHT + ri_score * EDIT_REVISION_WEIGHT) * 100.0)
-            .clamp(0.0, 99.0) as u32
+        ((topo * EDIT_TOPOLOGY_WEIGHT + ri_score * EDIT_REVISION_WEIGHT) * 100.0).clamp(0.0, 99.0)
+            as u32
     };
     let ri = process
         .revision_intensity
@@ -243,10 +243,7 @@ fn build_edit_dimension(
     )
 }
 
-fn build_continuity_dimension(
-    stats: &EventStats,
-    sessions: &[ReportSession],
-) -> DimensionScore {
+fn build_continuity_dimension(stats: &EventStats, sessions: &[ReportSession]) -> DimensionScore {
     let score: u32 = {
         let session_count = sessions.len();
         let total_min = finite_or(stats.total_min, 0.0);
@@ -334,11 +331,8 @@ fn build_coherence_dimension(
     )
 }
 
-fn build_behavioral_dimension(
-    metrics: &crate::forensics::ForensicMetrics,
-) -> DimensionScore {
-    let has_iki_data = metrics.cadence.mean_iki_ns > 0.0
-        && metrics.cadence.mean_iki_ns.is_finite();
+fn build_behavioral_dimension(metrics: &crate::forensics::ForensicMetrics) -> DimensionScore {
+    let has_iki_data = metrics.cadence.mean_iki_ns > 0.0 && metrics.cadence.mean_iki_ns.is_finite();
     let sample_count = metrics.cadence.burst_count + metrics.cadence.pause_count;
 
     if !has_iki_data || sample_count < 5 {
@@ -346,7 +340,10 @@ fn build_behavioral_dimension(
             "Behavioral Signature",
             0,
             BEHAVIORAL_CONFIDENCE_NO_DATA,
-            format!("{} keystroke intervals recorded (minimum 5 required)", sample_count),
+            format!(
+                "{} keystroke intervals recorded (minimum 5 required)",
+                sample_count
+            ),
             "Insufficient keystroke data to compute behavioral metrics. \
              Burst CV, correction rate, and biological cadence cannot be \
              meaningfully evaluated."
@@ -355,13 +352,15 @@ fn build_behavioral_dimension(
     }
 
     let score: u32 = {
-        let cv = if metrics.cadence.std_dev_iki_ns > 0.0
-            && metrics.cadence.std_dev_iki_ns.is_finite()
-        {
-            finite_or(metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns, 0.5)
-        } else {
-            finite_or(metrics.cadence.burst_speed_cv, 0.5)
-        };
+        let cv =
+            if metrics.cadence.std_dev_iki_ns > 0.0 && metrics.cadence.std_dev_iki_ns.is_finite() {
+                finite_or(
+                    metrics.cadence.std_dev_iki_ns / metrics.cadence.mean_iki_ns,
+                    0.5,
+                )
+            } else {
+                finite_or(metrics.cadence.burst_speed_cv, 0.5)
+            };
         let cv_score = if cv > BEHAVIORAL_CV_OPTIMAL_LOW && cv < BEHAVIORAL_CV_OPTIMAL_HIGH {
             BEHAVIORAL_CV_SCORE_OPTIMAL
         } else if cv > BEHAVIORAL_CV_MARGINAL {
@@ -441,7 +440,13 @@ fn build_enhanced_dimension(
     } else {
         "Consistent with transcriptive or synthetic patterns"
     };
-    make_dimension(name, score, ENHANCED_CONFIDENCE, key_discriminator.to_string(), interpretation.to_string())
+    make_dimension(
+        name,
+        score,
+        ENHANCED_CONFIDENCE,
+        key_discriminator.to_string(),
+        interpretation.to_string(),
+    )
 }
 
 /// Assemble all dimension scores from event stats, process evidence, forensic
@@ -469,21 +474,30 @@ pub(crate) fn build_dimensions(
         dims.push(build_enhanced_dimension(
             "Cognitive Load",
             cl.composite_score,
-            &format!("IKI-surprisal rho={:.2}", finite_or(cl.iki_surprisal_rho, 0.0)),
+            &format!(
+                "IKI-surprisal rho={:.2}",
+                finite_or(cl.iki_surprisal_rho, 0.0)
+            ),
         ));
     }
     if let Some(ref rt) = metrics.revision_topology {
         dims.push(build_enhanced_dimension(
             "Revision Topology",
             rt.composite_score,
-            &format!("branching={:.1}", finite_or(rt.graph.mean_branching_factor, 0.0)),
+            &format!(
+                "branching={:.1}",
+                finite_or(rt.graph.mean_branching_factor, 0.0)
+            ),
         ));
     }
     if let Some(ref ee) = metrics.error_ecology {
         dims.push(build_enhanced_dimension(
             "Error Ecology",
             ee.composite_score,
-            &format!("rapid={:.0}%", finite_or(ee.rapid_self_correction_pct, 0.0) * 100.0),
+            &format!(
+                "rapid={:.0}%",
+                finite_or(ee.rapid_self_correction_pct, 0.0) * 100.0
+            ),
         ));
     }
     if let Some(ref lm) = metrics.likelihood_model {
@@ -514,15 +528,27 @@ pub(crate) fn build_dimensions(
         dims.push(build_enhanced_dimension(
             "Error Topology",
             et.score,
-            &format!("gap_corr={:.2}, adj_corr={:.2}", finite_or(et.gap_correlation, 0.0), finite_or(et.adjacency_correlation, 0.0)),
+            &format!(
+                "gap_corr={:.2}, adj_corr={:.2}",
+                finite_or(et.gap_correlation, 0.0),
+                finite_or(et.adjacency_correlation, 0.0)
+            ),
         ));
     }
     if let Some(ref pn) = metrics.spectral_analysis {
-        let slope_score = if pn.is_valid { pn.spectral_slope.clamp(0.0, 1.0) } else { 0.3 };
+        let slope_score = if pn.is_valid {
+            pn.spectral_slope.clamp(0.0, 1.0)
+        } else {
+            0.3
+        };
         dims.push(build_enhanced_dimension(
             "Spectral Analysis",
             slope_score,
-            &format!("slope={:.2}, type={:?}", finite_or(pn.spectral_slope, 0.0), pn.noise_type),
+            &format!(
+                "slope={:.2}, type={:?}",
+                finite_or(pn.spectral_slope, 0.0),
+                pn.noise_type
+            ),
         ));
     }
     if let Some(ref bc) = metrics.baseline_comparison {

@@ -33,10 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Anomalies: {}", result.anomalies.len());
 
     let _json = session.export_json()?;
-    println!(
-        "\nEvidence chain has {} records",
-        session.evidence().len()
-    );
+    println!("\nEvidence chain has {} records", session.evidence().len());
     println!("Physics ratio: {:.1}%", session.phys_ratio() * 100.0);
 
     Ok(())

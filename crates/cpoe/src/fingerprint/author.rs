@@ -58,8 +58,7 @@ impl AuthorFingerprint {
         let sample_conf = 1.0 - (-(self.sample_count as f64) / 500.0).exp();
 
         let session_bonus = if self.activity.session_signature.session_count > 1 {
-            (1.0 - (-(self.activity.session_signature.session_count as f64) / 5.0).exp())
-                * 0.2
+            (1.0 - (-(self.activity.session_signature.session_count as f64) / 5.0).exp()) * 0.2
         } else {
             0.0
         };
@@ -74,30 +73,44 @@ impl AuthorFingerprint {
     /// `alpha` controls how much weight the `recent` fingerprint receives
     /// (0.0 = keep old, 1.0 = fully replace with recent).
     pub fn update_with_ema(&mut self, recent: &AuthorFingerprint, alpha: f64) {
-        log::debug!("AuthorFingerprint::update_with_ema: id={}, alpha={}", self.id, alpha);
+        log::debug!(
+            "AuthorFingerprint::update_with_ema: id={}, alpha={}",
+            self.id,
+            alpha
+        );
         use super::activity::WeightedDistribution;
 
         let alpha = alpha.clamp(0.0, 1.0);
         let old_weight = 1.0 - alpha;
 
-        self.activity
-            .iki_distribution
-            .weighted_merge(&recent.activity.iki_distribution, old_weight, alpha);
+        self.activity.iki_distribution.weighted_merge(
+            &recent.activity.iki_distribution,
+            old_weight,
+            alpha,
+        );
         self.activity
             .zone_profile
             .weighted_merge(&recent.activity.zone_profile, old_weight, alpha);
-        self.activity
-            .pause_signature
-            .weighted_merge(&recent.activity.pause_signature, old_weight, alpha);
-        self.activity
-            .dwell_distribution
-            .weighted_merge(&recent.activity.dwell_distribution, old_weight, alpha);
-        self.activity
-            .flight_distribution
-            .weighted_merge(&recent.activity.flight_distribution, old_weight, alpha);
-        self.activity
-            .digraph_profile
-            .weighted_merge(&recent.activity.digraph_profile, old_weight, alpha);
+        self.activity.pause_signature.weighted_merge(
+            &recent.activity.pause_signature,
+            old_weight,
+            alpha,
+        );
+        self.activity.dwell_distribution.weighted_merge(
+            &recent.activity.dwell_distribution,
+            old_weight,
+            alpha,
+        );
+        self.activity.flight_distribution.weighted_merge(
+            &recent.activity.flight_distribution,
+            old_weight,
+            alpha,
+        );
+        self.activity.digraph_profile.weighted_merge(
+            &recent.activity.digraph_profile,
+            old_weight,
+            alpha,
+        );
 
         if let (Some(ref mut v), Some(rv)) = (&mut self.style, &recent.style) {
             v.merge(rv);
@@ -111,7 +124,11 @@ impl AuthorFingerprint {
     }
 
     pub fn merge(&mut self, other: &AuthorFingerprint) {
-        log::debug!("AuthorFingerprint::merge: self_id={}, other_id={}", self.id, other.id);
+        log::debug!(
+            "AuthorFingerprint::merge: self_id={}, other_id={}",
+            self.id,
+            other.id
+        );
         self.activity.merge(&other.activity);
         if let Some(other_style) = &other.style {
             if let Some(ref mut style) = self.style {

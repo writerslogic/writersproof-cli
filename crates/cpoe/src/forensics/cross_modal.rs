@@ -169,8 +169,7 @@ pub fn analyze_cross_modal(input: &CrossModalInput<'_>) -> CrossModalResult {
     // A single failure of either is treated as Inconsistent rather than Marginal
     // because these checks cannot both fail by accident in genuine typing.
     let critical_jitter_failed = checks.iter().any(|c| {
-        !c.passed
-            && (c.name == "jitter_edit_coherence" || c.name == "jitter_content_entanglement")
+        !c.passed && (c.name == "jitter_edit_coherence" || c.name == "jitter_content_entanglement")
     });
 
     let verdict = if failed >= 3 || critical_jitter_failed {
@@ -585,13 +584,20 @@ fn check_monotonic_growth_coherence(
 
     let rho = crate::utils::stats::spearman_correlation(&cum_edits, &cum_jitter);
     let passed = rho.is_finite() && rho >= 0.70;
-    let score = if rho.is_finite() { rho.clamp(0.0, 1.0) } else { 0.0 };
+    let score = if rho.is_finite() {
+        rho.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
 
     CrossModalCheck {
         name: "monotonic_growth_coherence".into(),
         passed,
         score,
-        detail: format!("Edit/jitter growth correlation: {:.3} (threshold: 0.70)", rho),
+        detail: format!(
+            "Edit/jitter growth correlation: {:.3} (threshold: 0.70)",
+            rho
+        ),
     }
 }
 
@@ -796,7 +802,10 @@ mod tests {
         };
         let result = analyze_cross_modal(&input);
         // jitter_edit_coherence ratio = 50/5000 = 0.01 < MIN_EDIT_TO_JITTER_RATIO (0.02) → fails
-        let coherence = result.checks.iter().find(|c| c.name == "jitter_edit_coherence");
+        let coherence = result
+            .checks
+            .iter()
+            .find(|c| c.name == "jitter_edit_coherence");
         if let Some(c) = coherence {
             if !c.passed {
                 assert_eq!(result.verdict, CrossModalVerdict::Inconsistent);

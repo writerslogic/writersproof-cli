@@ -292,8 +292,7 @@ fn estimate_lyapunov(embed: &FlatEmbedding, delay: usize) -> f64 {
         return 0.0;
     }
 
-    let tree =
-        crate::analysis::spatial::KdTree::build(&embed.data, embed.count, embed.dim);
+    let tree = crate::analysis::spatial::KdTree::build(&embed.data, embed.count, embed.dim);
     let min_sep = delay * 2;
 
     let mut divergence = 0.0;

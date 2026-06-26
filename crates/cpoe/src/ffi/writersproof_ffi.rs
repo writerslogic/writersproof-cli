@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::helpers::{load_api_key, load_did, load_events_for_path, load_signing_key, open_store};
+use crate::ffi::helpers::{
+    load_api_key, load_did, load_events_for_path, load_signing_key, open_store,
+};
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 
 /// Domain separation tag for anchor signatures.

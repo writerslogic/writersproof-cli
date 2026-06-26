@@ -131,10 +131,7 @@ pub(super) fn run_forensics(
     // meaningless results. Only run when keystroke data provides real timestamps.
     let events_have_timestamps = sorted_events.iter().any(|e| e.timestamp_ns > 0);
     let per_cp = if packet.checkpoints.len() >= 2 && events_have_timestamps {
-        let result = per_checkpoint_flags(
-            SortedEvents::new(&sorted_events),
-            &packet.checkpoints,
-        );
+        let result = per_checkpoint_flags(SortedEvents::new(&sorted_events), &packet.checkpoints);
         if result.suspicious {
             warnings.push(format!(
                 "Per-checkpoint analysis: {:.0}% of checkpoints flagged (threshold: {:.0}%)",

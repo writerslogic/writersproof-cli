@@ -169,7 +169,15 @@ pub fn draw_forensics_page(
             || fm.revision_topology_score.is_some()
             || fm.detour_ratio.is_some();
         if has_enhanced && y > 60.0 {
-            text(layer, "Enhanced Signal Scores", 10.0, MARGIN_LEFT, y, &fonts.bold, BLACK);
+            text(
+                layer,
+                "Enhanced Signal Scores",
+                10.0,
+                MARGIN_LEFT,
+                y,
+                &fonts.bold,
+                BLACK,
+            );
             y -= 7.0;
 
             let mut signal_cards: Vec<(&str, String)> = Vec::new();

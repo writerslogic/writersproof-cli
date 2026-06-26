@@ -115,10 +115,7 @@ fingerprint <code>{sk}</code>.</li>
     )
 }
 
-pub(in crate::report::html) fn write_references(
-    html: &mut String,
-    r: &WarReport,
-) -> fmt::Result {
+pub(in crate::report::html) fn write_references(html: &mut String, r: &WarReport) -> fmt::Result {
     if r.verdict == Verdict::InsufficientData {
         return Ok(());
     }

@@ -41,14 +41,28 @@ struct ScoringSignal {
 
 impl ScoringSignal {
     const fn new(low: f64, high: f64, weight: f64) -> Self {
-        Self { low, high, weight, invert: false }
+        Self {
+            low,
+            high,
+            weight,
+            invert: false,
+        }
     }
     const fn inverted(low: f64, high: f64, weight: f64) -> Self {
-        Self { low, high, weight, invert: true }
+        Self {
+            low,
+            high,
+            weight,
+            invert: true,
+        }
     }
     fn score(&self, value: f64) -> f64 {
         let s = lerp_score(value, self.low, self.high);
-        if self.invert { 1.0 - s } else { s }
+        if self.invert {
+            1.0 - s
+        } else {
+            s
+        }
     }
 }
 
@@ -265,17 +279,50 @@ pub fn classify_writing_mode(
     let (cognitive_score, confidence_cap) = {
         // v1: weighted sum of 13 signals.
         let scores: [(f64, f64); 13] = [
-            (CORRECTION_RATIO.score(cadence.correction_ratio.get()), CORRECTION_RATIO.weight),
-            (BURST_SPEED_CV.score(cadence.burst_speed_cv), BURST_SPEED_CV.weight),
-            (ZERO_VAR_WINDOWS.score(cadence.zero_variance_windows as f64), ZERO_VAR_WINDOWS.weight),
-            (IKI_AUTOCORR.score(cadence.iki_autocorrelation), IKI_AUTOCORR.weight),
-            (POST_PAUSE_CV.score(cadence.post_pause_cv), POST_PAUSE_CV.weight),
-            (DEEP_PAUSE.score(cadence.pause_depth_distribution[2]), DEEP_PAUSE.weight),
-            (POS_NEG_RATIO.score(primary.positive_negative_ratio.get()), POS_NEG_RATIO.weight),
-            (MONOTONIC_APPEND.score(primary.monotonic_append_ratio.get()), MONOTONIC_APPEND.weight),
-            (REVISION_FRACTION.score(revision.revision_fraction), REVISION_FRACTION.weight),
-            (THINKING_PAUSE_RATIO.score(thinking_pause_ratio), THINKING_PAUSE_RATIO.weight),
-            (BURST_LENGTH_CV.score(burst_length_cv), BURST_LENGTH_CV.weight),
+            (
+                CORRECTION_RATIO.score(cadence.correction_ratio.get()),
+                CORRECTION_RATIO.weight,
+            ),
+            (
+                BURST_SPEED_CV.score(cadence.burst_speed_cv),
+                BURST_SPEED_CV.weight,
+            ),
+            (
+                ZERO_VAR_WINDOWS.score(cadence.zero_variance_windows as f64),
+                ZERO_VAR_WINDOWS.weight,
+            ),
+            (
+                IKI_AUTOCORR.score(cadence.iki_autocorrelation),
+                IKI_AUTOCORR.weight,
+            ),
+            (
+                POST_PAUSE_CV.score(cadence.post_pause_cv),
+                POST_PAUSE_CV.weight,
+            ),
+            (
+                DEEP_PAUSE.score(cadence.pause_depth_distribution[2]),
+                DEEP_PAUSE.weight,
+            ),
+            (
+                POS_NEG_RATIO.score(primary.positive_negative_ratio.get()),
+                POS_NEG_RATIO.weight,
+            ),
+            (
+                MONOTONIC_APPEND.score(primary.monotonic_append_ratio.get()),
+                MONOTONIC_APPEND.weight,
+            ),
+            (
+                REVISION_FRACTION.score(revision.revision_fraction),
+                REVISION_FRACTION.weight,
+            ),
+            (
+                THINKING_PAUSE_RATIO.score(thinking_pause_ratio),
+                THINKING_PAUSE_RATIO.weight,
+            ),
+            (
+                BURST_LENGTH_CV.score(burst_length_cv),
+                BURST_LENGTH_CV.weight,
+            ),
             (revision_scatter, REVISION_SCATTER_WEIGHT),
             (pause_burst_corr, PAUSE_BURST_CORR_WEIGHT),
         ];
@@ -295,33 +342,75 @@ pub fn classify_writing_mode(
 
         // PRIMARY — structural signals
         // IKI autocorrelation is always available (non-optional).
-        scores.push((v2::IKI_AUTOCORR.score(cadence.iki_autocorrelation), v2::IKI_AUTOCORR.weight));
+        scores.push((
+            v2::IKI_AUTOCORR.score(cadence.iki_autocorrelation),
+            v2::IKI_AUTOCORR.weight,
+        ));
         primary_available += 1;
 
         if let Some(spikes) = spike_count {
-            scores.push((v2::REVISION_SPIKES.score(spikes as f64), v2::REVISION_SPIKES.weight));
+            scores.push((
+                v2::REVISION_SPIKES.score(spikes as f64),
+                v2::REVISION_SPIKES.weight,
+            ));
             primary_available += 1;
         }
         if let Some(rate) = cadence.planning_pause_rate {
-            scores.push((v2::PLANNING_PAUSE_RATE.score(rate), v2::PLANNING_PAUSE_RATE.weight));
+            scores.push((
+                v2::PLANNING_PAUSE_RATE.score(rate),
+                v2::PLANNING_PAUSE_RATE.weight,
+            ));
             primary_available += 1;
         }
         if let Some(ratio) = translating_ratio {
-            scores.push((v2::TRANSLATING_BURST.score(ratio), v2::TRANSLATING_BURST.weight));
+            scores.push((
+                v2::TRANSLATING_BURST.score(ratio),
+                v2::TRANSLATING_BURST.weight,
+            ));
             primary_available += 1;
         }
 
         // SECONDARY — always available
-        scores.push((v2::CORRECTION_RATIO.score(cadence.correction_ratio.get()), v2::CORRECTION_RATIO.weight));
-        scores.push((v2::BURST_SPEED_CV.score(cadence.burst_speed_cv), v2::BURST_SPEED_CV.weight));
-        scores.push((v2::ZERO_VAR_WINDOWS.score(cadence.zero_variance_windows as f64), v2::ZERO_VAR_WINDOWS.weight));
-        scores.push((v2::POST_PAUSE_CV.score(cadence.post_pause_cv), v2::POST_PAUSE_CV.weight));
-        scores.push((v2::DEEP_PAUSE.score(cadence.pause_depth_distribution[2]), v2::DEEP_PAUSE.weight));
-        scores.push((v2::POS_NEG_RATIO.score(primary.positive_negative_ratio.get()), v2::POS_NEG_RATIO.weight));
-        scores.push((v2::MONOTONIC_APPEND.score(primary.monotonic_append_ratio.get()), v2::MONOTONIC_APPEND.weight));
-        scores.push((v2::REVISION_FRACTION.score(revision.revision_fraction), v2::REVISION_FRACTION.weight));
-        scores.push((v2::THINKING_PAUSE_RATIO.score(thinking_pause_ratio), v2::THINKING_PAUSE_RATIO.weight));
-        scores.push((v2::BURST_LENGTH_CV.score(burst_length_cv), v2::BURST_LENGTH_CV.weight));
+        scores.push((
+            v2::CORRECTION_RATIO.score(cadence.correction_ratio.get()),
+            v2::CORRECTION_RATIO.weight,
+        ));
+        scores.push((
+            v2::BURST_SPEED_CV.score(cadence.burst_speed_cv),
+            v2::BURST_SPEED_CV.weight,
+        ));
+        scores.push((
+            v2::ZERO_VAR_WINDOWS.score(cadence.zero_variance_windows as f64),
+            v2::ZERO_VAR_WINDOWS.weight,
+        ));
+        scores.push((
+            v2::POST_PAUSE_CV.score(cadence.post_pause_cv),
+            v2::POST_PAUSE_CV.weight,
+        ));
+        scores.push((
+            v2::DEEP_PAUSE.score(cadence.pause_depth_distribution[2]),
+            v2::DEEP_PAUSE.weight,
+        ));
+        scores.push((
+            v2::POS_NEG_RATIO.score(primary.positive_negative_ratio.get()),
+            v2::POS_NEG_RATIO.weight,
+        ));
+        scores.push((
+            v2::MONOTONIC_APPEND.score(primary.monotonic_append_ratio.get()),
+            v2::MONOTONIC_APPEND.weight,
+        ));
+        scores.push((
+            v2::REVISION_FRACTION.score(revision.revision_fraction),
+            v2::REVISION_FRACTION.weight,
+        ));
+        scores.push((
+            v2::THINKING_PAUSE_RATIO.score(thinking_pause_ratio),
+            v2::THINKING_PAUSE_RATIO.weight,
+        ));
+        scores.push((
+            v2::BURST_LENGTH_CV.score(burst_length_cv),
+            v2::BURST_LENGTH_CV.weight,
+        ));
         scores.push((revision_scatter, v2::REVISION_SCATTER_WEIGHT));
         scores.push((pause_burst_corr, v2::PAUSE_BURST_CORR_WEIGHT));
 
@@ -330,10 +419,7 @@ pub fn classify_writing_mode(
         let raw = if total_weight > f64::EPSILON {
             // Cap any single signal at MAX_SINGLE_WEIGHT of total.
             let max_abs = total_weight * v2::MAX_SINGLE_WEIGHT;
-            let capped: f64 = scores
-                .iter()
-                .map(|(s, w)| s * w.min(max_abs))
-                .sum::<f64>();
+            let capped: f64 = scores.iter().map(|(s, w)| s * w.min(max_abs)).sum::<f64>();
             let capped_total: f64 = scores.iter().map(|(_, w)| w.min(max_abs)).sum();
             capped / capped_total
         } else {
@@ -546,7 +632,10 @@ fn compute_revision_scatter_score(sorted: SortedEvents<'_>) -> f64 {
     }
 
     let tail_start = t_first as f64 + span * (1.0 - SCATTER_TAIL_FRACTION);
-    let tail_count = deletions.iter().filter(|&&ts| ts as f64 >= tail_start).count();
+    let tail_count = deletions
+        .iter()
+        .filter(|&&ts| ts as f64 >= tail_start)
+        .count();
     let tail_frac = tail_count as f64 / deletions.len() as f64;
 
     if tail_frac >= SCATTER_TAIL_SUSPICIOUS {
@@ -571,14 +660,18 @@ fn compute_pause_burst_correlation(sorted: SortedEvents<'_>) -> f64 {
     let mut pairs: Vec<(f64, f64)> = Vec::new();
     let mut i = 0;
     while i + 1 < sorted.len() {
-        let gap = sorted[i + 1].timestamp_ns.saturating_sub(sorted[i].timestamp_ns);
+        let gap = sorted[i + 1]
+            .timestamp_ns
+            .saturating_sub(sorted[i].timestamp_ns);
         if gap >= BURST_SEPARATOR_NS {
             // This is a pause; measure burst size starting at i+1.
             let mut burst_bytes: i64 = 0;
             let mut j = i + 1;
             while j < sorted.len() {
                 let next_gap = if j + 1 < sorted.len() {
-                    sorted[j + 1].timestamp_ns.saturating_sub(sorted[j].timestamp_ns)
+                    sorted[j + 1]
+                        .timestamp_ns
+                        .saturating_sub(sorted[j].timestamp_ns)
                 } else {
                     i64::MAX
                 };
@@ -631,7 +724,9 @@ pub fn compute_translating_burst_ratio(sorted: SortedEvents<'_>) -> Option<f64> 
     let mut burst_start = 0;
     for i in 1..=sorted.len() {
         let is_gap = if i < sorted.len() {
-            sorted[i].timestamp_ns.saturating_sub(sorted[i - 1].timestamp_ns)
+            sorted[i]
+                .timestamp_ns
+                .saturating_sub(sorted[i - 1].timestamp_ns)
                 >= BURST_SEPARATOR_NS
         } else {
             true // end of events
@@ -740,10 +835,7 @@ const ENHANCED_COMPOSITION_WEIGHT: f64 = 0.06;
 /// The enhanced signals' total weight (up to 0.40) is redistributed
 /// from the base signals proportionally. When no enhanced signals are
 /// available, the original classification is returned unchanged.
-pub fn enrich_writing_mode(
-    analysis: &mut WritingModeAnalysis,
-    signals: &EnhancedSignals,
-) {
+pub fn enrich_writing_mode(analysis: &mut WritingModeAnalysis, signals: &EnhancedSignals) {
     let mut enhanced_score = 0.0f64;
     let mut enhanced_weight = 0.0f64;
 
@@ -797,8 +889,7 @@ pub fn enrich_writing_mode(
             ((TRANSCRIPTIVE_THRESHOLD - blended) / TRANSCRIPTIVE_THRESHOLD).min(1.0)
         }
         WritingMode::Mixed => {
-            let dist =
-                (blended - TRANSCRIPTIVE_THRESHOLD).min(COGNITIVE_THRESHOLD - blended);
+            let dist = (blended - TRANSCRIPTIVE_THRESHOLD).min(COGNITIVE_THRESHOLD - blended);
             let half_range = (COGNITIVE_THRESHOLD - TRANSCRIPTIVE_THRESHOLD) / 2.0;
             (dist / half_range).min(1.0)
         }
@@ -1055,12 +1146,20 @@ mod tests {
         // forward [10,10,10,10,10,10,10] -> translating, revision [-5,-3] -> revising,
         // forward [10,10,10,10,10,10] -> translating
         // Ratio = 3 translating / (3 + 2 revising) = 0.60
-        let deltas = [10, 10, 10, -3, -2, 10, 10, 10, 10, 10, 10, 10, -5, -3, 10, 10, 10, 10, 10, 10];
+        let deltas = [
+            10, 10, 10, -3, -2, 10, 10, 10, 10, 10, 10, 10, -5, -3, 10, 10, 10, 10, 10, 10,
+        ];
         let events = make_fast_events(&deltas);
         let ratio = compute_translating_burst_ratio(SortedEvents::new(&events));
-        assert!(ratio.is_some(), "compute_translating_burst_ratio returned None with valid events");
+        assert!(
+            ratio.is_some(),
+            "compute_translating_burst_ratio returned None with valid events"
+        );
         let r = ratio.expect("ratio is Some per assertion above");
-        assert!(r < 0.80, "composing-like pattern should have ratio < 0.80, got {r}");
+        assert!(
+            r < 0.80,
+            "composing-like pattern should have ratio < 0.80, got {r}"
+        );
         assert!(r > 0.30, "should still have translating bursts, got {r}");
     }
 
@@ -1094,7 +1193,10 @@ mod tests {
         let events = make_fast_events(&deltas);
         let spikes = compute_revision_spike_count(SortedEvents::new(&events));
         assert!(spikes.is_some());
-        assert!(spikes.unwrap() >= 1, "should detect revision spikes in composing pattern");
+        assert!(
+            spikes.unwrap() >= 1,
+            "should detect revision spikes in composing pattern"
+        );
     }
 
     #[test]
@@ -1104,7 +1206,11 @@ mod tests {
         let events = make_fast_events(&deltas);
         let spikes = compute_revision_spike_count(SortedEvents::new(&events));
         assert!(spikes.is_some());
-        assert_eq!(spikes.unwrap(), 0, "pure append should have 0 revision spikes");
+        assert_eq!(
+            spikes.unwrap(),
+            0,
+            "pure append should have 0 revision spikes"
+        );
     }
 
     #[test]

@@ -207,7 +207,9 @@ pub(super) fn extract_public_key(key_ref: SecKeyRef) -> Result<Vec<u8>, TpmError
     // SecKeyCreateRandomKey. SecKeyCopyPublicKey returns a new +1 ref we must release.
     let public_key = unsafe { SecKeyCopyPublicKey(key_ref) };
     if public_key.is_null() {
-        return Err(TpmError::KeyExport("SecKeyCopyPublicKey returned null".into()));
+        return Err(TpmError::KeyExport(
+            "SecKeyCopyPublicKey returned null".into(),
+        ));
     }
     let mut error: CFErrorRef = null_mut();
     // SAFETY: public_key is non-null (checked above); error is an out-pointer.
@@ -219,7 +221,9 @@ pub(super) fn extract_public_key(key_ref: SecKeyRef) -> Result<Vec<u8>, TpmError
         }
         // SAFETY: public_key is a non-null CF object we own; release to avoid leak.
         unsafe { core_foundation_sys::base::CFRelease(public_key as *mut std::ffi::c_void) };
-        return Err(TpmError::KeyExport("SecKeyCopyExternalRepresentation returned null".into()));
+        return Err(TpmError::KeyExport(
+            "SecKeyCopyExternalRepresentation returned null".into(),
+        ));
     }
     // SAFETY: data_ref is non-null (checked above); wrap_under_create_rule takes ownership.
     let data = unsafe { CFData::wrap_under_create_rule(data_ref) };

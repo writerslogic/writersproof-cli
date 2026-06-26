@@ -12,10 +12,10 @@ use std::collections::HashMap;
 
 /// English function words: high density in prose, rare in code.
 static STOP_WORDS: &[&str] = &[
-    "the", "and", "is", "of", "in", "to", "a", "an", "that", "it", "was", "for", "on", "are",
-    "as", "with", "his", "they", "be", "at", "one", "have", "this", "from", "or", "had", "by",
-    "not", "but", "what", "some", "we", "can", "out", "other", "were", "all", "there", "when",
-    "up", "your", "how", "said", "each", "she", "do", "their", "if", "will", "about", "would",
+    "the", "and", "is", "of", "in", "to", "a", "an", "that", "it", "was", "for", "on", "are", "as",
+    "with", "his", "they", "be", "at", "one", "have", "this", "from", "or", "had", "by", "not",
+    "but", "what", "some", "we", "can", "out", "other", "were", "all", "there", "when", "up",
+    "your", "how", "said", "each", "she", "do", "their", "if", "will", "about", "would",
 ];
 
 const WEIGHT_DISCRIMINATOR: f64 = 2.0;
@@ -128,268 +128,1094 @@ impl PatternMatcher {
                 return;
             }
             let whole_word = kw.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
-            meta.push(PatternMeta { lang, keyword: kw, weight, whole_word });
+            meta.push(PatternMeta {
+                lang,
+                keyword: kw,
+                weight,
+                whole_word,
+            });
         };
 
         // ── Rust ────────────────────────────────────────────────────────────────
         for &kw in &[
-            "fn", "impl", "trait", "pub", "mod", "crate", "mut", "unsafe", "where", "loop",
-            "derive", "cfg", "unwrap", "Result", "Option", "Vec", "Box", "Arc", "Mutex",
-            "Some", "None", "Ok", "Err", "println", "eprintln", "macro_rules", "lifetimes",
-            "&mut", "&self", "->", "::", "#[", "!(", "?;",
-        ] { add("rust", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["struct", "enum", "match", "let", "const", "async", "await", "use", "return", "if", "else", "for", "while"] {
+            "fn",
+            "impl",
+            "trait",
+            "pub",
+            "mod",
+            "crate",
+            "mut",
+            "unsafe",
+            "where",
+            "loop",
+            "derive",
+            "cfg",
+            "unwrap",
+            "Result",
+            "Option",
+            "Vec",
+            "Box",
+            "Arc",
+            "Mutex",
+            "Some",
+            "None",
+            "Ok",
+            "Err",
+            "println",
+            "eprintln",
+            "macro_rules",
+            "lifetimes",
+            "&mut",
+            "&self",
+            "->",
+            "::",
+            "#[",
+            "!(",
+            "?;",
+        ] {
+            add("rust", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "struct", "enum", "match", "let", "const", "async", "await", "use", "return", "if",
+            "else", "for", "while",
+        ] {
             add("rust", kw, WEIGHT_COMMON);
         }
 
         // ── Python ──────────────────────────────────────────────────────────────
         for &kw in &[
-            "def", "elif", "except", "lambda", "yield", "nonlocal", "global", "assert", "pass",
-            "raise", "finally", "self", "__init__", "__name__", "__main__", "isinstance",
-            "range", "print", "True", "False", "None",
-            "import", "from", "with", "as", "in", "not", "and", "or", "is", "del", "try",
-        ] { add("python", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["class", "return", "if", "else", "for", "while", "async", "await"] {
+            "def",
+            "elif",
+            "except",
+            "lambda",
+            "yield",
+            "nonlocal",
+            "global",
+            "assert",
+            "pass",
+            "raise",
+            "finally",
+            "self",
+            "__init__",
+            "__name__",
+            "__main__",
+            "isinstance",
+            "range",
+            "print",
+            "True",
+            "False",
+            "None",
+            "import",
+            "from",
+            "with",
+            "as",
+            "in",
+            "not",
+            "and",
+            "or",
+            "is",
+            "del",
+            "try",
+        ] {
+            add("python", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "class", "return", "if", "else", "for", "while", "async", "await",
+        ] {
             add("python", kw, WEIGHT_COMMON);
         }
 
         // ── JavaScript / TypeScript ─────────────────────────────────────────────
         for &kw in &[
-            "function", "var", "undefined", "typeof", "instanceof", "prototype", "null", "NaN",
-            "this", "new", "delete", "console", "require", "module", "exports", "Promise",
-            "then", "catch", "finally", "throw", "debugger",
-            "===", "!==", "=>", "...", "?.", "${",
-            "interface", "type", "namespace", "declare", "readonly", "keyof", "extends", "implements",
-        ] { add("javascript", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["const", "let", "import", "export", "class", "return", "if", "else", "for", "while", "switch", "case", "async", "await"] {
+            "function",
+            "var",
+            "undefined",
+            "typeof",
+            "instanceof",
+            "prototype",
+            "null",
+            "NaN",
+            "this",
+            "new",
+            "delete",
+            "console",
+            "require",
+            "module",
+            "exports",
+            "Promise",
+            "then",
+            "catch",
+            "finally",
+            "throw",
+            "debugger",
+            "===",
+            "!==",
+            "=>",
+            "...",
+            "?.",
+            "${",
+            "interface",
+            "type",
+            "namespace",
+            "declare",
+            "readonly",
+            "keyof",
+            "extends",
+            "implements",
+        ] {
+            add("javascript", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "const", "let", "import", "export", "class", "return", "if", "else", "for", "while",
+            "switch", "case", "async", "await",
+        ] {
             add("javascript", kw, WEIGHT_COMMON);
         }
 
         // ── Swift ────────────────────────────────────────────────────────────────
         for &kw in &[
-            "func", "protocol", "extension", "guard", "defer", "throws", "rethrows",
-            "associatedtype", "typealias", "inout", "subscript", "willSet", "didSet", "deinit",
-            "init", "override", "final", "fileprivate", "internal", "open", "weak", "unowned",
-            "lazy", "mutating", "nonmutating", "convenience", "required", "optional",
-            "@objc", "@IBOutlet", "@IBAction", "@Published", "@State", "@Binding", "@Environment",
-        ] { add("swift", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["class", "struct", "enum", "var", "let", "import", "return", "if", "else", "for", "while", "switch", "case", "async", "await"] {
+            "func",
+            "protocol",
+            "extension",
+            "guard",
+            "defer",
+            "throws",
+            "rethrows",
+            "associatedtype",
+            "typealias",
+            "inout",
+            "subscript",
+            "willSet",
+            "didSet",
+            "deinit",
+            "init",
+            "override",
+            "final",
+            "fileprivate",
+            "internal",
+            "open",
+            "weak",
+            "unowned",
+            "lazy",
+            "mutating",
+            "nonmutating",
+            "convenience",
+            "required",
+            "optional",
+            "@objc",
+            "@IBOutlet",
+            "@IBAction",
+            "@Published",
+            "@State",
+            "@Binding",
+            "@Environment",
+        ] {
+            add("swift", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "class", "struct", "enum", "var", "let", "import", "return", "if", "else", "for",
+            "while", "switch", "case", "async", "await",
+        ] {
             add("swift", kw, WEIGHT_COMMON);
         }
 
         // ── Go ───────────────────────────────────────────────────────────────────
         for &kw in &[
-            "func", "package", "goroutine", "chan", "select", "defer", "fallthrough", "go",
-            "range", "make", "append", "cap", "len", "panic", "recover", "iota", "nil",
-            "fmt", "Println", "Printf", "Sprintf", ":=", "<-",
-        ] { add("go", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["import", "struct", "interface", "const", "var", "return", "if", "else", "for", "switch", "case", "type"] {
+            "func",
+            "package",
+            "goroutine",
+            "chan",
+            "select",
+            "defer",
+            "fallthrough",
+            "go",
+            "range",
+            "make",
+            "append",
+            "cap",
+            "len",
+            "panic",
+            "recover",
+            "iota",
+            "nil",
+            "fmt",
+            "Println",
+            "Printf",
+            "Sprintf",
+            ":=",
+            "<-",
+        ] {
+            add("go", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "import",
+            "struct",
+            "interface",
+            "const",
+            "var",
+            "return",
+            "if",
+            "else",
+            "for",
+            "switch",
+            "case",
+            "type",
+        ] {
             add("go", kw, WEIGHT_COMMON);
         }
 
         // ── C / C++ ──────────────────────────────────────────────────────────────
         for &kw in &[
-            "include", "define", "ifdef", "ifndef", "endif", "typedef", "sizeof", "malloc",
-            "free", "printf", "scanf", "NULL", "void", "int", "char", "float", "double",
-            "long", "short", "unsigned", "signed", "static", "extern", "volatile", "register",
-            "template", "typename", "namespace", "using", "virtual", "override", "final",
-            "nullptr", "auto", "constexpr", "noexcept", "decltype", "static_cast",
-            "dynamic_cast", "reinterpret_cast", "const_cast", "std", "cout", "cin", "endl",
-            "vector", "string", "unique_ptr", "shared_ptr", "move",
-            "->", "::", "#include", "<<", ">>",
-        ] { add("c_cpp", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["struct", "enum", "class", "return", "if", "else", "for", "while", "switch", "case", "const"] {
+            "include",
+            "define",
+            "ifdef",
+            "ifndef",
+            "endif",
+            "typedef",
+            "sizeof",
+            "malloc",
+            "free",
+            "printf",
+            "scanf",
+            "NULL",
+            "void",
+            "int",
+            "char",
+            "float",
+            "double",
+            "long",
+            "short",
+            "unsigned",
+            "signed",
+            "static",
+            "extern",
+            "volatile",
+            "register",
+            "template",
+            "typename",
+            "namespace",
+            "using",
+            "virtual",
+            "override",
+            "final",
+            "nullptr",
+            "auto",
+            "constexpr",
+            "noexcept",
+            "decltype",
+            "static_cast",
+            "dynamic_cast",
+            "reinterpret_cast",
+            "const_cast",
+            "std",
+            "cout",
+            "cin",
+            "endl",
+            "vector",
+            "string",
+            "unique_ptr",
+            "shared_ptr",
+            "move",
+            "->",
+            "::",
+            "#include",
+            "<<",
+            ">>",
+        ] {
+            add("c_cpp", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "struct", "enum", "class", "return", "if", "else", "for", "while", "switch", "case",
+            "const",
+        ] {
             add("c_cpp", kw, WEIGHT_COMMON);
         }
 
         // ── Java ─────────────────────────────────────────────────────────────────
         for &kw in &[
-            "public", "private", "protected", "abstract", "final", "synchronized", "volatile",
-            "transient", "native", "strictfp", "implements", "throws", "instanceof", "super",
-            "this", "new", "null", "boolean", "byte", "System", "String", "Integer",
-            "ArrayList", "HashMap", "Override", "Deprecated", "SuppressWarnings", "IOException",
-            "Exception", "Runnable", "Thread",
-        ] { add("java", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["class", "interface", "extends", "import", "package", "return", "if", "else", "for", "while", "switch", "case", "try", "catch", "finally", "throw", "static", "void", "int"] {
+            "public",
+            "private",
+            "protected",
+            "abstract",
+            "final",
+            "synchronized",
+            "volatile",
+            "transient",
+            "native",
+            "strictfp",
+            "implements",
+            "throws",
+            "instanceof",
+            "super",
+            "this",
+            "new",
+            "null",
+            "boolean",
+            "byte",
+            "System",
+            "String",
+            "Integer",
+            "ArrayList",
+            "HashMap",
+            "Override",
+            "Deprecated",
+            "SuppressWarnings",
+            "IOException",
+            "Exception",
+            "Runnable",
+            "Thread",
+        ] {
+            add("java", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "class",
+            "interface",
+            "extends",
+            "import",
+            "package",
+            "return",
+            "if",
+            "else",
+            "for",
+            "while",
+            "switch",
+            "case",
+            "try",
+            "catch",
+            "finally",
+            "throw",
+            "static",
+            "void",
+            "int",
+        ] {
             add("java", kw, WEIGHT_COMMON);
         }
 
         // ── Kotlin ───────────────────────────────────────────────────────────────
         for &kw in &[
-            "fun", "val", "var", "when", "object", "companion", "sealed", "data", "inline",
-            "reified", "crossinline", "noinline", "tailrec", "suspend", "coroutine", "lateinit",
-            "by", "init", "constructor", "internal", "actual", "expect", "typealias", "vararg",
-            "it", "println", "listOf", "mapOf", "setOf",
-        ] { add("kotlin", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["class", "interface", "abstract", "override", "import", "return", "if", "else", "for", "while", "when", "try", "catch", "throw", "null", "is", "as"] {
+            "fun",
+            "val",
+            "var",
+            "when",
+            "object",
+            "companion",
+            "sealed",
+            "data",
+            "inline",
+            "reified",
+            "crossinline",
+            "noinline",
+            "tailrec",
+            "suspend",
+            "coroutine",
+            "lateinit",
+            "by",
+            "init",
+            "constructor",
+            "internal",
+            "actual",
+            "expect",
+            "typealias",
+            "vararg",
+            "it",
+            "println",
+            "listOf",
+            "mapOf",
+            "setOf",
+        ] {
+            add("kotlin", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "class",
+            "interface",
+            "abstract",
+            "override",
+            "import",
+            "return",
+            "if",
+            "else",
+            "for",
+            "while",
+            "when",
+            "try",
+            "catch",
+            "throw",
+            "null",
+            "is",
+            "as",
+        ] {
             add("kotlin", kw, WEIGHT_COMMON);
         }
 
         // ── Ruby ─────────────────────────────────────────────────────────────────
         for &kw in &[
-            "def", "end", "do", "puts", "require", "attr_accessor", "attr_reader", "attr_writer",
-            "module", "include", "extend", "prepend", "begin", "rescue", "ensure", "raise",
-            "yield", "block_given", "proc", "lambda", "nil", "unless", "until", "then",
-            "elsif", "self", "super", "defined", "freeze",
-        ] { add("ruby", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["class", "return", "if", "else", "for", "while", "case", "when"] {
+            "def",
+            "end",
+            "do",
+            "puts",
+            "require",
+            "attr_accessor",
+            "attr_reader",
+            "attr_writer",
+            "module",
+            "include",
+            "extend",
+            "prepend",
+            "begin",
+            "rescue",
+            "ensure",
+            "raise",
+            "yield",
+            "block_given",
+            "proc",
+            "lambda",
+            "nil",
+            "unless",
+            "until",
+            "then",
+            "elsif",
+            "self",
+            "super",
+            "defined",
+            "freeze",
+        ] {
+            add("ruby", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "class", "return", "if", "else", "for", "while", "case", "when",
+        ] {
             add("ruby", kw, WEIGHT_COMMON);
         }
 
         // ── PHP ──────────────────────────────────────────────────────────────────
         for &kw in &[
-            "echo", "isset", "unset", "empty", "die", "exit", "require_once", "include_once",
-            "array", "foreach", "elseif", "endforeach", "endif", "endwhile", "endfor",
-            "endswitch", "callable", "mixed", "readonly", "match",
-            "$", "->", "::", "<?php", "?>",
-        ] { add("php", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["function", "class", "interface", "namespace", "use", "public", "private", "protected", "static", "abstract", "return", "if", "else", "for", "while", "switch", "case", "try", "catch", "throw", "new", "null", "true", "false"] {
+            "echo",
+            "isset",
+            "unset",
+            "empty",
+            "die",
+            "exit",
+            "require_once",
+            "include_once",
+            "array",
+            "foreach",
+            "elseif",
+            "endforeach",
+            "endif",
+            "endwhile",
+            "endfor",
+            "endswitch",
+            "callable",
+            "mixed",
+            "readonly",
+            "match",
+            "$",
+            "->",
+            "::",
+            "<?php",
+            "?>",
+        ] {
+            add("php", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "function",
+            "class",
+            "interface",
+            "namespace",
+            "use",
+            "public",
+            "private",
+            "protected",
+            "static",
+            "abstract",
+            "return",
+            "if",
+            "else",
+            "for",
+            "while",
+            "switch",
+            "case",
+            "try",
+            "catch",
+            "throw",
+            "new",
+            "null",
+            "true",
+            "false",
+        ] {
             add("php", kw, WEIGHT_COMMON);
         }
 
         // ── HTML / CSS ───────────────────────────────────────────────────────────
         for &kw in &[
-            "<div", "<span", "<body", "<head", "<html", "<script", "<style", "<link", "<meta",
-            "<form", "<input", "<button", "<table", "<tr>", "<td>", "<th>", "<ul>", "<ol>",
-            "<li>", "<img", "<a ", "</div>", "</span>", "class=", "id=", "href=", "src=",
-            "margin:", "padding:", "display:", "position:", "color:", "background:",
-            "font-size:", "border:", "flex", "grid", "@media", "@keyframes", "@import",
-            "!important", ":hover", ":focus", "::before", "::after", "z-index:",
-        ] { add("html_css", kw, WEIGHT_DISCRIMINATOR); }
+            "<div",
+            "<span",
+            "<body",
+            "<head",
+            "<html",
+            "<script",
+            "<style",
+            "<link",
+            "<meta",
+            "<form",
+            "<input",
+            "<button",
+            "<table",
+            "<tr>",
+            "<td>",
+            "<th>",
+            "<ul>",
+            "<ol>",
+            "<li>",
+            "<img",
+            "<a ",
+            "</div>",
+            "</span>",
+            "class=",
+            "id=",
+            "href=",
+            "src=",
+            "margin:",
+            "padding:",
+            "display:",
+            "position:",
+            "color:",
+            "background:",
+            "font-size:",
+            "border:",
+            "flex",
+            "grid",
+            "@media",
+            "@keyframes",
+            "@import",
+            "!important",
+            ":hover",
+            ":focus",
+            "::before",
+            "::after",
+            "z-index:",
+        ] {
+            add("html_css", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── Shell ────────────────────────────────────────────────────────────────
         for &kw in &[
             "#!/bin", "echo", "grep", "sed", "awk", "curl", "wget", "chmod", "chown", "mkdir",
             "rmdir", "export", "source", "alias", "unset", "shift", "getopts", "trap", "exec",
-            "eval", "xargs", "pipe", "tee", "sort", "uniq", "wc", "cut", "find", "test",
-            "read", "local", "fi", "esac", "done", "elif",
-            "&&", "||", "|", ">>", "2>&1", "$@", "$#", "$?", "${", "$(", "if [",
-        ] { add("shell", kw, WEIGHT_DISCRIMINATOR); }
+            "eval", "xargs", "pipe", "tee", "sort", "uniq", "wc", "cut", "find", "test", "read",
+            "local", "fi", "esac", "done", "elif", "&&", "||", "|", ">>", "2>&1", "$@", "$#", "$?",
+            "${", "$(", "if [",
+        ] {
+            add("shell", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── Objective-C ──────────────────────────────────────────────────────────
         for &kw in &[
-            "@interface", "@implementation", "@end", "@protocol", "@property", "@synthesize",
-            "@dynamic", "@selector", "@autoreleasepool", "@try", "@catch", "@finally",
-            "@throw", "@class", "@import", "@optional", "@required",
-            "NSObject", "NSString", "NSArray", "NSDictionary", "NSNumber", "NSMutableArray",
-            "NSMutableDictionary", "NSLog", "BOOL", "YES", "NO", "nil", "id", "alloc", "init",
-            "dealloc", "retain", "release", "autorelease", "strong", "weak", "copy", "assign",
-            "nonatomic", "atomic", "readonly", "readwrite", "[[", "]]", "@\"",
-        ] { add("objective_c", kw, WEIGHT_DISCRIMINATOR); }
+            "@interface",
+            "@implementation",
+            "@end",
+            "@protocol",
+            "@property",
+            "@synthesize",
+            "@dynamic",
+            "@selector",
+            "@autoreleasepool",
+            "@try",
+            "@catch",
+            "@finally",
+            "@throw",
+            "@class",
+            "@import",
+            "@optional",
+            "@required",
+            "NSObject",
+            "NSString",
+            "NSArray",
+            "NSDictionary",
+            "NSNumber",
+            "NSMutableArray",
+            "NSMutableDictionary",
+            "NSLog",
+            "BOOL",
+            "YES",
+            "NO",
+            "nil",
+            "id",
+            "alloc",
+            "init",
+            "dealloc",
+            "retain",
+            "release",
+            "autorelease",
+            "strong",
+            "weak",
+            "copy",
+            "assign",
+            "nonatomic",
+            "atomic",
+            "readonly",
+            "readwrite",
+            "[[",
+            "]]",
+            "@\"",
+        ] {
+            add("objective_c", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── C# ───────────────────────────────────────────────────────────────────
         for &kw in &[
-            "namespace", "using", "partial", "sealed", "virtual", "override", "abstract",
-            "delegate", "event", "async", "await", "yield", "where", "ref", "out", "params",
-            "get", "set", "value", "var", "dynamic", "is", "as", "typeof", "sizeof",
-            "stackalloc", "checked", "unchecked", "Console", "String", "List", "Dictionary",
-            "Task", "IEnumerable", "LINQ", "System", "Assert", "=>", "??", "?.", "?..",
-        ] { add("csharp", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["class", "interface", "struct", "enum", "public", "private", "protected", "static", "void", "int", "string", "bool", "return", "if", "else", "for", "foreach", "while", "switch", "case", "try", "catch", "throw", "new", "null", "true", "false"] {
+            "namespace",
+            "using",
+            "partial",
+            "sealed",
+            "virtual",
+            "override",
+            "abstract",
+            "delegate",
+            "event",
+            "async",
+            "await",
+            "yield",
+            "where",
+            "ref",
+            "out",
+            "params",
+            "get",
+            "set",
+            "value",
+            "var",
+            "dynamic",
+            "is",
+            "as",
+            "typeof",
+            "sizeof",
+            "stackalloc",
+            "checked",
+            "unchecked",
+            "Console",
+            "String",
+            "List",
+            "Dictionary",
+            "Task",
+            "IEnumerable",
+            "LINQ",
+            "System",
+            "Assert",
+            "=>",
+            "??",
+            "?.",
+            "?..",
+        ] {
+            add("csharp", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "class",
+            "interface",
+            "struct",
+            "enum",
+            "public",
+            "private",
+            "protected",
+            "static",
+            "void",
+            "int",
+            "string",
+            "bool",
+            "return",
+            "if",
+            "else",
+            "for",
+            "foreach",
+            "while",
+            "switch",
+            "case",
+            "try",
+            "catch",
+            "throw",
+            "new",
+            "null",
+            "true",
+            "false",
+        ] {
             add("csharp", kw, WEIGHT_COMMON);
         }
 
         // ── JSON ─────────────────────────────────────────────────────────────────
-        for &kw in &["{\"", "\":", "\",", "\":\"", "\":[", "\":{", "true", "false", "null"] {
+        for &kw in &[
+            "{\"", "\":", "\",", "\":\"", "\":[", "\":{", "true", "false", "null",
+        ] {
             add("json", kw, WEIGHT_DISCRIMINATOR);
         }
 
         // ── XML ──────────────────────────────────────────────────────────────────
-        for &kw in &["<?xml", "xmlns", "<![CDATA[", "]]>", "<!DOCTYPE", "<!ENTITY", "<!ELEMENT", "<!ATTLIST", "</", "/>", "<!--", "-->"] {
+        for &kw in &[
+            "<?xml",
+            "xmlns",
+            "<![CDATA[",
+            "]]>",
+            "<!DOCTYPE",
+            "<!ENTITY",
+            "<!ELEMENT",
+            "<!ATTLIST",
+            "</",
+            "/>",
+            "<!--",
+            "-->",
+        ] {
             add("xml", kw, WEIGHT_DISCRIMINATOR);
         }
 
         // ── YAML ─────────────────────────────────────────────────────────────────
-        for &kw in &["---", "...", "!!str", "!!int", "!!float", "!!bool", "!!null", "!!seq", "!!map", "*anchor", "&anchor", "<<:", "%YAML"] {
+        for &kw in &[
+            "---", "...", "!!str", "!!int", "!!float", "!!bool", "!!null", "!!seq", "!!map",
+            "*anchor", "&anchor", "<<:", "%YAML",
+        ] {
             add("yaml", kw, WEIGHT_DISCRIMINATOR);
         }
 
         // ── TOML ─────────────────────────────────────────────────────────────────
-        for &kw in &["[[", "]]", "= true", "= false", "[package]", "[dependencies]", "[workspace]", "[profile", "[features]", "[build-dependencies]", "[dev-dependencies]", "[target."] {
+        for &kw in &[
+            "[[",
+            "]]",
+            "= true",
+            "= false",
+            "[package]",
+            "[dependencies]",
+            "[workspace]",
+            "[profile",
+            "[features]",
+            "[build-dependencies]",
+            "[dev-dependencies]",
+            "[target.",
+        ] {
             add("toml", kw, WEIGHT_DISCRIMINATOR);
         }
 
         // ── Markdown ─────────────────────────────────────────────────────────────
-        for &kw in &["```", "---", "##", "###", "####", "- [", "* [", "![", "](", "> ", "| ---", "| :--"] {
+        for &kw in &[
+            "```", "---", "##", "###", "####", "- [", "* [", "![", "](", "> ", "| ---", "| :--",
+        ] {
             add("markdown", kw, WEIGHT_DISCRIMINATOR);
         }
 
         // ── R ────────────────────────────────────────────────────────────────────
         for &kw in &[
-            "<-", "library", "require", "data.frame", "ggplot", "mutate", "filter", "summarize",
-            "group_by", "aes", "geom_", "facet_", "tibble", "dplyr", "tidyr", "pipe", "print",
-            "cat", "paste", "paste0", "sapply", "lapply", "tapply", "mapply", "matrix",
-            "vector", "list", "factor", "numeric", "character", "logical", "integer", "double",
-            "TRUE", "FALSE", "NULL", "NA", "NaN", "Inf", "function",
-        ] { add("r_lang", kw, WEIGHT_DISCRIMINATOR); }
+            "<-",
+            "library",
+            "require",
+            "data.frame",
+            "ggplot",
+            "mutate",
+            "filter",
+            "summarize",
+            "group_by",
+            "aes",
+            "geom_",
+            "facet_",
+            "tibble",
+            "dplyr",
+            "tidyr",
+            "pipe",
+            "print",
+            "cat",
+            "paste",
+            "paste0",
+            "sapply",
+            "lapply",
+            "tapply",
+            "mapply",
+            "matrix",
+            "vector",
+            "list",
+            "factor",
+            "numeric",
+            "character",
+            "logical",
+            "integer",
+            "double",
+            "TRUE",
+            "FALSE",
+            "NULL",
+            "NA",
+            "NaN",
+            "Inf",
+            "function",
+        ] {
+            add("r_lang", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── Scala ────────────────────────────────────────────────────────────────
         for &kw in &[
             "val", "var", "def", "object", "sealed", "trait", "implicit", "lazy", "override",
-            "abstract", "with", "extends", "forSome", "yield", "match", "case", "println",
-            "Unit", "Any", "Nothing", "Nil", "Some", "None", "Option", "Either", "Left",
-            "Right", "Future",
-        ] { add("scala", kw, WEIGHT_DISCRIMINATOR); }
-        for &kw in &["class", "import", "package", "return", "if", "else", "for", "while", "try", "catch", "throw", "new", "null", "true", "false"] {
+            "abstract", "with", "extends", "forSome", "yield", "match", "case", "println", "Unit",
+            "Any", "Nothing", "Nil", "Some", "None", "Option", "Either", "Left", "Right", "Future",
+        ] {
+            add("scala", kw, WEIGHT_DISCRIMINATOR);
+        }
+        for &kw in &[
+            "class", "import", "package", "return", "if", "else", "for", "while", "try", "catch",
+            "throw", "new", "null", "true", "false",
+        ] {
             add("scala", kw, WEIGHT_COMMON);
         }
 
         // ── TypeScript ───────────────────────────────────────────────────────────
         for &kw in &[
-            "interface", "type", "namespace", "declare", "readonly", "keyof", "infer",
-            "extends", "implements", "abstract", "enum", "as", "unknown", "never", "any",
-            "void", "Partial", "Required", "Readonly", "Record", "Pick", "Omit", "Exclude",
-            "Extract", "NonNullable", "ReturnType", "Parameters",
-        ] { add("typescript", kw, WEIGHT_DISCRIMINATOR); }
+            "interface",
+            "type",
+            "namespace",
+            "declare",
+            "readonly",
+            "keyof",
+            "infer",
+            "extends",
+            "implements",
+            "abstract",
+            "enum",
+            "as",
+            "unknown",
+            "never",
+            "any",
+            "void",
+            "Partial",
+            "Required",
+            "Readonly",
+            "Record",
+            "Pick",
+            "Omit",
+            "Exclude",
+            "Extract",
+            "NonNullable",
+            "ReturnType",
+            "Parameters",
+        ] {
+            add("typescript", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── Lua ──────────────────────────────────────────────────────────────────
         for &kw in &[
-            "local", "then", "end", "elseif", "repeat", "until", "do", "function", "require",
-            "module", "pairs", "ipairs", "next", "select", "unpack", "setmetatable",
-            "getmetatable", "rawget", "rawset", "pcall", "xpcall", "coroutine", "table",
-            "string", "math", "io", "os", "print", "type", "tostring", "tonumber",
-            "nil", "true", "false", "not", "and", "or",
-        ] { add("lua", kw, WEIGHT_DISCRIMINATOR); }
+            "local",
+            "then",
+            "end",
+            "elseif",
+            "repeat",
+            "until",
+            "do",
+            "function",
+            "require",
+            "module",
+            "pairs",
+            "ipairs",
+            "next",
+            "select",
+            "unpack",
+            "setmetatable",
+            "getmetatable",
+            "rawget",
+            "rawset",
+            "pcall",
+            "xpcall",
+            "coroutine",
+            "table",
+            "string",
+            "math",
+            "io",
+            "os",
+            "print",
+            "type",
+            "tostring",
+            "tonumber",
+            "nil",
+            "true",
+            "false",
+            "not",
+            "and",
+            "or",
+        ] {
+            add("lua", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── Dart ─────────────────────────────────────────────────────────────────
         for &kw in &[
-            "Widget", "StatelessWidget", "StatefulWidget", "BuildContext", "setState", "build",
-            "scaffold", "Container", "Column", "Row", "Text", "Center", "EdgeInsets",
-            "MaterialApp", "ThemeData", "late", "required", "final", "const", "var", "dynamic",
-            "covariant", "mixin", "with", "factory", "operator", "typedef", "part", "show",
-            "hide", "deferred", "as", "async", "await", "yield", "sync", "print",
-        ] { add("dart", kw, WEIGHT_DISCRIMINATOR); }
+            "Widget",
+            "StatelessWidget",
+            "StatefulWidget",
+            "BuildContext",
+            "setState",
+            "build",
+            "scaffold",
+            "Container",
+            "Column",
+            "Row",
+            "Text",
+            "Center",
+            "EdgeInsets",
+            "MaterialApp",
+            "ThemeData",
+            "late",
+            "required",
+            "final",
+            "const",
+            "var",
+            "dynamic",
+            "covariant",
+            "mixin",
+            "with",
+            "factory",
+            "operator",
+            "typedef",
+            "part",
+            "show",
+            "hide",
+            "deferred",
+            "as",
+            "async",
+            "await",
+            "yield",
+            "sync",
+            "print",
+        ] {
+            add("dart", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── PowerShell ───────────────────────────────────────────────────────────
         for &kw in &[
-            "$_", "$PSVersionTable", "$true", "$false", "$null", "Write-Host", "Write-Output",
-            "Write-Error", "Get-", "Set-", "New-", "Remove-", "Invoke-", "ForEach-Object",
-            "Where-Object", "Select-Object", "Sort-Object", "Group-Object", "Measure-Object",
-            "-eq", "-ne", "-gt", "-lt", "-ge", "-le", "-like", "-match", "-contains", "-in",
-            "param", "begin", "process", "end", "[string]", "[int]", "[bool]", "[array]",
-            "[hashtable]", "[PSCustomObject]", "function", "filter", "workflow",
-        ] { add("powershell", kw, WEIGHT_DISCRIMINATOR); }
+            "$_",
+            "$PSVersionTable",
+            "$true",
+            "$false",
+            "$null",
+            "Write-Host",
+            "Write-Output",
+            "Write-Error",
+            "Get-",
+            "Set-",
+            "New-",
+            "Remove-",
+            "Invoke-",
+            "ForEach-Object",
+            "Where-Object",
+            "Select-Object",
+            "Sort-Object",
+            "Group-Object",
+            "Measure-Object",
+            "-eq",
+            "-ne",
+            "-gt",
+            "-lt",
+            "-ge",
+            "-le",
+            "-like",
+            "-match",
+            "-contains",
+            "-in",
+            "param",
+            "begin",
+            "process",
+            "end",
+            "[string]",
+            "[int]",
+            "[bool]",
+            "[array]",
+            "[hashtable]",
+            "[PSCustomObject]",
+            "function",
+            "filter",
+            "workflow",
+        ] {
+            add("powershell", kw, WEIGHT_DISCRIMINATOR);
+        }
 
         // ── IDE / language-agnostic syntax ──────────────────────────────────────
-        for &kw in &["->", "=>", "::", "```", "//", "/*", "*/", "!=", ">=", "<=", "&&", "||", "+=", "-=", "<<", ">>"] {
+        for &kw in &[
+            "->", "=>", "::", "```", "//", "/*", "*/", "!=", ">=", "<=", "&&", "||", "+=", "-=",
+            "<<", ">>",
+        ] {
             add("ide", kw, 0.0);
         }
 
         // ── SQL (case-insensitive) ───────────────────────────────────────────────
         let sql_kws: &[&'static str] = &[
-            "SELECT", "INSERT", "UPDATE", "DELETE", "WHERE", "FROM", "JOIN", "LEFT", "RIGHT",
-            "INNER", "OUTER", "CROSS", "CREATE", "DROP", "ALTER", "TRUNCATE", "INDEX", "TABLE",
-            "VIEW", "TRIGGER", "PROCEDURE", "FUNCTION", "GROUP", "ORDER", "HAVING", "LIMIT",
-            "OFFSET", "UNION", "INTERSECT", "EXCEPT", "EXISTS", "BETWEEN", "LIKE", "IN", "IS",
-            "NULL", "NOT", "AND", "OR", "AS", "ON", "SET", "VALUES", "INTO", "DISTINCT",
-            "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "CASE", "WHEN", "THEN", "ELSE",
-            "END", "PRIMARY", "FOREIGN", "KEY", "REFERENCES", "CONSTRAINT", "DEFAULT",
-            "AUTO_INCREMENT", "VARCHAR", "INTEGER", "BOOLEAN", "TIMESTAMP", "BEGIN", "COMMIT",
-            "ROLLBACK", "TRANSACTION",
+            "SELECT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "WHERE",
+            "FROM",
+            "JOIN",
+            "LEFT",
+            "RIGHT",
+            "INNER",
+            "OUTER",
+            "CROSS",
+            "CREATE",
+            "DROP",
+            "ALTER",
+            "TRUNCATE",
+            "INDEX",
+            "TABLE",
+            "VIEW",
+            "TRIGGER",
+            "PROCEDURE",
+            "FUNCTION",
+            "GROUP",
+            "ORDER",
+            "HAVING",
+            "LIMIT",
+            "OFFSET",
+            "UNION",
+            "INTERSECT",
+            "EXCEPT",
+            "EXISTS",
+            "BETWEEN",
+            "LIKE",
+            "IN",
+            "IS",
+            "NULL",
+            "NOT",
+            "AND",
+            "OR",
+            "AS",
+            "ON",
+            "SET",
+            "VALUES",
+            "INTO",
+            "DISTINCT",
+            "COUNT",
+            "SUM",
+            "AVG",
+            "MIN",
+            "MAX",
+            "COALESCE",
+            "CASE",
+            "WHEN",
+            "THEN",
+            "ELSE",
+            "END",
+            "PRIMARY",
+            "FOREIGN",
+            "KEY",
+            "REFERENCES",
+            "CONSTRAINT",
+            "DEFAULT",
+            "AUTO_INCREMENT",
+            "VARCHAR",
+            "INTEGER",
+            "BOOLEAN",
+            "TIMESTAMP",
+            "BEGIN",
+            "COMMIT",
+            "ROLLBACK",
+            "TRANSACTION",
         ];
         let sql_meta: Vec<PatternMeta> = sql_kws
             .iter()
-            .map(|&kw| PatternMeta { lang: "sql", keyword: kw, weight: WEIGHT_DISCRIMINATOR, whole_word: true })
+            .map(|&kw| PatternMeta {
+                lang: "sql",
+                keyword: kw,
+                weight: WEIGHT_DISCRIMINATOR,
+                whole_word: true,
+            })
             .collect();
         let sql_ac = AhoCorasick::builder()
             .ascii_case_insensitive(true)
@@ -398,13 +1224,32 @@ impl PatternMatcher {
 
         // ── Messaging ────────────────────────────────────────────────────────────
         let messaging_patterns: Vec<&'static str> = vec![
-            "To:", "From:", "Subject:", "Cc:", "Bcc:", "Reply-To:", "Dear ", "Best regards",
-            "Sincerely", "Kind regards", "Sent from", "On behalf of", "wrote:",
-            "-----Original", "Forwarded message",
+            "To:",
+            "From:",
+            "Subject:",
+            "Cc:",
+            "Bcc:",
+            "Reply-To:",
+            "Dear ",
+            "Best regards",
+            "Sincerely",
+            "Kind regards",
+            "Sent from",
+            "On behalf of",
+            "wrote:",
+            "-----Original",
+            "Forwarded message",
         ];
-        let msg_ac = AhoCorasick::new(&messaging_patterns).expect("static messaging patterns are valid");
+        let msg_ac =
+            AhoCorasick::new(&messaging_patterns).expect("static messaging patterns are valid");
 
-        Self { ac_meta: meta, sql_ac, sql_meta, msg_ac, messaging_patterns }
+        Self {
+            ac_meta: meta,
+            sql_ac,
+            sql_meta,
+            msg_ac,
+            messaging_patterns,
+        }
     }
 
     /// Detect patterns in text and return pattern names found.
@@ -440,7 +1285,10 @@ impl PatternMatcher {
         }
 
         for mat in self.msg_ac.find_iter(text) {
-            found.insert(format!("messaging:{}", self.messaging_patterns[mat.pattern().as_usize()]));
+            found.insert(format!(
+                "messaging:{}",
+                self.messaging_patterns[mat.pattern().as_usize()]
+            ));
         }
 
         found.into_iter().collect()
@@ -597,9 +1445,8 @@ impl ContentDetector {
         let total_weight: f64 = lang_weights.values().sum();
         if code_keywords > 0 {
             let base = 0.3 + (code_keywords as f64 * 0.1).min(0.4);
-            let disc_bonus = (total_weight / code_keywords.max(1) as f64 - 1.0)
-                .clamp(0.0, 0.2)
-                * 0.05;
+            let disc_bonus =
+                (total_weight / code_keywords.max(1) as f64 - 1.0).clamp(0.0, 0.2) * 0.05;
             score += base + disc_bonus;
         }
 
@@ -681,11 +1528,14 @@ impl ContentDetector {
         // Stop word density: English function words are strong prose indicators
         let words: Vec<&str> = text.split_whitespace().collect();
         if !words.is_empty() {
-            let stop_count = words.iter().filter(|w| {
-                let lower = w.to_lowercase();
-                let clean: String = lower.chars().filter(|c| c.is_alphabetic()).collect();
-                STOP_WORDS.contains(&clean.as_str())
-            }).count();
+            let stop_count = words
+                .iter()
+                .filter(|w| {
+                    let lower = w.to_lowercase();
+                    let clean: String = lower.chars().filter(|c| c.is_alphabetic()).collect();
+                    STOP_WORDS.contains(&clean.as_str())
+                })
+                .count();
             if stop_count as f64 / words.len() as f64 > 0.2 {
                 score += 0.25;
             }
@@ -839,7 +1689,9 @@ impl ContentDetector {
         let best_idx = candidates
             .iter()
             .enumerate()
-            .max_by(|(_, (_, a)), (_, (_, b))| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|(_, (_, a)), (_, (_, b))| {
+                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+            })
             .map(|(i, _)| i)
             .unwrap_or(0);
 

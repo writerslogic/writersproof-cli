@@ -157,8 +157,7 @@ pub struct Sentinel {
     /// churn (WAL init, HMAC key derivation, integrity verification on every open).
     pub(crate) cached_store: Arc<Mutex<Option<crate::store::SecureStore>>>,
     /// Current OS permission state for keystroke capture; updated every 30 s.
-    pub(crate) permission_state:
-        Arc<Mutex<super::permission_monitor::PermissionState>>,
+    pub(crate) permission_state: Arc<Mutex<super::permission_monitor::PermissionState>>,
     /// Sender half of the keystroke async channel kept alive so new bridge
     /// threads spawned by `restart_keystroke_capture` write to the same
     /// receiver that the event loop already holds.
@@ -173,8 +172,15 @@ pub struct Sentinel {
     /// Directory watcher for active document sessions (file-save correlation).
     document_watcher: Arc<Mutex<Option<super::document_watcher::DocumentDirectoryWatcher>>>,
     /// Content fingerprints for active sessions, used for cross-app linking.
-    content_fingerprints:
-        Arc<Mutex<Vec<(String, String, super::content_fingerprint::ContentFingerprint)>>>,
+    content_fingerprints: Arc<
+        Mutex<
+            Vec<(
+                String,
+                String,
+                super::content_fingerprint::ContentFingerprint,
+            )>,
+        >,
+    >,
     /// Anchor manager for OTS/RFC 3161/notary timestamping after checkpoint commits.
     pub(crate) anchor_manager: Option<Arc<crate::anchors::AnchorManager>>,
 }
@@ -408,7 +414,9 @@ impl Sentinel {
     ///
     /// AUD-041: signing_key is read *before* cached_store is locked to
     /// preserve the ordering signing_key(1) < sessions(2) < cached_store(3).
-    pub(crate) fn get_or_open_store(&self) -> Option<std::sync::MutexGuard<'_, Option<crate::store::SecureStore>>> {
+    pub(crate) fn get_or_open_store(
+        &self,
+    ) -> Option<std::sync::MutexGuard<'_, Option<crate::store::SecureStore>>> {
         // Fast path: store already open — only needs the Mutex.
         {
             let guard = self.cached_store.lock_recover();
@@ -592,9 +600,8 @@ impl Sentinel {
             ctx.cached_focus = ctx.current_focus.read_recover().clone();
 
             let mut idle_check_interval = interval(Duration::from_secs(idle_check_interval_secs));
-            let checkpoint_sleep = tokio::time::sleep(
-                ctx.compute_next_checkpoint_interval(checkpoint_interval_secs),
-            );
+            let checkpoint_sleep =
+                tokio::time::sleep(ctx.compute_next_checkpoint_interval(checkpoint_interval_secs));
             tokio::pin!(checkpoint_sleep);
             let mut challenge_interval = interval(Duration::from_secs(30));
             let mut permission_check_interval = interval(Duration::from_secs(30));
@@ -735,9 +742,9 @@ impl Sentinel {
                 candidates
                     .iter()
                     .map(|p| {
-                        let json = map.get(p.as_str()).and_then(|s| {
-                            serde_json::to_string(&s.semantic_counts).ok()
-                        });
+                        let json = map
+                            .get(p.as_str())
+                            .and_then(|s| serde_json::to_string(&s.semantic_counts).ok());
                         (p.clone(), json)
                     })
                     .collect()
@@ -780,7 +787,10 @@ impl Sentinel {
                         log::error!("Final checkpoint task failed: {e}");
                     }
                 }
-            }).await.is_err() {
+            })
+            .await
+            .is_err()
+            {
                 log::warn!("Final checkpoint tasks timed out after 5s; aborting remaining");
                 checkpoint_tasks.abort_all();
             }
@@ -997,9 +1007,7 @@ impl Sentinel {
                     let running = Arc::clone(&self.running);
                     let active = Arc::clone(&self.keystroke_capture_active);
                     tokio::spawn(async move {
-                        while running.load(Ordering::SeqCst)
-                            && active.load(Ordering::SeqCst)
-                        {
+                        while running.load(Ordering::SeqCst) && active.load(Ordering::SeqCst) {
                             match broadcast_rx.recv().await {
                                 Ok(ev) => {
                                     if tx.try_send(ev).is_err() {
@@ -1032,23 +1040,15 @@ impl Sentinel {
                     let h = std::thread::Builder::new()
                         .name("cpoe-keystroke-restart".into())
                         .spawn(move || {
-                            while running.load(Ordering::SeqCst)
-                                && active.load(Ordering::SeqCst)
-                            {
-                                match sync_rx.recv_timeout(
-                                    std::time::Duration::from_millis(100),
-                                ) {
+                            while running.load(Ordering::SeqCst) && active.load(Ordering::SeqCst) {
+                                match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                                     Ok(ev) => {
                                         if tx.try_send(ev).is_err() {
                                             break;
                                         }
                                     }
-                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                                        continue
-                                    }
-                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                                        break
-                                    }
+                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                                 }
                             }
                         });

@@ -51,10 +51,7 @@ pub(super) fn verify_seals_structural(
             let in_ok = match hex::decode(vdf_in) {
                 Ok(b) => b.len() == 32,
                 Err(e) => {
-                    log::warn!(
-                        "Checkpoint {} VDF input hex decode failed: {e}",
-                        cp.ordinal
-                    );
+                    log::warn!("Checkpoint {} VDF input hex decode failed: {e}", cp.ordinal);
                     false
                 }
             };

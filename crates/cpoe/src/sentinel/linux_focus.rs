@@ -24,9 +24,7 @@ use std::time::SystemTime;
 mod x11_provider {
     use super::*;
     use x11rb::connection::Connection;
-    use x11rb::protocol::xproto::{
-        Atom, AtomEnum, ConnectionExt, GetPropertyReply, Window,
-    };
+    use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt, GetPropertyReply, Window};
     use x11rb::rust_connection::RustConnection;
 
     /// Cached X11 atom identifiers for window properties.
@@ -92,21 +90,10 @@ mod x11_provider {
         }
 
         /// Read a 32-bit property value from a window.
-        fn get_property_u32(
-            &self,
-            window: Window,
-            property: Atom,
-        ) -> Option<u32> {
+        fn get_property_u32(&self, window: Window, property: Atom) -> Option<u32> {
             let reply = self
                 .conn
-                .get_property(
-                    false,
-                    window,
-                    property,
-                    AtomEnum::ANY,
-                    0,
-                    1,
-                )
+                .get_property(false, window, property, AtomEnum::ANY, 0, 1)
                 .ok()?
                 .reply()
                 .ok()?;
@@ -137,14 +124,7 @@ mod x11_provider {
         fn get_text_property(&self, window: Window, property: Atom) -> Option<String> {
             let reply: GetPropertyReply = self
                 .conn
-                .get_property(
-                    false,
-                    window,
-                    property,
-                    AtomEnum::ANY,
-                    0,
-                    1024,
-                )
+                .get_property(false, window, property, AtomEnum::ANY, 0, 1024)
                 .ok()?
                 .reply()
                 .ok()?;
@@ -211,9 +191,7 @@ mod x11_provider {
 mod wayland_provider {
     use super::*;
     use std::sync::Mutex;
-    use wayland_client::{
-        protocol::wl_registry, Connection, Dispatch, EventQueue, QueueHandle,
-    };
+    use wayland_client::{protocol::wl_registry, Connection, Dispatch, EventQueue, QueueHandle};
     use wayland_protocols_wlr::foreign_toplevel::v1::client::{
         zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
         zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
@@ -381,11 +359,7 @@ mod wayland_provider {
 
     impl WindowProvider for WaylandWindowProvider {
         fn get_active_window(&self) -> Option<WindowInfo> {
-            let title_raw = self
-                .focused_title
-                .lock()
-                .ok()?
-                .clone()?;
+            let title_raw = self.focused_title.lock().ok()?.clone()?;
             let app_id = self
                 .focused_app_id
                 .lock()
@@ -492,16 +466,15 @@ mod dbus_provider {
                     &("global.display.focus_window ? global.display.focus_window.get_pid() : 0",),
                 )
                 .ok();
-            let pid = pid_reply
-                .and_then(|r| {
-                    let b = r.body();
-                    let (ok, val): (bool, String) = b.deserialize().ok()?;
-                    if ok {
-                        val.parse::<u32>().ok()
-                    } else {
-                        None
-                    }
-                });
+            let pid = pid_reply.and_then(|r| {
+                let b = r.body();
+                let (ok, val): (bool, String) = b.deserialize().ok()?;
+                if ok {
+                    val.parse::<u32>().ok()
+                } else {
+                    None
+                }
+            });
 
             Some((title, pid))
         }
@@ -529,9 +502,7 @@ mod dbus_provider {
             let output: String = body.deserialize().ok().unwrap_or_default();
             let mut lines = output.lines();
             let title = lines.next().unwrap_or("").to_string();
-            let pid = lines
-                .next()
-                .and_then(|s| s.parse::<u32>().ok());
+            let pid = lines.next().and_then(|s| s.parse::<u32>().ok());
 
             if title.is_empty() {
                 return None;
@@ -600,10 +571,7 @@ impl LinuxFocusMonitor {
             if std::env::var("WAYLAND_DISPLAY").is_ok() {
                 if let Some(provider) = wayland_provider::WaylandWindowProvider::new() {
                     log::info!("Linux focus: using Wayland (wlr-foreign-toplevel) provider");
-                    return Box::new(PollingSentinelFocusTracker::new(
-                        Arc::new(provider),
-                        config,
-                    ));
+                    return Box::new(PollingSentinelFocusTracker::new(Arc::new(provider), config));
                 }
                 log::warn!(
                     "WAYLAND_DISPLAY set but wlr-foreign-toplevel connection failed; \
@@ -618,10 +586,7 @@ impl LinuxFocusMonitor {
             if std::env::var("DISPLAY").is_ok() {
                 if let Some(provider) = x11_provider::X11WindowProvider::new() {
                     log::info!("Linux focus: using X11 (_NET_ACTIVE_WINDOW) provider");
-                    return Box::new(PollingSentinelFocusTracker::new(
-                        Arc::new(provider),
-                        config,
-                    ));
+                    return Box::new(PollingSentinelFocusTracker::new(Arc::new(provider), config));
                 }
                 log::warn!("DISPLAY set but X11 connection failed; trying next provider");
             }
@@ -632,10 +597,7 @@ impl LinuxFocusMonitor {
         {
             if let Some(provider) = dbus_provider::DbusWindowProvider::new() {
                 log::info!("Linux focus: using DBus (GNOME/KDE) provider");
-                return Box::new(PollingSentinelFocusTracker::new(
-                    Arc::new(provider),
-                    config,
-                ));
+                return Box::new(PollingSentinelFocusTracker::new(Arc::new(provider), config));
             }
         }
 
@@ -679,7 +641,10 @@ mod tests {
             // VS Code on Linux
             ("main.rs - project - Visual Studio Code", Some("main.rs")),
             // Kate (KDE)
-            ("/home/user/document.txt - Kate", Some("/home/user/document.txt")),
+            (
+                "/home/user/document.txt - Kate",
+                Some("/home/user/document.txt"),
+            ),
             // No document
             ("Terminal", None),
             // Absolute path as title
@@ -688,11 +653,7 @@ mod tests {
 
         for (title, expected) in cases {
             let result = infer_document_path_from_title(title);
-            assert_eq!(
-                result.as_deref(),
-                expected,
-                "Failed for title: {title:?}"
-            );
+            assert_eq!(result.as_deref(), expected, "Failed for title: {title:?}");
         }
     }
 

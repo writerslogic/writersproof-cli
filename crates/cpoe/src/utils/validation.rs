@@ -191,7 +191,10 @@ impl TextValidator {
 
     /// Create validator with custom bounds.
     pub fn with_bounds(min_bytes: usize, max_bytes: usize) -> Self {
-        debug_assert!(min_bytes <= max_bytes, "min_bytes ({min_bytes}) must be <= max_bytes ({max_bytes})");
+        debug_assert!(
+            min_bytes <= max_bytes,
+            "min_bytes ({min_bytes}) must be <= max_bytes ({max_bytes})"
+        );
         TextValidator {
             min_bytes,
             max_bytes,

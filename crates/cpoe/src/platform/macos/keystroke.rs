@@ -110,54 +110,55 @@ impl EventTapRunner {
             .name("cpoe-eventtap".into())
             .stack_size(2 * 1024 * 1024)
             .spawn(move || {
-            // SAFETY: `tap_cb` lives on this thread's stack frame. The raw pointer
-            // passed to CGEventTapCreate is only dereferenced by the run loop on
-            // this same thread. CFRunLoopRun() blocks until CFRunLoopStop() is
-            // called from stop(). After CFRunLoopRun returns, `tap_cb` is dropped
-            // normally. stop() calls CFRelease(tap) only after joining this thread,
-            // so macOS cannot invoke the callback after `tap_cb` is dropped.
-            unsafe {
-                let tap = match CfGuard::new(CGEventTapCreate(
-                    K_CG_HID_EVENT_TAP,
-                    K_CG_HEAD_INSERT_EVENT_TAP,
-                    K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
-                    cg_event_mask_bit(K_CG_EVENT_KEY_DOWN) | cg_event_mask_bit(K_CG_EVENT_KEY_UP),
-                    event_tap_trampoline,
-                    &mut tap_cb as *mut TapCallback as *mut std::ffi::c_void,
-                )) {
-                    Some(t) => t,
-                    None => {
-                        let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
-                        return;
-                    }
-                };
+                // SAFETY: `tap_cb` lives on this thread's stack frame. The raw pointer
+                // passed to CGEventTapCreate is only dereferenced by the run loop on
+                // this same thread. CFRunLoopRun() blocks until CFRunLoopStop() is
+                // called from stop(). After CFRunLoopRun returns, `tap_cb` is dropped
+                // normally. stop() calls CFRelease(tap) only after joining this thread,
+                // so macOS cannot invoke the callback after `tap_cb` is dropped.
+                unsafe {
+                    let tap = match CfGuard::new(CGEventTapCreate(
+                        K_CG_HID_EVENT_TAP,
+                        K_CG_HEAD_INSERT_EVENT_TAP,
+                        K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
+                        cg_event_mask_bit(K_CG_EVENT_KEY_DOWN)
+                            | cg_event_mask_bit(K_CG_EVENT_KEY_UP),
+                        event_tap_trampoline,
+                        &mut tap_cb as *mut TapCallback as *mut std::ffi::c_void,
+                    )) {
+                        Some(t) => t,
+                        None => {
+                            let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
+                            return;
+                        }
+                    };
 
-                let source = match CfGuard::new(CFMachPortCreateRunLoopSource(
-                    std::ptr::null_mut(),
-                    tap.as_ptr(),
-                    0,
-                )) {
-                    Some(s) => s,
-                    None => {
-                        let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
-                        return;
-                    }
-                };
+                    let source = match CfGuard::new(CFMachPortCreateRunLoopSource(
+                        std::ptr::null_mut(),
+                        tap.as_ptr(),
+                        0,
+                    )) {
+                        Some(s) => s,
+                        None => {
+                            let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
+                            return;
+                        }
+                    };
 
-                let rl_ref = CFRunLoopGetCurrent();
-                CFRetain(rl_ref);
-                *run_loop_clone.lock_recover() = Some(RunLoopHandle(rl_ref));
-                CFRunLoopAddSource(rl_ref, source.as_ptr(), kCFRunLoopCommonModes);
-                CGEventTapEnable(tap.as_ptr(), true);
-                *tap_resources_clone.lock_recover() = Some(EventTapResources {
-                    run_loop: rl_ref,
-                    tap,
-                    source,
-                });
-                let _ = ready_tx.send(Ok(()));
-                CFRunLoopRun();
-            }
-        });
+                    let rl_ref = CFRunLoopGetCurrent();
+                    CFRetain(rl_ref);
+                    *run_loop_clone.lock_recover() = Some(RunLoopHandle(rl_ref));
+                    CFRunLoopAddSource(rl_ref, source.as_ptr(), kCFRunLoopCommonModes);
+                    CGEventTapEnable(tap.as_ptr(), true);
+                    *tap_resources_clone.lock_recover() = Some(EventTapResources {
+                        run_loop: rl_ref,
+                        tap,
+                        source,
+                    });
+                    let _ = ready_tx.send(Ok(()));
+                    CFRunLoopRun();
+                }
+            });
 
         let thread = match thread {
             Ok(h) => h,
@@ -260,7 +261,9 @@ where
                     }
                 }
                 if !recovered {
-                    log::error!("CGEventTap re-enable failed after 3 attempts; marking tap as dead");
+                    log::error!(
+                        "CGEventTap re-enable failed after 3 attempts; marking tap as dead"
+                    );
                     tap_alive.store(false, Ordering::SeqCst);
                 }
             } else {
@@ -278,9 +281,8 @@ where
             // Filter auto-repeat: holding a key generates continuous keyDown
             // events that are not authorship evidence.
             if event_type == K_CG_EVENT_KEY_DOWN {
-                let is_repeat = unsafe {
-                    CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_AUTOREPEAT)
-                };
+                let is_repeat =
+                    unsafe { CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_AUTOREPEAT) };
                 if is_repeat != 0 {
                     return;
                 }
@@ -646,10 +648,7 @@ impl KeystrokeCapture for MacOSKeystrokeCapture {
                 };
 
                 let target_pid = unsafe {
-                    CGEventGetIntegerValueField(
-                        event,
-                        K_CG_EVENT_TARGET_UNIX_PROCESS_ID,
-                    )
+                    CGEventGetIntegerValueField(event, K_CG_EVENT_TARGET_UNIX_PROCESS_ID)
                 } as i32;
                 let keystroke = KeystrokeEvent {
                     timestamp_ns: now,

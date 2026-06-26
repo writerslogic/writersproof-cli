@@ -129,10 +129,10 @@ impl<'de> Deserialize<'de> for Seal {
         let h1 = HexHash::from_hex(&helper.h1).map_err(serde::de::Error::custom)?;
         let h2 = HexHash::from_hex(&helper.h2).map_err(serde::de::Error::custom)?;
         let h3 = HexHash::from_hex(&helper.h3).map_err(serde::de::Error::custom)?;
-        let signature = Ed25519Sig::from_hex(&helper.signature)
-            .map_err(serde::de::Error::custom)?;
-        let public_key = Ed25519Pubkey::from_hex(&helper.public_key)
-            .map_err(serde::de::Error::custom)?;
+        let signature =
+            Ed25519Sig::from_hex(&helper.signature).map_err(serde::de::Error::custom)?;
+        let public_key =
+            Ed25519Pubkey::from_hex(&helper.public_key).map_err(serde::de::Error::custom)?;
 
         Ok(Seal {
             h1: h1.0,

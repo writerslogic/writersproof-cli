@@ -29,7 +29,8 @@ pub fn compute(seed: [u8; 32], tier: u8) -> Result<Vec<u8>> {
 pub fn verify(seed: [u8; 32], proof_bytes: &[u8]) -> Result<()> {
     let proof: posme::PosmeProof = ciborium_decode(proof_bytes)
         .map_err(|e| Error::crypto(format!("PoSME proof deserialization failed: {e}")))?;
-    proof.validate_structure()
+    proof
+        .validate_structure()
         .map_err(|e| Error::crypto(format!("PoSME proof structure invalid: {e}")))?;
     posme::verifier::verify(&seed, &proof)
         .map_err(|e| Error::crypto(format!("PoSME verification failed: {e}")))

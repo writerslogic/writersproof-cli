@@ -180,9 +180,9 @@ impl DaemonManager {
                     return Ok(false);
                 }
                 Err(e) => {
-                    return Err(SentinelError::Io(std::io::Error::other(
-                        format!("flock failed on PID file: {e}"),
-                    )));
+                    return Err(SentinelError::Io(std::io::Error::other(format!(
+                        "flock failed on PID file: {e}"
+                    ))));
                 }
             }
         }

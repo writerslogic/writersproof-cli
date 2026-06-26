@@ -14,10 +14,7 @@
 /// Panics if `edges` is empty.
 #[inline]
 pub fn bin_by_edges(value: u64, edges: &[u64]) -> usize {
-    edges
-        .iter()
-        .rposition(|&edge| value >= edge)
-        .unwrap_or(0)
+    edges.iter().rposition(|&edge| value >= edge).unwrap_or(0)
 }
 
 /// Bin a normalized value (0.0..1.0) into `num_bins` equal-width bins.

@@ -402,7 +402,11 @@ impl ProfileMatcher {
         target: &AuthorFingerprint,
         candidates: &[AuthorFingerprint],
     ) -> Vec<MatchResult> {
-        log::debug!("ProfileMatcher::find_matches: target={}, candidates={}", target.id, candidates.len());
+        log::debug!(
+            "ProfileMatcher::find_matches: target={}, candidates={}",
+            target.id,
+            candidates.len()
+        );
         let mut results: Vec<_> = candidates
             .iter()
             .filter(|c| c.id != target.id)
@@ -434,7 +438,11 @@ impl ProfileMatcher {
         target: &AuthorFingerprint,
         candidates: &[AuthorFingerprint],
     ) -> Option<MatchResult> {
-        log::debug!("ProfileMatcher::find_best_match: target={}, candidates={}", target.id, candidates.len());
+        log::debug!(
+            "ProfileMatcher::find_best_match: target={}, candidates={}",
+            target.id,
+            candidates.len()
+        );
         self.find_matches(target, candidates).into_iter().next()
     }
 
@@ -444,7 +452,11 @@ impl ProfileMatcher {
         target: &AuthorFingerprint,
         candidate: &AuthorFingerprint,
     ) -> VerificationResult {
-        log::debug!("ProfileMatcher::verify_match: target={}, candidate={}", target.id, candidate.id);
+        log::debug!(
+            "ProfileMatcher::verify_match: target={}, candidate={}",
+            target.id,
+            candidate.id
+        );
         let comparison = compare_fingerprints(target, candidate);
 
         VerificationResult {
@@ -568,8 +580,7 @@ impl BatchComparator {
                     }
                 }
                 if count > 0 && total_sim.is_finite() {
-                    cluster.avg_internal_similarity =
-                        (total_sim / count as f64).clamp(0.0, 1.0);
+                    cluster.avg_internal_similarity = (total_sim / count as f64).clamp(0.0, 1.0);
                 }
             }
 

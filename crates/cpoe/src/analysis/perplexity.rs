@@ -243,7 +243,11 @@ impl WordTrigramModel {
             return None;
         }
         let ppl = (-log_prob_sum / count as f64).exp();
-        if ppl.is_finite() { Some(ppl) } else { None }
+        if ppl.is_finite() {
+            Some(ppl)
+        } else {
+            None
+        }
     }
 
     /// Returns `true` when perplexity is below the AI-fluency threshold.

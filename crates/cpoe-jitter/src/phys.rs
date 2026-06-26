@@ -174,7 +174,9 @@ impl PhysJitter {
         if h_min < 1.0 {
             0
         } else {
-            (h_min.floor() as u8).saturating_sub(1).min(MAX_ENTROPY_BITS)
+            (h_min.floor() as u8)
+                .saturating_sub(1)
+                .min(MAX_ENTROPY_BITS)
         }
     }
 }
@@ -238,7 +240,10 @@ fn adaptive_quantize_into(deltas: &[i64], out: &mut [u8]) -> usize {
         return 1;
     }
     let range = (hi - lo) as u128;
-    let n_bins = (deltas.len() as f64).sqrt().ceil().clamp(8.0, MAX_QUANT_BINS as f64) as u128;
+    let n_bins = (deltas.len() as f64)
+        .sqrt()
+        .ceil()
+        .clamp(8.0, MAX_QUANT_BINS as f64) as u128;
     let bin_width = (range / n_bins).max(1);
     for (i, &d) in deltas.iter().enumerate() {
         out[i] = ((d as i128 - lo) as u128 / bin_width).min((MAX_QUANT_BINS - 1) as u128) as u8;
@@ -393,7 +398,9 @@ mod tests {
     fn alternating_values_yield_near_zero_entropy() {
         let phys = PhysJitter::new(0);
         // Attacker spoofs TSC to alternate between two extremes.
-        let samples: Vec<u64> = (0..256).map(|i| if i % 2 == 0 { 0 } else { 1_000_000 }).collect();
+        let samples: Vec<u64> = (0..256)
+            .map(|i| if i % 2 == 0 { 0 } else { 1_000_000 })
+            .collect();
         let bits = phys.estimate_min_entropy(&samples);
         // Markov estimate: each state perfectly predicts the next → 0 bits.
         assert_eq!(bits, 0, "alternating pattern must yield 0 entropy bits");
@@ -424,7 +431,11 @@ mod tests {
         let pattern = [100u64, 300, 900, 50];
         let samples: Vec<u64> = pattern.iter().copied().cycle().take(256).collect();
         let bits = phys.estimate_min_entropy(&samples);
-        assert!(bits <= 2, "4-value cycle should yield ≤ 2 bits, got {}", bits);
+        assert!(
+            bits <= 2,
+            "4-value cycle should yield ≤ 2 bits, got {}",
+            bits
+        );
     }
 
     #[test]
@@ -466,12 +477,18 @@ mod tests {
         let mut state: u64 = 0xdeadbeef;
         let mut acc: u64 = 0;
         for _ in 0..256 {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let delta = 500 + (state >> 48); // 500..66035 range
             acc = acc.wrapping_add(delta);
             samples.push(acc);
         }
         let bits = phys.estimate_min_entropy(&samples);
-        assert!(bits >= 2, "realistic jitter should yield ≥ 2 bits, got {}", bits);
+        assert!(
+            bits >= 2,
+            "realistic jitter should yield ≥ 2 bits, got {}",
+            bits
+        );
     }
 }

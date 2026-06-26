@@ -11,10 +11,10 @@
 use der::{Decode, Encode};
 use rustls_pki_types::CertificateDer;
 use sha2::{Digest, Sha256};
-use x509_cert::spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 use x509_cert::certificate::{CertificateInner, TbsCertificateInner, Version};
 use x509_cert::name::RdnSequence;
 use x509_cert::serial_number::SerialNumber;
+use x509_cert::spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 use x509_cert::time::Validity;
 
 use crate::error::{Error, Result};
@@ -73,7 +73,10 @@ pub fn load_or_generate_client_cert(provider: &dyn Provider) -> Result<Certifica
     tmp.persist(&cert_path)
         .map_err(|e| Error::crypto(format!("failed to persist client cert: {e}")))?;
 
-    log::info!("Generated mTLS client certificate at {}", cert_path.display());
+    log::info!(
+        "Generated mTLS client certificate at {}",
+        cert_path.display()
+    );
     Ok(cert_der)
 }
 
@@ -318,20 +321,20 @@ mod tests {
         let result = generate_client_cert(&BadKeyProvider);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("33 bytes"), "error should mention length: {err}");
+        assert!(
+            err.contains("33 bytes"),
+            "error should mention length: {err}"
+        );
     }
 
     #[test]
     fn load_or_generate_with_temp_dir() {
         let tmp = tempfile::tempdir().unwrap();
         // Set CPOE_DATA_DIR to temp dir for testing.
-        let _guard = scopeguard::guard(
-            std::env::var("CPOE_DATA_DIR").ok(),
-            |prev| match prev {
-                Some(v) => std::env::set_var("CPOE_DATA_DIR", v),
-                None => std::env::remove_var("CPOE_DATA_DIR"),
-            },
-        );
+        let _guard = scopeguard::guard(std::env::var("CPOE_DATA_DIR").ok(), |prev| match prev {
+            Some(v) => std::env::set_var("CPOE_DATA_DIR", v),
+            None => std::env::remove_var("CPOE_DATA_DIR"),
+        });
         std::env::set_var("CPOE_DATA_DIR", tmp.path());
 
         let provider = MockP256Provider;

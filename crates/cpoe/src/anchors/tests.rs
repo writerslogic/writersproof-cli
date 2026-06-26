@@ -325,7 +325,6 @@ fn provider_config_serde_with_options() {
     assert_eq!(back.options.get("cert_path").unwrap(), "/etc/tsa.pem");
 }
 
-
 // --- verify_dual_anchor ---
 
 #[test]

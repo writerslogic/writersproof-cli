@@ -10,11 +10,12 @@ use crate::crypto::EvidenceSigner;
 use crate::error::{Error, Result};
 use sha2::{Digest, Sha256};
 
-use super::jumbf::{build_assertion_jumbf_cbor, build_assertion_jumbf_json, ciborium_to_vec, encode_jumbf};
+use super::jumbf::{
+    build_assertion_jumbf_cbor, build_assertion_jumbf_json, ciborium_to_vec, encode_jumbf,
+};
 use super::types::{
-    Action, ActionParameters, ActionsAssertion,
-    C2paClaim, C2paManifest, ClaimGeneratorInfo, ExclusionRange,
-    HashDataAssertion, HashedUri, MetadataAssertion, SoftwareAgent,
+    Action, ActionParameters, ActionsAssertion, C2paClaim, C2paManifest, ClaimGeneratorInfo,
+    ExclusionRange, HashDataAssertion, HashedUri, MetadataAssertion, SoftwareAgent,
 };
 use super::{
     ASSERTION_LABEL_ACTIONS, ASSERTION_LABEL_HASH_DATA, ASSERTION_LABEL_METADATA,
@@ -119,7 +120,10 @@ impl StandaloneManifestBuilder {
         let now = chrono::Utc::now().to_rfc3339();
 
         // Generate a manifest label from the document hash.
-        let manifest_label = format!("urn:writersproof:sign:{}", hex::encode(&self.document_hash[..8]));
+        let manifest_label = format!(
+            "urn:writersproof:sign:{}",
+            hex::encode(&self.document_hash[..8])
+        );
 
         let actions_assertion = ActionsAssertion {
             actions: vec![Action {
@@ -148,8 +152,7 @@ impl StandaloneManifestBuilder {
 
         let hash_data_box =
             build_assertion_jumbf_cbor(ASSERTION_LABEL_HASH_DATA, &hash_data_assertion)?;
-        let actions_box =
-            build_assertion_jumbf_cbor(ASSERTION_LABEL_ACTIONS, &actions_assertion)?;
+        let actions_box = build_assertion_jumbf_cbor(ASSERTION_LABEL_ACTIONS, &actions_assertion)?;
 
         let mut assertion_boxes = Vec::new();
         let mut created_assertions = Vec::new();
@@ -264,9 +267,11 @@ mod tests {
         assert_eq!(&jumbf[4..8], b"jumb");
 
         // Decode and verify structure.
-        let manifest = super::super::jumbf::decode_jumbf(&jumbf)
-            .expect("should decode as valid JUMBF");
-        assert!(manifest.manifest_label.starts_with("urn:writersproof:sign:"));
+        let manifest =
+            super::super::jumbf::decode_jumbf(&jumbf).expect("should decode as valid JUMBF");
+        assert!(manifest
+            .manifest_label
+            .starts_with("urn:writersproof:sign:"));
         assert!(!manifest.assertion_boxes.is_empty());
         assert!(!manifest.signature.is_empty());
     }

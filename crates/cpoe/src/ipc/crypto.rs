@@ -234,7 +234,11 @@ impl SecureSession {
         let expected_seq = loop {
             let current = self.rx_sequence.load(Ordering::SeqCst);
             if seq.to_le_bytes().ct_eq(&current.to_le_bytes()).unwrap_u8() != 1 {
-                return Err(SequenceDesyncError { expected: current, got: seq }.into());
+                return Err(SequenceDesyncError {
+                    expected: current,
+                    got: seq,
+                }
+                .into());
             }
             match self.rx_sequence.compare_exchange(
                 current,
@@ -483,8 +487,7 @@ pub(crate) fn encode_message(msg: &IpcMessage) -> Result<Vec<u8>> {
 pub(crate) fn decode_message(bytes: &[u8]) -> Result<IpcMessage> {
     let (msg, _): (IpcMessage, usize) = bincode::serde::decode_from_slice(
         bytes,
-        bincode::config::standard()
-            .with_limit::<{ super::messages::MAX_MESSAGE_SIZE }>(),
+        bincode::config::standard().with_limit::<{ super::messages::MAX_MESSAGE_SIZE }>(),
     )
     .map_err(|e| anyhow!("Failed to decode message: {}", e))?;
     Ok(msg)

@@ -49,32 +49,31 @@ fn word_surprisal(word: &str) -> f64 {
     let lower = word.to_ascii_lowercase();
     match lower.as_str() {
         // Top-20 most common English words (~1.5 bits)
-        "the" | "be" | "to" | "of" | "and" | "a" | "in" | "that" | "have" | "i" | "it"
-        | "for" | "not" | "on" | "with" | "he" | "as" | "you" | "do" | "at" => 1.5,
+        "the" | "be" | "to" | "of" | "and" | "a" | "in" | "that" | "have" | "i" | "it" | "for"
+        | "not" | "on" | "with" | "he" | "as" | "you" | "do" | "at" => 1.5,
 
         // Next tier: common function words (~2.5 bits)
-        "this" | "but" | "his" | "by" | "from" | "they" | "we" | "say" | "her" | "she"
-        | "or" | "an" | "will" | "my" | "one" | "all" | "would" | "there" | "their"
-        | "what" | "so" | "up" | "out" | "if" | "about" | "who" | "get" | "which" | "go"
-        | "me" | "when" | "make" | "can" | "like" | "no" | "just" | "him" | "know"
-        | "take" | "come" | "could" | "than" | "look" | "want" | "give" | "use" | "find"
-        | "here" | "thing" | "many" | "well" | "only" | "also" | "how" | "after" | "its"
-        | "our" | "two" | "way" | "then" | "some" | "them" | "see" | "other" | "been"
-        | "into" | "has" | "more" | "time" | "very" | "new" | "was" | "were"
-        | "had" | "are" | "is" | "did" | "does" | "being" | "am" => 2.5,
+        "this" | "but" | "his" | "by" | "from" | "they" | "we" | "say" | "her" | "she" | "or"
+        | "an" | "will" | "my" | "one" | "all" | "would" | "there" | "their" | "what" | "so"
+        | "up" | "out" | "if" | "about" | "who" | "get" | "which" | "go" | "me" | "when"
+        | "make" | "can" | "like" | "no" | "just" | "him" | "know" | "take" | "come" | "could"
+        | "than" | "look" | "want" | "give" | "use" | "find" | "here" | "thing" | "many"
+        | "well" | "only" | "also" | "how" | "after" | "its" | "our" | "two" | "way" | "then"
+        | "some" | "them" | "see" | "other" | "been" | "into" | "has" | "more" | "time"
+        | "very" | "new" | "was" | "were" | "had" | "are" | "is" | "did" | "does" | "being"
+        | "am" => 2.5,
 
         // Common content words (~4.0 bits)
-        "people" | "because" | "good" | "each" | "those" | "feel" | "seem" | "own"
-        | "think" | "same" | "tell" | "need" | "should" | "try" | "leave" | "call"
-        | "keep" | "let" | "begin" | "show" | "hear" | "play" | "run" | "move" | "live"
-        | "believe" | "bring" | "happen" | "write" | "provide" | "sit" | "stand" | "lose"
-        | "pay" | "meet" | "include" | "continue" | "set" | "learn" | "change" | "lead"
-        | "understand" | "watch" | "follow" | "stop" | "create" | "speak" | "read"
-        | "allow" | "add" | "spend" | "grow" | "open" | "walk" | "offer" | "remember"
-        | "hold" | "love" | "consider" | "appear" | "buy" | "wait" | "serve" | "die"
-        | "send" | "expect" | "build" | "stay" | "fall" | "oh" | "cut" | "reach"
-        | "remain" | "suggest" | "raise" | "pass" | "sell" | "require" | "report"
-        | "decide" | "pull" => 4.0,
+        "people" | "because" | "good" | "each" | "those" | "feel" | "seem" | "own" | "think"
+        | "same" | "tell" | "need" | "should" | "try" | "leave" | "call" | "keep" | "let"
+        | "begin" | "show" | "hear" | "play" | "run" | "move" | "live" | "believe" | "bring"
+        | "happen" | "write" | "provide" | "sit" | "stand" | "lose" | "pay" | "meet"
+        | "include" | "continue" | "set" | "learn" | "change" | "lead" | "understand" | "watch"
+        | "follow" | "stop" | "create" | "speak" | "read" | "allow" | "add" | "spend" | "grow"
+        | "open" | "walk" | "offer" | "remember" | "hold" | "love" | "consider" | "appear"
+        | "buy" | "wait" | "serve" | "die" | "send" | "expect" | "build" | "stay" | "fall"
+        | "oh" | "cut" | "reach" | "remain" | "suggest" | "raise" | "pass" | "sell" | "require"
+        | "report" | "decide" | "pull" => 4.0,
 
         _ => {
             // Estimate based on word length: longer words tend to be rarer.
@@ -168,7 +167,10 @@ fn compute_iki_surprisal_correlation(
         return (None, word_surprisals.len());
     }
 
-    (Some(spearman_correlation(&iki_per_word, &surprisals)), word_surprisals.len())
+    (
+        Some(spearman_correlation(&iki_per_word, &surprisals)),
+        word_surprisals.len(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -424,7 +426,8 @@ fn compute_structural_pause_concentration(
         prev_char = ch;
     }
 
-    boundary_positions.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    boundary_positions
+        .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     boundary_positions.dedup();
 
     if boundary_positions.is_empty() {
@@ -568,13 +571,9 @@ pub fn analyze_cognitive_load(
     }
 
     let (iki_rho_opt, word_count) = compute_iki_surprisal_correlation(text, samples);
-    let iki_surprisal_rho = iki_rho_opt
-        .filter(|v| v.is_finite())
-        .unwrap_or(0.0);
+    let iki_surprisal_rho = iki_rho_opt.filter(|v| v.is_finite()).unwrap_or(0.0);
     let (arc_opt, sentence_count) = compute_sentence_velocity_arcs(text, samples);
-    let sentence_arc_r_squared = arc_opt
-        .filter(|v| v.is_finite())
-        .unwrap_or(0.0);
+    let sentence_arc_r_squared = arc_opt.filter(|v| v.is_finite()).unwrap_or(0.0);
     let structural_pause_concentration = compute_structural_pause_concentration(text, samples)
         .filter(|v| v.is_finite())
         .unwrap_or(0.5);
@@ -607,10 +606,9 @@ pub fn analyze_cognitive_load(
     const WORD_WEIGHT: f64 = 0.50;
     const CLAUSE_WEIGHT: f64 = 0.30;
     const DOC_WEIGHT: f64 = 0.20;
-    let composite_score = (WORD_WEIGHT * word_score
-        + CLAUSE_WEIGHT * clause_score
-        + DOC_WEIGHT * doc_score)
-        .clamp(0.0, 1.0);
+    let composite_score =
+        (WORD_WEIGHT * word_score + CLAUSE_WEIGHT * clause_score + DOC_WEIGHT * doc_score)
+            .clamp(0.0, 1.0);
 
     Some(CognitiveLoadMetrics {
         iki_surprisal_rho,
@@ -726,7 +724,10 @@ mod tests {
         let samples = make_samples(&ikis);
 
         let result = analyze_cognitive_load(Some(text), &samples);
-        assert!(result.is_some(), "analyze_cognitive_load returned None with valid text and samples");
+        assert!(
+            result.is_some(),
+            "analyze_cognitive_load returned None with valid text and samples"
+        );
         let metrics = result.expect("result is Some per assertion above");
         assert!(metrics.word_count > 10);
         assert!(metrics.sentence_count >= 3);

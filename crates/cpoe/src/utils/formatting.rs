@@ -175,7 +175,10 @@ mod tests {
 
     #[test]
     fn format_duration_infinite() {
-        assert_eq!(format_duration_human(f64::INFINITY), "Computationally infeasible");
+        assert_eq!(
+            format_duration_human(f64::INFINITY),
+            "Computationally infeasible"
+        );
     }
 
     #[test]
@@ -185,5 +188,4 @@ mod tests {
             "Computationally infeasible (exceeds hardware key extraction bound)"
         );
     }
-
 }

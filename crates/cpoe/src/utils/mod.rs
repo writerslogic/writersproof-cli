@@ -7,13 +7,13 @@ pub mod crypto_types;
 pub mod error_context;
 pub mod formatting;
 pub mod fs;
+pub mod key_derivation;
 pub(crate) mod lock;
 pub mod mlock;
 pub mod probability;
 pub mod stats;
 pub mod telemetry;
 pub mod time;
-pub mod key_derivation;
 pub mod validation;
 
 pub use crypto_helpers::{

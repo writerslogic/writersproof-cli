@@ -109,7 +109,6 @@ pub fn create_keystroke_capture() -> Result<Box<dyn KeystrokeCapture>> {
     Ok(Box::new(linux::LinuxKeystrokeCapture::new()?))
 }
 
-
 /// Create the platform-appropriate mouse capture implementation.
 #[cfg(target_os = "macos")]
 pub fn create_mouse_capture() -> Result<Box<dyn MouseCapture>> {
@@ -173,10 +172,9 @@ pub fn has_required_permissions() -> bool {
 #[cfg(target_os = "macos")]
 pub use macos::{
     check_accessibility_permissions, check_input_monitoring_permissions, enumerate_hid_keyboards,
-    get_strict_mode, get_synthetic_stats,
-    request_accessibility_permissions, request_input_monitoring_permissions, reset_synthetic_stats,
-    set_strict_mode, validate_dual_layer, verify_event_source,
-    DualLayerValidation as MacOSDualLayerValidation,
+    get_strict_mode, get_synthetic_stats, request_accessibility_permissions,
+    request_input_monitoring_permissions, reset_synthetic_stats, set_strict_mode,
+    validate_dual_layer, verify_event_source, DualLayerValidation as MacOSDualLayerValidation,
     EventVerificationResult as MacOSEventVerificationResult, FocusInfo as MacOSFocusInfo,
     HidDeviceInfo as MacOSHidDeviceInfo, HidInputCapture, KeystrokeInfo, KeystrokeMonitor,
     PermissionStatus as MacOSPermissionStatus, SyntheticEventStats,

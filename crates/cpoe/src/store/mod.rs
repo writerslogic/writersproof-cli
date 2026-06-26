@@ -455,7 +455,7 @@ pub fn check_disk_space(path: &Path) -> anyhow::Result<u64> {
                 std::io::Error::last_os_error()
             ));
         }
-        let available = stat.f_bavail as u64 * stat.f_frsize as u64;
+        let available = stat.f_bavail as u64 * stat.f_frsize;
         if available < MIN_FREE_SPACE_BYTES {
             anyhow::bail!(
                 "Insufficient disk space: {} MiB available, {} MiB required. \

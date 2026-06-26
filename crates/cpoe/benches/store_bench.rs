@@ -64,7 +64,11 @@ fn make_populated_store() -> (TempDir, SecureStore) {
             let dev = device_id(i % DEVICE_COUNT);
             let ts = base_ts + (i as i64) * 1_000_000;
             // 80% of rows have context_note; 20% are NULL (simulates already-pruned rows).
-            let note: Option<&str> = if i % 5 == 0 { None } else { Some("draft notes") };
+            let note: Option<&str> = if i % 5 == 0 {
+                None
+            } else {
+                Some("draft notes")
+            };
             let mut event_hash = [0u8; 32];
             event_hash[0] = (i & 0xFF) as u8;
             event_hash[1] = ((i >> 8) & 0xFF) as u8;
@@ -371,10 +375,7 @@ fn bench_unsynced_fragments(c: &mut Criterion) {
                      ORDER BY timestamp ASC",
                 )
                 .expect("prepare");
-            let count: usize = stmt
-                .query_map([], |_row| Ok(()))
-                .expect("query")
-                .count();
+            let count: usize = stmt.query_map([], |_row| Ok(())).expect("query").count();
             black_box(count)
         })
     });
@@ -391,10 +392,7 @@ fn bench_unsynced_fragments(c: &mut Criterion) {
                      ORDER BY timestamp ASC",
                 )
                 .expect("query");
-            let count: usize = stmt
-                .query_map([], |_row| Ok(()))
-                .expect("query")
-                .count();
+            let count: usize = stmt.query_map([], |_row| Ok(())).expect("query").count();
             black_box(count)
         })
     });
