@@ -158,12 +158,14 @@ impl AppraisalPolicy {
     /// evidence tag rather than treating the result as a valid evaluation.
     pub fn evaluate(&self, metrics: &EvidenceMetrics) -> Result<Self> {
         if self.computation_model == TrustComputation::CustomFormula {
-            return Err(Error::TrustPolicy(TrustPolicyError::CustomFormulaUnavailable {
-                policy_uri: self.policy_uri.clone(),
-                reason: "no external formula implementation is registered for this \
+            return Err(Error::TrustPolicy(
+                TrustPolicyError::CustomFormulaUnavailable {
+                    policy_uri: self.policy_uri.clone(),
+                    reason: "no external formula implementation is registered for this \
                          evaluation context"
-                    .to_string(),
-            }));
+                        .to_string(),
+                },
+            ));
         }
         self.validate()?;
         let mut policy = self.clone();

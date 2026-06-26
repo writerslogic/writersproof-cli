@@ -13,9 +13,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::sentinel::types::{FocusSwitchRecord, PasteContentKind, PasteContext};
 #[cfg(test)]
 use crate::sentinel::types::PasteSource;
+use crate::sentinel::types::{FocusSwitchRecord, PasteContentKind, PasteContext};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -186,7 +186,7 @@ fn classify_paste(paste: &PasteContext) -> (PasteClass, f64) {
     }
 
     let domestication_threshold = if paste.paste_char_count > 0 {
-        (paste.paste_char_count / 50).max(20).min(200)
+        (paste.paste_char_count / 50).clamp(20, 200)
     } else {
         20
     };
@@ -339,7 +339,8 @@ pub fn analyze_composition_mode(
     let reference_weight = reference_count as f64 / total_signals;
 
     // Pure composition is what's left.
-    let non_pure = ai_mediated_weight + paste_veneer_weight + paste_domesticate_weight + reference_weight;
+    let non_pure =
+        ai_mediated_weight + paste_veneer_weight + paste_domesticate_weight + reference_weight;
     let pure_weight = (1.0 - non_pure).max(0.0);
 
     // Normalize to sum to 1.0.
@@ -366,9 +367,18 @@ pub fn analyze_composition_mode(
 
     // Dominant mode.
     let modes = [
-        (distribution.pure_composition, CompositionMode::PureComposition),
-        (distribution.reference_assisted, CompositionMode::ReferenceAssisted),
-        (distribution.paste_domesticate, CompositionMode::PasteDomesticate),
+        (
+            distribution.pure_composition,
+            CompositionMode::PureComposition,
+        ),
+        (
+            distribution.reference_assisted,
+            CompositionMode::ReferenceAssisted,
+        ),
+        (
+            distribution.paste_domesticate,
+            CompositionMode::PasteDomesticate,
+        ),
         (distribution.paste_veneer, CompositionMode::PasteVeneer),
         (distribution.ai_mediated, CompositionMode::AiMediated),
     ];
@@ -401,11 +411,7 @@ mod tests {
     use super::*;
     use std::time::{Duration, SystemTime};
 
-    fn make_focus_switch(
-        away_sec: f64,
-        bundle_id: &str,
-        app_name: &str,
-    ) -> FocusSwitchRecord {
+    fn make_focus_switch(away_sec: f64, bundle_id: &str, app_name: &str) -> FocusSwitchRecord {
         let lost_at = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
         let regained_at = Some(lost_at + Duration::from_secs_f64(away_sec));
         FocusSwitchRecord {
@@ -614,9 +620,7 @@ mod tests {
 
     #[test]
     fn test_composite_score_range() {
-        let switches = vec![
-            make_focus_switch(5.0, "com.apple.safari", "Safari"),
-        ];
+        let switches = vec![make_focus_switch(5.0, "com.apple.safari", "Safari")];
         let pastes = vec![make_paste(10, PasteSource::External)];
         let result = analyze_composition_mode(&switches, &pastes, 50).unwrap();
         assert!(result.composite_score >= 0.0 && result.composite_score <= 1.0);
@@ -645,9 +649,11 @@ mod tests {
     #[test]
     fn test_media_paste_higher_score_than_prose() {
         let prose = vec![make_paste(2, PasteSource::External)];
-        let media = vec![
-            make_paste_with_kind(2, PasteSource::External, PasteContentKind::Media),
-        ];
+        let media = vec![make_paste_with_kind(
+            2,
+            PasteSource::External,
+            PasteContentKind::Media,
+        )];
         let prose_result = analyze_composition_mode(&[], &prose, 50).unwrap();
         let media_result = analyze_composition_mode(&[], &media, 50).unwrap();
         assert!(
@@ -660,9 +666,11 @@ mod tests {
 
     #[test]
     fn test_formatting_only_no_penalty() {
-        let pastes = vec![
-            make_paste_with_kind(0, PasteSource::External, PasteContentKind::FormattingOnly),
-        ];
+        let pastes = vec![make_paste_with_kind(
+            0,
+            PasteSource::External,
+            PasteContentKind::FormattingOnly,
+        )];
         let result = analyze_composition_mode(&[], &pastes, 50).unwrap();
         // FormattingOnly paste with 0 keystrokes should still yield near-perfect score
         // because penalty=0.0 means it doesn't contribute to veneer/domesticate buckets.

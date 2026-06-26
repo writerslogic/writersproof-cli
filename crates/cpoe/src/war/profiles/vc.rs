@@ -39,10 +39,7 @@ pub struct VerifiableCredential {
     pub valid_until: Option<String>,
     #[serde(rename = "credentialSubject")]
     pub credential_subject: CredentialSubject,
-    #[serde(
-        rename = "credentialStatus",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "credentialStatus", skip_serializing_if = "Option::is_none")]
     pub credential_status: Option<CredentialStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Vec<VcEvidence>>,
@@ -114,17 +111,37 @@ pub struct VcForensicSignals {
     pub leading_edge_divergence: f64,
     #[serde(rename = "insertionPointEntropy")]
     pub insertion_point_entropy: f64,
-    #[serde(rename = "wordsPerMinute", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "wordsPerMinute",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub words_per_minute: Option<f64>,
     #[serde(rename = "meanIkiMs", default, skip_serializing_if = "Option::is_none")]
     pub mean_iki_ms: Option<f64>,
-    #[serde(rename = "correctionRatio", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "correctionRatio",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub correction_ratio: Option<f64>,
-    #[serde(rename = "keystrokeCount", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "keystrokeCount",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub keystroke_count: Option<u64>,
-    #[serde(rename = "hurstExponent", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "hurstExponent",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub hurst_exponent: Option<f64>,
-    #[serde(rename = "forensicScore", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "forensicScore",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub forensic_score: Option<f64>,
 }
 
@@ -173,7 +190,9 @@ pub fn issuer_did() -> String {
     }
 
     // 2. User profile DID (signed-in user)
-    let guard = crate::identity::PROFILE_DID.read().unwrap_or_else(|e| e.into_inner());
+    let guard = crate::identity::PROFILE_DID
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     if let Some(did) = guard.as_deref() {
         if !did.is_empty() {
             return did.to_string();
@@ -221,7 +240,10 @@ fn build_vc_core(ear: &EarToken, author_did: &str) -> Result<VerifiableCredentia
         .checked_add_signed(chrono::Duration::days(MAX_VC_VALIDITY_DAYS))
         .map(|dt| dt.to_rfc3339());
 
-    let seal_hash = appr.pop_seal.as_ref().map(|s| crate::utils::crypto_types::HexHash::from_bytes(s.h3).to_hex());
+    let seal_hash = appr
+        .pop_seal
+        .as_ref()
+        .map(|s| crate::utils::crypto_types::HexHash::from_bytes(s.h3).to_hex());
 
     let evidence = vec![VcEvidence {
         evidence_type: "ProofOfProcessEvidence".to_string(),
@@ -472,8 +494,8 @@ impl VerifiableCredential {
             status_type: "BitstringStatusListEntry".to_string(),
             status_purpose: "revocation".to_string(),
             status_list_index: status_list_index.to_string(),
-            status_list_credential:
-                "https://api.writersproof.com/v1/credentials/status/default".to_string(),
+            status_list_credential: "https://api.writersproof.com/v1/credentials/status/default"
+                .to_string(),
         });
     }
 }
@@ -569,7 +591,10 @@ mod tests {
             .header
             .content_type
             .expect("content_type header missing");
-        assert_eq!(ct, coset::ContentType::Text("application/vc+cose".to_string()));
+        assert_eq!(
+            ct,
+            coset::ContentType::Text("application/vc+cose".to_string())
+        );
 
         // Check kid = DID key ID.
         let kid_str =
@@ -629,9 +654,21 @@ mod tests {
         let mut vc = to_verifiable_credential(&ear, did).expect("VC");
 
         // Before enrichment, forensic fields should be None.
-        assert!(vc.credential_subject.process_attestation.writing_mode.is_none());
-        assert!(vc.credential_subject.process_attestation.composition_mode.is_none());
-        assert!(vc.credential_subject.process_attestation.forensic_signals.is_none());
+        assert!(vc
+            .credential_subject
+            .process_attestation
+            .writing_mode
+            .is_none());
+        assert!(vc
+            .credential_subject
+            .process_attestation
+            .composition_mode
+            .is_none());
+        assert!(vc
+            .credential_subject
+            .process_attestation
+            .forensic_signals
+            .is_none());
 
         let signals = VcForensicSignals {
             cognitive_load_score: 0.82,
@@ -658,14 +695,38 @@ mod tests {
 
         // Verify the enriched VC serializes with expected field names.
         let json = serde_jcs::to_string(&vc).expect("serialize");
-        assert!(json.contains("\"writingMode\""), "should contain writingMode: {json}");
-        assert!(json.contains("\"compositionMode\""), "should contain compositionMode: {json}");
-        assert!(json.contains("\"forensicSignals\""), "should contain forensicSignals: {json}");
-        assert!(json.contains("\"cognitiveLoadScore\""), "should contain cognitiveLoadScore: {json}");
-        assert!(json.contains("\"revisionTopologyScore\""), "should contain revisionTopologyScore");
-        assert!(json.contains("\"errorEcologyScore\""), "should contain errorEcologyScore");
-        assert!(json.contains("\"likelihoodPCognitive\""), "should contain likelihoodPCognitive");
-        assert!(json.contains("\"compositionModeScore\""), "should contain compositionModeScore");
+        assert!(
+            json.contains("\"writingMode\""),
+            "should contain writingMode: {json}"
+        );
+        assert!(
+            json.contains("\"compositionMode\""),
+            "should contain compositionMode: {json}"
+        );
+        assert!(
+            json.contains("\"forensicSignals\""),
+            "should contain forensicSignals: {json}"
+        );
+        assert!(
+            json.contains("\"cognitiveLoadScore\""),
+            "should contain cognitiveLoadScore: {json}"
+        );
+        assert!(
+            json.contains("\"revisionTopologyScore\""),
+            "should contain revisionTopologyScore"
+        );
+        assert!(
+            json.contains("\"errorEcologyScore\""),
+            "should contain errorEcologyScore"
+        );
+        assert!(
+            json.contains("\"likelihoodPCognitive\""),
+            "should contain likelihoodPCognitive"
+        );
+        assert!(
+            json.contains("\"compositionModeScore\""),
+            "should contain compositionModeScore"
+        );
 
         // Verify roundtrip preserves values.
         let roundtrip: VerifiableCredential = serde_json::from_str(&json).expect("deserialize");

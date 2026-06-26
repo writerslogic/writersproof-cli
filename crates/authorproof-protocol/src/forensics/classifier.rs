@@ -274,13 +274,13 @@ mod tests {
     #[test]
     fn test_human_in_the_loop_mixed_signals() {
         let result = classify_authorship_method(&ForensicSignals {
-            keystroke_cv: Some(0.35),     // at threshold (not > 0.35, so no human signal)
-            paste_count: Some(3),         // > 0 triggers mixed signal
+            keystroke_cv: Some(0.35), // at threshold (not > 0.35, so no human signal)
+            paste_count: Some(3),     // > 0 triggers mixed signal
             correction_ratio: Some(0.08), // below 0.10, no human signal
             monotonic_append_ratio: Some(0.75), // not < 0.70, no human signal
-            post_pause_cv: Some(0.25),    // below 0.30, no human signal
-            revision_clusters: Some(4),   // > 2 triggers mixed signal
-            burst_speed_cv: Some(0.28),   // > 0.25 triggers mixed signal
+            post_pause_cv: Some(0.25), // below 0.30, no human signal
+            revision_clusters: Some(4), // > 2 triggers mixed signal
+            burst_speed_cv: Some(0.28), // > 0.25 triggers mixed signal
             ..Default::default()
         });
 

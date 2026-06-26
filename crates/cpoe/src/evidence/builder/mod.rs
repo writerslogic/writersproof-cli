@@ -124,16 +124,13 @@ impl Builder {
         // 180s tolerance accommodates the sequential fetch order; tighter than
         // the default to catch clock-skew forgery at evidence assembly time.
         if let Some(te) = &self.packet.time_evidence {
-            if let (Some(tsas), Some(roughtimes)) =
-                (&te.tsa_responses, &te.roughtime_samples)
-            {
+            if let (Some(tsas), Some(roughtimes)) = (&te.tsa_responses, &te.roughtime_samples) {
                 if let (Some(tsa), Some(rt)) = (tsas.first(), roughtimes.first()) {
                     let rfc3161_secs = (tsa.timestamp_ms / 1000) as i64;
                     let roughtime_secs = (rt.midpoint_us / 1_000_000) as i64;
-                    crate::anchors::verify_dual_anchor(rfc3161_secs, roughtime_secs, 180)
-                        .map_err(|e| {
-                            Error::evidence(format!("dual-anchor cross-verification failed: {e}"))
-                        })?;
+                    crate::anchors::verify_dual_anchor(rfc3161_secs, roughtime_secs, 180).map_err(
+                        |e| Error::evidence(format!("dual-anchor cross-verification failed: {e}")),
+                    )?;
                 }
             }
         }

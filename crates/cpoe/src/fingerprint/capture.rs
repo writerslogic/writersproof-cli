@@ -16,13 +16,11 @@ use std::sync::Arc;
 use crate::platform::{KeyEventType, KeystrokeEvent};
 use crate::RwLockRecover;
 
-
 const QUALITY_GATE_MIN_KEYSTROKES: usize = 3;
 
 const QUALITY_GATE_WINDOW_NS: i64 = 2_000_000_000;
 
 const PID_CACHE_TTL_SECS: u64 = 60;
-
 
 const EXCLUDED_BUNDLES: &[&str] = &[
     "com.apple.Terminal",
@@ -34,8 +32,6 @@ const EXCLUDED_BUNDLES: &[&str] = &[
     "com.apple.systempreferences",
     "com.apple.Passwords",
 ];
-
-
 
 pub(crate) struct FingerprintCapture {
     #[allow(dead_code)] // held alive for FFI stop_capture()
@@ -76,8 +72,7 @@ impl FingerprintCapture {
         });
 
         self.pid_cache.entry(pid).or_insert_with(|| {
-            let b = crate::sentinel::macos_focus::bundle_id_for_pid(pid)
-                .unwrap_or_default();
+            let b = crate::sentinel::macos_focus::bundle_id_for_pid(pid).unwrap_or_default();
             (b, now)
         });
 
@@ -119,9 +114,8 @@ impl FingerprintCapture {
         }
 
         // Evict stale pending-downs (keys held > 10 s are likely stuck).
-        self.pending_downs.retain(|_, ts| {
-            *ts > 0 && event.timestamp_ns.saturating_sub(*ts) < 10_000_000_000
-        });
+        self.pending_downs
+            .retain(|_, ts| *ts > 0 && event.timestamp_ns.saturating_sub(*ts) < 10_000_000_000);
         if self.pending_downs.len() < 256 {
             self.pending_downs.insert(event.keycode, event.timestamp_ns);
         }
@@ -210,15 +204,12 @@ impl FingerprintCapture {
     }
 }
 
-
 pub(crate) struct CaptureHandle {
     pub running: Arc<AtomicBool>,
     pub cancel: Arc<tokio::sync::Notify>,
 }
 
-pub(crate) fn start_capture(
-    rt: &tokio::runtime::Runtime,
-) -> crate::error::Result<CaptureHandle> {
+pub(crate) fn start_capture(rt: &tokio::runtime::Runtime) -> crate::error::Result<CaptureHandle> {
     let tap = crate::platform::macos::shared_tap::get_or_start_shared_tap()?;
     let rx = tap.subscribe();
 

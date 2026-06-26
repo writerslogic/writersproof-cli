@@ -258,10 +258,7 @@ pub fn compute_seal(packet: &Packet, declaration: &Declaration) -> Result<Seal, 
             let decoded = hex::decode(&b.wp_signature)
                 .map_err(|e| format!("invalid beacon wp_signature hex: {e}"))?;
             if decoded.is_empty() {
-                return Err(
-                    "beacon wp_signature is empty; cannot bind empty signature"
-                        .to_string(),
-                );
+                return Err("beacon wp_signature is empty; cannot bind empty signature".to_string());
             }
             Some(decoded)
         }
@@ -628,17 +625,16 @@ pub fn verify_beacon_attestation_with_bundle(
         }
     };
 
-    let ca_pubkey =
-        match crate::utils::crypto_types::Ed25519Pubkey::from_hex(&ca_pubkey_hex) {
-            Ok(pk) => pk,
-            Err(_) => {
-                return CheckResult {
-                    name: "beacon_attestation".to_string(),
-                    passed: false,
-                    message: format!("Internal error: invalid CA public key for kid {ca_kid}"),
-                };
-            }
-        };
+    let ca_pubkey = match crate::utils::crypto_types::Ed25519Pubkey::from_hex(&ca_pubkey_hex) {
+        Ok(pk) => pk,
+        Err(_) => {
+            return CheckResult {
+                name: "beacon_attestation".to_string(),
+                passed: false,
+                message: format!("Internal error: invalid CA public key for kid {ca_kid}"),
+            };
+        }
+    };
     let ca_verifying_key = match ca_pubkey.to_verifying_key() {
         Ok(key) => key,
         Err(e) => {

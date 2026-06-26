@@ -16,8 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::war::ear::{CPOE_EVIDENCE_PROFILE, POP_EAR_PROFILE};
 
 fn hash_document_ref(doc: &DocumentRef) -> Result<HashValue> {
-    doc.compute_hash()
-        .map_err(Error::Protocol)
+    doc.compute_hash().map_err(Error::Protocol)
 }
 
 fn now_millis() -> Result<u64> {

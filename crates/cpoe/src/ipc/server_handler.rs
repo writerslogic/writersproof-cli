@@ -191,7 +191,10 @@ pub(super) async fn handle_connection_inner<
         let plaintext = if let Some(ref session) = secure_session {
             match session.decrypt(&msg_buf) {
                 Ok(pt) => pt,
-                Err(e) if e.downcast_ref::<super::crypto::SequenceDesyncError>().is_some() => {
+                Err(e)
+                    if e.downcast_ref::<super::crypto::SequenceDesyncError>()
+                        .is_some() =>
+                {
                     log::warn!(
                         "IPC: sequence desync on {}: {} (closing session)",
                         transport_label,

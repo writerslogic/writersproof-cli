@@ -38,11 +38,9 @@ impl AnonymizedSession {
                 prev_doc_hash = Some(s.document_hash);
 
                 // Differential privacy: add Laplacian noise to per-sample jitter.
-                let noisy_jitter = add_laplace_noise(
-                    s.jitter_micros as f64,
-                    s.jitter_micros as f64 * 0.03,
-                )
-                .max(0.0) as u32;
+                let noisy_jitter =
+                    add_laplace_noise(s.jitter_micros as f64, s.jitter_micros as f64 * 0.03)
+                        .max(0.0) as u32;
 
                 AnonymizedSample {
                     relative_time_secs: relative_time,

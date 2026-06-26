@@ -132,70 +132,76 @@ fn evict_stale_sessions() {
 /// Start a new ephemeral witnessing session.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_start_ephemeral_session(context_label: String) -> FfiEphemeralSessionResult {
-    catch_ffi_panic!(FfiEphemeralSessionResult {
-        success: false,
-        session_id: String::new(),
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    log::debug!("ffi_start_ephemeral_session: context_label={}", context_label);
-    if context_label.len() > MAX_CONTEXT_LABEL_LEN {
-        return FfiEphemeralSessionResult {
+    catch_ffi_panic!(
+        FfiEphemeralSessionResult {
             success: false,
             session_id: String::new(),
-            error_message: Some(format!(
-                "Context label too long ({} bytes, max {MAX_CONTEXT_LABEL_LEN})",
-                context_label.len()
-            )),
-        };
-    }
-
-    evict_stale_sessions();
-
-    if sessions().len() >= MAX_CONCURRENT_SESSIONS {
-        return FfiEphemeralSessionResult {
-            success: false,
-            session_id: String::new(),
-            error_message: Some(format!(
-                "Too many concurrent ephemeral sessions (max {MAX_CONCURRENT_SESSIONS})"
-            )),
-        };
-    }
-
-    let now = Instant::now();
-    let session_id = match generate_session_id(&context_label) {
-        Ok(id) => id,
-        Err(e) => {
-            return FfiEphemeralSessionResult {
-                success: false,
-                session_id: String::new(),
-                error_message: Some(e),
-            };
-        }
-    };
-
-    sessions().insert(
-        session_id.clone(),
-        EphemeralSession {
-            context_label,
-            started_at: now,
-            started_at_ns: crate::utils::now_ns(),
-            last_activity: now,
-            jitter_intervals: Vec::new(),
-            checkpoint_count: 0,
-            keystroke_count: 0,
-
-            content_snapshots: Vec::new(),
-            canary_seed: None,
-            last_checkpoint_at: None,
+            error_message: Some("engine internal error".to_string()),
         },
-    );
+        {
+            log::debug!(
+                "ffi_start_ephemeral_session: context_label={}",
+                context_label
+            );
+            if context_label.len() > MAX_CONTEXT_LABEL_LEN {
+                return FfiEphemeralSessionResult {
+                    success: false,
+                    session_id: String::new(),
+                    error_message: Some(format!(
+                        "Context label too long ({} bytes, max {MAX_CONTEXT_LABEL_LEN})",
+                        context_label.len()
+                    )),
+                };
+            }
 
-    FfiEphemeralSessionResult {
-        success: true,
-        session_id,
-        error_message: None,
-    }
-    })
+            evict_stale_sessions();
+
+            if sessions().len() >= MAX_CONCURRENT_SESSIONS {
+                return FfiEphemeralSessionResult {
+                    success: false,
+                    session_id: String::new(),
+                    error_message: Some(format!(
+                        "Too many concurrent ephemeral sessions (max {MAX_CONCURRENT_SESSIONS})"
+                    )),
+                };
+            }
+
+            let now = Instant::now();
+            let session_id = match generate_session_id(&context_label) {
+                Ok(id) => id,
+                Err(e) => {
+                    return FfiEphemeralSessionResult {
+                        success: false,
+                        session_id: String::new(),
+                        error_message: Some(e),
+                    };
+                }
+            };
+
+            sessions().insert(
+                session_id.clone(),
+                EphemeralSession {
+                    context_label,
+                    started_at: now,
+                    started_at_ns: crate::utils::now_ns(),
+                    last_activity: now,
+                    jitter_intervals: Vec::new(),
+                    checkpoint_count: 0,
+                    keystroke_count: 0,
+
+                    content_snapshots: Vec::new(),
+                    canary_seed: None,
+                    last_checkpoint_at: None,
+                },
+            );
+
+            FfiEphemeralSessionResult {
+                success: true,
+                session_id,
+                error_message: None,
+            }
+        }
+    )
 }
 
 /// Create an in-memory checkpoint of the current content.
@@ -348,132 +354,139 @@ pub fn ffi_ephemeral_finalize(
     content: String,
     statement: String,
 ) -> FfiEphemeralFinalizeResult {
-    catch_ffi_panic!(FfiEphemeralFinalizeResult {
-        success: false,
-        war_block: String::new(),
-        compact_ref: String::new(),
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    log::debug!("ffi_ephemeral_finalize: session_id={}", session_id);
-    if content.len() > MAX_CONTENT_SIZE {
-        return FfiEphemeralFinalizeResult {
+    catch_ffi_panic!(
+        FfiEphemeralFinalizeResult {
             success: false,
             war_block: String::new(),
             compact_ref: String::new(),
-            error_message: Some(format!(
-                "Content too large: {} bytes (max {})",
-                content.len(),
-                MAX_CONTENT_SIZE
-            )),
-        };
-    }
-
-    let statement = if statement.len() > MAX_STATEMENT_LEN {
-        let truncated = match statement
-            .char_indices()
-            .take_while(|(i, _)| *i < MAX_STATEMENT_LEN)
-            .last()
+            error_message: Some("engine internal error".to_string()),
+        },
         {
-            Some((i, c)) => &statement[..i + c.len_utf8()],
-            None => "",
-        };
-        truncated.to_string()
-    } else {
-        statement
-    };
-
-    // Keep the session in the map during WAR construction so it survives
-    // failures and the user can retry. Only remove on success.
-    {
-        let session_ref = match sessions().get(&session_id) {
-            Some(r) => r,
-            None => {
+            log::debug!("ffi_ephemeral_finalize: session_id={}", session_id);
+            if content.len() > MAX_CONTENT_SIZE {
                 return FfiEphemeralFinalizeResult {
                     success: false,
                     war_block: String::new(),
                     compact_ref: String::new(),
-                    error_message: Some(format!("No ephemeral session: {session_id}")),
+                    error_message: Some(format!(
+                        "Content too large: {} bytes (max {})",
+                        content.len(),
+                        MAX_CONTENT_SIZE
+                    )),
                 };
             }
-        };
-        if session_ref.content_snapshots.is_empty() {
-            return FfiEphemeralFinalizeResult {
-                success: false,
-                war_block: String::new(),
-                compact_ref: String::new(),
-                error_message: Some("No checkpoints recorded in session".to_string()),
+
+            let statement = if statement.len() > MAX_STATEMENT_LEN {
+                let truncated = match statement
+                    .char_indices()
+                    .take_while(|(i, _)| *i < MAX_STATEMENT_LEN)
+                    .last()
+                {
+                    Some((i, c)) => &statement[..i + c.len_utf8()],
+                    None => "",
+                };
+                truncated.to_string()
+            } else {
+                statement
             };
-        }
 
-        let final_hash: [u8; 32] = Sha256::digest(content.as_bytes()).into();
-        let final_hash_hex = hex::encode(final_hash);
-
-        let checkpoint_count = session_ref.content_snapshots.len();
-
-        let war_block_str = match build_war_block(&final_hash_hex, &statement, &session_ref) {
-            Ok(s) => s,
-            Err(e) => {
-                // Session stays in the map; user can retry.
-                return FfiEphemeralFinalizeResult {
-                    success: false,
-                    war_block: String::new(),
-                    compact_ref: String::new(),
-                    error_message: Some(format!("Failed to create WAR block: {e}")),
+            // Keep the session in the map during WAR construction so it survives
+            // failures and the user can retry. Only remove on success.
+            {
+                let session_ref = match sessions().get(&session_id) {
+                    Some(r) => r,
+                    None => {
+                        return FfiEphemeralFinalizeResult {
+                            success: false,
+                            war_block: String::new(),
+                            compact_ref: String::new(),
+                            error_message: Some(format!("No ephemeral session: {session_id}")),
+                        };
+                    }
                 };
+                if session_ref.content_snapshots.is_empty() {
+                    return FfiEphemeralFinalizeResult {
+                        success: false,
+                        war_block: String::new(),
+                        compact_ref: String::new(),
+                        error_message: Some("No checkpoints recorded in session".to_string()),
+                    };
+                }
+
+                let final_hash: [u8; 32] = Sha256::digest(content.as_bytes()).into();
+                let final_hash_hex = hex::encode(final_hash);
+
+                let checkpoint_count = session_ref.content_snapshots.len();
+
+                let war_block_str = match build_war_block(&final_hash_hex, &statement, &session_ref)
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        // Session stays in the map; user can retry.
+                        return FfiEphemeralFinalizeResult {
+                            success: false,
+                            war_block: String::new(),
+                            compact_ref: String::new(),
+                            error_message: Some(format!("Failed to create WAR block: {e}")),
+                        };
+                    }
+                };
+
+                let compact_ref = format!(
+                    "cpoe-ref:writerslogic:{}:{}",
+                    &final_hash_hex[..final_hash_hex.len().min(12)],
+                    checkpoint_count
+                );
+
+                // WAR block built successfully; drop the read guard before removing.
+                drop(session_ref);
+                sessions().remove(&session_id);
+                cleanup_session_state(&session_id);
+
+                FfiEphemeralFinalizeResult {
+                    success: true,
+                    war_block: war_block_str,
+                    compact_ref,
+                    error_message: None,
+                }
             }
-        };
-
-        let compact_ref = format!(
-            "cpoe-ref:writerslogic:{}:{}",
-            &final_hash_hex[..final_hash_hex.len().min(12)],
-            checkpoint_count
-        );
-
-        // WAR block built successfully; drop the read guard before removing.
-        drop(session_ref);
-        sessions().remove(&session_id);
-        cleanup_session_state(&session_id);
-
-        FfiEphemeralFinalizeResult {
-            success: true,
-            war_block: war_block_str,
-            compact_ref,
-            error_message: None,
         }
-    }
-    })
+    )
 }
 
 /// Get current ephemeral session stats (for the floating indicator).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_status(session_id: String) -> FfiEphemeralStatusResult {
-    catch_ffi_panic!(FfiEphemeralStatusResult {
-        success: false,
-        checkpoint_count: 0,
-        keystroke_count: 0,
-        elapsed_secs: 0.0,
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    log::debug!("ffi_ephemeral_status: session_id={}", session_id);
-    evict_stale_sessions();
-
-    match sessions().get(&session_id) {
-        Some(entry) => FfiEphemeralStatusResult {
-            success: true,
-            checkpoint_count: entry.checkpoint_count,
-            keystroke_count: entry.keystroke_count,
-            elapsed_secs: entry.started_at.elapsed().as_secs_f64(),
-            error_message: None,
-        },
-        None => FfiEphemeralStatusResult {
+    catch_ffi_panic!(
+        FfiEphemeralStatusResult {
             success: false,
             checkpoint_count: 0,
             keystroke_count: 0,
             elapsed_secs: 0.0,
-            error_message: Some(format!("No ephemeral session: {session_id}")),
+            error_message: Some("engine internal error".to_string()),
         },
-    }
-    })
+        {
+            log::debug!("ffi_ephemeral_status: session_id={}", session_id);
+            evict_stale_sessions();
+
+            match sessions().get(&session_id) {
+                Some(entry) => FfiEphemeralStatusResult {
+                    success: true,
+                    checkpoint_count: entry.checkpoint_count,
+                    keystroke_count: entry.keystroke_count,
+                    elapsed_secs: entry.started_at.elapsed().as_secs_f64(),
+                    error_message: None,
+                },
+                None => FfiEphemeralStatusResult {
+                    success: false,
+                    checkpoint_count: 0,
+                    keystroke_count: 0,
+                    elapsed_secs: 0.0,
+                    error_message: Some(format!("No ephemeral session: {session_id}")),
+                },
+            }
+        }
+    )
 }
 
 /// Return `true` if an ephemeral session with the given ID currently exists.
@@ -482,8 +495,8 @@ pub fn ffi_ephemeral_status(session_id: String) -> FfiEphemeralStatusResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_ephemeral_session_exists(session_id: String) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_ephemeral_session_exists: session_id={}", session_id);
-    sessions().contains_key(&session_id)
+        log::debug!("ffi_ephemeral_session_exists: session_id={}", session_id);
+        sessions().contains_key(&session_id)
     })
 }
 

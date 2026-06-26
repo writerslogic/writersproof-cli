@@ -50,9 +50,9 @@ impl Sentinel {
             }
             #[cfg(not(target_os = "linux"))]
             {
-                Box::new(
-                    super::stub_focus::StubSentinelFocusTracker::new(self.config.clone()),
-                )
+                Box::new(super::stub_focus::StubSentinelFocusTracker::new(
+                    self.config.clone(),
+                ))
             }
         };
 
@@ -182,47 +182,49 @@ impl Sentinel {
                         .name("cpoe-ks-bridge".into())
                         .stack_size(2 * 1024 * 1024)
                         .spawn(move || {
-                        #[cfg(debug_assertions)]
-                        let mut bridge_count: u64 = 0;
-                        let mut dropped_count: u64 = 0;
-                        while running.load(Ordering::SeqCst) {
-                            match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                                Ok(event) => {
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        bridge_count += 1;
-                                        if bridge_count % 100 == 0 {
-                                            log::debug!(
-                                                "keystroke bridge: forwarded {bridge_count}"
-                                            );
+                            #[cfg(debug_assertions)]
+                            let mut bridge_count: u64 = 0;
+                            let mut dropped_count: u64 = 0;
+                            while running.load(Ordering::SeqCst) {
+                                match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                                    Ok(event) => {
+                                        #[cfg(debug_assertions)]
+                                        {
+                                            bridge_count += 1;
+                                            if bridge_count % 100 == 0 {
+                                                log::debug!(
+                                                    "keystroke bridge: forwarded {bridge_count}"
+                                                );
+                                            }
                                         }
-                                    }
-                                    if let Err(e) = tx.try_send(event) {
-                                        match e {
-                                            tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                                                dropped_count += 1;
-                                                if dropped_count == 1
-                                                    || dropped_count.is_power_of_two()
-                                                {
-                                                    log::warn!(
-                                                        "keystroke channel full, \
+                                        if let Err(e) = tx.try_send(event) {
+                                            match e {
+                                                tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                                                    dropped_count += 1;
+                                                    if dropped_count == 1
+                                                        || dropped_count.is_power_of_two()
+                                                    {
+                                                        log::warn!(
+                                                            "keystroke channel full, \
                                                          {} events dropped",
-                                                        dropped_count
-                                                    );
+                                                            dropped_count
+                                                        );
+                                                    }
+                                                }
+                                                tokio::sync::mpsc::error::TrySendError::Closed(
+                                                    _,
+                                                ) => {
+                                                    log::debug!("keystroke channel closed");
+                                                    break;
                                                 }
                                             }
-                                            tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                                                log::debug!("keystroke channel closed");
-                                                break;
-                                            }
                                         }
                                     }
+                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                                 }
-                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                             }
-                        }
-                    }) {
+                        }) {
                         Ok(handle) => self.bridge_threads.lock_recover().push(handle),
                         Err(e) => log::error!("cpoe-ks-bridge thread spawn failed: {e}"),
                     };
@@ -263,26 +265,30 @@ impl Sentinel {
                         .name("cpoe-mouse-bridge".into())
                         .stack_size(2 * 1024 * 1024)
                         .spawn(move || {
-                        while mouse_running.load(Ordering::SeqCst) {
-                            match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                                Ok(event) => {
-                                    if let Err(e) = mouse_tx.try_send(event) {
-                                        match e {
-                                            tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                                                log::debug!("mouse channel full, dropping event");
-                                            }
-                                            tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                                                log::debug!("mouse channel closed");
-                                                break;
+                            while mouse_running.load(Ordering::SeqCst) {
+                                match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                                    Ok(event) => {
+                                        if let Err(e) = mouse_tx.try_send(event) {
+                                            match e {
+                                                tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                                                    log::debug!(
+                                                        "mouse channel full, dropping event"
+                                                    );
+                                                }
+                                                tokio::sync::mpsc::error::TrySendError::Closed(
+                                                    _,
+                                                ) => {
+                                                    log::debug!("mouse channel closed");
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
+                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                                 }
-                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                             }
-                        }
-                    }) {
+                        }) {
                         Ok(handle) => self.bridge_threads.lock_recover().push(handle),
                         Err(e) => log::error!("cpoe-mouse-bridge thread spawn failed: {e}"),
                     };

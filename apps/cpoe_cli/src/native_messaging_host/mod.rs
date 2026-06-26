@@ -18,9 +18,9 @@ mod tests;
 pub(crate) mod types;
 
 use handlers::{
-    handle_ai_content_copied, handle_browser_keystroke_batch, handle_checkpoint,
-    handle_get_status, handle_inject_jitter, handle_open_view, handle_snapshot_save,
-    handle_sign_vc_claim, handle_start_session, handle_stop_session, handle_text_attestation,
+    handle_ai_content_copied, handle_browser_keystroke_batch, handle_checkpoint, handle_get_status,
+    handle_inject_jitter, handle_open_view, handle_sign_vc_claim, handle_snapshot_save,
+    handle_start_session, handle_stop_session, handle_text_attestation,
 };
 use protocol::{read_message, request_type_name, write_message, PROTOCOL_VERSION};
 use types::{Request, Response};
@@ -105,7 +105,15 @@ fn main() {
                 ordinal,
                 tool_category,
                 tool_host,
-            } => handle_checkpoint(content_hash, char_count, delta, commitment, ordinal, tool_category, tool_host),
+            } => handle_checkpoint(
+                content_hash,
+                char_count,
+                delta,
+                commitment,
+                ordinal,
+                tool_category,
+                tool_host,
+            ),
             Request::StopSession => handle_stop_session(),
             Request::GetStatus => handle_get_status(),
             Request::InjectJitter { intervals } => handle_inject_jitter(intervals),
@@ -126,7 +134,13 @@ fn main() {
                 writersproof_id,
                 attested_at,
                 app_bundle_id,
-            } => handle_text_attestation(content_hash, tier, writersproof_id, attested_at, app_bundle_id),
+            } => handle_text_attestation(
+                content_hash,
+                tier,
+                writersproof_id,
+                attested_at,
+                app_bundle_id,
+            ),
             Request::BrowserKeystrokeBatch { keystrokes, tab_id } => {
                 handle_browser_keystroke_batch(keystrokes, tab_id)
             }
@@ -293,7 +307,15 @@ fn decrypt_and_dispatch(payload_b64: &str) -> anyhow::Result<Response> {
             ordinal,
             tool_category,
             tool_host,
-        } => handle_checkpoint(content_hash, char_count, delta, commitment, ordinal, tool_category, tool_host),
+        } => handle_checkpoint(
+            content_hash,
+            char_count,
+            delta,
+            commitment,
+            ordinal,
+            tool_category,
+            tool_host,
+        ),
         Request::StopSession => handle_stop_session(),
         Request::GetStatus => handle_get_status(),
         Request::InjectJitter { intervals } => handle_inject_jitter(intervals),
@@ -314,7 +336,13 @@ fn decrypt_and_dispatch(payload_b64: &str) -> anyhow::Result<Response> {
             writersproof_id,
             attested_at,
             app_bundle_id,
-        } => handle_text_attestation(content_hash, tier, writersproof_id, attested_at, app_bundle_id),
+        } => handle_text_attestation(
+            content_hash,
+            tier,
+            writersproof_id,
+            attested_at,
+            app_bundle_id,
+        ),
         Request::BrowserKeystrokeBatch { keystrokes, tab_id } => {
             handle_browser_keystroke_batch(keystrokes, tab_id)
         }

@@ -986,7 +986,12 @@ pub struct AnchorProofWire {
     #[serde(rename = "1")]
     pub provider: String,
     /// Raw proof bytes (OTS file, RFC 3161 token, etc.).
-    #[serde(rename = "2", with = "serde_bytes_opt", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "2",
+        with = "serde_bytes_opt",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub proof: Option<Vec<u8>>,
     /// Submission timestamp (RFC 3339).
     #[serde(rename = "3")]

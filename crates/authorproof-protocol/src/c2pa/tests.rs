@@ -447,7 +447,10 @@ fn test_asset_info_construction() {
 fn verify_manifest_signature_valid() {
     let manifest = build_test_manifest();
     let result = verify_manifest_signature(&manifest).expect("should parse and verify");
-    assert!(result, "Signature on freshly built manifest should be valid");
+    assert!(
+        result,
+        "Signature on freshly built manifest should be valid"
+    );
 }
 
 #[test]
@@ -465,7 +468,10 @@ fn verify_manifest_with_wrong_key_returns_false() {
     let wrong_key = SigningKey::from_bytes(&[2u8; 32]);
     let wrong_pk = wrong_key.verifying_key().to_bytes();
     let result = verify_manifest_with_key(&manifest, &wrong_pk).expect("should parse");
-    assert!(!result, "Signature should not verify against a different key");
+    assert!(
+        !result,
+        "Signature should not verify against a different key"
+    );
 }
 
 #[test]
@@ -487,7 +493,10 @@ fn verify_manifest_empty_signature_is_error() {
     let mut manifest = build_test_manifest();
     manifest.signature = Vec::new();
     let result = verify_manifest_signature(&manifest);
-    assert!(result.is_err(), "Empty signature bytes should be a parse error");
+    assert!(
+        result.is_err(),
+        "Empty signature bytes should be a parse error"
+    );
 }
 
 #[test]
@@ -519,7 +528,10 @@ fn validate_manifest_catches_bad_signature() {
     let result = validate_manifest(&manifest);
     assert!(!result.is_valid());
     assert!(
-        result.errors.iter().any(|e| e.contains("signature verification failed")),
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("signature verification failed")),
         "Should report signature failure: {:?}",
         result.errors
     );
@@ -550,17 +562,41 @@ fn process_assertion_forensic_signals_json_roundtrip() {
     assert!((rt_signals.error_ecology - 0.91).abs() < f64::EPSILON);
     assert!((rt_signals.likelihood_model - 0.74).abs() < f64::EPSILON);
     assert!((rt_signals.composition_mode - 0.88).abs() < f64::EPSILON);
-    assert_eq!(roundtrip.composition_mode.as_deref(), Some("pure_composition"));
+    assert_eq!(
+        roundtrip.composition_mode.as_deref(),
+        Some("pure_composition")
+    );
     assert_eq!(roundtrip.writing_mode.as_deref(), Some("cognitive"));
 
     // Verify camelCase serde field names in JSON output.
-    assert!(json.contains("\"cognitiveLoad\""), "should use camelCase: {json}");
-    assert!(json.contains("\"revisionTopology\""), "should use camelCase: {json}");
-    assert!(json.contains("\"errorEcology\""), "should use camelCase: {json}");
-    assert!(json.contains("\"likelihoodModel\""), "should use camelCase: {json}");
-    assert!(json.contains("\"compositionMode\""), "should use camelCase: {json}");
-    assert!(json.contains("\"writingMode\""), "should use camelCase: {json}");
-    assert!(json.contains("\"signalScores\""), "should use camelCase: {json}");
+    assert!(
+        json.contains("\"cognitiveLoad\""),
+        "should use camelCase: {json}"
+    );
+    assert!(
+        json.contains("\"revisionTopology\""),
+        "should use camelCase: {json}"
+    );
+    assert!(
+        json.contains("\"errorEcology\""),
+        "should use camelCase: {json}"
+    );
+    assert!(
+        json.contains("\"likelihoodModel\""),
+        "should use camelCase: {json}"
+    );
+    assert!(
+        json.contains("\"compositionMode\""),
+        "should use camelCase: {json}"
+    );
+    assert!(
+        json.contains("\"writingMode\""),
+        "should use camelCase: {json}"
+    );
+    assert!(
+        json.contains("\"signalScores\""),
+        "should use camelCase: {json}"
+    );
 }
 
 #[test]
@@ -569,9 +605,18 @@ fn process_assertion_without_signals_omits_fields() {
     let assertion = ProcessProofAssertion::from_evidence(&packet, b"test bytes");
 
     let json = serde_json::to_string(&assertion).expect("serialize");
-    assert!(!json.contains("signalScores"), "None fields should be skipped: {json}");
-    assert!(!json.contains("compositionMode"), "None fields should be skipped: {json}");
-    assert!(!json.contains("writingMode"), "None fields should be skipped: {json}");
+    assert!(
+        !json.contains("signalScores"),
+        "None fields should be skipped: {json}"
+    );
+    assert!(
+        !json.contains("compositionMode"),
+        "None fields should be skipped: {json}"
+    );
+    assert!(
+        !json.contains("writingMode"),
+        "None fields should be skipped: {json}"
+    );
 }
 
 #[test]
@@ -637,17 +682,27 @@ fn manifest_with_forensic_signals_and_ai_disclosure() {
         .expect("process-proof must contain CBOR content box");
     let pp: ProcessProofAssertion =
         ciborium::from_reader(&pp_payload[..]).expect("process-proof CBOR must deserialize");
-    assert!(pp.signal_scores.is_some(), "process-proof should contain signal scores");
+    assert!(
+        pp.signal_scores.is_some(),
+        "process-proof should contain signal scores"
+    );
 
     // Validate the full manifest structure.
     let result = validate_manifest(&manifest);
-    assert!(result.is_valid(), "Manifest with signals should validate: {:?}", result.errors);
+    assert!(
+        result.is_valid(),
+        "Manifest with signals should validate: {:?}",
+        result.errors
+    );
 }
 
 #[test]
 fn test_hash_exclusion_range_correctness() {
     let data = [1u8, 2, 3, 4, 5, 6, 7, 8];
-    let exclusions = vec![HashExclusion { start: 2, length: 3 }];
+    let exclusions = vec![HashExclusion {
+        start: 2,
+        length: 3,
+    }];
     let result = hash_with_exclusions(&data, &exclusions);
 
     let mut expected_data = data;
@@ -672,10 +727,17 @@ fn test_pdf_embed_preserves_header() {
     let embedded = embed_in_pdf(&pdf, jumbf).expect("embed_in_pdf must succeed");
 
     assert_eq!(&embedded[..5], b"%PDF-", "PDF header must be intact");
-    assert_eq!(&embedded[..pdf.len()], &pdf[..], "original content preserved");
+    assert_eq!(
+        &embedded[..pdf.len()],
+        &pdf[..],
+        "original content preserved"
+    );
     let text = String::from_utf8_lossy(&embedded);
     assert!(text.contains("/C2PA"), "must contain /C2PA reference");
-    assert!(text.contains("/Subtype /C2PA"), "stream must have /Subtype /C2PA");
+    assert!(
+        text.contains("/Subtype /C2PA"),
+        "stream must have /Subtype /C2PA"
+    );
     assert!(text.ends_with("%%EOF\n"), "must end with %%EOF");
 }
 
@@ -712,7 +774,11 @@ fn test_cert_chain_builder() {
         .unwrap();
 
     let result = validate_manifest(&manifest);
-    assert!(result.is_valid(), "cert_chain manifest must validate: {:?}", result.errors);
+    assert!(
+        result.is_valid(),
+        "cert_chain manifest must validate: {:?}",
+        result.errors
+    );
 }
 
 #[test]
@@ -738,7 +804,11 @@ fn test_local_timestamp_assertion() {
     assert!(has_ts, "Local timestamp assertion must be in manifest");
 
     let result = validate_manifest(&manifest);
-    assert!(result.is_valid(), "local_timestamp manifest must validate: {:?}", result.errors);
+    assert!(
+        result.is_valid(),
+        "local_timestamp manifest must validate: {:?}",
+        result.errors
+    );
 }
 
 #[test]
@@ -768,8 +838,7 @@ fn extract_assertion_content(box_bytes: &[u8], content_type: &str) -> Option<Vec
     let expected = content_type.as_bytes();
     let mut offset = 8; // skip outer jumb header
     while offset + 8 <= box_bytes.len() {
-        let child_len =
-            u32::from_be_bytes(box_bytes[offset..offset + 4].try_into().ok()?) as usize;
+        let child_len = u32::from_be_bytes(box_bytes[offset..offset + 4].try_into().ok()?) as usize;
         if child_len < 8 || offset + child_len > box_bytes.len() {
             return None;
         }
@@ -947,9 +1016,11 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
     };
 
     // === Phase 2: CBOR encode evidence (with CPoE semantic tag) ===
-    let evidence_bytes =
-        crate::codec::encode_evidence(&packet).expect("CBOR encode evidence");
-    assert!(evidence_bytes.len() > 100, "evidence CBOR should be non-trivial");
+    let evidence_bytes = crate::codec::encode_evidence(&packet).expect("CBOR encode evidence");
+    assert!(
+        evidence_bytes.len() > 100,
+        "evidence CBOR should be non-trivial"
+    );
 
     let decoded: EvidencePacket =
         crate::codec::decode_evidence(&evidence_bytes).expect("CBOR decode evidence");
@@ -964,7 +1035,10 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
         super::cert::generate_self_signed_cert(&signing_key).expect("generate self-signed cert");
     let extracted_pk =
         super::cert::extract_public_key_from_cert(&cert_der).expect("extract pubkey from cert");
-    assert_eq!(extracted_pk.as_slice(), signing_key.verifying_key().as_bytes());
+    assert_eq!(
+        extracted_pk.as_slice(),
+        signing_key.verifying_key().as_bytes()
+    );
 
     // === Phase 4: Build C2PA manifest with forensic signals ===
     let signals = ForensicSignalScores {
@@ -1075,9 +1149,7 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
     );
 
     // Forensic signals roundtrip.
-    let fs = pop
-        .signal_scores
-        .expect("signal_scores must be present");
+    let fs = pop.signal_scores.expect("signal_scores must be present");
     assert!((fs.cognitive_load - 0.82).abs() < f64::EPSILON);
     assert!((fs.revision_topology - 0.65).abs() < f64::EPSILON);
     assert!((fs.error_ecology - 0.91).abs() < f64::EPSILON);
@@ -1132,14 +1204,16 @@ fn end_to_end_keystrokes_to_verified_c2pa_manifest() {
         .iter()
         .position(|a| a.url.contains(ASSERTION_LABEL_ACTIONS))
         .expect("c2pa.actions.v2 must exist");
-    let actions_payload =
-        extract_assertion_content(&manifest.assertion_boxes[actions_idx], "cbor")
-            .expect("actions must contain CBOR box");
+    let actions_payload = extract_assertion_content(&manifest.assertion_boxes[actions_idx], "cbor")
+        .expect("actions must contain CBOR box");
     let actions: ActionsAssertion =
         ciborium::from_reader(&actions_payload[..]).expect("actions CBOR");
     assert_eq!(actions.actions.len(), 1);
     assert_eq!(actions.actions[0].action, "c2pa.created");
-    assert!(actions.actions[0].when.is_some(), "created action must have timestamp");
+    assert!(
+        actions.actions[0].when.is_some(),
+        "created action must have timestamp"
+    );
 
     // === Phase 12: Verify c2pa.external-reference assertion ===
     let ext_idx = manifest
@@ -1220,8 +1294,7 @@ fn c2pa_rs_reader_parses_our_jumbf() {
         baseline_verification: None,
     };
 
-    let evidence_bytes =
-        crate::codec::encode_evidence(&packet).unwrap();
+    let evidence_bytes = crate::codec::encode_evidence(&packet).unwrap();
 
     let signing_key = SigningKey::from_bytes(&[42u8; 32]);
     let cert_der = super::cert::generate_self_signed_cert(&signing_key).unwrap();
@@ -1237,12 +1310,18 @@ fn c2pa_rs_reader_parses_our_jumbf() {
     // Disable trust/timestamp verification (self-signed cert, no TSA) but keep
     // structural validation so c2pa-rs fully parses JUMBF, claim, and assertions.
     let context = c2pa_sdk::Context::new()
-        .with_settings(c2pa_sdk::settings::Settings::new()
-            .with_json(r#"{"verify":{"verify_after_reading":false}}"#)
-            .unwrap())
+        .with_settings(
+            c2pa_sdk::settings::Settings::new()
+                .with_json(r#"{"verify":{"verify_after_reading":false}}"#)
+                .unwrap(),
+        )
         .unwrap();
     let reader = c2pa_sdk::Reader::from_context(context)
-        .with_manifest_data_and_stream(&jumbf, "image/png", &mut std::io::Cursor::new(png_bytes.clone()))
+        .with_manifest_data_and_stream(
+            &jumbf,
+            "image/png",
+            &mut std::io::Cursor::new(png_bytes.clone()),
+        )
         .unwrap_or_else(|e| {
             panic!(
                 "c2pa-rs could not parse our JUMBF output: {e}\n\
@@ -1278,9 +1357,9 @@ fn c2pa_rs_reader_parses_our_jumbf() {
     let has_claim_error = root["validation_status"]
         .as_array()
         .map(|statuses| {
-            statuses.iter().any(|s| {
-                s["code"].as_str().map_or(false, |c| c.contains("claim."))
-            })
+            statuses
+                .iter()
+                .any(|s| s["code"].as_str().map_or(false, |c| c.contains("claim.")))
         })
         .unwrap_or(false);
     assert!(

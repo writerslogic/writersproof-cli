@@ -15,7 +15,6 @@ use crate::platform::{KeystrokeCapture, KeystrokeEvent};
 const BROADCAST_CAPACITY: usize = 1024;
 static INIT_LOCK: Mutex<()> = Mutex::new(());
 
-
 pub(crate) struct SharedKeystrokeTap {
     broadcast_tx: tokio::sync::broadcast::Sender<KeystrokeEvent>,
     running: Arc<AtomicBool>,
@@ -25,7 +24,6 @@ pub(crate) struct SharedKeystrokeTap {
 }
 
 static SHARED_TAP: OnceLock<Arc<SharedKeystrokeTap>> = OnceLock::new();
-
 
 pub(crate) fn get_or_start_shared_tap() -> crate::error::Result<Arc<SharedKeystrokeTap>> {
     if let Some(tap) = SHARED_TAP.get() {
@@ -78,16 +76,13 @@ pub(crate) fn get_or_start_shared_tap() -> crate::error::Result<Arc<SharedKeystr
     Ok(tap)
 }
 
-
 #[allow(dead_code)]
 pub(crate) fn get_shared_tap() -> Option<Arc<SharedKeystrokeTap>> {
     SHARED_TAP.get().cloned()
 }
 
 impl SharedKeystrokeTap {
-    pub(crate) fn subscribe(
-        &self,
-    ) -> tokio::sync::broadcast::Receiver<KeystrokeEvent> {
+    pub(crate) fn subscribe(&self) -> tokio::sync::broadcast::Receiver<KeystrokeEvent> {
         self.subscriber_count.fetch_add(1, Ordering::SeqCst);
         self.broadcast_tx.subscribe()
     }

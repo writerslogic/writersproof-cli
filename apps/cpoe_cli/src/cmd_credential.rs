@@ -9,9 +9,7 @@ use crate::util::{check_ffi_result, path_str};
 
 pub(crate) fn cmd_credential(action: CredentialAction, out: &OutputMode) -> Result<()> {
     match action {
-        CredentialAction::Create { path, session } => {
-            cmd_credential_create(&path, &session, out)
-        }
+        CredentialAction::Create { path, session } => cmd_credential_create(&path, &session, out),
         CredentialAction::Verify { file } => cmd_credential_verify(&file, out),
         CredentialAction::Info => cmd_credential_info(out),
     }
@@ -144,10 +142,7 @@ fn cmd_credential_verify(file: &Path, out: &OutputMode) -> Result<()> {
 
     println!("=== Credential Verification ===");
     println!();
-    println!(
-        "Valid:      {}",
-        if status.is_valid { "YES" } else { "NO" }
-    );
+    println!("Valid:      {}", if status.is_valid { "YES" } else { "NO" });
     println!("Issuer:     {}", status.issuer);
     println!("Issued At:  {} ms", status.issued_at_ms);
     println!("Expires At: {} ms", status.expires_at_ms);

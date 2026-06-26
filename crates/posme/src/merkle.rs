@@ -48,10 +48,8 @@ impl MerkleTree {
         self.nodes[pos] = leaf_hash(block);
         while pos > 0 {
             let parent = (pos - 1) / 2;
-            self.nodes[parent] = internal_hash(
-                &self.nodes[2 * parent + 1],
-                &self.nodes[2 * parent + 2],
-            );
+            self.nodes[parent] =
+                internal_hash(&self.nodes[2 * parent + 1], &self.nodes[2 * parent + 2]);
             pos = parent;
         }
     }
@@ -105,7 +103,7 @@ pub(crate) fn verify_path(
 mod tests {
     use super::*;
     #[cfg(feature = "prover")]
-    use crate::hash::{posme_hash, DST_INIT, DST_CAUSAL, i2osp};
+    use crate::hash::{i2osp, posme_hash, DST_CAUSAL, DST_INIT};
 
     #[cfg(feature = "prover")]
     fn make_test_blocks(n: u32) -> Vec<Block> {
@@ -116,7 +114,8 @@ mod tests {
         for i in 1..n as usize {
             let prev = blocks[i - 1].data;
             let skip = blocks[i / 2].data;
-            blocks[i].data = posme_hash(&[DST_INIT, seed.as_slice(), &i2osp(i as u32), &prev, &skip]);
+            blocks[i].data =
+                posme_hash(&[DST_INIT, seed.as_slice(), &i2osp(i as u32), &prev, &skip]);
             blocks[i].causal = posme_hash(&[DST_CAUSAL, seed.as_slice(), &i2osp(i as u32)]);
         }
         blocks
@@ -150,7 +149,10 @@ mod tests {
         let tree = MerkleTree::build(&blocks);
         let root = tree.root();
         let path = tree.prove(0);
-        let wrong = Block { data: [0xff; LAMBDA], causal: [0; LAMBDA] };
+        let wrong = Block {
+            data: [0xff; LAMBDA],
+            causal: [0; LAMBDA],
+        };
         assert!(!verify_path(&root, 0, &wrong, &path, 16));
     }
 
@@ -161,7 +163,10 @@ mod tests {
         let mut tree = MerkleTree::build(&blocks);
         let root_before = tree.root();
 
-        let new_block = Block { data: [0xab; LAMBDA], causal: [0xcd; LAMBDA] };
+        let new_block = Block {
+            data: [0xab; LAMBDA],
+            causal: [0xcd; LAMBDA],
+        };
         let old_block = blocks[5];
         let path = tree.prove(5);
 

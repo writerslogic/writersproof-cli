@@ -401,8 +401,8 @@ fn build_c2pa_zip(
     let deflated = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .compression_level(Some(9));
-    let stored = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let asset_options = if is_precompressed(asset_name) {
         stored
     } else {
@@ -426,7 +426,8 @@ fn build_c2pa_zip(
             .map_err(|e| format!("ZIP: failed to write VC: {e}"))?;
     }
 
-    let cursor = zip.finish()
+    let cursor = zip
+        .finish()
         .map_err(|e| format!("ZIP: failed to finalize: {e}"))?;
     Ok(cursor.into_inner())
 }
@@ -434,11 +435,7 @@ fn build_c2pa_zip(
 /// Whether an asset filename indicates an already-compressed format, for which
 /// re-running DEFLATE adds CPU cost with negligible (or negative) size benefit.
 fn is_precompressed(name: &str) -> bool {
-    let ext = name
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     matches!(
         ext.as_str(),
         // Images
@@ -790,14 +787,38 @@ pub fn enrich_c2pa_builder(
     use authorproof_protocol::c2pa::*;
 
     let signals = ForensicSignalScores {
-        cognitive_load: metrics.cognitive_load.as_ref().map(|c| c.composite_score).unwrap_or(0.0),
-        revision_topology: metrics.revision_topology.as_ref().map(|r| r.composite_score).unwrap_or(0.0),
-        error_ecology: metrics.error_ecology.as_ref().map(|e| e.composite_score).unwrap_or(0.0),
-        likelihood_model: metrics.likelihood_model.as_ref().map(|l| l.session_p_cognitive).unwrap_or(0.0),
-        composition_mode: metrics.composition_mode.as_ref().map(|c| c.composite_score).unwrap_or(0.0),
+        cognitive_load: metrics
+            .cognitive_load
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
+        revision_topology: metrics
+            .revision_topology
+            .as_ref()
+            .map(|r| r.composite_score)
+            .unwrap_or(0.0),
+        error_ecology: metrics
+            .error_ecology
+            .as_ref()
+            .map(|e| e.composite_score)
+            .unwrap_or(0.0),
+        likelihood_model: metrics
+            .likelihood_model
+            .as_ref()
+            .map(|l| l.session_p_cognitive)
+            .unwrap_or(0.0),
+        composition_mode: metrics
+            .composition_mode
+            .as_ref()
+            .map(|c| c.composite_score)
+            .unwrap_or(0.0),
     };
     let writing_mode = metrics.writing_mode.as_ref().map(|wm| wm.mode.to_string());
-    let comp_mode = metrics.composition_mode.as_ref().and_then(|c| c.dominant_mode).map(|m| m.to_string());
+    let comp_mode = metrics
+        .composition_mode
+        .as_ref()
+        .and_then(|c| c.dominant_mode)
+        .map(|m| m.to_string());
 
     let mut builder = builder.forensic_signals(signals, comp_mode, writing_mode);
 
@@ -1114,8 +1135,7 @@ mod zip_tests {
         )
         .expect("zip build");
 
-        let mut archive =
-            zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("valid zip");
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("valid zip");
         assert_eq!(archive.len(), 3, "asset + manifest + vc");
 
         // The text asset is deflated, smaller than raw, and round-trips byte-exact.
@@ -1143,8 +1163,7 @@ mod zip_tests {
         )
         .expect("zip build");
 
-        let mut archive =
-            zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("valid zip");
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("valid zip");
         let f = archive.by_name("photo.jpg").expect("asset entry");
         assert_eq!(
             f.compression(),
@@ -1155,8 +1174,18 @@ mod zip_tests {
 
     #[test]
     fn precompressed_classification() {
-        for name in ["a.jpg", "a.PNG", "clip.mp4", "report.pdf", "deck.pptx", "x.zip"] {
-            assert!(is_precompressed(name), "{name} should be treated as compressed");
+        for name in [
+            "a.jpg",
+            "a.PNG",
+            "clip.mp4",
+            "report.pdf",
+            "deck.pptx",
+            "x.zip",
+        ] {
+            assert!(
+                is_precompressed(name),
+                "{name} should be treated as compressed"
+            );
         }
         for name in ["notes.txt", "data.json", "manifest.c2pa", "noext"] {
             assert!(!is_precompressed(name), "{name} should be deflated");

@@ -75,7 +75,10 @@ mod tests {
     #[test]
     fn test_as_str() {
         assert_eq!(PermissionState::Full.as_str(), "full");
-        assert_eq!(PermissionState::KeystrokeDegraded.as_str(), "keystroke_degraded");
+        assert_eq!(
+            PermissionState::KeystrokeDegraded.as_str(),
+            "keystroke_degraded"
+        );
         assert_eq!(PermissionState::Revoked.as_str(), "revoked");
     }
 

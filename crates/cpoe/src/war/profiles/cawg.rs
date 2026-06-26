@@ -139,7 +139,6 @@ pub fn to_cawg_identity(ear: &EarToken, author_did: &str) -> Result<CawgIdentity
     })
 }
 
-
 /// Build a CAWG identity assertion enriched with entropy and forensic claims.
 pub fn to_cawg_identity_enriched(
     ear: &EarToken,
@@ -248,16 +247,22 @@ impl CawgIdentityAssertion {
         let mut expected_cbor = Vec::new();
         ciborium::into_writer(&self.signer_payload, &mut expected_cbor)
             .map_err(|e| Error::crypto(format!("CAWG CBOR encode error: {e}")))?;
-        let actual_payload = sign1.payload.as_ref()
+        let actual_payload = sign1
+            .payload
+            .as_ref()
             .ok_or_else(|| Error::crypto("CAWG COSE missing payload"))?;
         if actual_payload != &expected_cbor {
             return Err(Error::evidence("CAWG COSE payload mismatch"));
         }
         let sig_data = sign1.tbs_data(&[]);
-        let sig_bytes: [u8; 64] = sign1.signature.as_slice().try_into()
+        let sig_bytes: [u8; 64] = sign1
+            .signature
+            .as_slice()
+            .try_into()
             .map_err(|_| Error::evidence("CAWG COSE signature must be 64 bytes"))?;
         let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
-        verifying_key.verify_strict(&sig_data, &sig)
+        verifying_key
+            .verify_strict(&sig_data, &sig)
             .map_err(|e| Error::evidence(format!("CAWG COSE signature verification failed: {e}")))
     }
 }

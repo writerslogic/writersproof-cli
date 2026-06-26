@@ -613,7 +613,12 @@ impl WarReport {
 mod tests {
     use super::*;
 
-    fn minimal_report(keystrokes: u64, duration_min: f64, checkpoints: usize, words: u64) -> WarReport {
+    fn minimal_report(
+        keystrokes: u64,
+        duration_min: f64,
+        checkpoints: usize,
+        words: u64,
+    ) -> WarReport {
         WarReport {
             report_id: "WAR-TEST".into(),
             algorithm_version: "v1.0.0".into(),

@@ -168,7 +168,10 @@ impl ConsentManager {
 
     /// Revoke consent. Caller is responsible for deleting style data.
     pub fn revoke_consent(&mut self) -> Result<()> {
-        log::debug!("ConsentManager::revoke_consent: current_status={:?}", self.record.status);
+        log::debug!(
+            "ConsentManager::revoke_consent: current_status={:?}",
+            self.record.status
+        );
         if self.record.status != ConsentStatus::Granted {
             return Err(anyhow!("Cannot revoke consent that was not granted"));
         }

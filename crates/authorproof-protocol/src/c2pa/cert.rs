@@ -11,9 +11,7 @@ use crate::error::{Error, Result};
 use der::asn1::{BitString, ObjectIdentifier, OctetString};
 use der::{Decode, Encode};
 use ed25519_dalek::SigningKey;
-use p256::ecdsa::{
-    signature::Signer as EcdsaSigner, DerSignature, SigningKey as P256SigningKey,
-};
+use p256::ecdsa::{signature::Signer as EcdsaSigner, DerSignature, SigningKey as P256SigningKey};
 use sha2::Digest;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 use x509_cert::certificate::{CertificateInner, TbsCertificateInner, Version};
@@ -279,9 +277,7 @@ pub fn extract_public_key_from_cert(cert_der: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// Build X.509 v3 extensions required by the C2PA Trust Model.
-fn build_c2pa_extensions(
-    pk_hash: &[u8],
-) -> Result<x509_cert::ext::Extensions> {
+fn build_c2pa_extensions(pk_hash: &[u8]) -> Result<x509_cert::ext::Extensions> {
     // 1. BasicConstraints (critical): cA=FALSE
     // DER: SEQUENCE { BOOLEAN FALSE } → 30 03 01 01 00
     let basic_constraints_value = OctetString::new(vec![0x30, 0x03, 0x01, 0x01, 0x00])
@@ -309,8 +305,8 @@ fn build_c2pa_extensions(
         .map_err(|e| Error::Crypto(format!("EKU OID encoding: {e}")))?;
     let mut eku_seq = vec![0x30, eku_oid_der.len() as u8];
     eku_seq.extend_from_slice(&eku_oid_der);
-    let eku_value = OctetString::new(eku_seq)
-        .map_err(|e| Error::Crypto(format!("EKU encoding: {e}")))?;
+    let eku_value =
+        OctetString::new(eku_seq).map_err(|e| Error::Crypto(format!("EKU encoding: {e}")))?;
     let eku = Extension {
         extn_id: EKU_OID,
         critical: false,
@@ -322,8 +318,8 @@ fn build_c2pa_extensions(
     let ski_bytes = &pk_hash[..20.min(pk_hash.len())];
     let mut ski_der = vec![0x04, ski_bytes.len() as u8];
     ski_der.extend_from_slice(ski_bytes);
-    let ski_value = OctetString::new(ski_der)
-        .map_err(|e| Error::Crypto(format!("SKI encoding: {e}")))?;
+    let ski_value =
+        OctetString::new(ski_der).map_err(|e| Error::Crypto(format!("SKI encoding: {e}")))?;
     let ski = Extension {
         extn_id: SKI_OID,
         critical: false,
@@ -348,7 +344,11 @@ mod tests {
         let cert_der = generate_self_signed_cert(&key).unwrap();
 
         // Certificate should be non-trivial size (DER overhead + 32-byte key + 64-byte sig)
-        assert!(cert_der.len() > 100, "cert too small: {} bytes", cert_der.len());
+        assert!(
+            cert_der.len() > 100,
+            "cert too small: {} bytes",
+            cert_der.len()
+        );
 
         // Extract key should match original
         let extracted = extract_public_key_from_cert(&cert_der).unwrap();
@@ -444,7 +444,11 @@ mod tests {
         let key = test_p256_signing_key();
         let cert_der = generate_self_signed_cert_p256(&key).unwrap();
 
-        assert!(cert_der.len() > 100, "cert too small: {} bytes", cert_der.len());
+        assert!(
+            cert_der.len() > 100,
+            "cert too small: {} bytes",
+            cert_der.len()
+        );
 
         let extracted = extract_public_key_from_cert(&cert_der).unwrap();
         let expected = key.verifying_key().to_encoded_point(false);

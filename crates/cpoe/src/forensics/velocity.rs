@@ -216,13 +216,13 @@ pub fn analyze_segment_velocity(segments: &[(&str, &[EventData])]) -> Vec<Segmen
             } else {
                 let s: f64 = velocities.iter().sum();
                 let m = s / velocities.len() as f64;
-                if m.is_finite() { m } else { 0.0 }
+                if m.is_finite() {
+                    m
+                } else {
+                    0.0
+                }
             };
-            let max_bps = velocities
-                .iter()
-                .cloned()
-                .fold(0.0_f64, f64::max)
-                .max(0.0);
+            let max_bps = velocities.iter().cloned().fold(0.0_f64, f64::max).max(0.0);
             let max_bps = if max_bps.is_finite() { max_bps } else { 0.0 };
 
             SegmentVelocityProfile {

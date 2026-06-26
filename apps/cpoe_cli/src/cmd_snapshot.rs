@@ -18,8 +18,8 @@ pub(crate) fn cmd_snapshot(action: SnapshotAction, out: &OutputMode) -> Result<(
 
 fn cmd_snapshot_save(path: &Path, out: &OutputMode) -> Result<()> {
     let path_str = path_str(path);
-    let plaintext = std::fs::read_to_string(path)
-        .map_err(|e| anyhow!("Failed to read file: {}", e))?;
+    let plaintext =
+        std::fs::read_to_string(path).map_err(|e| anyhow!("Failed to read file: {}", e))?;
 
     let result = cpoe::ffi::snapshot::ffi_snapshot_save(path_str, plaintext);
 
@@ -85,10 +85,7 @@ fn cmd_snapshot_list(path: &Path, out: &OutputMode) -> Result<()> {
 
     println!("=== Snapshots ({}) ===", entries.len());
     for entry in &entries {
-        let label = entry
-            .draft_label
-            .as_deref()
-            .unwrap_or("");
+        let label = entry.draft_label.as_deref().unwrap_or("");
         let delta = if entry.word_count_delta >= 0 {
             format!("+{}", entry.word_count_delta)
         } else {
@@ -130,8 +127,8 @@ fn cmd_snapshot_get(id: i64, out: &OutputMode) -> Result<()> {
 }
 
 fn cmd_snapshot_diff(id: i64, path: &Path, out: &OutputMode) -> Result<()> {
-    let current_text = std::fs::read_to_string(path)
-        .map_err(|e| anyhow!("Failed to read current file: {}", e))?;
+    let current_text =
+        std::fs::read_to_string(path).map_err(|e| anyhow!("Failed to read current file: {}", e))?;
 
     let ops = cpoe::ffi::snapshot::ffi_snapshot_diff(id, current_text);
 

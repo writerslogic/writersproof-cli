@@ -198,11 +198,9 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
                         ))?;
                 }
                 ["sentinel", "default_content_granularity"] => {
-                    config.sentinel.default_content_granularity = value
-                        .parse()
-                        .map_err(|()| anyhow!(
-                            "Invalid granularity: {value}. Valid: paragraph, sentence, block"
-                        ))?;
+                    config.sentinel.default_content_granularity = value.parse().map_err(|()| {
+                        anyhow!("Invalid granularity: {value}. Valid: paragraph, sentence, block")
+                    })?;
                 }
                 _ => {
                     return Err(anyhow!(
@@ -361,8 +359,8 @@ pub(crate) fn cmd_config(action: ConfigAction) -> Result<()> {
 }
 
 fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<()> {
-    use cpoe::sentinel::app_registry::{AppRegistry, UserWritingApp};
     use cpoe::sentinel::app_discovery::probe_app;
+    use cpoe::sentinel::app_registry::{AppRegistry, UserWritingApp};
 
     match action {
         crate::cli::AppAction::Add { name } => {
@@ -388,17 +386,9 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
                 cpoe::sentinel::app_registry::ProbeConfidence::Medium => "medium",
                 cpoe::sentinel::app_registry::ProbeConfidence::Low => "low",
             };
-            println!(
-                "  Name:       {}",
-                probe.display_name
-            );
-            println!(
-                "  Storage:    {:?}",
-                probe.storage
-            );
-            println!(
-                "  Confidence: {confidence_label}",
-            );
+            println!("  Name:       {}", probe.display_name);
+            println!("  Storage:    {:?}", probe.storage);
+            println!("  Confidence: {confidence_label}",);
             if !probe.container_paths.is_empty() {
                 println!("  Containers: {}", probe.container_paths.join(", "));
             }
@@ -441,7 +431,10 @@ fn cmd_app(action: crate::cli::AppAction, data_dir: &std::path::Path) -> Result<
             } else {
                 println!("\nUser-added apps:");
                 for app in user {
-                    println!("  {} ({}) [{:?}]", app.display_name, app.bundle_id, app.probe_confidence);
+                    println!(
+                        "  {} ({}) [{:?}]",
+                        app.display_name, app.bundle_id, app.probe_confidence
+                    );
                 }
             }
         }

@@ -91,7 +91,6 @@ impl SessionManager {
         checkpoint.signature = Some(sig.signature.to_vec());
         Ok(())
     }
-
 }
 
 #[derive(Debug)]

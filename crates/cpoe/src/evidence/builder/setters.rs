@@ -10,12 +10,12 @@ use crate::anchors;
 use crate::collaboration;
 use crate::continuation;
 use crate::declaration;
+use crate::evidence::provenance;
+use crate::evidence::rfc_conversions::BiologyInvariantClaimExt;
 use crate::jitter;
 use crate::keyhierarchy;
 use crate::platform::HidDeviceInfo;
 use crate::presence;
-use crate::evidence::provenance;
-use crate::evidence::rfc_conversions::BiologyInvariantClaimExt;
 use crate::tpm;
 use crate::vdf;
 use authorproof_protocol::rfc::{
@@ -689,7 +689,10 @@ impl Builder {
         self
     }
 
-    pub fn with_export_attestation(mut self, attestation: super::ManuscriptExportAttestation) -> Self {
+    pub fn with_export_attestation(
+        mut self,
+        attestation: super::ManuscriptExportAttestation,
+    ) -> Self {
         self.packet.export_attestation = Some(attestation);
         self
     }

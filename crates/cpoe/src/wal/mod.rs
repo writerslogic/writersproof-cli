@@ -8,6 +8,6 @@ mod types;
 mod tests;
 
 pub use types::{
-    DictationBeginPayload, DictationEndPayload, DictationFragmentPayload, Entry, EntryType,
-    Header, Wal, WalError, WalRecoveryReport, WalVerification,
+    DictationBeginPayload, DictationEndPayload, DictationFragmentPayload, Entry, EntryType, Header,
+    Wal, WalError, WalRecoveryReport, WalVerification,
 };

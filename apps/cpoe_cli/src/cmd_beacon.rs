@@ -94,8 +94,7 @@ fn cmd_beacon_list(path: &Path, out: &OutputMode) -> Result<()> {
     check_ffi_result(result.success, &result.error_message)?;
 
     if out.json {
-        let items: Vec<serde_json::Value> =
-            result.beacons.iter().map(beacon_to_json).collect();
+        let items: Vec<serde_json::Value> = result.beacons.iter().map(beacon_to_json).collect();
         println!("{}", serde_json::Value::Array(items));
         return Ok(());
     }

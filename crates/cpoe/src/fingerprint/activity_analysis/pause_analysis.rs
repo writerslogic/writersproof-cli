@@ -53,7 +53,11 @@ impl PauseSignature {
 
         // Filter non-finite values to prevent NaN/Inf from inflating the
         // denominator without contributing to any pause category.
-        let intervals: Vec<f64> = intervals.iter().copied().filter(|x| x.is_finite()).collect();
+        let intervals: Vec<f64> = intervals
+            .iter()
+            .copied()
+            .filter(|x| x.is_finite())
+            .collect();
         if intervals.is_empty() {
             return Self::default();
         }
@@ -79,8 +83,8 @@ impl PauseSignature {
         let mut pause_histogram = vec![0.0; PAUSE_HISTOGRAM_BUCKETS];
         for &iki in &intervals {
             if iki >= SENTENCE_PAUSE_MS {
-                let bucket = ((iki / PAUSE_BUCKET_WIDTH_MS) as usize)
-                    .min(PAUSE_HISTOGRAM_BUCKETS - 1);
+                let bucket =
+                    ((iki / PAUSE_BUCKET_WIDTH_MS) as usize).min(PAUSE_HISTOGRAM_BUCKETS - 1);
                 pause_histogram[bucket] += 1.0;
             }
         }

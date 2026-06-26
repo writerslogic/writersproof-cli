@@ -17,13 +17,13 @@ pub(crate) mod analysis;
 mod assessment;
 mod cadence;
 pub mod cognitive_accumulator;
-pub mod constants;
 pub mod cognitive_load;
-pub mod composition_mode;
-pub mod cursor_attention;
 mod comparison;
+pub mod composition_mode;
+pub mod constants;
 mod correlation;
 pub mod cross_modal;
+pub mod cursor_attention;
 pub mod dictation;
 mod engine;
 pub mod error;
@@ -78,8 +78,8 @@ pub use writing_mode::{
 
 pub use cognitive_load::{analyze_cognitive_load, CognitiveLoadMetrics, CognitiveMode};
 pub use composition_mode::{
-    analyze_composition_mode, CompositionMode, CompositionModeDistribution,
-    CompositionModeMetrics, PasteContentBreakdown,
+    analyze_composition_mode, CompositionMode, CompositionModeDistribution, CompositionModeMetrics,
+    PasteContentBreakdown,
 };
 pub use error_ecology::{
     analyze_error_ecology, assess_transcription_suspicion, ErrorEcologyMetrics,

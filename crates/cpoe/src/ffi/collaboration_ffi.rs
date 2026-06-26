@@ -37,42 +37,44 @@ pub fn ffi_collaboration_signing_payload(
     checkpoint_ranges: Vec<FfiCheckpointRange>,
 ) -> Vec<u8> {
     catch_ffi_panic!(Vec::new(), {
-    log::debug!("ffi_collaboration_signing_payload: role={}", role);
-    let role_enum: CollaboratorRole = match role.as_str() {
-        "primary_author" => CollaboratorRole::PrimaryAuthor,
-        "co_author" => CollaboratorRole::CoAuthor,
-        "contributing_author" => CollaboratorRole::ContributingAuthor,
-        "editor" => CollaboratorRole::Editor,
-        "reviewer" => CollaboratorRole::Reviewer,
-        "technical_contributor" => CollaboratorRole::TechnicalContributor,
-        "translator" => CollaboratorRole::Translator,
-        other => {
-            log::warn!("Unknown collaboration role '{other}', defaulting to ContributingAuthor");
-            CollaboratorRole::ContributingAuthor
-        }
-    };
+        log::debug!("ffi_collaboration_signing_payload: role={}", role);
+        let role_enum: CollaboratorRole = match role.as_str() {
+            "primary_author" => CollaboratorRole::PrimaryAuthor,
+            "co_author" => CollaboratorRole::CoAuthor,
+            "contributing_author" => CollaboratorRole::ContributingAuthor,
+            "editor" => CollaboratorRole::Editor,
+            "reviewer" => CollaboratorRole::Reviewer,
+            "technical_contributor" => CollaboratorRole::TechnicalContributor,
+            "translator" => CollaboratorRole::Translator,
+            other => {
+                log::warn!(
+                    "Unknown collaboration role '{other}', defaulting to ContributingAuthor"
+                );
+                CollaboratorRole::ContributingAuthor
+            }
+        };
 
-    let ranges: Option<Vec<(u32, u32)>> = if checkpoint_ranges.is_empty() {
-        None
-    } else {
-        Some(checkpoint_ranges.iter().map(|r| (r.start, r.end)).collect())
-    };
+        let ranges: Option<Vec<(u32, u32)>> = if checkpoint_ranges.is_empty() {
+            None
+        } else {
+            Some(checkpoint_ranges.iter().map(|r| (r.start, r.end)).collect())
+        };
 
-    let collaborator = crate::collaboration::Collaborator {
-        public_key: public_key_hex,
-        role: role_enum,
-        display_name,
-        identifier,
-        active_periods: Vec::new(),
-        checkpoint_ranges: ranges,
-        attestation_signature: String::new(),
-        contribution_summary: None,
-    };
+        let collaborator = crate::collaboration::Collaborator {
+            public_key: public_key_hex,
+            role: role_enum,
+            display_name,
+            identifier,
+            active_periods: Vec::new(),
+            checkpoint_ranges: ranges,
+            attestation_signature: String::new(),
+            contribution_summary: None,
+        };
 
-    collaborator.signing_payload().unwrap_or_else(|e| {
-        log::error!("collaboration signing_payload failed: {e}");
-        Vec::new()
-    })
+        collaborator.signing_payload().unwrap_or_else(|e| {
+            log::error!("collaboration signing_payload failed: {e}");
+            Vec::new()
+        })
     })
 }
 
@@ -88,36 +90,36 @@ pub fn ffi_collaboration_verify_attestation(
     signature_hex: String,
 ) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_collaboration_verify_attestation: role={}", role);
-    let role_enum: CollaboratorRole = match role.as_str() {
-        "primary_author" => CollaboratorRole::PrimaryAuthor,
-        "co_author" => CollaboratorRole::CoAuthor,
-        "contributing_author" => CollaboratorRole::ContributingAuthor,
-        "editor" => CollaboratorRole::Editor,
-        "reviewer" => CollaboratorRole::Reviewer,
-        "technical_contributor" => CollaboratorRole::TechnicalContributor,
-        "translator" => CollaboratorRole::Translator,
-        _ => return false,
-    };
+        log::debug!("ffi_collaboration_verify_attestation: role={}", role);
+        let role_enum: CollaboratorRole = match role.as_str() {
+            "primary_author" => CollaboratorRole::PrimaryAuthor,
+            "co_author" => CollaboratorRole::CoAuthor,
+            "contributing_author" => CollaboratorRole::ContributingAuthor,
+            "editor" => CollaboratorRole::Editor,
+            "reviewer" => CollaboratorRole::Reviewer,
+            "technical_contributor" => CollaboratorRole::TechnicalContributor,
+            "translator" => CollaboratorRole::Translator,
+            _ => return false,
+        };
 
-    let ranges: Option<Vec<(u32, u32)>> = if checkpoint_ranges.is_empty() {
-        None
-    } else {
-        Some(checkpoint_ranges.iter().map(|r| (r.start, r.end)).collect())
-    };
+        let ranges: Option<Vec<(u32, u32)>> = if checkpoint_ranges.is_empty() {
+            None
+        } else {
+            Some(checkpoint_ranges.iter().map(|r| (r.start, r.end)).collect())
+        };
 
-    let collaborator = crate::collaboration::Collaborator {
-        public_key: public_key_hex,
-        role: role_enum,
-        display_name,
-        identifier,
-        active_periods: Vec::new(),
-        checkpoint_ranges: ranges,
-        attestation_signature: signature_hex,
-        contribution_summary: None,
-    };
+        let collaborator = crate::collaboration::Collaborator {
+            public_key: public_key_hex,
+            role: role_enum,
+            display_name,
+            identifier,
+            active_periods: Vec::new(),
+            checkpoint_ranges: ranges,
+            attestation_signature: signature_hex,
+            contribution_summary: None,
+        };
 
-    collaborator.verify_attestation().is_ok()
+        collaborator.verify_attestation().is_ok()
     })
 }
 

@@ -2,10 +2,7 @@
 
 use super::*;
 
-pub(in crate::report::html) fn write_verdict(
-    html: &mut String,
-    r: &WarReport,
-) -> fmt::Result {
+pub(in crate::report::html) fn write_verdict(html: &mut String, r: &WarReport) -> fmt::Result {
     let color = sanitize_css_color(r.verdict.css_color());
     section_heading(html, 1, SEC_DECLARATION)?;
 
@@ -79,10 +76,7 @@ pub(in crate::report::html) fn write_verdict(
     )
 }
 
-pub(in crate::report::html) fn write_enfsi_scale(
-    html: &mut String,
-    r: &WarReport,
-) -> fmt::Result {
+pub(in crate::report::html) fn write_enfsi_scale(html: &mut String, r: &WarReport) -> fmt::Result {
     let tiers = [
         ("enfsi-against", "&lt;1 Against", EnfsiTier::Against),
         ("enfsi-weak", "1\u{2013}10 Weak", EnfsiTier::Weak),
@@ -163,10 +157,15 @@ pub(in crate::report::html) fn write_lr_interpretation(
     // Log-scale LR bar: maps log10(LR) from -2..+5 onto a horizontal bar.
     let log_lr = if lr > 0.0 { lr.log10() } else { -2.0 };
     let bar_pct = ((log_lr + 2.0) / 7.0 * 100.0).clamp(2.0, 98.0); // -2..+5 range
-    let bar_color = if log_lr >= 4.0 { "var(--accent)" }
-        else if log_lr >= 2.0 { "#3d7a4a" }
-        else if log_lr >= 1.0 { "var(--caution)" }
-        else { "var(--alert)" };
+    let bar_color = if log_lr >= 4.0 {
+        "var(--accent)"
+    } else if log_lr >= 2.0 {
+        "#3d7a4a"
+    } else if log_lr >= 1.0 {
+        "var(--caution)"
+    } else {
+        "var(--alert)"
+    };
     write!(
         html,
         r#"<div class="lr-interpretation">
@@ -187,24 +186,34 @@ pub(in crate::report::html) fn write_lr_interpretation(
     )
 }
 
-pub(in crate::report::html) fn write_key_findings(
-    html: &mut String,
-    r: &WarReport,
-) -> fmt::Result {
+pub(in crate::report::html) fn write_key_findings(html: &mut String, r: &WarReport) -> fmt::Result {
     write!(
         html,
         r#"<div class="finding-card finding-human"><strong>Writing duration:</strong> {} session{}, {:.0} minutes of active composition, \
          {} revision events recorded.</div>"#,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
-        if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
+        if r.total_duration_min.is_finite() {
+            r.total_duration_min
+        } else {
+            0.0
+        },
         format_number(r.revision_events),
     )?;
 
     if let Some(ks) = r.process.total_keystrokes {
-        let cv_class = r.process.iki_cv.filter(|v| v.is_finite()).map(|cv| {
-            if cv < 0.15 { "finding-synthetic" } else { "finding-human" }
-        }).unwrap_or("finding-human");
+        let cv_class = r
+            .process
+            .iki_cv
+            .filter(|v| v.is_finite())
+            .map(|cv| {
+                if cv < 0.15 {
+                    "finding-synthetic"
+                } else {
+                    "finding-human"
+                }
+            })
+            .unwrap_or("finding-human");
         write!(
             html,
             r#"<div class="finding-card {cv_class}"><strong>Keystroke capture:</strong> {} keystrokes recorded with timing data."#,
@@ -264,7 +273,13 @@ pub(in crate::report::html) fn write_key_findings(
     }
 
     if let Some(pr) = r.process.paste_ratio_pct.filter(|v| v.is_finite()) {
-        let paste_class = if pr < 20.0 { "finding-human" } else if pr < 50.0 { "finding-neutral" } else { "finding-synthetic" };
+        let paste_class = if pr < 20.0 {
+            "finding-human"
+        } else if pr < 50.0 {
+            "finding-neutral"
+        } else {
+            "finding-synthetic"
+        };
         let assessment = if pr < 5.0 {
             "minimal paste activity, consistent with original composition"
         } else if pr < 20.0 {
@@ -283,9 +298,17 @@ pub(in crate::report::html) fn write_key_findings(
 
     if !r.dimensions.is_empty() {
         let not_evaluated = r.dimensions.iter().filter(|d| d.score == 0).count();
-        let anomalous = r.dimensions.iter().filter(|d| d.score > 0 && d.score < 40).count();
+        let anomalous = r
+            .dimensions
+            .iter()
+            .filter(|d| d.score > 0 && d.score < 40)
+            .count();
         let evaluated = r.dimensions.len() - not_evaluated;
-        let dim_class = if anomalous > 0 { "finding-synthetic" } else { "finding-human" };
+        let dim_class = if anomalous > 0 {
+            "finding-synthetic"
+        } else {
+            "finding-human"
+        };
         if anomalous == 0 && not_evaluated == 0 {
             write!(
                 html,
@@ -299,8 +322,11 @@ pub(in crate::report::html) fn write_key_findings(
                 anomalous,
                 evaluated,
                 if not_evaluated > 0 {
-                    format!(" {} dimension{} had insufficient data for evaluation.",
-                        not_evaluated, if not_evaluated == 1 { "" } else { "s" })
+                    format!(
+                        " {} dimension{} had insufficient data for evaluation.",
+                        not_evaluated,
+                        if not_evaluated == 1 { "" } else { "s" }
+                    )
                 } else {
                     String::new()
                 },

@@ -274,8 +274,16 @@ pub fn compute_dictation_analytics(
         total_words = total_words.saturating_add(ev.word_count);
         total_chars = total_chars.saturating_add(ev.char_count);
         total_duration_ns += ev.end_ns.saturating_sub(ev.start_ns);
-        wpm_sum += if ev.words_per_minute.is_finite() { ev.words_per_minute } else { 0.0 };
-        conf_sum += if (ev.confidence_mean as f64).is_finite() { ev.confidence_mean as f64 } else { 0.0 };
+        wpm_sum += if ev.words_per_minute.is_finite() {
+            ev.words_per_minute
+        } else {
+            0.0
+        };
+        conf_sum += if (ev.confidence_mean as f64).is_finite() {
+            ev.confidence_mean as f64
+        } else {
+            0.0
+        };
         let plaus = score_dictation_plausibility(ev);
         plaus_sum += plaus;
         if plaus < min_plaus {
@@ -479,11 +487,7 @@ pub fn apply_dictation_adjustment(
     }
 
     let n = events.len() as f64;
-    let mean_plausibility: f64 = events
-        .iter()
-        .map(score_dictation_plausibility)
-        .sum::<f64>()
-        / n;
+    let mean_plausibility: f64 = events.iter().map(score_dictation_plausibility).sum::<f64>() / n;
 
     let total_dict_words: u32 = events.iter().map(|e| e.word_count).sum();
     let total_words = total_dict_words.saturating_add(total_typed_words);
@@ -566,7 +570,10 @@ mod tests {
 
         event.interim_revision_count = 4;
         let score_with_revisions = score_dictation_plausibility(&event);
-        assert!(score_with_revisions > score, "revisions present should score higher");
+        assert!(
+            score_with_revisions > score,
+            "revisions present should score higher"
+        );
     }
 
     #[test]
@@ -579,7 +586,10 @@ mod tests {
 
         event.disfluency_count = 3;
         let score_with_disfluency = score_dictation_plausibility(&event);
-        assert!(score_with_disfluency > score, "disfluencies present should score higher");
+        assert!(
+            score_with_disfluency > score,
+            "disfluencies present should score higher"
+        );
     }
 
     #[test]
@@ -598,7 +608,11 @@ mod tests {
 
         let analytics = compute_dictation_analytics(&[ev1, ev2, ev3], 100);
         // Two gaps: 5s and 17s — high variance → high CV
-        assert!(analytics.burst_timing_cv > 0.3, "CV should be high for varied gaps: {}", analytics.burst_timing_cv);
+        assert!(
+            analytics.burst_timing_cv > 0.3,
+            "CV should be high for varied gaps: {}",
+            analytics.burst_timing_cv
+        );
     }
 
     #[test]
@@ -708,7 +722,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.audio_transport_type = AUDIO_TRANSPORT_VIRTUAL;
         let score = score_dictation_plausibility(&event);
-        assert!(score < 0.15, "virtual device should be heavily penalized, got {score}");
+        assert!(
+            score < 0.15,
+            "virtual device should be heavily penalized, got {score}"
+        );
     }
 
     #[test]
@@ -716,7 +733,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.audio_transport_type = 1; // Built-in
         let score = score_dictation_plausibility(&event);
-        assert!(score > 0.9, "built-in device should not be penalized, got {score}");
+        assert!(
+            score > 0.9,
+            "built-in device should not be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -725,7 +745,10 @@ mod tests {
         event.fragment_count = 5;
         event.confidence_stddev = 0.01; // Near-zero variance = TTS
         let score = score_dictation_plausibility(&event);
-        assert!(score < 0.95, "TTS-like confidence should be penalized, got {score}");
+        assert!(
+            score < 0.95,
+            "TTS-like confidence should be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -734,7 +757,10 @@ mod tests {
         event.fragment_count = 2; // Below CONFIDENCE_MIN_FRAGMENTS
         event.confidence_stddev = 0.01;
         let score = score_dictation_plausibility(&event);
-        assert!(score > 0.9, "few fragments should skip confidence check, got {score}");
+        assert!(
+            score > 0.9,
+            "few fragments should skip confidence check, got {score}"
+        );
     }
 
     #[test]
@@ -742,7 +768,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.speaker_output_active = true;
         let score = score_dictation_plausibility(&event);
-        assert!(score < 0.85, "speaker output should be penalized, got {score}");
+        assert!(
+            score < 0.85,
+            "speaker output should be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -750,7 +779,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.keystrokes_during_dictation = 50;
         let score = score_dictation_plausibility(&event);
-        assert!(score < 0.75, "concurrent keystrokes should be penalized, got {score}");
+        assert!(
+            score < 0.75,
+            "concurrent keystrokes should be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -758,7 +790,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.keystrokes_during_dictation = 5; // Below threshold
         let score = score_dictation_plausibility(&event);
-        assert!(score > 0.9, "few keystrokes should not be penalized, got {score}");
+        assert!(
+            score > 0.9,
+            "few keystrokes should not be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -766,7 +801,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.cross_window_similarity = 0.85; // High similarity = copy
         let score = score_dictation_plausibility(&event);
-        assert!(score < 0.9, "cross-window copy should be penalized, got {score}");
+        assert!(
+            score < 0.9,
+            "cross-window copy should be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -774,7 +812,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.ambient_noise_db = -85.0; // Below threshold = silent environment
         let score = score_dictation_plausibility(&event);
-        assert!(score < 0.8, "near-silent environment should be penalized, got {score}");
+        assert!(
+            score < 0.8,
+            "near-silent environment should be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -782,7 +823,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.ambient_noise_db = -100.0; // Sentinel "not measured" value
         let score = score_dictation_plausibility(&event);
-        assert!(score > 0.9, "unmeasured ambient should not be penalized, got {score}");
+        assert!(
+            score > 0.9,
+            "unmeasured ambient should not be penalized, got {score}"
+        );
     }
 
     #[test]
@@ -790,7 +834,10 @@ mod tests {
         let mut event = make_event(60, 30.0, true);
         event.ambient_noise_db = -45.0; // Normal room noise
         let score = score_dictation_plausibility(&event);
-        assert!(score > 0.9, "real room noise should not be penalized, got {score}");
+        assert!(
+            score > 0.9,
+            "real room noise should not be penalized, got {score}"
+        );
     }
 
     // ---- compute_dictation_analytics tests ----
@@ -828,7 +875,10 @@ mod tests {
         let mut ev = make_event(60, 30.0, true);
         ev.confidence_mean = f32::NAN;
         let a = compute_dictation_analytics(&[ev], 0);
-        assert!(a.mean_confidence.is_finite(), "NaN confidence should be filtered");
+        assert!(
+            a.mean_confidence.is_finite(),
+            "NaN confidence should be filtered"
+        );
     }
 
     // ---- cluster_speaker_segments tests ----
@@ -923,7 +973,10 @@ mod tests {
         let ev = make_event(60, 30.0, true);
         let comp = apply_dictation_adjustment(0.8, &[ev], 240, false);
         // 20% dictation at ~1.0 plausibility + 80% typed at 0.8 ≈ 0.84
-        assert!(comp.composite_adjustment > -0.05, "good dictation should barely change score");
+        assert!(
+            comp.composite_adjustment > -0.05,
+            "good dictation should barely change score"
+        );
         assert!(!comp.multi_speaker_detected);
     }
 
@@ -932,7 +985,10 @@ mod tests {
         let ev = make_event(60, 30.0, true);
         let comp = apply_dictation_adjustment(0.8, &[ev], 240, true);
         assert!(comp.multi_speaker_detected);
-        assert!(comp.composite_adjustment < 0.0, "multi-speaker should apply penalty");
+        assert!(
+            comp.composite_adjustment < 0.0,
+            "multi-speaker should apply penalty"
+        );
     }
 
     #[test]
@@ -940,6 +996,9 @@ mod tests {
         let mut ev = make_event(60, 30.0, false); // no mic = low plausibility
         ev.words_per_minute = 300.0; // suspicious WPM
         let comp = apply_dictation_adjustment(0.8, &[ev], 0, false);
-        assert!(comp.composite_adjustment < -0.1, "low plausibility should penalize");
+        assert!(
+            comp.composite_adjustment < -0.1,
+            "low plausibility should penalize"
+        );
     }
 }

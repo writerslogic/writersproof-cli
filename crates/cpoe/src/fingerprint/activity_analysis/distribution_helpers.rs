@@ -28,7 +28,11 @@ pub(super) fn pearson_autocorrelation(series: &[f64], lag: usize) -> f64 {
         return 0.0;
     }
     let r = cov / denom;
-    if r.is_finite() { r.clamp(-1.0, 1.0) } else { 0.0 }
+    if r.is_finite() {
+        r.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    }
 }
 
 /// O(n) percentile selection for [5th, 25th, 50th, 75th, 95th].

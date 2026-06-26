@@ -9,7 +9,8 @@ use crate::rfc::wire_types::*;
 fn test_checkpoint_wire_cbor_roundtrip() {
     let content_hash = HashValue::try_sha256(vec![0xAA; 32]).expect("valid sha256 content hash");
     let prev_hash = HashValue::zero_sha256();
-    let checkpoint_hash = HashValue::try_sha256(vec![0xCC; 32]).expect("valid sha256 checkpoint hash");
+    let checkpoint_hash =
+        HashValue::try_sha256(vec![0xCC; 32]).expect("valid sha256 checkpoint hash");
 
     let checkpoint = CheckpointWire {
         sequence: 0,
@@ -77,7 +78,8 @@ fn test_checkpoint_wire_cbor_roundtrip() {
 fn create_test_evidence_packet() -> EvidencePacketWire {
     let content_hash = HashValue::try_sha256(vec![0xAA; 32]).expect("valid sha256 content hash");
     let prev_hash = HashValue::zero_sha256();
-    let checkpoint_hash = HashValue::try_sha256(vec![0xCC; 32]).expect("valid sha256 checkpoint hash");
+    let checkpoint_hash =
+        HashValue::try_sha256(vec![0xCC; 32]).expect("valid sha256 checkpoint hash");
 
     let checkpoint = CheckpointWire {
         sequence: 0,
@@ -279,7 +281,10 @@ fn test_evidence_packet_crc32_footer_roundtrip() {
     ]);
     let stripped_cbor = &package[..crc_offset];
     let computed_crc = crc32fast::hash(stripped_cbor);
-    assert_eq!(stored_crc, computed_crc, "CRC32 must match after round-trip");
+    assert_eq!(
+        stored_crc, computed_crc,
+        "CRC32 must match after round-trip"
+    );
     assert_eq!(stored_crc, crc);
 
     // Decode stripped CBOR and verify fields
@@ -424,16 +429,28 @@ fn test_evidence_packet_with_optional_fields() {
         feature_flags: vec![1, 3, 5],
     });
 
-    packet.previous_packet_ref = Some(HashValue::try_sha256(vec![0xEE; 32]).expect("valid sha256 previous packet ref"));
+    packet.previous_packet_ref =
+        Some(HashValue::try_sha256(vec![0xEE; 32]).expect("valid sha256 previous packet ref"));
     packet.packet_sequence = Some(2);
 
     let encoded = packet.encode_cbor().expect("encode");
     let decoded = EvidencePacketWire::decode_cbor(&encoded).expect("decode");
 
-    assert_eq!(decoded.limitations.as_ref().expect("limitations present").len(), 2);
+    assert_eq!(
+        decoded
+            .limitations
+            .as_ref()
+            .expect("limitations present")
+            .len(),
+        2
+    );
     assert!(decoded.profile.is_some());
     assert_eq!(
-        decoded.profile.as_ref().expect("profile present").feature_flags,
+        decoded
+            .profile
+            .as_ref()
+            .expect("profile present")
+            .feature_flags,
         vec![1, 3, 5]
     );
     assert!(decoded.previous_packet_ref.is_some());
@@ -523,7 +540,10 @@ fn test_checkpoint_with_active_probes() {
     let encoded = packet.encode_cbor().expect("encode");
     let decoded = EvidencePacketWire::decode_cbor(&encoded).expect("decode");
 
-    let probes = decoded.checkpoints[0].active_probes.as_ref().expect("active probes present");
+    let probes = decoded.checkpoints[0]
+        .active_probes
+        .as_ref()
+        .expect("active probes present");
     assert_eq!(probes.len(), 1);
     assert_eq!(probes[0].probe_type, ProbeType::GaltonBoard);
     assert_eq!(probes[0].response_latency, Some(250));
@@ -543,7 +563,10 @@ fn test_checkpoint_with_self_receipts() {
     let encoded = packet.encode_cbor().expect("encode");
     let decoded = EvidencePacketWire::decode_cbor(&encoded).expect("decode");
 
-    let receipts = decoded.checkpoints[0].receipts.as_ref().expect("receipts present");
+    let receipts = decoded.checkpoints[0]
+        .receipts
+        .as_ref()
+        .expect("receipts present");
     assert_eq!(receipts.len(), 1);
     match &receipts[0] {
         Receipt::SelfReceipt(sr) => assert_eq!(sr.tool_id, "vscode-writerslogic"),
@@ -568,7 +591,9 @@ fn test_evidence_packet_with_physical_liveness() {
     let decoded = EvidencePacketWire::decode_cbor(&encoded).expect("decode");
 
     assert!(decoded.physical_liveness.is_some());
-    let pl = decoded.physical_liveness.expect("physical liveness present");
+    let pl = decoded
+        .physical_liveness
+        .expect("physical liveness present");
     assert_eq!(pl.thermal_trajectory.len(), 3);
     assert_eq!(pl.entropy_anchor, [0xAB; 32]);
 }
@@ -592,12 +617,18 @@ fn test_evidence_packet_with_presence_and_channel() {
     let decoded = EvidencePacketWire::decode_cbor(&encoded).expect("decode");
 
     assert!(decoded.presence_challenges.is_some());
-    let pc = decoded.presence_challenges.as_ref().expect("presence challenges present");
+    let pc = decoded
+        .presence_challenges
+        .as_ref()
+        .expect("presence challenges present");
     assert_eq!(pc.len(), 1);
     assert_eq!(pc[0].challenge_nonce.len(), 32);
 
     assert!(decoded.channel_binding.is_some());
-    let cb = decoded.channel_binding.as_ref().expect("channel binding present");
+    let cb = decoded
+        .channel_binding
+        .as_ref()
+        .expect("channel binding present");
     assert_eq!(cb.binding_type, BindingType::TlsExporter);
     assert_eq!(cb.binding_value, [0x33; 32]);
 }
@@ -684,9 +715,16 @@ fn test_checkpoint_with_lamport_signature_roundtrip() {
     let decoded = EvidencePacketWire::decode_cbor(&encoded).expect("decode");
 
     let cp0 = &decoded.checkpoints[0];
-    assert_eq!(cp0.lamport_signature.as_ref().expect("lamport signature present"), &lamport_sig);
     assert_eq!(
-        cp0.lamport_pubkey_fingerprint.as_ref().expect("lamport fingerprint present"),
+        cp0.lamport_signature
+            .as_ref()
+            .expect("lamport signature present"),
+        &lamport_sig
+    );
+    assert_eq!(
+        cp0.lamport_pubkey_fingerprint
+            .as_ref()
+            .expect("lamport fingerprint present"),
         &lamport_fp
     );
 

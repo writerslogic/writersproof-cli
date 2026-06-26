@@ -55,8 +55,7 @@ impl SnapshotStore {
         ))
         .map_err(|e| format!("pragma setup failed: {e}"))?;
 
-        let lock_file = crate::store::acquire_db_lock(path)
-            .map_err(|e| e.to_string())?;
+        let lock_file = crate::store::acquire_db_lock(path).map_err(|e| e.to_string())?;
 
         let key_bytes = Zeroizing::new(signing_key.to_bytes());
 

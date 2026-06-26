@@ -33,7 +33,10 @@ impl WritersProofClient {
         if !url.starts_with("https://") {
             return Err(Error::crypto(format!(
                 "WritersProof base_url must use HTTPS: {}",
-                &url[..(0..=url.len().min(40)).rev().find(|&i| url.is_char_boundary(i)).unwrap_or(0)]
+                &url[..(0..=url.len().min(40))
+                    .rev()
+                    .find(|&i| url.is_char_boundary(i))
+                    .unwrap_or(0)]
             )));
         }
         Ok(Self {
@@ -63,13 +66,10 @@ impl WritersProofClient {
             http_req = http_req.bearer_auth(jwt.as_str());
         }
 
-        let resp = http_req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("enroll: failed: {e}");
-                Error::crypto(format!("enroll request failed: {e}"))
-            })?;
+        let resp = http_req.send().await.map_err(|e| {
+            log::warn!("enroll: failed: {e}");
+            Error::crypto(format!("enroll request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -97,7 +97,10 @@ impl WritersProofClient {
         {
             return Err(Error::crypto(format!(
                 "invalid certificate ID: must be alphanumeric/dash/underscore, got: {}",
-                &id[..(0..=id.len().min(32)).rev().find(|&i| id.is_char_boundary(i)).unwrap_or(0)]
+                &id[..(0..=id.len().min(32))
+                    .rev()
+                    .find(|&i| id.is_char_boundary(i))
+                    .unwrap_or(0)]
             )));
         }
         let url = format!("{}/v1/certificates/{}", self.base_url, id);
@@ -106,13 +109,10 @@ impl WritersProofClient {
             req = req.bearer_auth(jwt.as_str());
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("get_certificate: failed: {e}");
-                Error::crypto(format!("certificate request failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("get_certificate: failed: {e}");
+            Error::crypto(format!("certificate request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -160,13 +160,10 @@ impl WritersProofClient {
             req = req.bearer_auth(jwt.as_str());
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("get_crl: failed: {e}");
-                Error::crypto(format!("CRL request failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("get_crl: failed: {e}");
+            Error::crypto(format!("CRL request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -214,13 +211,10 @@ impl WritersProofClient {
             http_req = http_req.bearer_auth(jwt.as_str());
         }
 
-        let resp = http_req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("anchor: failed: {e}");
-                Error::crypto(format!("anchor request failed: {e}"))
-            })?;
+        let resp = http_req.send().await.map_err(|e| {
+            log::warn!("anchor: failed: {e}");
+            Error::crypto(format!("anchor request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -265,13 +259,10 @@ impl WritersProofClient {
             ));
         }
 
-        let resp = http_req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("submit_text_attestation: failed: {e}");
-                Error::crypto(format!("text-attestation request failed: {e}"))
-            })?;
+        let resp = http_req.send().await.map_err(|e| {
+            log::warn!("submit_text_attestation: failed: {e}");
+            Error::crypto(format!("text-attestation request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -303,13 +294,10 @@ impl WritersProofClient {
             return Err(Error::crypto("publish requires authentication".to_string()));
         }
 
-        let resp = http_req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("publish: failed: {e}");
-                Error::crypto(format!("publish request failed: {e}"))
-            })?;
+        let resp = http_req.send().await.map_err(|e| {
+            log::warn!("publish: failed: {e}");
+            Error::crypto(format!("publish request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -317,7 +305,10 @@ impl WritersProofClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("[unreadable: {e}]"));
-            let truncated = &body[..(0..=body.len().min(200)).rev().find(|&i| body.is_char_boundary(i)).unwrap_or(0)];
+            let truncated = &body[..(0..=body.len().min(200))
+                .rev()
+                .find(|&i| body.is_char_boundary(i))
+                .unwrap_or(0)];
             log::warn!("publish: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "publish failed: HTTP {status}: {truncated}"
@@ -359,13 +350,10 @@ impl WritersProofClient {
             http_req = http_req.bearer_auth(jwt.as_str());
         }
 
-        let resp = http_req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("fetch_beacon: failed: {e}");
-                Error::crypto(format!("beacon request failed: {e}"))
-            })?;
+        let resp = http_req.send().await.map_err(|e| {
+            log::warn!("fetch_beacon: failed: {e}");
+            Error::crypto(format!("beacon request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -424,13 +412,10 @@ impl WritersProofClient {
             req = req.bearer_auth(jwt.as_str());
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("send_session_update: failed: {e}");
-                Error::crypto(format!("session update failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("send_session_update: failed: {e}");
+            Error::crypto(format!("session update failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -458,13 +443,10 @@ impl WritersProofClient {
             req = req.bearer_auth(jwt.as_str());
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("request_challenge: failed: {e}");
-                Error::crypto(format!("challenge request failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("request_challenge: failed: {e}");
+            Error::crypto(format!("challenge request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -507,13 +489,10 @@ impl WritersProofClient {
             req = req.bearer_auth(jwt.as_str());
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("pulse: failed: {e}");
-                Error::crypto(format!("pulse request failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("pulse: failed: {e}");
+            Error::crypto(format!("pulse request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -553,13 +532,10 @@ impl WritersProofClient {
         if let Some(ref jwt) = self.jwt {
             req = req.bearer_auth(jwt.as_str());
         }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("confirm_nonce: failed: {e}");
-                Error::crypto(format!("confirm_nonce request failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("confirm_nonce: failed: {e}");
+            Error::crypto(format!("confirm_nonce request failed: {e}"))
+        })?;
         if !resp.status().is_success() {
             let status = resp.status();
             log::warn!("confirm_nonce: failed: HTTP {status}");
@@ -626,13 +602,10 @@ impl WritersProofClient {
             return Err(Error::crypto("credential issuance requires authentication"));
         }
 
-        let resp = http_req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("issue_credential: failed: {e}");
-                Error::crypto(format!("credential issue request failed: {e}"))
-            })?;
+        let resp = http_req.send().await.map_err(|e| {
+            log::warn!("issue_credential: failed: {e}");
+            Error::crypto(format!("credential issue request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -640,7 +613,10 @@ impl WritersProofClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("[unreadable: {e}]"));
-            let truncated = &body[..(0..=body.len().min(200)).rev().find(|&i| body.is_char_boundary(i)).unwrap_or(0)];
+            let truncated = &body[..(0..=body.len().min(200))
+                .rev()
+                .find(|&i| body.is_char_boundary(i))
+                .unwrap_or(0)];
             log::warn!("issue_credential: failed: HTTP {status}");
             return Err(Error::crypto(format!(
                 "credential issue failed: HTTP {status}: {truncated}"
@@ -667,7 +643,10 @@ impl WritersProofClient {
         {
             return Err(Error::crypto(format!(
                 "invalid credential ID: must be alphanumeric/dash/underscore, got: {}",
-                &credential_id[..(0..=credential_id.len().min(32)).rev().find(|&i| credential_id.is_char_boundary(i)).unwrap_or(0)]
+                &credential_id[..(0..=credential_id.len().min(32))
+                    .rev()
+                    .find(|&i| credential_id.is_char_boundary(i))
+                    .unwrap_or(0)]
             )));
         }
 
@@ -677,13 +656,10 @@ impl WritersProofClient {
             req = req.bearer_auth(jwt.as_str());
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("get_credential_status: failed: {e}");
-                Error::crypto(format!("credential status request failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("get_credential_status: failed: {e}");
+            Error::crypto(format!("credential status request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -711,7 +687,10 @@ impl WritersProofClient {
         {
             return Err(Error::crypto(format!(
                 "invalid credential ID: must be alphanumeric/dash/underscore, got: {}",
-                &credential_id[..(0..=credential_id.len().min(32)).rev().find(|&i| credential_id.is_char_boundary(i)).unwrap_or(0)]
+                &credential_id[..(0..=credential_id.len().min(32))
+                    .rev()
+                    .find(|&i| credential_id.is_char_boundary(i))
+                    .unwrap_or(0)]
             )));
         }
 
@@ -725,13 +704,10 @@ impl WritersProofClient {
             ));
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                log::warn!("revoke_credential: failed: {e}");
-                Error::crypto(format!("credential revoke request failed: {e}"))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            log::warn!("revoke_credential: failed: {e}");
+            Error::crypto(format!("credential revoke request failed: {e}"))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();

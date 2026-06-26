@@ -576,7 +576,12 @@ impl Wal {
             cumulative_hasher.update(&entry_hash);
             let expected_cumulative = *cumulative_hasher.finalize().as_bytes();
 
-            if entry.cumulative_hash.ct_eq(&expected_cumulative).unwrap_u8() == 0 {
+            if entry
+                .cumulative_hash
+                .ct_eq(&expected_cumulative)
+                .unwrap_u8()
+                == 0
+            {
                 cumulative_hasher = hasher_checkpoint;
                 break;
             }
@@ -718,7 +723,12 @@ impl Wal {
             cumulative_hasher.update(&entry_hash);
             let expected_cumulative = *cumulative_hasher.finalize().as_bytes();
 
-            if entry.cumulative_hash.ct_eq(&expected_cumulative).unwrap_u8() == 0 {
+            if entry
+                .cumulative_hash
+                .ct_eq(&expected_cumulative)
+                .unwrap_u8()
+                == 0
+            {
                 return Err(WalError::CumulativeMismatch);
             }
 

@@ -32,7 +32,12 @@ fn main() {
                 timestamp: base_ts + i * 30_000,
                 content_hash: HashValue {
                     algorithm: HashAlgorithm::Sha256,
-                    digest: { let mut h = vec![0u8; 32]; h[0] = i as u8; h[1] = 0xCC; h },
+                    digest: {
+                        let mut h = vec![0u8; 32];
+                        h[0] = i as u8;
+                        h[1] = 0xCC;
+                        h
+                    },
                 },
                 char_count: 120 + i * 85,
                 prev_hash: HashValue {
@@ -41,7 +46,12 @@ fn main() {
                 },
                 checkpoint_hash: HashValue {
                     algorithm: HashAlgorithm::Sha256,
-                    digest: { let mut h = vec![0u8; 32]; h[0] = i as u8; h[1] = 0xDD; h },
+                    digest: {
+                        let mut h = vec![0u8; 32];
+                        h[0] = i as u8;
+                        h[1] = 0xDD;
+                        h
+                    },
                 },
                 jitter_hash: None,
             }

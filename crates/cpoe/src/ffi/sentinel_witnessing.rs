@@ -27,8 +27,7 @@ pub fn ffi_sentinel_start_witnessing(path: String) -> FfiResult {
 
     // AUD-084: Validate path to prevent traversal attacks (canonicalize to resolve symlinks)
     let validated_path = try_ffi!(
-        crate::sentinel::helpers::validate_path(&path)
-            .map_err(|e| format!("Invalid path: {e}")),
+        crate::sentinel::helpers::validate_path(&path).map_err(|e| format!("Invalid path: {e}")),
         FfiResult
     );
 
@@ -51,8 +50,7 @@ pub fn ffi_sentinel_stop_witnessing(path: String) -> FfiResult {
 
     // H-025: Validate path before passing to stop_witnessing (same as start_witnessing).
     let validated_path = try_ffi!(
-        crate::sentinel::helpers::validate_path(&path)
-            .map_err(|e| format!("Invalid path: {e}")),
+        crate::sentinel::helpers::validate_path(&path).map_err(|e| format!("Invalid path: {e}")),
         FfiResult
     );
 
@@ -160,7 +158,11 @@ fn query_store_metrics(path: &str, cadence_score: f64, focus_penalty: f64) -> St
     let store_score = if events.len() >= 2 {
         let profile = crate::forensics::ForensicEngine::evaluate_authorship(path, &events);
         let raw = profile.metrics.edit_entropy / crate::ffi::helpers::ENTROPY_NORMALIZATION_FACTOR;
-        if raw.is_finite() { raw } else { 0.0 }
+        if raw.is_finite() {
+            raw
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
@@ -296,20 +298,15 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
             .as_ref()
             .and_then(|p| sessions_map.get(p.as_str()));
         let targeted = sentinel.targeted_path();
-        let targeted_session = targeted.as_ref()
-            .and_then(|p| sessions_map.get(p.as_str()));
+        let targeted_session = targeted.as_ref().and_then(|p| sessions_map.get(p.as_str()));
         // Report focus as true when either the AX probe resolved the document
         // OR the targeted session still has has_focus set (covers the 100-200ms
         // AX latency window during app switches, so paste detection works).
-        let doc_has_focus = focused_session.is_some()
-            || targeted_session.map(|s| s.has_focus).unwrap_or(false);
+        let doc_has_focus =
+            focused_session.is_some() || targeted_session.map(|s| s.has_focus).unwrap_or(false);
         let session = focused_session
             .or(targeted_session)
-            .or_else(|| {
-                sessions_map
-                    .values()
-                    .find(|s| s.app_bundle_id == "cli")
-            });
+            .or_else(|| sessions_map.values().find(|s| s.app_bundle_id == "cli"));
         let session = match session {
             Some(s) => {
                 crate::sentinel::trace!(
@@ -330,10 +327,14 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
         SessionSnapshot {
             path: session.path.clone(),
             keystroke_count: session.total_keystrokes(),
-            elapsed_secs: session.start_time.elapsed().unwrap_or_else(|e| {
-                log::warn!("session start_time.elapsed() failed (clock went backward?): {e}");
-                std::time::Duration::ZERO
-            }).as_secs_f64(),
+            elapsed_secs: session
+                .start_time
+                .elapsed()
+                .unwrap_or_else(|e| {
+                    log::warn!("session start_time.elapsed() failed (clock went backward?): {e}");
+                    std::time::Duration::ZERO
+                })
+                .as_secs_f64(),
             change_count: u64::from(session.change_count),
             save_count: u64::from(session.save_count),
             event_confidence: session.average_event_confidence(),
@@ -380,11 +381,10 @@ pub fn ffi_sentinel_witnessing_status() -> FfiWitnessingStatus {
     );
 
     // Compute cursor attention score outside the lock
-    let cursor_attention_score = crate::forensics::cursor_attention::analyze(
-        &snapshot.scroll_attention,
-    )
-    .map(|ca| ca.composite_score)
-    .unwrap_or(0.0);
+    let cursor_attention_score =
+        crate::forensics::cursor_attention::analyze(&snapshot.scroll_attention)
+            .map(|ca| ca.composite_score)
+            .unwrap_or(0.0);
 
     let host_paste_chars = sentinel.take_last_paste_chars();
 

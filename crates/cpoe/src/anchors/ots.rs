@@ -145,9 +145,10 @@ impl OpenTimestampsProvider {
                 let a = allowed.as_str();
                 url.starts_with(a)
                     && (a.ends_with('/')
-                        || url.as_bytes().get(a.len()).map_or(true, |&c| {
-                            c == b'/' || c == b'?' || c == b'#'
-                        }))
+                        || url
+                            .as_bytes()
+                            .get(a.len())
+                            .map_or(true, |&c| c == b'/' || c == b'?' || c == b'#'))
             }) {
                 log::warn!("Proof contains unrecognized calendar URL {}; skipping", url);
                 all_server_errors = false;
@@ -601,10 +602,7 @@ impl OpenTimestampsProvider {
         height: u64,
     ) -> Result<[u8; BITCOIN_BLOCK_HEADER_SIZE], AnchorError> {
         {
-            let cache = self
-                .header_cache
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let cache = self.header_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(header) = cache.get(&height) {
                 return Ok(*header);
             }
@@ -628,10 +626,7 @@ impl OpenTimestampsProvider {
                         continue;
                     }
 
-                    let mut cache = self
-                        .header_cache
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
+                    let mut cache = self.header_cache.lock().unwrap_or_else(|e| e.into_inner());
                     if cache.len() >= 1000 {
                         cache.clear();
                     }

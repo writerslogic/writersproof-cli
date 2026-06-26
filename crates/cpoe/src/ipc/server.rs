@@ -28,10 +28,10 @@ pub(super) fn len_to_u32(len: usize) -> Result<[u8; 4]> {
 /// Executables allowed to connect over the IPC socket.
 #[cfg(unix)]
 const ALLOWED_PEER_EXECUTABLES: &[&str] = &[
-    "cpoe",              // CLI binary
-    "cpoe_cli",          // CLI binary (alt name)
-    "WritersLogic",      // macOS GUI app
-    "writerslogic",      // Linux GUI
+    "cpoe",         // CLI binary
+    "cpoe_cli",     // CLI binary (alt name)
+    "WritersLogic", // macOS GUI app
+    "writerslogic", // Linux GUI
 ];
 
 /// Platform-aware IPC server (Unix socket or Windows named pipe).
@@ -330,9 +330,7 @@ impl IpcServer {
         if !pending.is_empty() {
             let n = pending.len();
             log::info!("IPC: shutdown draining {n} in-flight connection(s)");
-            let drain = async {
-                while pending.join_next().await.is_some() {}
-            };
+            let drain = async { while pending.join_next().await.is_some() {} };
             if tokio::time::timeout(Self::SHUTDOWN_DRAIN_TIMEOUT, drain)
                 .await
                 .is_err()
@@ -394,8 +392,7 @@ async fn handle_connection<H: IpcMessageHandler>(
 
     // Verify the peer executable (Linux: /proc path check, macOS: PID validation).
     if let Some(pid) = peer_pid {
-        if let Err(e) = super::unix_socket::verify_peer_executable(pid, ALLOWED_PEER_EXECUTABLES)
-        {
+        if let Err(e) = super::unix_socket::verify_peer_executable(pid, ALLOWED_PEER_EXECUTABLES) {
             log::error!("IPC: peer executable verification failed: {e}");
             return;
         }

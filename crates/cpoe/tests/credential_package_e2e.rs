@@ -18,9 +18,7 @@ use cpoe_engine::evidence;
 use cpoe_engine::tpm::{Provider, SoftwareProvider};
 use cpoe_engine::trust_policy::profiles;
 use cpoe_engine::vdf;
-use cpoe_engine::war::profiles::package::{
-    verify_credential_package, CredentialPackageBuilder,
-};
+use cpoe_engine::war::profiles::package::{verify_credential_package, CredentialPackageBuilder};
 use cpoe_engine::war::Block;
 
 fn test_signing_key() -> SigningKey {
@@ -100,13 +98,19 @@ fn test_e2e_evidence_to_verified_credential_package() {
         !pkg.cawg_identity.signature.is_empty(),
         "CAWG identity should be signed"
     );
-    assert!(pkg.cawg_tdm.is_some(), "TDM should be present (declaration provided)");
+    assert!(
+        pkg.cawg_tdm.is_some(),
+        "TDM should be present (declaration provided)"
+    );
     assert!(pkg.eu_ai_act.is_some(), "EU AI Act should be present");
 
     let eu = pkg.eu_ai_act.as_ref().unwrap();
     assert!(!eu.ai_generated, "no-AI declaration → not AI-generated");
     assert_eq!(eu.machine_readable_label, "human-authored");
-    assert!(eu.evidence_backed || true, "evidence backing depends on jitter");
+    assert!(
+        eu.evidence_backed || true,
+        "evidence backing depends on jitter"
+    );
 
     assert_eq!(
         pkg.jpeg_trust.trust_indicators.len(),
@@ -170,10 +174,7 @@ fn test_e2e_wrong_key_rejected() {
     let wrong_pk: [u8; 32] = wrong_provider.public_key().try_into().expect("pk");
 
     let result = verify_credential_package(&pkg, &wrong_pk);
-    assert!(
-        !result.all_valid,
-        "verification should fail with wrong key"
-    );
+    assert!(!result.all_valid, "verification should fail with wrong key");
     assert!(!result.vc_proof_valid, "VC proof should fail");
     assert!(!result.cawg_signature_valid, "CAWG should fail");
 }
@@ -238,9 +239,7 @@ fn test_e2e_cawg_identity_has_enriched_claims() {
             "should have DID claim"
         );
         assert!(
-            claims
-                .iter()
-                .any(|c| c.claim_type == "attestation_status"),
+            claims.iter().any(|c| c.claim_type == "attestation_status"),
             "should have attestation status claim"
         );
     } else {

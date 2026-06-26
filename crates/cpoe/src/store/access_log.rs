@@ -118,7 +118,8 @@ impl AccessLog {
         if path != std::path::Path::new(":memory:") {
             crate::crypto::restrict_permissions(path, 0o600)?;
         }
-        let journal_mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
+        let journal_mode: String =
+            conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
         if journal_mode.to_lowercase() != "wal" {
             log::warn!("access_log db: requested WAL but got '{journal_mode}' journal mode");
         }

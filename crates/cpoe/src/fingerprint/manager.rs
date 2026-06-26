@@ -38,7 +38,10 @@ pub struct FingerprintManager {
 
 impl FingerprintManager {
     pub fn new(storage_path: &Path) -> Result<Self> {
-        log::debug!("FingerprintManager::new: storage_path={}", storage_path.display());
+        log::debug!(
+            "FingerprintManager::new: storage_path={}",
+            storage_path.display()
+        );
         let storage = FingerprintStorage::new(storage_path)?;
         let consent_manager = ConsentManager::new(storage_path)?;
         let canonical_profile = load_canonical_profile(storage_path);
@@ -51,7 +54,8 @@ impl FingerprintManager {
             style_collector: None,
             current_profile_id: None,
             last_snapshot_samples: 0,
-            consolidation_count: canonical_profile.as_ref()
+            consolidation_count: canonical_profile
+                .as_ref()
                 .map(|c| (c.sample_count / CONSOLIDATION_INTERVAL as u64) as u32)
                 .unwrap_or(0),
             canonical_profile,
@@ -60,7 +64,10 @@ impl FingerprintManager {
     }
 
     pub fn with_config(config: FingerprintConfig) -> Result<Self> {
-        log::debug!("FingerprintManager::with_config: storage_path={}", config.storage_path.display());
+        log::debug!(
+            "FingerprintManager::with_config: storage_path={}",
+            config.storage_path.display()
+        );
         let storage = FingerprintStorage::new(&config.storage_path)?;
         let consent_manager = ConsentManager::new(&config.storage_path)?;
         let canonical_profile = load_canonical_profile(&config.storage_path);
@@ -79,7 +86,8 @@ impl FingerprintManager {
             style_collector,
             current_profile_id: None,
             last_snapshot_samples: 0,
-            consolidation_count: canonical_profile.as_ref()
+            consolidation_count: canonical_profile
+                .as_ref()
                 .map(|c| (c.sample_count / CONSOLIDATION_INTERVAL as u64) as u32)
                 .unwrap_or(0),
             canonical_profile,
@@ -240,9 +248,15 @@ impl FingerprintManager {
         let hurst = activity.hurst_exponent.unwrap_or(0.5);
 
         let dimensions = vec![
-            ("typing_speed".into(), (activity.session_signature.mean_typing_speed / 120.0).clamp(0.0, 1.0)),
+            (
+                "typing_speed".into(),
+                (activity.session_signature.mean_typing_speed / 120.0).clamp(0.0, 1.0),
+            ),
             ("consistency".into(), 1.0 - iki_cv),
-            ("pause_depth".into(), (activity.pause_signature.thinking_pause_mean / 5000.0).clamp(0.0, 1.0)),
+            (
+                "pause_depth".into(),
+                (activity.pause_signature.thinking_pause_mean / 5000.0).clamp(0.0, 1.0),
+            ),
             ("correction_rate".into(), correction_rate),
             ("zone_diversity".into(), zone_entropy),
             ("rhythm".into(), hurst),
@@ -345,7 +359,10 @@ impl FingerprintManager {
 
     #[cfg(feature = "cpoe_jitter")]
     pub fn current_author_fingerprint_with_phys_ratio(&self, phys_ratio: f64) -> AuthorFingerprint {
-        log::debug!("FingerprintManager::current_author_fingerprint_with_phys_ratio: phys_ratio={}", phys_ratio);
+        log::debug!(
+            "FingerprintManager::current_author_fingerprint_with_phys_ratio: phys_ratio={}",
+            phys_ratio
+        );
         let mut activity = (*self.current_activity_fingerprint()).clone();
         activity.set_phys_ratio(phys_ratio);
 
@@ -369,7 +386,11 @@ impl FingerprintManager {
     fn global_activity_sample_count(&self) -> usize {
         let global = crate::fingerprint::global::get_global_accumulator();
         let count = global.read_recover().sample_count();
-        if count > 0 { count } else { self.activity_accumulator.sample_count() }
+        if count > 0 {
+            count
+        } else {
+            self.activity_accumulator.sample_count()
+        }
     }
 
     pub fn status(&self) -> FingerprintStatus {
@@ -396,8 +417,6 @@ impl FingerprintManager {
         status
     }
 }
-
-
 
 fn load_canonical_profile(storage_path: &Path) -> Option<AuthorFingerprint> {
     let path = storage_path.join(CANONICAL_PROFILE_FILE);

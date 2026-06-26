@@ -23,11 +23,12 @@ fn build_jsonld(r: &WarReport) -> String {
     } else {
         serde_json::Value::Null
     };
-    let log_lr_value: serde_json::Value = if r.likelihood_ratio.is_finite() && r.likelihood_ratio > 0.0 {
-        serde_json::json!(r.likelihood_ratio.log10())
-    } else {
-        serde_json::Value::Null
-    };
+    let log_lr_value: serde_json::Value =
+        if r.likelihood_ratio.is_finite() && r.likelihood_ratio > 0.0 {
+            serde_json::json!(r.likelihood_ratio.log10())
+        } else {
+            serde_json::Value::Null
+        };
 
     let graph = serde_json::json!({
         "@context": {
@@ -107,7 +108,7 @@ fn build_jsonld(r: &WarReport) -> String {
 
     serde_json::to_string_pretty(&graph)
         .unwrap_or_else(|_| "{}".to_string())
-        .replace("</", "<\\/")  // Prevent </script> injection in JSON-LD block
+        .replace("</", "<\\/") // Prevent </script> injection in JSON-LD block
 }
 
 /// Write the `<!DOCTYPE>` through opening `<div class="report">`, including

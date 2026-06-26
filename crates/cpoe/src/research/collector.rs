@@ -177,7 +177,11 @@ impl ResearchCollector {
     /// Export sessions if upload conditions are met; returns `None` otherwise.
     /// Used by the uploader to snapshot data before releasing the mutex for the HTTP call.
     pub fn take_export_if_ready(&self) -> Option<ResearchDataExport> {
-        if self.should_upload() { Some(self.export()) } else { None }
+        if self.should_upload() {
+            Some(self.export())
+        } else {
+            None
+        }
     }
 
     /// Clear buffered sessions and disk data after a successful upload.

@@ -32,9 +32,7 @@ pub fn classify_paste_content_kind(
         return PasteContentKind::StructuredData;
     }
 
-    if has_consistent_delimiters(trimmed, '\t', 1)
-        || has_consistent_delimiters(trimmed, ',', 2)
-    {
+    if has_consistent_delimiters(trimmed, '\t', 1) || has_consistent_delimiters(trimmed, ',', 2) {
         return PasteContentKind::StructuredData;
     }
 

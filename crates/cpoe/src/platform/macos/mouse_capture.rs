@@ -92,134 +92,129 @@ impl MouseCapture for MacOSMouseCapture {
             .name("cpoe-mousetap".into())
             .stack_size(2 * 1024 * 1024)
             .spawn(move || {
-            let mut last_scroll_ns: i64 = 0;
-            let mut tap_cb: TapCallback =
-                Box::new(move |event: *mut std::ffi::c_void, event_type: u32| {
-                    if !running.load(Ordering::SeqCst) {
-                        return;
-                    }
-
-                    if event_type == K_CG_EVENT_SCROLL_WHEEL {
-                        let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
-                        // Throttle to ~60 Hz to prevent trackpad inertial flood
-                        if now.saturating_sub(last_scroll_ns) < 16_000_000 {
+                let mut last_scroll_ns: i64 = 0;
+                let mut tap_cb: TapCallback =
+                    Box::new(move |event: *mut std::ffi::c_void, event_type: u32| {
+                        if !running.load(Ordering::SeqCst) {
                             return;
                         }
-                        last_scroll_ns = now;
-                        let location = unsafe { CGEventGetLocation(event) };
-                        let delta_v = unsafe {
-                            CGEventGetIntegerValueField(
-                                event,
-                                K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_1,
-                            )
-                        };
-                        let delta_h = unsafe {
-                            CGEventGetIntegerValueField(
-                                event,
-                                K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_2,
-                            )
-                        };
-                        let scroll_event = MouseEvent::scroll(
-                            now,
-                            location.x,
-                            location.y,
-                            delta_v,
-                            delta_h,
-                        );
-                        let _ = tx.send(scroll_event);
-                    } else if event_type == K_CG_EVENT_MOUSE_MOVED {
-                        let should_capture = if idle_only_mode {
-                            if let Ok(time) = last_keystroke_time.read() {
-                                time.elapsed() < std::time::Duration::from_secs(2)
-                            } else {
-                                false
+
+                        if event_type == K_CG_EVENT_SCROLL_WHEEL {
+                            let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
+                            // Throttle to ~60 Hz to prevent trackpad inertial flood
+                            if now.saturating_sub(last_scroll_ns) < 16_000_000 {
+                                return;
                             }
-                        } else {
-                            true
-                        };
+                            last_scroll_ns = now;
+                            let location = unsafe { CGEventGetLocation(event) };
+                            let delta_v = unsafe {
+                                CGEventGetIntegerValueField(
+                                    event,
+                                    K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_1,
+                                )
+                            };
+                            let delta_h = unsafe {
+                                CGEventGetIntegerValueField(
+                                    event,
+                                    K_CG_SCROLL_WHEEL_EVENT_DELTA_AXIS_2,
+                                )
+                            };
+                            let scroll_event =
+                                MouseEvent::scroll(now, location.x, location.y, delta_v, delta_h);
+                            let _ = tx.send(scroll_event);
+                        } else if event_type == K_CG_EVENT_MOUSE_MOVED {
+                            let should_capture = if idle_only_mode {
+                                if let Ok(time) = last_keystroke_time.read() {
+                                    time.elapsed() < std::time::Duration::from_secs(2)
+                                } else {
+                                    false
+                                }
+                            } else {
+                                true
+                            };
 
-                        if !should_capture {
+                            if !should_capture {
+                                return;
+                            }
+
+                            let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
+
+                            let location = unsafe { CGEventGetLocation(event) };
+                            let x = location.x;
+                            let y = location.y;
+
+                            let (dx, dy) = {
+                                let mut last_pos = last_position.write_recover();
+                                let delta = (x - last_pos.0, y - last_pos.1);
+                                *last_pos = (x, y);
+                                delta
+                            };
+
+                            let is_idle = !keyboard_active.load(Ordering::SeqCst);
+                            let mouse_event = if is_idle {
+                                MouseEvent::idle_jitter(now, x, y, dx, dy)
+                            } else {
+                                MouseEvent::new(now, x, y, dx, dy)
+                            };
+
+                            if mouse_event.is_micro_movement() && is_idle {
+                                idle_stats.write_recover().record(&mouse_event);
+                            }
+
+                            let _ = tx.send(mouse_event);
+
+                            if !idle_only_mode {
+                                keyboard_active.store(false, Ordering::SeqCst);
+                            }
+                        }
+                    });
+
+                unsafe {
+                    let tap = match CfGuard::new(CGEventTapCreate(
+                        K_CG_HID_EVENT_TAP,
+                        K_CG_HEAD_INSERT_EVENT_TAP,
+                        K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
+                        cg_event_mask_bit(K_CG_EVENT_MOUSE_MOVED)
+                            | cg_event_mask_bit(K_CG_EVENT_SCROLL_WHEEL),
+                        event_tap_trampoline,
+                        &mut tap_cb as *mut TapCallback as *mut std::ffi::c_void,
+                    )) {
+                        Some(t) => t,
+                        None => {
+                            let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
                             return;
                         }
+                    };
 
-                        let now = unsafe { clock.to_utc_ns(CGEventGetTimestamp(event)) };
-
-                        let location = unsafe { CGEventGetLocation(event) };
-                        let x = location.x;
-                        let y = location.y;
-
-                        let (dx, dy) = {
-                            let mut last_pos = last_position.write_recover();
-                            let delta = (x - last_pos.0, y - last_pos.1);
-                            *last_pos = (x, y);
-                            delta
-                        };
-
-                        let is_idle = !keyboard_active.load(Ordering::SeqCst);
-                        let mouse_event = if is_idle {
-                            MouseEvent::idle_jitter(now, x, y, dx, dy)
-                        } else {
-                            MouseEvent::new(now, x, y, dx, dy)
-                        };
-
-                        if mouse_event.is_micro_movement() && is_idle {
-                            idle_stats.write_recover().record(&mouse_event);
+                    let source = match CfGuard::new(CFMachPortCreateRunLoopSource(
+                        std::ptr::null_mut(),
+                        tap.as_ptr(),
+                        0,
+                    )) {
+                        Some(s) => s,
+                        None => {
+                            let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
+                            return;
                         }
+                    };
 
-                        let _ = tx.send(mouse_event);
-
-                        if !idle_only_mode {
-                            keyboard_active.store(false, Ordering::SeqCst);
-                        }
+                    let rl_ref = CFRunLoopGetCurrent();
+                    CFRetain(rl_ref);
+                    *run_loop.lock_recover() = Some(RunLoopHandle(rl_ref));
+                    CFRunLoopAddSource(rl_ref, source.as_ptr(), kCFRunLoopCommonModes);
+                    CGEventTapEnable(tap.as_ptr(), true);
+                    {
+                        let mut res = tap_resources.lock_recover();
+                        *res = Some(MouseTapResources {
+                            run_loop: rl_ref,
+                            tap,
+                            source,
+                        });
                     }
-                });
-
-            unsafe {
-                let tap = match CfGuard::new(CGEventTapCreate(
-                    K_CG_HID_EVENT_TAP,
-                    K_CG_HEAD_INSERT_EVENT_TAP,
-                    K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
-                    cg_event_mask_bit(K_CG_EVENT_MOUSE_MOVED)
-                        | cg_event_mask_bit(K_CG_EVENT_SCROLL_WHEEL),
-                    event_tap_trampoline,
-                    &mut tap_cb as *mut TapCallback as *mut std::ffi::c_void,
-                )) {
-                    Some(t) => t,
-                    None => {
-                        let _ = ready_tx.send(Err(anyhow!("Failed to create CGEventTap")));
-                        return;
-                    }
-                };
-
-                let source = match CfGuard::new(CFMachPortCreateRunLoopSource(
-                    std::ptr::null_mut(),
-                    tap.as_ptr(),
-                    0,
-                )) {
-                    Some(s) => s,
-                    None => {
-                        let _ = ready_tx.send(Err(anyhow!("Failed to create runloop source")));
-                        return;
-                    }
-                };
-
-                let rl_ref = CFRunLoopGetCurrent();
-                CFRetain(rl_ref);
-                *run_loop.lock_recover() = Some(RunLoopHandle(rl_ref));
-                CFRunLoopAddSource(rl_ref, source.as_ptr(), kCFRunLoopCommonModes);
-                CGEventTapEnable(tap.as_ptr(), true);
-                {
-                    let mut res = tap_resources.lock_recover();
-                    *res = Some(MouseTapResources {
-                        run_loop: rl_ref,
-                        tap,
-                        source,
-                    });
+                    let _ = ready_tx.send(Ok(()));
+                    CFRunLoopRun();
                 }
-                let _ = ready_tx.send(Ok(()));
-                CFRunLoopRun();
-            }
-        });
+            });
 
         let thread = match thread {
             Ok(h) => h,

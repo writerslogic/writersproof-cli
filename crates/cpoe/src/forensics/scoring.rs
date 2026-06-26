@@ -88,8 +88,7 @@ pub fn evidence_maturity(keystroke_count: u64, focused_secs: f64) -> f64 {
     } else if focused_secs >= FULL_CONFIDENCE_SECS {
         1.0
     } else {
-        let linear =
-            (focused_secs - MIN_WRITING_SECS) / (FULL_CONFIDENCE_SECS - MIN_WRITING_SECS);
+        let linear = (focused_secs - MIN_WRITING_SECS) / (FULL_CONFIDENCE_SECS - MIN_WRITING_SECS);
         log_ramp(linear)
     };
 
@@ -134,8 +133,7 @@ pub fn apply_segment_velocity_penalty(
     segments: &[SegmentVelocityProfile],
 ) {
     // Work only with segments that contain prose content.
-    let prose: Vec<&SegmentVelocityProfile> =
-        segments.iter().filter(|s| s.is_prose).collect();
+    let prose: Vec<&SegmentVelocityProfile> = segments.iter().filter(|s| s.is_prose).collect();
 
     if prose.is_empty() {
         return;
@@ -169,10 +167,7 @@ pub fn apply_segment_velocity_penalty(
 /// Software-fallback attestation (no SE/TPM) reduces the score by 0.25 to
 /// reflect that the evidence binding is weaker than hardware-backed attestation.
 /// Hardware-bound attestation incurs no penalty.
-pub fn apply_attestation_tier_penalty(
-    score: &mut Probability,
-    tier: crate::tpm::AttestationTier,
-) {
+pub fn apply_attestation_tier_penalty(score: &mut Probability, tier: crate::tpm::AttestationTier) {
     let penalty = tier.score_penalty();
     if penalty > 0.0 {
         *score = Probability::clamp(score.get() - penalty);
@@ -192,10 +187,7 @@ pub fn session_forensic_score(
 ) -> f64 {
     let cadence = cadence_score_from_samples(jitter_samples);
     let focus_secs = (total_focus_ms.max(0) as f64 / 1000.0).min(FULL_CONFIDENCE_SECS * 100.0);
-    let maturity = evidence_maturity(
-        jitter_samples.len() as u64,
-        focus_secs,
-    );
+    let maturity = evidence_maturity(jitter_samples.len() as u64, focus_secs);
     let focus = super::analysis::analyze_focus_patterns(focus_switches, total_focus_ms);
     let penalty = compute_focus_penalty(&focus);
     crate::utils::Probability::clamp(cadence * maturity - penalty).get()
@@ -279,7 +271,10 @@ mod tests {
     fn evidence_maturity_paragraph_modest() {
         // ~60 keystrokes over 45 seconds — one paragraph of original writing.
         let m = evidence_maturity(60, 45.0);
-        assert!(m < 0.35, "single paragraph should be <35% maturity, got {m}");
+        assert!(
+            m < 0.35,
+            "single paragraph should be <35% maturity, got {m}"
+        );
         assert!(m > 0.0, "should be nonzero for real typing");
     }
 
@@ -338,7 +333,10 @@ mod tests {
         let mut score = Probability::clamp(0.9);
         let segments = vec![make_profile(false, 200.0, 1000)];
         apply_segment_velocity_penalty(&mut score, &segments);
-        assert!((score.get() - 0.9).abs() < f64::EPSILON, "non-prose should not affect score");
+        assert!(
+            (score.get() - 0.9).abs() < f64::EPSILON,
+            "non-prose should not affect score"
+        );
     }
 
     #[test]
@@ -346,7 +344,10 @@ mod tests {
         let mut score = Probability::clamp(0.9);
         let segments = vec![make_profile(true, 30.0, 500)];
         apply_segment_velocity_penalty(&mut score, &segments);
-        assert!((score.get() - 0.9).abs() < f64::EPSILON, "under-threshold prose should not penalize");
+        assert!(
+            (score.get() - 0.9).abs() < f64::EPSILON,
+            "under-threshold prose should not penalize"
+        );
     }
 
     #[test]
@@ -370,7 +371,11 @@ mod tests {
     fn attestation_tier_software_applies_penalty() {
         let mut score = Probability::clamp(0.8);
         apply_attestation_tier_penalty(&mut score, crate::tpm::AttestationTier::SoftwareFallback);
-        assert!((score.get() - 0.55).abs() < f64::EPSILON, "expected 0.55, got {}", score.get());
+        assert!(
+            (score.get() - 0.55).abs() < f64::EPSILON,
+            "expected 0.55, got {}",
+            score.get()
+        );
     }
 
     #[test]

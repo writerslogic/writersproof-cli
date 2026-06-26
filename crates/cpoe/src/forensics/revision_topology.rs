@@ -14,9 +14,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::SortedEvents;
 #[cfg(test)]
 use super::types::EventData;
+use super::types::SortedEvents;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -123,8 +123,7 @@ fn build_revision_graph(sorted: SortedEvents<'_>) -> RevisionGraphMetrics {
         let cursor_pos = if event.size_delta >= 0 {
             event.file_size as f64 / max_file_size
         } else {
-            (event.file_size as f64
-                - (event.size_delta as i64).unsigned_abs() as f64)
+            (event.file_size as f64 - (event.size_delta as i64).unsigned_abs() as f64)
                 / max_file_size
         };
         let bin = (cursor_pos * POSITION_BINS as f64)
@@ -239,8 +238,7 @@ fn classify_revisions(sorted: SortedEvents<'_>) -> RevisionTypeDistribution {
         };
 
         // Classify.
-        if del_bytes <= MOTOR_CORRECTION_MAX_BYTES as i64 && iki_ns < MOTOR_CORRECTION_MAX_NS
-        {
+        if del_bytes <= MOTOR_CORRECTION_MAX_BYTES as i64 && iki_ns < MOTOR_CORRECTION_MAX_NS {
             counts[0] += 1; // SubWordMotor
         } else if del_bytes > CLAUSE_RESTRUCTURING_MIN_DELETE as i64
             && followup_iki > CLAUSE_RESTRUCTURING_PAUSE_NS
@@ -526,11 +524,11 @@ pub fn verify_checkpoint_schedule(
     checkpoint_timestamps_ns: &[i64],
     tolerance_ns: i64,
 ) -> CheckpointScheduleVerification {
-    use sha2::{Digest, Sha256};
     use crate::sentinel::types::{
         ENTROPY_CHECKPOINT_DST, ENTROPY_CHECKPOINT_MAX_NS, ENTROPY_CHECKPOINT_MIN_NS,
         ENTROPY_TRIGGER_THRESHOLD,
     };
+    use sha2::{Digest, Sha256};
 
     // Replay the hash chain from the session seed.
     let mut state: [u8; 32] = {
@@ -584,10 +582,7 @@ pub fn verify_checkpoint_schedule(
     for &expected_ns in &expected_triggers {
         if let Some(pos) = actual_remaining
             .iter()
-            .position(|&a| {
-                a.saturating_sub(expected_ns).unsigned_abs()
-                    <= tolerance_ns as u64
-            })
+            .position(|&a| a.saturating_sub(expected_ns).unsigned_abs() <= tolerance_ns as u64)
         {
             actual_remaining.remove(pos);
             matched += 1;
@@ -608,10 +603,7 @@ pub fn verify_checkpoint_schedule(
 mod tests {
     use super::*;
 
-    fn make_events(
-        deltas: &[i32],
-        timestamps_ms: Option<&[i64]>,
-    ) -> Vec<EventData> {
+    fn make_events(deltas: &[i32], timestamps_ms: Option<&[i64]>) -> Vec<EventData> {
         let mut file_size: i64 = 1000;
         deltas
             .iter()
@@ -650,7 +642,11 @@ mod tests {
             "pure append branching: {}",
             result.graph.mean_branching_factor
         );
-        assert!(result.composite_score < 0.6, "pure append score: {}", result.composite_score);
+        assert!(
+            result.composite_score < 0.6,
+            "pure append score: {}",
+            result.composite_score
+        );
 
         // Retype-defense metrics: pure append should show transcriptive pattern.
         assert!(
@@ -669,8 +665,8 @@ mod tests {
     fn test_revision_type_motor_correction() {
         // Small deletions with fast IKI = motor corrections.
         let deltas = [
-            10, 10, 10, -2, 3, 10, 10, -1, 2, 10, 10, 10, -3, 4, 10, 10, 10, 10, 10, 10,
-            10, 10, 10, 10,
+            10, 10, 10, -2, 3, 10, 10, -1, 2, 10, 10, 10, -3, 4, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10,
         ];
         let timestamps: Vec<i64> = (0..deltas.len())
             .map(|i| (i as i64) * 300) // 300ms intervals — within motor correction window
@@ -794,26 +790,29 @@ mod tests {
         assert!(
             comp.detour_ratio > retype.detour_ratio,
             "comp detour {} should exceed retype {}",
-            comp.detour_ratio, retype.detour_ratio
+            comp.detour_ratio,
+            retype.detour_ratio
         );
         assert!(
             comp.leading_edge_divergence > retype.leading_edge_divergence,
             "comp LED {} should exceed retype {}",
-            comp.leading_edge_divergence, retype.leading_edge_divergence
+            comp.leading_edge_divergence,
+            retype.leading_edge_divergence
         );
         assert!(
             comp.composite_score > retype.composite_score,
             "comp score {} should exceed retype {}",
-            comp.composite_score, retype.composite_score
+            comp.composite_score,
+            retype.composite_score
         );
     }
 
     #[test]
     fn test_verify_checkpoint_schedule_roundtrip() {
-        use sha2::{Digest, Sha256};
         use crate::sentinel::types::{
             ENTROPY_CHECKPOINT_DST, ENTROPY_CHECKPOINT_MIN_NS, ENTROPY_TRIGGER_THRESHOLD,
         };
+        use sha2::{Digest, Sha256};
 
         let session_id = "test-session-entropy-001";
 
@@ -883,12 +882,7 @@ mod tests {
         if checkpoint_timestamps.len() >= 2 {
             let mut incomplete = checkpoint_timestamps.clone();
             incomplete.remove(0);
-            let result = super::verify_checkpoint_schedule(
-                session_id,
-                &samples,
-                &incomplete,
-                0,
-            );
+            let result = super::verify_checkpoint_schedule(session_id, &samples, &incomplete, 0);
             assert_eq!(result.missing_triggers.len(), 1);
         }
 
@@ -896,12 +890,7 @@ mod tests {
         let mut extra = checkpoint_timestamps.clone();
         extra.push(50_000_000_000); // fake checkpoint at 50s
         extra.sort();
-        let result = super::verify_checkpoint_schedule(
-            session_id,
-            &samples,
-            &extra,
-            0,
-        );
+        let result = super::verify_checkpoint_schedule(session_id, &samples, &extra, 0);
         assert_eq!(result.unexpected_checkpoints.len(), 1);
     }
 }

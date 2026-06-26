@@ -43,11 +43,23 @@ fn write_writing_flow(
 ) -> std::fmt::Result {
     let max_int = flow
         .iter()
-        .map(|p| if p.intensity.is_finite() { p.intensity } else { 0.0 })
+        .map(|p| {
+            if p.intensity.is_finite() {
+                p.intensity
+            } else {
+                0.0
+            }
+        })
         .fold(0.01f64, f64::max);
     let max_min = flow
         .iter()
-        .map(|p| if p.offset_min.is_finite() { p.offset_min } else { 0.0 })
+        .map(|p| {
+            if p.offset_min.is_finite() {
+                p.offset_min
+            } else {
+                0.0
+            }
+        })
         .fold(0.0f64, f64::max);
 
     let h = HEIGHT + 20.0; // extra room for legend
@@ -74,7 +86,11 @@ fn write_writing_flow(
     };
 
     for (i, pt) in flow.iter().enumerate() {
-        let intensity = if pt.intensity.is_finite() { pt.intensity } else { 0.0 };
+        let intensity = if pt.intensity.is_finite() {
+            pt.intensity
+        } else {
+            0.0
+        };
         let pct = intensity / max_int;
         let bar_h = (PLOT_H * pct).max(0.5);
         let x = PAD_L + i as f64 * bar_w;
@@ -89,15 +105,24 @@ fn write_writing_flow(
 
     // Smoothed envelope line over the bars
     if flow.len() >= 3 {
-        let x_scale = if max_min > 0.0 { PLOT_W / max_min } else { PLOT_W / flow.len() as f64 };
+        let x_scale = if max_min > 0.0 {
+            PLOT_W / max_min
+        } else {
+            PLOT_W / flow.len() as f64
+        };
         let mut line = String::with_capacity(flow.len() * 16);
         for (i, pt) in flow.iter().enumerate() {
-            let intensity = if pt.intensity.is_finite() { pt.intensity } else { 0.0 };
-            let x = PAD_L + if max_min > 0.0 {
-                pt.offset_min * x_scale
+            let intensity = if pt.intensity.is_finite() {
+                pt.intensity
             } else {
-                i as f64 * bar_w + bar_w / 2.0
+                0.0
             };
+            let x = PAD_L
+                + if max_min > 0.0 {
+                    pt.offset_min * x_scale
+                } else {
+                    i as f64 * bar_w + bar_w / 2.0
+                };
             let y = (PAD_T + PLOT_H - PLOT_H * intensity / max_int).clamp(PAD_T, PAD_T + PLOT_H);
             if i == 0 {
                 write!(line, "M{x:.1},{y:.1}")?;
@@ -258,9 +283,7 @@ fn write_dimension_bars(
 }
 
 /// Checkpoint velocity sparkline — document size progression over checkpoints.
-pub fn checkpoint_velocity_chart(
-    checkpoints: &[super::super::types::ReportCheckpoint],
-) -> String {
+pub fn checkpoint_velocity_chart(checkpoints: &[super::super::types::ReportCheckpoint]) -> String {
     if checkpoints.len() < 2 {
         return String::new();
     }
@@ -307,7 +330,10 @@ fn write_checkpoint_velocity(
         write!(area, " L{last_x:.1},{:.1}Z", PAD_T + plot_h)?;
     }
 
-    write!(svg, r#"<path d="{area}" fill="{COLOR_AREA}" stroke="none"/>"#)?;
+    write!(
+        svg,
+        r#"<path d="{area}" fill="{COLOR_AREA}" stroke="none"/>"#
+    )?;
     write!(
         svg,
         r#"<path d="{line}" fill="none" stroke="{COLOR_PRIMARY}" stroke-width="1.5"/>"#,

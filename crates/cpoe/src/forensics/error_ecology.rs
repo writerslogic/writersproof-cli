@@ -241,9 +241,7 @@ const TRANSCRIPTION_MIN_SAMPLES: usize = 100;
 /// is designed for incremental evaluation during live capture. It counts
 /// correction keystrokes that don't fit the cognitive error profile (not rapid,
 /// not small) and flags sessions where the ratio exceeds the threshold.
-pub fn assess_transcription_suspicion(
-    samples: &[SimpleJitterSample],
-) -> TranscriptionSuspicion {
+pub fn assess_transcription_suspicion(samples: &[SimpleJitterSample]) -> TranscriptionSuspicion {
     let sample_count = samples.len();
     if sample_count < MIN_SAMPLES {
         return TranscriptionSuspicion {
@@ -408,7 +406,11 @@ mod tests {
         let p = vec![0.9, 0.05, 0.05];
         let q = vec![0.05, 0.05, 0.9];
         let jsd = jensen_shannon_divergence(&p, &q);
-        assert!(jsd > 0.5, "very different distributions should have high JSD: {}", jsd);
+        assert!(
+            jsd > 0.5,
+            "very different distributions should have high JSD: {}",
+            jsd
+        );
     }
 
     #[test]

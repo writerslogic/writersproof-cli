@@ -111,11 +111,13 @@ impl SecureStore {
             source_signature: row.get(5)?,
             nonce: row.get(6)?,
             timestamp: row.get(7)?,
-            keystroke_context: row
-                .get::<_, Option<String>>(8)?
-                .and_then(|s| s.parse().map_err(|_| {
-                    log::warn!("unknown keystroke_context value in DB row: {s}");
-                }).ok()),
+            keystroke_context: row.get::<_, Option<String>>(8)?.and_then(|s| {
+                s.parse()
+                    .map_err(|_| {
+                        log::warn!("unknown keystroke_context value in DB row: {s}");
+                    })
+                    .ok()
+            }),
             keystroke_confidence: row.get(9)?,
             keystroke_sequence_hash: row.get(10)?,
             source_session_id: row.get(11)?,

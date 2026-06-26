@@ -42,7 +42,11 @@ pub struct GaussianParams {
 
 impl GaussianParams {
     pub fn new(mu: f64, sigma: f64) -> Self {
-        Self { mu, sigma: sigma.max(f64::EPSILON), count: 0 }
+        Self {
+            mu,
+            sigma: sigma.max(f64::EPSILON),
+            count: 0,
+        }
     }
 
     /// Bayesian update using new session data (precision-weighted).
@@ -90,8 +94,7 @@ impl LikelihoodPriors {
                 // Convert from nanosecond space to log-space.
                 let log_mu = f.keystroke_interval_mean.ln();
                 // Approximate log-space sigma via delta method: σ_log ≈ σ / μ
-                let log_sigma =
-                    (f.keystroke_interval_std / f.keystroke_interval_mean).max(0.1);
+                let log_sigma = (f.keystroke_interval_std / f.keystroke_interval_mean).max(0.1);
                 Self {
                     cognitive_iki_mu: log_mu,
                     cognitive_iki_sigma: log_sigma,
@@ -122,7 +125,6 @@ const WINDOW_OVERLAP: usize = 100;
 
 /// Minimum samples for any analysis.
 const MIN_SAMPLES: usize = 30;
-
 
 // ---------------------------------------------------------------------------
 // Distributional parameters
@@ -291,7 +293,11 @@ fn extract_window_features(samples: &[SimpleJitterSample]) -> WindowFeatures {
     }
     let post_pause_cv = if post_pause_ikis.len() >= 3 {
         let cv = crate::utils::stats::coefficient_of_variation(&post_pause_ikis);
-        if cv > 0.0 { cv } else { 0.2 }
+        if cv > 0.0 {
+            cv
+        } else {
+            0.2
+        }
     } else {
         0.2
     };
@@ -312,13 +318,13 @@ fn log_likelihood_cognitive(f: &WindowFeatures, priors: &LikelihoodPriors) -> f6
     let mut ll = 0.0;
 
     // IKI distribution fit (personalized when fingerprint is mature).
-    ll += log_gaussian_pdf(f.mean_log_iki, priors.cognitive_iki_mu, priors.cognitive_iki_sigma);
-    // Reward higher IKI variance (cognitive writers vary more).
     ll += log_gaussian_pdf(
-        f.std_log_iki,
+        f.mean_log_iki,
+        priors.cognitive_iki_mu,
         priors.cognitive_iki_sigma,
-        0.4,
     );
+    // Reward higher IKI variance (cognitive writers vary more).
+    ll += log_gaussian_pdf(f.std_log_iki, priors.cognitive_iki_sigma, 0.4);
 
     // Pause rate.
     ll += log_binomial_approx(
@@ -360,11 +366,7 @@ fn log_likelihood_transcriptive(f: &WindowFeatures) -> f64 {
         transcriptive_params::IKI_MU,
         transcriptive_params::IKI_SIGMA,
     );
-    ll += log_gaussian_pdf(
-        f.std_log_iki,
-        transcriptive_params::IKI_SIGMA,
-        0.2,
-    );
+    ll += log_gaussian_pdf(f.std_log_iki, transcriptive_params::IKI_SIGMA, 0.2);
 
     ll += log_binomial_approx(
         (f.pause_rate * f.sample_count as f64) as usize,
@@ -547,14 +549,8 @@ fn analyze_likelihood_model_inner(
     };
     let llr_std_dev = llr_variance.sqrt();
 
-    let min_llr = windows
-        .iter()
-        .map(|w| w.llr)
-        .fold(f64::MAX, f64::min);
-    let max_llr = windows
-        .iter()
-        .map(|w| w.llr)
-        .fold(f64::MIN, f64::max);
+    let min_llr = windows.iter().map(|w| w.llr).fold(f64::MAX, f64::min);
+    let max_llr = windows.iter().map(|w| w.llr).fold(f64::MIN, f64::max);
 
     // Session posterior: sigmoid of mean LLR (not sum, to be scale-independent).
     let session_p_cognitive = 1.0 / (1.0 + (-mean_llr.clamp(-700.0, 700.0)).exp());
@@ -688,7 +684,11 @@ mod tests {
         let samples = make_cognitive_samples(500);
         let windows = compute_window_llrs(&samples);
         // 500 samples with window=200, step=100: windows at 0, 100, 200, 300
-        assert!(windows.len() >= 3, "expected >=3 windows, got {}", windows.len());
+        assert!(
+            windows.len() >= 3,
+            "expected >=3 windows, got {}",
+            windows.len()
+        );
     }
 
     #[test]

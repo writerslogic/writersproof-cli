@@ -68,106 +68,109 @@ fn open_snapshot_store() -> Result<crate::snapshot::SnapshotStore, String> {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_save(document_path: String, plaintext: String) -> FfiSnapshotSaveResult {
-    catch_ffi_panic!(FfiSnapshotSaveResult {
-        success: false,
-        snapshot_id: -1,
-        size_warning: None,
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    log::debug!("ffi_snapshot_save: document_path={}", document_path);
-    const MAX_SNAPSHOT_SIZE: usize = 50 * 1024 * 1024; // 50 MB
-    if plaintext.len() > MAX_SNAPSHOT_SIZE {
-        return FfiSnapshotSaveResult {
+    catch_ffi_panic!(
+        FfiSnapshotSaveResult {
             success: false,
             snapshot_id: -1,
             size_warning: None,
-            error_message: Some(format!(
-                "Document too large for snapshot: {} bytes (max {MAX_SNAPSHOT_SIZE})",
-                plaintext.len()
-            )),
-        };
-    }
-    if crate::sentinel::helpers::validate_path(&document_path).is_err() {
-        return FfiSnapshotSaveResult {
-            success: false,
-            snapshot_id: -1,
-            size_warning: None,
-            error_message: Some("Invalid document path".to_string()),
-        };
-    }
-    let mut store = match open_snapshot_store() {
-        Ok(s) => s,
-        Err(e) => {
-            return FfiSnapshotSaveResult {
-                success: false,
-                snapshot_id: -1,
-                size_warning: None,
-                error_message: Some(e),
-            }
-        }
-    };
-    match store.save(&document_path, &plaintext, false) {
-        Ok(id) => {
-            let size_warning = store.storage_size().ok().and_then(|info| {
-                if info.over_threshold {
-                    Some(format!(
-                        "Snapshot storage is {:.0} MB",
-                        info.total_bytes as f64 / 1_000_000.0
-                    ))
-                } else {
-                    None
-                }
-            });
-            FfiSnapshotSaveResult {
-                success: true,
-                snapshot_id: id,
-                size_warning,
-                error_message: None,
-            }
-        }
-        Err(e) => FfiSnapshotSaveResult {
-            success: false,
-            snapshot_id: -1,
-            size_warning: None,
-            error_message: Some(e),
+            error_message: Some("engine internal error".to_string()),
         },
-    }
-    })
+        {
+            log::debug!("ffi_snapshot_save: document_path={}", document_path);
+            const MAX_SNAPSHOT_SIZE: usize = 50 * 1024 * 1024; // 50 MB
+            if plaintext.len() > MAX_SNAPSHOT_SIZE {
+                return FfiSnapshotSaveResult {
+                    success: false,
+                    snapshot_id: -1,
+                    size_warning: None,
+                    error_message: Some(format!(
+                        "Document too large for snapshot: {} bytes (max {MAX_SNAPSHOT_SIZE})",
+                        plaintext.len()
+                    )),
+                };
+            }
+            if crate::sentinel::helpers::validate_path(&document_path).is_err() {
+                return FfiSnapshotSaveResult {
+                    success: false,
+                    snapshot_id: -1,
+                    size_warning: None,
+                    error_message: Some("Invalid document path".to_string()),
+                };
+            }
+            let mut store = match open_snapshot_store() {
+                Ok(s) => s,
+                Err(e) => {
+                    return FfiSnapshotSaveResult {
+                        success: false,
+                        snapshot_id: -1,
+                        size_warning: None,
+                        error_message: Some(e),
+                    }
+                }
+            };
+            match store.save(&document_path, &plaintext, false) {
+                Ok(id) => {
+                    let size_warning = store.storage_size().ok().and_then(|info| {
+                        if info.over_threshold {
+                            Some(format!(
+                                "Snapshot storage is {:.0} MB",
+                                info.total_bytes as f64 / 1_000_000.0
+                            ))
+                        } else {
+                            None
+                        }
+                    });
+                    FfiSnapshotSaveResult {
+                        success: true,
+                        snapshot_id: id,
+                        size_warning,
+                        error_message: None,
+                    }
+                }
+                Err(e) => FfiSnapshotSaveResult {
+                    success: false,
+                    snapshot_id: -1,
+                    size_warning: None,
+                    error_message: Some(e),
+                },
+            }
+        }
+    )
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_list(document_path: String) -> Vec<FfiSnapshotEntry> {
     catch_ffi_panic!(vec![], {
-    log::debug!("ffi_snapshot_list: document_path={}", document_path);
-    if crate::sentinel::helpers::validate_path(&document_path).is_err() {
-        return Vec::new();
-    }
-    let store = match open_snapshot_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_snapshot_list: {e}");
+        log::debug!("ffi_snapshot_list: document_path={}", document_path);
+        if crate::sentinel::helpers::validate_path(&document_path).is_err() {
             return Vec::new();
         }
-    };
-    match store.list(&document_path) {
-        Ok(entries) => entries
-            .into_iter()
-            .map(|e| FfiSnapshotEntry {
-                id: e.id,
-                document_path: e.document_path,
-                timestamp_ns: e.timestamp_ns,
-                word_count: e.word_count,
-                word_count_delta: e.word_count_delta,
-                draft_label: e.draft_label,
-                is_restore: e.is_restore,
-                session_group: e.session_group,
-            })
-            .collect(),
-        Err(e) => {
-            log::warn!("ffi_snapshot_list: {e}");
-            Vec::new()
+        let store = match open_snapshot_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_snapshot_list: {e}");
+                return Vec::new();
+            }
+        };
+        match store.list(&document_path) {
+            Ok(entries) => entries
+                .into_iter()
+                .map(|e| FfiSnapshotEntry {
+                    id: e.id,
+                    document_path: e.document_path,
+                    timestamp_ns: e.timestamp_ns,
+                    word_count: e.word_count,
+                    word_count_delta: e.word_count_delta,
+                    draft_label: e.draft_label,
+                    is_restore: e.is_restore,
+                    session_group: e.session_group,
+                })
+                .collect(),
+            Err(e) => {
+                log::warn!("ffi_snapshot_list: {e}");
+                Vec::new()
+            }
         }
-    }
     })
 }
 
@@ -189,28 +192,28 @@ pub fn ffi_snapshot_get(snapshot_id: i64) -> FfiSnapshotContent {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_snapshot_diff(snapshot_id: i64, current_text: String) -> Vec<FfiDiffOp> {
     catch_ffi_panic!(vec![], {
-    log::debug!("ffi_snapshot_diff: snapshot_id={}", snapshot_id);
-    let store = match open_snapshot_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_snapshot_diff: {e}");
-            return Vec::new();
-        }
-    };
-    let old_text = match store.get(snapshot_id) {
-        Ok(t) => t,
-        Err(e) => {
-            log::warn!("ffi_snapshot_diff: {e}");
-            return Vec::new();
-        }
-    };
-    crate::snapshot::word_diff(&old_text, &current_text)
-        .into_iter()
-        .map(|op| FfiDiffOp {
-            tag: op.tag.as_str().to_string(),
-            text: op.text,
-        })
-        .collect()
+        log::debug!("ffi_snapshot_diff: snapshot_id={}", snapshot_id);
+        let store = match open_snapshot_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_snapshot_diff: {e}");
+                return Vec::new();
+            }
+        };
+        let old_text = match store.get(snapshot_id) {
+            Ok(t) => t,
+            Err(e) => {
+                log::warn!("ffi_snapshot_diff: {e}");
+                return Vec::new();
+            }
+        };
+        crate::snapshot::word_diff(&old_text, &current_text)
+            .into_iter()
+            .map(|op| FfiDiffOp {
+                tag: op.tag.as_str().to_string(),
+                text: op.text,
+            })
+            .collect()
     })
 }
 

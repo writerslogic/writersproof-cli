@@ -135,13 +135,25 @@ impl DictationBeginPayload {
         let mut session_id = [0u8; 32];
         session_id.copy_from_slice(&data[0..32]);
         // SAFETY: all slice ranges are within [0..SIZE=58], guaranteed by the length check above.
-        let start_ns = i64::from_be_bytes(data[32..40].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let es_speech_pid = u32::from_be_bytes(data[40..44].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
+        let start_ns = i64::from_be_bytes(
+            data[32..40]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let es_speech_pid = u32::from_be_bytes(
+            data[40..44]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
         let audio_transport_type = data[44];
         let mut device_uid_hash = [0u8; 8];
         device_uid_hash.copy_from_slice(&data[45..53]);
         let speaker_output_active = data[53] != 0;
-        let ambient_noise_db = f32::from_be_bytes(data[54..58].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
+        let ambient_noise_db = f32::from_be_bytes(
+            data[54..58]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
         Ok(Self {
             session_id,
             start_ns,
@@ -181,10 +193,26 @@ impl DictationFragmentPayload {
         let mut session_id = [0u8; 32];
         session_id.copy_from_slice(&data[0..32]);
         // SAFETY: all slice ranges are within [0..SIZE=85], guaranteed by the length check above.
-        let fragment_index = u32::from_be_bytes(data[32..36].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let timestamp_ns = i64::from_be_bytes(data[36..44].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let word_count = u32::from_be_bytes(data[44..48].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let confidence = f32::from_be_bytes(data[48..52].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
+        let fragment_index = u32::from_be_bytes(
+            data[32..36]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let timestamp_ns = i64::from_be_bytes(
+            data[36..44]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let word_count = u32::from_be_bytes(
+            data[44..48]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let confidence = f32::from_be_bytes(
+            data[48..52]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
         let speaker_output_active = data[52] != 0;
         let mut text_hash = [0u8; 32];
         text_hash.copy_from_slice(&data[53..85]);
@@ -229,14 +257,46 @@ impl DictationEndPayload {
         let mut session_id = [0u8; 32];
         session_id.copy_from_slice(&data[0..32]);
         // SAFETY: all slice ranges are within [0..SIZE=72], guaranteed by the length check above.
-        let end_ns = i64::from_be_bytes(data[32..40].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let total_words = u32::from_be_bytes(data[40..44].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let total_fragments = u32::from_be_bytes(data[44..48].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let confidence_mean = f32::from_be_bytes(data[48..52].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let confidence_stddev = f32::from_be_bytes(data[52..56].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let keystrokes_during_dictation = u32::from_be_bytes(data[56..60].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let cross_window_similarity = f32::from_be_bytes(data[60..64].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
-        let plausibility_score = f64::from_be_bytes(data[64..72].try_into().map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?);
+        let end_ns = i64::from_be_bytes(
+            data[32..40]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let total_words = u32::from_be_bytes(
+            data[40..44]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let total_fragments = u32::from_be_bytes(
+            data[44..48]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let confidence_mean = f32::from_be_bytes(
+            data[48..52]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let confidence_stddev = f32::from_be_bytes(
+            data[52..56]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let keystrokes_during_dictation = u32::from_be_bytes(
+            data[56..60]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let cross_window_similarity = f32::from_be_bytes(
+            data[60..64]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
+        let plausibility_score = f64::from_be_bytes(
+            data[64..72]
+                .try_into()
+                .map_err(|_| WalError::Serialization("corrupt dictation payload".into()))?,
+        );
         Ok(Self {
             session_id,
             end_ns,
@@ -394,8 +454,14 @@ mod tests {
 
     #[test]
     fn entry_type_roundtrip_dictation_variants() {
-        assert_eq!(EntryType::try_from(13u8).unwrap(), EntryType::DictationBegin);
-        assert_eq!(EntryType::try_from(14u8).unwrap(), EntryType::DictationFragment);
+        assert_eq!(
+            EntryType::try_from(13u8).unwrap(),
+            EntryType::DictationBegin
+        );
+        assert_eq!(
+            EntryType::try_from(14u8).unwrap(),
+            EntryType::DictationFragment
+        );
         assert_eq!(EntryType::try_from(15u8).unwrap(), EntryType::DictationEnd);
         assert!(EntryType::try_from(16u8).is_err());
     }
@@ -478,7 +544,10 @@ mod tests {
         assert_eq!(p2.total_fragments, p.total_fragments);
         assert_eq!(p2.confidence_mean, p.confidence_mean);
         assert_eq!(p2.confidence_stddev, p.confidence_stddev);
-        assert_eq!(p2.keystrokes_during_dictation, p.keystrokes_during_dictation);
+        assert_eq!(
+            p2.keystrokes_during_dictation,
+            p.keystrokes_during_dictation
+        );
         assert_eq!(p2.cross_window_similarity, p.cross_window_similarity);
         assert_eq!(p2.plausibility_score, p.plausibility_score);
     }

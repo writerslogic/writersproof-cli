@@ -19,7 +19,9 @@ use super::core::Sentinel;
 
 impl Sentinel {
     /// Get the cached event store, opening it lazily if needed.
-    fn open_event_store(&self) -> anyhow::Result<std::sync::MutexGuard<'_, Option<crate::store::SecureStore>>> {
+    fn open_event_store(
+        &self,
+    ) -> anyhow::Result<std::sync::MutexGuard<'_, Option<crate::store::SecureStore>>> {
         self.get_or_open_store()
             .ok_or_else(|| anyhow::anyhow!("signing key not initialized"))
     }
@@ -71,9 +73,12 @@ impl Sentinel {
         let doc_stats = {
             let store_guard = self.get_or_open_store();
             match store_guard {
-                Some(ref guard) if guard.is_some() => {
-                    guard.as_ref().unwrap().load_document_stats(&path_str).ok().flatten()
-                }
+                Some(ref guard) if guard.is_some() => guard
+                    .as_ref()
+                    .unwrap()
+                    .load_document_stats(&path_str)
+                    .ok()
+                    .flatten(),
                 _ => {
                     log::warn!("Failed to open store for document stats: signing key unavailable");
                     None
@@ -112,9 +117,7 @@ impl Sentinel {
                 session.session_number = u32::try_from(stats.session_count).unwrap_or(0);
                 session.first_tracked_at = Some(
                     UNIX_EPOCH
-                        + Duration::from_secs(
-                            u64::try_from(stats.first_tracked_at).unwrap_or(0),
-                        ),
+                        + Duration::from_secs(u64::try_from(stats.first_tracked_at).unwrap_or(0)),
                 );
             }
             None => {
@@ -277,32 +280,31 @@ impl Sentinel {
 
         // Snapshot bundle-specific state for shadow session persistence.
         // Only populated when `path` is a bundle document (.scriv, .ulysses).
-        let bundle_snapshot = if super::bundle_monitor::is_bundle_document(
-            std::path::Path::new(path),
-        ) {
-            let sessions = self.sessions.read_recover();
-            sessions.get(path).map(|s| {
-                let segment_json = serde_json::to_string(&s.segment_counts).ok();
-                let scrivx_hash = s
-                    .scrivener_project_map
-                    .as_ref()
-                    .map(|m| m.scrivx_hash.clone());
-                let project_uuid = s
-                    .scrivener_project_map
-                    .as_ref()
-                    .and_then(|m| m.uuid_to_title.keys().next().cloned())
-                    .unwrap_or_else(|| hex::encode(blake3::hash(path.as_bytes()).as_bytes()));
-                (
-                    s.session_id.clone(),
-                    s.app_bundle_id.clone(),
-                    project_uuid,
-                    segment_json,
-                    scrivx_hash,
-                )
-            })
-        } else {
-            None
-        };
+        let bundle_snapshot =
+            if super::bundle_monitor::is_bundle_document(std::path::Path::new(path)) {
+                let sessions = self.sessions.read_recover();
+                sessions.get(path).map(|s| {
+                    let segment_json = serde_json::to_string(&s.segment_counts).ok();
+                    let scrivx_hash = s
+                        .scrivener_project_map
+                        .as_ref()
+                        .map(|m| m.scrivx_hash.clone());
+                    let project_uuid = s
+                        .scrivener_project_map
+                        .as_ref()
+                        .and_then(|m| m.uuid_to_title.keys().next().cloned())
+                        .unwrap_or_else(|| hex::encode(blake3::hash(path.as_bytes()).as_bytes()));
+                    (
+                        s.session_id.clone(),
+                        s.app_bundle_id.clone(),
+                        project_uuid,
+                        segment_json,
+                        scrivx_hash,
+                    )
+                })
+            } else {
+                None
+            };
 
         // Phase 1: all store I/O in a scoped closure so the cached_store MutexGuard
         // is released before Phase 2 acquires the sessions write lock.
@@ -325,10 +327,13 @@ impl Sentinel {
                 file_size,
                 Some("Auto-checkpoint".to_string()),
             );
-            event.size_delta =
-                i32::try_from(file_size - prev_file_size).unwrap_or(
-                    if file_size >= prev_file_size { i32::MAX } else { i32::MIN }
-                );
+            event.size_delta = i32::try_from(file_size - prev_file_size).unwrap_or(
+                if file_size >= prev_file_size {
+                    i32::MAX
+                } else {
+                    i32::MIN
+                },
+            );
             store.add_secure_event_with_signer(&mut event, sk_cached.as_ref())?;
 
             if let (Some(ref sk), Some((ref sid, has_paste, ref bundle, ref title, eco_score))) =
@@ -341,13 +346,8 @@ impl Sentinel {
                 } else {
                     crate::store::text_fragments::KeystrokeContext::OriginalComposition
                 };
-                let sig = crate::store::text_fragments::sign_fragment(
-                    sk,
-                    sid,
-                    &content_hash,
-                    ts,
-                    &nonce,
-                );
+                let sig =
+                    crate::store::text_fragments::sign_fragment(sk, sid, &content_hash, ts, &nonce);
                 let fragment = crate::store::text_fragments::TextFragment {
                     id: None,
                     fragment_hash: content_hash.to_vec(),
@@ -487,16 +487,10 @@ impl Sentinel {
                                 }
                             }
                             Ok(Err(e)) => {
-                                log::warn!(
-                                    "Anchoring failed for {}: {e}",
-                                    hex::encode(&hash[..8])
-                                );
+                                log::warn!("Anchoring failed for {}: {e}", hex::encode(&hash[..8]));
                             }
                             Err(_) => {
-                                log::warn!(
-                                    "Anchoring timed out for {}",
-                                    hex::encode(&hash[..8])
-                                );
+                                log::warn!("Anchoring timed out for {}", hex::encode(&hash[..8]));
                             }
                         }
                     }));
@@ -878,7 +872,9 @@ impl Sentinel {
         keystrokes_during_caller: u32,
         cross_window_similarity: f32,
     ) -> bool {
-        log::debug!("end_dictation: doc_path={doc_path}, keystrokes_during={keystrokes_during_caller}");
+        log::debug!(
+            "end_dictation: doc_path={doc_path}, keystrokes_during={keystrokes_during_caller}"
+        );
         let key = {
             #[cfg(debug_assertions)]
             let _guard =
@@ -906,9 +902,15 @@ impl Sentinel {
         let duration_ns = end_ns.saturating_sub(active.start_ns);
         let wpm = crate::utils::words_per_minute(active.total_words, duration_ns);
         let n = active.fragment_count as f64;
-        let conf_mean = if n > 0.0 { (active.confidence_sum / n) as f32 } else { 0.0 };
+        let conf_mean = if n > 0.0 {
+            (active.confidence_sum / n) as f32
+        } else {
+            0.0
+        };
         let conf_stddev = if n > 1.0 {
-            let variance = (active.confidence_sum_sq - active.confidence_sum * active.confidence_sum / n) / (n - 1.0);
+            let variance = (active.confidence_sum_sq
+                - active.confidence_sum * active.confidence_sum / n)
+                / (n - 1.0);
             variance.max(0.0).sqrt() as f32
         } else {
             0.0

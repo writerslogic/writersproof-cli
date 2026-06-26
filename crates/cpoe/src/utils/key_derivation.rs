@@ -92,7 +92,11 @@ pub fn derive_lamport_seed(
     signing_key_bytes: &[u8],
     event_hash: &[u8],
 ) -> Result<Zeroizing<[u8; 32]>> {
-    hkdf_sha256(signing_key_bytes, Some(b"cpoe-lamport-event-v1"), event_hash)
+    hkdf_sha256(
+        signing_key_bytes,
+        Some(b"cpoe-lamport-event-v1"),
+        event_hash,
+    )
 }
 
 /// Derive a guilloche visual fingerprint seed from a signing key.
@@ -114,8 +118,12 @@ pub fn derive_guilloche_seed(signing_key_bytes: &[u8]) -> Result<[u8; 32]> {
 ///
 /// DST: salt=`cpoe-hmac-key-derive-v2`, info=purpose
 pub fn derive_hmac_key(signing_key_bytes: &[u8], purpose: &str) -> Zeroizing<Vec<u8>> {
-    let key = hkdf_sha256(signing_key_bytes, Some(b"cpoe-hmac-key-derive-v2"), purpose.as_bytes())
-        .expect("32 bytes is a valid HKDF-SHA256 output length");
+    let key = hkdf_sha256(
+        signing_key_bytes,
+        Some(b"cpoe-hmac-key-derive-v2"),
+        purpose.as_bytes(),
+    )
+    .expect("32 bytes is a valid HKDF-SHA256 output length");
     Zeroizing::new(key.to_vec())
 }
 
@@ -129,22 +137,20 @@ pub fn derive_puf_response(seed: &[u8], challenge: &[u8]) -> Result<[u8; 32]> {
 /// Derive a 64-byte silicon-bound seed from mnemonic entropy and PUF fingerprint.
 ///
 /// DST: info=`cpoe-silicon-seed-v1`
-pub fn derive_silicon_seed(
-    raw_seed: &[u8],
-    puf_fingerprint: &[u8],
-) -> Result<Zeroizing<[u8; 64]>> {
+pub fn derive_silicon_seed(raw_seed: &[u8], puf_fingerprint: &[u8]) -> Result<Zeroizing<[u8; 64]>> {
     hkdf_sha256_n::<64>(raw_seed, Some(puf_fingerprint), b"cpoe-silicon-seed-v1")
 }
 
 /// Derive a snapshot blob encryption key (32 bytes, zeroizing).
 ///
 /// DST: salt=`writerslogic-snapshot-v1`, info=content_hash
-pub fn derive_snapshot_key(
-    signing_key_bytes: &[u8],
-    content_hash: &[u8],
-) -> Zeroizing<[u8; 32]> {
-    hkdf_sha256(signing_key_bytes, Some(b"writerslogic-snapshot-v1"), content_hash)
-        .expect("32-byte output is within HKDF-SHA256 limit")
+pub fn derive_snapshot_key(signing_key_bytes: &[u8], content_hash: &[u8]) -> Zeroizing<[u8; 32]> {
+    hkdf_sha256(
+        signing_key_bytes,
+        Some(b"writerslogic-snapshot-v1"),
+        content_hash,
+    )
+    .expect("32-byte output is within HKDF-SHA256 limit")
 }
 
 /// Derive a snapshot blob nonce (12 bytes).
@@ -344,8 +350,7 @@ mod tests {
 
     #[test]
     fn derive_ipc_session_keys_produces_distinct_prefixes() {
-        let keys =
-            derive_ipc_session_keys(b"shared-secret", b"client-pub", b"server-pub").unwrap();
+        let keys = derive_ipc_session_keys(b"shared-secret", b"client-pub", b"server-pub").unwrap();
         assert_ne!(keys.client_nonce_prefix, keys.server_nonce_prefix);
     }
 

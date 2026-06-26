@@ -58,7 +58,9 @@ struct WriteIndex {
 
 impl WriteIndex {
     fn new(n: u32) -> Self {
-        Self { last_writer: vec![0; n as usize] }
+        Self {
+            last_writer: vec![0; n as usize],
+        }
     }
 
     fn record(&mut self, addr: u32, step: u32) {
@@ -85,13 +87,16 @@ fn build_step_proof(
     let rc_path_before = ctx.root_chain.prove(log.step_id as usize - 1);
     let rc_path_after = ctx.root_chain.prove(log.step_id as usize);
 
-    let reads: Vec<ReadWitness> = log.read_addrs().iter().zip(log.read_blocks()).map(|(&addr, &block)| {
-        ReadWitness {
+    let reads: Vec<ReadWitness> = log
+        .read_addrs()
+        .iter()
+        .zip(log.read_blocks())
+        .map(|(&addr, &block)| ReadWitness {
             address: addr,
             block,
             merkle_path: tree_before.prove(addr),
-        }
-    }).collect();
+        })
+        .collect();
 
     let write = WriteWitness {
         address: log.write_addr,
@@ -100,24 +105,28 @@ fn build_step_proof(
         merkle_path: tree_before.prove(log.write_addr),
     };
 
-    let writers: Vec<WriterProof> = log.read_addrs().iter().map(|&addr| {
-        let ws = ctx.write_index.last_writer_of(addr);
-        if ws == 0 {
-            WriterProof {
-                proof_type: 0,
-                writer_step_id: 0,
-                step_witness: None,
-                init_merkle_path: Some(ctx.init_tree.prove(addr)),
+    let writers: Vec<WriterProof> = log
+        .read_addrs()
+        .iter()
+        .map(|&addr| {
+            let ws = ctx.write_index.last_writer_of(addr);
+            if ws == 0 {
+                WriterProof {
+                    proof_type: 0,
+                    writer_step_id: 0,
+                    step_witness: None,
+                    init_merkle_path: Some(ctx.init_tree.prove(addr)),
+                }
+            } else {
+                WriterProof {
+                    proof_type: 1,
+                    writer_step_id: ws,
+                    step_witness: None,
+                    init_merkle_path: None,
+                }
             }
-        } else {
-            WriterProof {
-                proof_type: 1,
-                writer_step_id: ws,
-                step_witness: None,
-                init_merkle_path: None,
-            }
-        }
-    }).collect();
+        })
+        .collect();
 
     StepProof {
         step_id: log.step_id,
@@ -191,8 +200,7 @@ fn replay_for_writer_proofs(
                     && (step as usize).is_multiple_of(interval)
                     && jitter_idx < samples.len()
                 {
-                    transcript =
-                        posme_hash(&[ENTANGLE_DST, &transcript, &samples[jitter_idx]]);
+                    transcript = posme_hash(&[ENTANGLE_DST, &transcript, &samples[jitter_idx]]);
                     jitter_idx += 1;
                 }
             }
@@ -214,8 +222,7 @@ fn replay_for_writer_proofs(
                     && (step as usize).is_multiple_of(interval)
                     && jitter_idx < samples.len()
                 {
-                    transcript =
-                        posme_hash(&[ENTANGLE_DST, &transcript, &samples[jitter_idx]]);
+                    transcript = posme_hash(&[ENTANGLE_DST, &transcript, &samples[jitter_idx]]);
                     jitter_idx += 1;
                 }
             }
@@ -243,8 +250,7 @@ fn attach_recursive_writers(
             break;
         }
 
-        let writer_proofs =
-            replay_for_writer_proofs(seed, params, root_chain, &needed, entangle);
+        let writer_proofs = replay_for_writer_proofs(seed, params, root_chain, &needed, entangle);
 
         for sp in challenged_steps.iter_mut() {
             attach_writer_proofs(sp, &writer_proofs);
@@ -287,7 +293,12 @@ struct EntangleCtx<'a> {
 
 impl<'a> EntangleCtx<'a> {
     fn new(samples: &'a [[u8; 32]], interval: usize) -> Self {
-        Self { samples, interval, idx: 0, points: Vec::new() }
+        Self {
+            samples,
+            interval,
+            idx: 0,
+            points: Vec::new(),
+        }
     }
 
     fn maybe_inject(&mut self, step: u32, transcript: &mut [u8; LAMBDA]) {
@@ -359,8 +370,11 @@ fn execute_inner(
 
     let challenges = derive_challenges(&final_transcript, &root_chain_commitment, params);
 
-    let mut sorted_challenges: Vec<(usize, u32)> =
-        challenges.iter().enumerate().map(|(i, &s)| (i, s)).collect();
+    let mut sorted_challenges: Vec<(usize, u32)> = challenges
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| (i, s))
+        .collect();
     sorted_challenges.sort_by_key(|&(_, step)| step);
 
     let mut step_proofs: Vec<(usize, StepProof)> = Vec::with_capacity(challenges.len());
@@ -368,13 +382,19 @@ fn execute_inner(
     let init_tree = MerkleTree::build(&replay_arena);
     let mut replay_wi = WriteIndex::new(n);
     let mut current_step = 0u32;
-    let mut replay_ent = entangle.as_ref().map(|e| EntangleCtx::new(e.samples, e.interval));
+    let mut replay_ent = entangle
+        .as_ref()
+        .map(|e| EntangleCtx::new(e.samples, e.interval));
 
     for &(orig_idx, target_step) in &sorted_challenges {
         while current_step < target_step - 1 {
             current_step += 1;
             let res = posme_step_light(
-                &mut replay_arena, &mut replay_tree, &replay_t, current_step, d,
+                &mut replay_arena,
+                &mut replay_tree,
+                &replay_t,
+                current_step,
+                d,
             );
             replay_t = res.transcript;
             if let Some(ref mut re) = replay_ent {
@@ -389,7 +409,11 @@ fn execute_inner(
         current_step += 1;
         debug_assert_eq!(current_step, target_step);
         let log = posme_step(
-            &mut replay_arena, &mut replay_tree, &replay_t, current_step, d,
+            &mut replay_arena,
+            &mut replay_tree,
+            &replay_t,
+            current_step,
+            d,
         );
         replay_t = log.transcript;
         if let Some(ref mut re) = replay_ent {
@@ -407,11 +431,16 @@ fn execute_inner(
     }
 
     step_proofs.sort_by_key(|&(orig_idx, _)| orig_idx);
-    let mut challenged_steps: Vec<StepProof> =
-        step_proofs.into_iter().map(|(_, sp)| sp).collect();
+    let mut challenged_steps: Vec<StepProof> = step_proofs.into_iter().map(|(_, sp)| sp).collect();
 
     let entangle_arg = entangle.as_ref().and_then(|e| e.as_replay_arg());
-    attach_recursive_writers(&mut challenged_steps, seed, params, &root_chain, entangle_arg);
+    attach_recursive_writers(
+        &mut challenged_steps,
+        seed,
+        params,
+        &root_chain,
+        entangle_arg,
+    );
 
     let root_0_path = root_chain.prove(0);
 
@@ -460,7 +489,11 @@ pub fn execute_entangled(
             k
         )));
     }
-    execute_inner(seed, params, Some(EntangleCtx::new(jitter_samples, interval)))
+    execute_inner(
+        seed,
+        params,
+        Some(EntangleCtx::new(jitter_samples, interval)),
+    )
 }
 
 #[cfg(test)]
@@ -475,7 +508,10 @@ mod tests {
     fn execute_produces_proof() {
         let proof = execute(b"test-seed", &test_params()).unwrap();
         assert_eq!(proof.params, test_params());
-        assert_eq!(proof.challenged_steps.len(), test_params().challenges as usize);
+        assert_eq!(
+            proof.challenged_steps.len(),
+            test_params().challenges as usize
+        );
         assert_eq!(proof.proof_algorithm, PROOF_ALGORITHM_POSME);
         assert_eq!(proof.init_witnesses.len(), INIT_WITNESS_COUNT);
     }

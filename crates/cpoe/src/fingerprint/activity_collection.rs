@@ -127,7 +127,7 @@ impl ActivityFingerprintAccumulator {
         if self.samples.len() >= self.max_samples {
             self.samples.pop_front();
         }
-        self.samples.push_back(sample.clone());
+        self.samples.push_back(*sample);
         self.dirty.store(true, Ordering::Relaxed);
         *self.cached_hurst.lock_recover() = None;
     }

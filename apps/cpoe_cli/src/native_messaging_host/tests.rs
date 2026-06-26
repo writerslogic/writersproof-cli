@@ -1011,9 +1011,7 @@ mod tests {
             "docs.google.com".into(),
         );
         match resp {
-            Response::TextAttestationResult {
-                success, error, ..
-            } => {
+            Response::TextAttestationResult { success, error, .. } => {
                 assert!(!success, "invalid content_hash should fail");
                 assert!(error.is_some());
             }
@@ -1077,8 +1075,7 @@ mod tests {
     fn test_nmh_text_attestation_accepts_all_tiers() {
         for tier in &["verified", "corroborated", "declared"] {
             let (hash, _, wpid, ts, app) = valid_attestation_args();
-            let resp =
-                handle_text_attestation(hash, tier.to_string(), wpid, ts, app);
+            let resp = handle_text_attestation(hash, tier.to_string(), wpid, ts, app);
             match resp {
                 Response::TextAttestationResult { .. } => {}
                 other => panic!("expected TextAttestationResult for tier {tier}, got: {other:?}"),

@@ -193,71 +193,84 @@ pub fn ffi_content_witness_text(
     text: String,
     granularity: String,
 ) -> FfiWitnessResult {
-    catch_ffi_panic!(FfiWitnessResult {
-        success: false,
-        error_message: Some("engine internal error".to_string()),
-        ..Default::default()
-    }, {
-    log::debug!(
-        "ffi_content_witness_text: session_id={}, text_len={}, granularity={}",
-        session_id,
-        text.len(),
-        granularity
-    );
-
-    let gran = match granularity.parse::<ContentGranularity>() {
-        Ok(g) => g,
-        Err(()) => return FfiWitnessResult {
+    catch_ffi_panic!(
+        FfiWitnessResult {
             success: false,
-            error_message: Some(format!("Invalid granularity: {granularity}")),
+            error_message: Some("engine internal error".to_string()),
             ..Default::default()
         },
-    };
+        {
+            log::debug!(
+                "ffi_content_witness_text: session_id={}, text_len={}, granularity={}",
+                session_id,
+                text.len(),
+                granularity
+            );
 
-    let mmr_dir = match ContentMmr::default_mmr_dir() {
-        Ok(d) => d,
-        Err(e) => return FfiWitnessResult {
-            success: false,
-            error_message: Some(format!("MMR dir error: {e}")),
-            ..Default::default()
-        },
-    };
+            let gran = match granularity.parse::<ContentGranularity>() {
+                Ok(g) => g,
+                Err(()) => {
+                    return FfiWitnessResult {
+                        success: false,
+                        error_message: Some(format!("Invalid granularity: {granularity}")),
+                        ..Default::default()
+                    }
+                }
+            };
 
-    let mmr = match ContentMmr::open(&mmr_dir, &session_id, gran) {
-        Ok(m) => m,
-        Err(e) => return FfiWitnessResult {
-            success: false,
-            error_message: Some(format!("Failed to open content MMR: {e}")),
-            ..Default::default()
-        },
-    };
+            let mmr_dir = match ContentMmr::default_mmr_dir() {
+                Ok(d) => d,
+                Err(e) => {
+                    return FfiWitnessResult {
+                        success: false,
+                        error_message: Some(format!("MMR dir error: {e}")),
+                        ..Default::default()
+                    }
+                }
+            };
 
-    let witnessed = match mmr.witness_text(&text) {
-        Ok(w) => w,
-        Err(e) => return FfiWitnessResult {
-            success: false,
-            error_message: Some(format!("Failed to witness text: {e}")),
-            ..Default::default()
-        },
-    };
+            let mmr = match ContentMmr::open(&mmr_dir, &session_id, gran) {
+                Ok(m) => m,
+                Err(e) => {
+                    return FfiWitnessResult {
+                        success: false,
+                        error_message: Some(format!("Failed to open content MMR: {e}")),
+                        ..Default::default()
+                    }
+                }
+            };
 
-    let root = match mmr.root() {
-        Ok(r) => hex::encode(r),
-        Err(e) => return FfiWitnessResult {
-            success: false,
-            error_message: Some(format!("Failed to get MMR root: {e}")),
-            ..Default::default()
-        },
-    };
+            let witnessed = match mmr.witness_text(&text) {
+                Ok(w) => w,
+                Err(e) => {
+                    return FfiWitnessResult {
+                        success: false,
+                        error_message: Some(format!("Failed to witness text: {e}")),
+                        ..Default::default()
+                    }
+                }
+            };
 
-    FfiWitnessResult {
-        success: true,
-        segments_witnessed: witnessed.len() as u64,
-        mmr_root_hex: root,
-        mmr_leaf_count: mmr.leaf_count(),
-        error_message: None,
-    }
-    })
+            let root = match mmr.root() {
+                Ok(r) => hex::encode(r),
+                Err(e) => {
+                    return FfiWitnessResult {
+                        success: false,
+                        error_message: Some(format!("Failed to get MMR root: {e}")),
+                        ..Default::default()
+                    }
+                }
+            };
+
+            FfiWitnessResult {
+                success: true,
+                segments_witnessed: witnessed.len() as u64,
+                mmr_root_hex: root,
+                mmr_leaf_count: mmr.leaf_count(),
+                error_message: None,
+            }
+        }
+    )
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
@@ -266,67 +279,78 @@ pub fn ffi_generate_derivation_proof(
     derived_text: String,
     granularity: String,
 ) -> FfiDerivationProofResult {
-    catch_ffi_panic!(FfiDerivationProofResult {
-        success: false,
-        error_message: Some("engine internal error".to_string()),
-        ..Default::default()
-    }, {
-    log::debug!(
-        "ffi_generate_derivation_proof: session_id={}, derived_len={}, granularity={}",
-        session_id,
-        derived_text.len(),
-        granularity
-    );
-
-    let gran = match granularity.parse::<ContentGranularity>() {
-        Ok(g) => g,
-        Err(()) => return FfiDerivationProofResult {
+    catch_ffi_panic!(
+        FfiDerivationProofResult {
             success: false,
-            error_message: Some(format!("Invalid granularity: {granularity}")),
+            error_message: Some("engine internal error".to_string()),
             ..Default::default()
         },
-    };
+        {
+            log::debug!(
+                "ffi_generate_derivation_proof: session_id={}, derived_len={}, granularity={}",
+                session_id,
+                derived_text.len(),
+                granularity
+            );
 
-    let mmr_dir = match ContentMmr::default_mmr_dir() {
-        Ok(d) => d,
-        Err(e) => return FfiDerivationProofResult {
-            success: false,
-            error_message: Some(format!("MMR dir error: {e}")),
-            ..Default::default()
-        },
-    };
+            let gran = match granularity.parse::<ContentGranularity>() {
+                Ok(g) => g,
+                Err(()) => {
+                    return FfiDerivationProofResult {
+                        success: false,
+                        error_message: Some(format!("Invalid granularity: {granularity}")),
+                        ..Default::default()
+                    }
+                }
+            };
 
-    let mmr = match ContentMmr::open(&mmr_dir, &session_id, gran) {
-        Ok(m) => m,
-        Err(e) => return FfiDerivationProofResult {
-            success: false,
-            error_message: Some(format!("Failed to open content MMR: {e}")),
-            ..Default::default()
-        },
-    };
+            let mmr_dir = match ContentMmr::default_mmr_dir() {
+                Ok(d) => d,
+                Err(e) => {
+                    return FfiDerivationProofResult {
+                        success: false,
+                        error_message: Some(format!("MMR dir error: {e}")),
+                        ..Default::default()
+                    }
+                }
+            };
 
-    let proof = match mmr.generate_derivation_proof(&derived_text) {
-        Ok(p) => p,
-        Err(e) => return FfiDerivationProofResult {
-            success: false,
-            error_message: Some(format!("Failed to generate proof: {e}")),
-            ..Default::default()
-        },
-    };
+            let mmr = match ContentMmr::open(&mmr_dir, &session_id, gran) {
+                Ok(m) => m,
+                Err(e) => {
+                    return FfiDerivationProofResult {
+                        success: false,
+                        error_message: Some(format!("Failed to open content MMR: {e}")),
+                        ..Default::default()
+                    }
+                }
+            };
 
-    let verified = proof.verify();
-    FfiDerivationProofResult {
-        success: true,
-        session_id: proof.session_id,
-        granularity: proof.granularity.as_str().to_string(),
-        mmr_root_hex: hex::encode(proof.mmr_root),
-        matched_count: proof.matches.len() as u64,
-        derived_total: proof.derived_total as u64,
-        coverage: proof.coverage,
-        verified,
-        error_message: None,
-    }
-    })
+            let proof = match mmr.generate_derivation_proof(&derived_text) {
+                Ok(p) => p,
+                Err(e) => {
+                    return FfiDerivationProofResult {
+                        success: false,
+                        error_message: Some(format!("Failed to generate proof: {e}")),
+                        ..Default::default()
+                    }
+                }
+            };
+
+            let verified = proof.verify();
+            FfiDerivationProofResult {
+                success: true,
+                session_id: proof.session_id,
+                granularity: proof.granularity.as_str().to_string(),
+                mmr_root_hex: hex::encode(proof.mmr_root),
+                matched_count: proof.matches.len() as u64,
+                derived_total: proof.derived_total as u64,
+                coverage: proof.coverage,
+                verified,
+                error_message: None,
+            }
+        }
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -351,32 +375,43 @@ crate::ffi::types::impl_ffi_err!(FfiCapturedText);
 /// non-empty, targets that specific window instead of the focused one.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_capture_window_text(bundle_id: String, window_title: String) -> FfiCapturedText {
-    catch_ffi_panic!(FfiCapturedText {
-        success: false,
-        error_message: Some("engine internal error".to_string()),
-        ..Default::default()
-    }, {
-    log::debug!("ffi_capture_window_text: bundle_id={}, title={}", bundle_id, window_title);
+    catch_ffi_panic!(
+        FfiCapturedText {
+            success: false,
+            error_message: Some("engine internal error".to_string()),
+            ..Default::default()
+        },
+        {
+            log::debug!(
+                "ffi_capture_window_text: bundle_id={}, title={}",
+                bundle_id,
+                window_title
+            );
 
-    let title = if window_title.is_empty() { None } else { Some(window_title.as_str()) };
-    let result = crate::platform::window_text::WindowTextCapture::capture_text_for_bundle_id_and_title(
+            let title = if window_title.is_empty() {
+                None
+            } else {
+                Some(window_title.as_str())
+            };
+            let result = crate::platform::window_text::WindowTextCapture::capture_text_for_bundle_id_and_title(
         &bundle_id, title,
     );
 
-    match result {
-        Some(text) if !text.is_empty() => FfiCapturedText {
-            success: true,
-            text,
-            error_message: None,
-        },
-        _ => FfiCapturedText {
-            success: false,
-            text: String::new(),
-            error_message: Some(
-                "Could not capture text. Ensure the compose window is still open."
-                    .to_string(),
-            ),
-        },
-    }
-    })
+            match result {
+                Some(text) if !text.is_empty() => FfiCapturedText {
+                    success: true,
+                    text,
+                    error_message: None,
+                },
+                _ => FfiCapturedText {
+                    success: false,
+                    text: String::new(),
+                    error_message: Some(
+                        "Could not capture text. Ensure the compose window is still open."
+                            .to_string(),
+                    ),
+                },
+            }
+        }
+    )
 }

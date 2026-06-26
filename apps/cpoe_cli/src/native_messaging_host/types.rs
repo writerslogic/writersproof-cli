@@ -14,10 +14,18 @@ where
     impl<'de> Visitor<'de> for BoundedVec {
         type Value = Vec<u64>;
         fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "an array of at most {} u64 intervals", super::jitter::MAX_BATCH_SIZE)
+            write!(
+                f,
+                "an array of at most {} u64 intervals",
+                super::jitter::MAX_BATCH_SIZE
+            )
         }
         fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<u64>, A::Error> {
-            let mut v = Vec::with_capacity(seq.size_hint().unwrap_or(0).min(super::jitter::MAX_BATCH_SIZE));
+            let mut v = Vec::with_capacity(
+                seq.size_hint()
+                    .unwrap_or(0)
+                    .min(super::jitter::MAX_BATCH_SIZE),
+            );
             while let Some(val) = seq.next_element::<u64>()? {
                 if v.len() >= super::jitter::MAX_BATCH_SIZE {
                     return Err(A::Error::custom(format!(

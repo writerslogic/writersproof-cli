@@ -31,7 +31,9 @@ pub enum PosmeError {
     #[error("Merkle verify failed at step {step_id}, address {address}")]
     MerkleVerifyFailed { step_id: u32, address: u32 },
 
-    #[error("address mismatch at step {step_id}, read {read_index}: expected {expected}, got {got}")]
+    #[error(
+        "address mismatch at step {step_id}, read {read_index}: expected {expected}, got {got}"
+    )]
     AddressMismatch {
         step_id: u32,
         read_index: u32,

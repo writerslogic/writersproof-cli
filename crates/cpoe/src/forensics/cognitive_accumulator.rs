@@ -260,8 +260,12 @@ fn compute_max_disagreement(scores: &[f64]) -> f64 {
     let mut lo = f64::MAX;
     let mut hi = f64::MIN;
     for &s in scores {
-        if s < lo { lo = s; }
-        if s > hi { hi = s; }
+        if s < lo {
+            lo = s;
+        }
+        if s > hi {
+            hi = s;
+        }
     }
     let max_d = hi - lo;
     if max_d < 0.4 {

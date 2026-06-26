@@ -238,7 +238,13 @@ pub(in crate::report::html) fn write_forensic_breakdown(
         finite_or(fm.mean_iki_ms, 0.0),
     )?;
     let cv = finite_or(fm.coefficient_of_variation, 0.0);
-    let cv_interp = if cv > 0.3 { "human-like variability" } else if cv > 0.15 { "normal range" } else { "unusually uniform" };
+    let cv_interp = if cv > 0.3 {
+        "human-like variability"
+    } else if cv > 0.15 {
+        "normal range"
+    } else {
+        "unusually uniform"
+    };
     write!(
         html,
         r#"<div class="metric-card"><div class="metric-label">Coefficient of Variation</div><div class="metric-value">{cv:.3}</div><div class="chart-caption">{cv_interp}</div></div>"#,
@@ -254,7 +260,13 @@ pub(in crate::report::html) fn write_forensic_breakdown(
         fm.pause_count,
     )?;
     let cr = finite_or(fm.correction_ratio, 0.0);
-    let cr_interp = if cr > 0.15 { "active self-editing" } else if cr > 0.05 { "moderate revision" } else { "minimal correction" };
+    let cr_interp = if cr > 0.15 {
+        "active self-editing"
+    } else if cr > 0.05 {
+        "moderate revision"
+    } else {
+        "minimal correction"
+    };
     write!(
         html,
         r#"<div class="metric-card"><div class="metric-label">Correction Ratio</div><div class="metric-value">{cr:.3}</div><div class="chart-caption">{cr_interp}</div></div>"#,

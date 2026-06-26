@@ -185,9 +185,18 @@ pub fn ffi_get_dictation_analytics(path: String) -> FfiDictationAnalytics {
             None
         };
 
-        let (post_pause_cv, iki_autocorrelation, structural_homogeneity, planning_pause_rate,
-             zero_variance_windows, correction_ratio, burst_speed_cv, cross_hand_timing_ratio,
-             dwell_cv, flight_cv) = if let Some(ref cm) = cadence {
+        let (
+            post_pause_cv,
+            iki_autocorrelation,
+            structural_homogeneity,
+            planning_pause_rate,
+            zero_variance_windows,
+            correction_ratio,
+            burst_speed_cv,
+            cross_hand_timing_ratio,
+            dwell_cv,
+            flight_cv,
+        ) = if let Some(ref cm) = cadence {
             (
                 finite_or(cm.post_pause_cv, 0.0),
                 finite_or(cm.iki_autocorrelation, 0.0),
@@ -205,7 +214,9 @@ pub fn ffi_get_dictation_analytics(path: String) -> FfiDictationAnalytics {
         };
 
         let transcription_likelihood = compute_transcription_likelihood(
-            &cadence, analytics.burst_timing_cv, analytics.mean_plausibility,
+            &cadence,
+            analytics.burst_timing_cv,
+            analytics.mean_plausibility,
         );
 
         FfiDictationAnalytics {

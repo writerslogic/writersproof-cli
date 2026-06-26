@@ -9,8 +9,8 @@ use super::types::{
     Anomaly, AnomalyType, Assessment, CadenceMetrics, FocusMetrics, PrimaryMetrics, RegionData,
     RiskLevel, Severity, SortedEvents, ALERT_THRESHOLD, MIN_EVENTS_FOR_ANALYSIS,
     MIN_EVENTS_FOR_ASSESSMENT, THRESHOLD_GAP_HOURS, THRESHOLD_HIGH_VELOCITY_BPS,
-    THRESHOLD_MONOTONIC_APPEND, THRESHOLD_PAUSE_ENTROPY,
-    THRESHOLD_REVISION_ENTROPY, THRESHOLD_TIMING_ENTROPY,
+    THRESHOLD_MONOTONIC_APPEND, THRESHOLD_PAUSE_ENTROPY, THRESHOLD_REVISION_ENTROPY,
+    THRESHOLD_TIMING_ENTROPY,
 };
 use crate::utils::Probability;
 
@@ -331,7 +331,8 @@ pub fn compute_assessment_score(
         CV_ROBOTIC_THRESHOLD
     };
     if cov < CV_ROBOTIC_THRESHOLD {
-        score -= COV_PENALTY_WEIGHT * (CV_ROBOTIC_THRESHOLD - cov) / CV_ROBOTIC_THRESHOLD.max(f64::EPSILON);
+        score -= COV_PENALTY_WEIGHT * (CV_ROBOTIC_THRESHOLD - cov)
+            / CV_ROBOTIC_THRESHOLD.max(f64::EPSILON);
     }
 
     score -= ANOMALY_PENALTY * anomaly_count as f64;
@@ -353,8 +354,8 @@ pub fn compute_assessment_score(
     }
 
     // Penalty: low correction ratio (no edits/revisions)
-    let low_correction = cadence.correction_ratio < CORRECTION_RATIO_LOW
-        && event_count >= CORRECTION_MIN_EVENTS;
+    let low_correction =
+        cadence.correction_ratio < CORRECTION_RATIO_LOW && event_count >= CORRECTION_MIN_EVENTS;
     if low_correction {
         score -= LOW_CORRECTION_PENALTY;
     }

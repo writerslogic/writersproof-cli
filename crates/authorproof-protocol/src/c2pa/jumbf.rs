@@ -195,15 +195,24 @@ pub fn decode_jumbf(data: &[u8]) -> Result<C2paManifest> {
             return Err(Error::Validation("Truncated JUMBF box header".into()));
         }
         let compact = u32::from_be_bytes([
-            data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
         ]);
         let (box_len, hdr) = if compact == 1 {
             if offset + 16 > data.len() {
                 return Err(Error::Validation("Truncated extended-size box".into()));
             }
             let ext = u64::from_be_bytes([
-                data[offset + 8], data[offset + 9], data[offset + 10], data[offset + 11],
-                data[offset + 12], data[offset + 13], data[offset + 14], data[offset + 15],
+                data[offset + 8],
+                data[offset + 9],
+                data[offset + 10],
+                data[offset + 11],
+                data[offset + 12],
+                data[offset + 13],
+                data[offset + 14],
+                data[offset + 15],
             ]) as usize;
             (ext, 16)
         } else {
@@ -234,7 +243,10 @@ pub fn decode_jumbf(data: &[u8]) -> Result<C2paManifest> {
         }
         let label_start = 17; // 16 UUID + 1 toggles
         let label_bytes = &body[label_start..];
-        let end = label_bytes.iter().position(|&b| b == 0).unwrap_or(label_bytes.len());
+        let end = label_bytes
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(label_bytes.len());
         if end == 0 {
             return None;
         }
@@ -244,7 +256,8 @@ pub fn decode_jumbf(data: &[u8]) -> Result<C2paManifest> {
     fn find_content_in_superbox<'a>(body: &'a [u8], content_type: &[u8; 4]) -> Option<&'a [u8]> {
         let mut off = 0;
         while off + 8 <= body.len() {
-            let len = u32::from_be_bytes([body[off], body[off + 1], body[off + 2], body[off + 3]]) as usize;
+            let len = u32::from_be_bytes([body[off], body[off + 1], body[off + 2], body[off + 3]])
+                as usize;
             if len < 8 || off + len > body.len() {
                 break;
             }
@@ -265,7 +278,7 @@ pub fn decode_jumbf(data: &[u8]) -> Result<C2paManifest> {
 
     // Iterate children of the store to find the manifest superbox.
     let mut pos = 8; // skip store box header
-    // Skip store's jumd description.
+                     // Skip store's jumd description.
     let (jumd_len, jumd_type, _) = read_box(data, pos)?;
     if jumd_type != b"jumd" {
         return Err(Error::Validation("Store missing description box".into()));
@@ -312,8 +325,10 @@ pub fn decode_jumbf(data: &[u8]) -> Result<C2paManifest> {
                             let mut apos = jumd_l;
                             while apos + 8 <= child_body.len() {
                                 let alen = u32::from_be_bytes([
-                                    child_body[apos], child_body[apos + 1],
-                                    child_body[apos + 2], child_body[apos + 3],
+                                    child_body[apos],
+                                    child_body[apos + 1],
+                                    child_body[apos + 2],
+                                    child_body[apos + 3],
                                 ]) as usize;
                                 if alen < 8 || apos + alen > child_body.len() {
                                     break;

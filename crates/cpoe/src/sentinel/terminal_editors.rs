@@ -20,9 +20,9 @@ use std::path::PathBuf;
 /// Known terminal-based text editors (executable base names).
 const KNOWN_EDITORS: &[&str] = &[
     "vim", "nvim", "vi", "emacs", "nano", "helix", "micro", "kakoune", "joe",
-    "hx",   // helix binary name on some distros
-    "kak",  // kakoune binary name
-    "ne",   // nice editor
+    "hx",  // helix binary name on some distros
+    "kak", // kakoune binary name
+    "ne",  // nice editor
     "mcedit",
 ];
 
@@ -109,8 +109,7 @@ struct EditorDetectionCache {
     expires: std::time::Instant,
 }
 
-static EDITOR_CACHE: std::sync::Mutex<Option<EditorDetectionCache>> =
-    std::sync::Mutex::new(None);
+static EDITOR_CACHE: std::sync::Mutex<Option<EditorDetectionCache>> = std::sync::Mutex::new(None);
 
 const EDITOR_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(2);
 
@@ -123,9 +122,7 @@ pub fn detect_editor_in_terminal(terminal_pid: u32) -> Option<TerminalEditorInfo
     {
         let guard = EDITOR_CACHE.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(ref cached) = *guard {
-            if cached.terminal_pid == terminal_pid
-                && cached.expires > std::time::Instant::now()
-            {
+            if cached.terminal_pid == terminal_pid && cached.expires > std::time::Instant::now() {
                 return cached.result.clone();
             }
         }
@@ -150,9 +147,8 @@ fn detect_editor_uncached(terminal_pid: u32) -> Option<TerminalEditorInfo> {
 
     // Single process table scan shared across child + grandchild lookups.
     let mut sys = System::new_with_specifics(
-        RefreshKind::nothing().with_processes(
-            ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet),
-        ),
+        RefreshKind::nothing()
+            .with_processes(ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet)),
     );
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
@@ -199,11 +195,7 @@ fn detect_editor_uncached(terminal_pid: u32) -> Option<TerminalEditorInfo> {
     None
 }
 
-fn resolve_editor_file_with_sys(
-    sys: &sysinfo::System,
-    pid: u32,
-    _editor: &str,
-) -> Option<String> {
+fn resolve_editor_file_with_sys(sys: &sysinfo::System, pid: u32, _editor: &str) -> Option<String> {
     // Try command-line arguments from the already-loaded process table.
     if let Some(proc) = sys.process(sysinfo::Pid::from_u32(pid)) {
         let cmd = proc.cmd();
@@ -318,16 +310,28 @@ fn strip_vim_modifiers(s: &str) -> &str {
     let s = s.trim();
     let s = s.strip_suffix(" (+)").unwrap_or(s);
     let s = s.strip_suffix(" [+]").unwrap_or(s);
-    let s = s.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(s);
+    let s = s
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(s);
     s.trim()
 }
 
 /// Reject file paths in system directories (adversarial title injection defense).
 fn is_safe_document_path(s: &str) -> bool {
     const BLOCKED: &[&str] = &[
-        "/etc/", "/System/", "/Library/", "/var/db/", "/var/run/",
-        "/proc/", "/sys/", "/dev/", "/boot/", "/sbin/",
-        "C:\\Windows\\", "C:\\Program Files",
+        "/etc/",
+        "/System/",
+        "/Library/",
+        "/var/db/",
+        "/var/run/",
+        "/proc/",
+        "/sys/",
+        "/dev/",
+        "/boot/",
+        "/sbin/",
+        "C:\\Windows\\",
+        "C:\\Program Files",
     ];
     !BLOCKED.iter().any(|prefix| s.starts_with(prefix))
 }

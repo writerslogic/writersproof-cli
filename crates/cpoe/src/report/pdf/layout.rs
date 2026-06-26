@@ -337,17 +337,19 @@ pub fn draw_page1(
     y -= 28.0;
 
     // ── ENFSI Evaluative Scale ──
-    let enfsi_statement = if r.verdict == Verdict::InsufficientData || !r.likelihood_ratio.is_finite() {
-        "Examination withheld: the captured evidence does not meet the minimum thresholds \
-         for evaluative reporting. No likelihood ratio or ENFSI tier is issued.".to_string()
-    } else {
-        format!(
+    let enfsi_statement =
+        if r.verdict == Verdict::InsufficientData || !r.likelihood_ratio.is_finite() {
+            "Examination withheld: the captured evidence does not meet the minimum thresholds \
+         for evaluative reporting. No likelihood ratio or ENFSI tier is issued."
+                .to_string()
+        } else {
+            format!(
             "The evidence is approximately {:.1} times more likely if the document was authored by \
              a human typing in real time (H1) than if it was produced by transcription or \
              automated input (H2).",
             r.likelihood_ratio,
         )
-    };
+        };
     for line in wrap_text_lines(&enfsi_statement, 100) {
         text(layer, &line, 6.5, MARGIN_LEFT, y, &fonts.regular, GRAY);
         y -= 3.5;
@@ -357,7 +359,11 @@ pub fn draw_page1(
         ("Against", (0.78_f32, 0.16, 0.16), EnfsiTier::Against),
         ("Weak", (0.90, 0.32, 0.00), EnfsiTier::Weak),
         ("Moderate", (0.98, 0.66, 0.15), EnfsiTier::Moderate),
-        ("Mod. Strong", (0.40, 0.73, 0.42), EnfsiTier::ModeratelyStrong),
+        (
+            "Mod. Strong",
+            (0.40, 0.73, 0.42),
+            EnfsiTier::ModeratelyStrong,
+        ),
         ("Strong", (0.18, 0.49, 0.20), EnfsiTier::Strong),
         ("Very Strong", (0.11, 0.37, 0.13), EnfsiTier::VeryStrong),
     ];

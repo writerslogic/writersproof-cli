@@ -1193,17 +1193,20 @@ fn build_enhanced_signals(
         return None;
     }
 
-    let cognitive_load = metrics.cognitive_load.as_ref().map(|c| FfiCognitiveLoadSignals {
-        score: finite_or(c.composite_score, 0.0),
-        iki_surprisal_rho: finite_or(c.iki_surprisal_rho, 0.0),
-        sentence_arc_r_squared: finite_or(c.sentence_arc_r_squared, 0.0),
-        structural_pause_concentration: finite_or(c.structural_pause_concentration, 0.0),
-        deep_pause_count: usize_u32(c.deep_pause_count),
-        sentence_count: usize_u32(c.sentence_count),
-        word_count: usize_u32(c.word_count),
-        boundary_count: usize_u32(c.boundary_count),
-        cognitive_mode: c.cognitive_mode().to_string(),
-    });
+    let cognitive_load = metrics
+        .cognitive_load
+        .as_ref()
+        .map(|c| FfiCognitiveLoadSignals {
+            score: finite_or(c.composite_score, 0.0),
+            iki_surprisal_rho: finite_or(c.iki_surprisal_rho, 0.0),
+            sentence_arc_r_squared: finite_or(c.sentence_arc_r_squared, 0.0),
+            structural_pause_concentration: finite_or(c.structural_pause_concentration, 0.0),
+            deep_pause_count: usize_u32(c.deep_pause_count),
+            sentence_count: usize_u32(c.sentence_count),
+            word_count: usize_u32(c.word_count),
+            boundary_count: usize_u32(c.boundary_count),
+            cognitive_mode: c.cognitive_mode().to_string(),
+        });
 
     let revision_topology =
         metrics
@@ -1231,21 +1234,26 @@ fn build_enhanced_signals(
                 insertion_point_entropy: finite_or(r.insertion_point_entropy, 0.0),
             });
 
-    let error_ecology = metrics.error_ecology.as_ref().map(|e| FfiErrorEcologySignals {
-        score: finite_or(e.composite_score, 0.0),
-        rapid_correction_pct: finite_or(e.rapid_self_correction_pct, 0.0),
-        immediate_small_correction_pct: finite_or(e.immediate_small_correction_pct, 0.0),
-        delayed_correction_pct: finite_or(e.delayed_correction_pct, 0.0),
-        bulk_correction_pct: finite_or(e.bulk_correction_pct, 0.0),
-        false_start_pct: finite_or(e.false_start_pct, 0.0),
-        correction_rate: finite_or(e.correction_rate, 0.0),
-        total_corrections: usize_u32(e.total_corrections),
-        jsd_from_cognitive: finite_or(e.jsd_from_cognitive, 0.0),
-        jsd_from_transcriptive: finite_or(e.jsd_from_transcriptive, 0.0),
-    });
+    let error_ecology = metrics
+        .error_ecology
+        .as_ref()
+        .map(|e| FfiErrorEcologySignals {
+            score: finite_or(e.composite_score, 0.0),
+            rapid_correction_pct: finite_or(e.rapid_self_correction_pct, 0.0),
+            immediate_small_correction_pct: finite_or(e.immediate_small_correction_pct, 0.0),
+            delayed_correction_pct: finite_or(e.delayed_correction_pct, 0.0),
+            bulk_correction_pct: finite_or(e.bulk_correction_pct, 0.0),
+            false_start_pct: finite_or(e.false_start_pct, 0.0),
+            correction_rate: finite_or(e.correction_rate, 0.0),
+            total_corrections: usize_u32(e.total_corrections),
+            jsd_from_cognitive: finite_or(e.jsd_from_cognitive, 0.0),
+            jsd_from_transcriptive: finite_or(e.jsd_from_transcriptive, 0.0),
+        });
 
-    let likelihood_model = metrics.likelihood_model.as_ref().map(|lm| {
-        FfiLikelihoodSignals {
+    let likelihood_model = metrics
+        .likelihood_model
+        .as_ref()
+        .map(|lm| FfiLikelihoodSignals {
             p_cognitive: finite_or(lm.session_p_cognitive, 0.0),
             session_llr: finite_or(lm.session_llr, 0.0),
             mean_llr: finite_or(lm.mean_window_llr, 0.0),
@@ -1253,7 +1261,10 @@ fn build_enhanced_signals(
             min_window_llr: finite_or(lm.min_window_llr, 0.0),
             max_window_llr: finite_or(lm.max_window_llr, 0.0),
             cognitive_window_fraction: if lm.window_count > 0 {
-                finite_or(lm.cognitive_window_count as f64 / lm.window_count as f64, 0.0)
+                finite_or(
+                    lm.cognitive_window_count as f64 / lm.window_count as f64,
+                    0.0,
+                )
             } else {
                 0.0
             },
@@ -1266,8 +1277,7 @@ fn build_enhanced_signals(
                     p_cognitive: finite_or(p, 0.0),
                 })
                 .collect(),
-        }
-    });
+        });
 
     // Populate composition mode from live sentinel session data.
     let composition_mode = metrics
@@ -1279,14 +1289,12 @@ fn build_enhanced_signals(
             let sentinel = super::sentinel::get_sentinel()?;
             let session = sentinel.session(path).ok()?;
             let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
-            let pastes: Vec<_> = session
-                .paste_context
-                .iter()
-                .cloned()
-                .collect();
+            let pastes: Vec<_> = session.paste_context.to_vec();
             let event_count = session.cognitive.keystroke_count();
             let cm = crate::forensics::composition_mode::analyze_composition_mode(
-                &switches, &pastes, event_count,
+                &switches,
+                &pastes,
+                event_count,
             )?;
             Some(build_composition_ffi(&cm))
         });
@@ -1401,213 +1409,241 @@ fn live_scores_err(msg: &str) -> FfiLiveScores {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_live_scores(path: String) -> FfiLiveScores {
     catch_ffi_panic!(live_scores_err("engine internal error"), {
-    log::debug!("ffi_get_live_scores: path={}", path);
-    let sentinel = match super::sentinel::get_sentinel() {
-        Some(s) => s,
-        None => return live_scores_err("Sentinel not running"),
-    };
-
-    let session = match sentinel.session(&path) {
-        Ok(s) => s,
-        Err(_) => return live_scores_err("No active session for this path"),
-    };
-
-    let keystroke_count = usize_u32(session.cognitive.keystroke_count());
-    let duration = finite_or(
-        session
-            .start_time
-            .elapsed()
-            .map(|d| d.as_secs_f64())
-            .unwrap_or(0.0),
-        0.0,
-    );
-
-    // Cadence score from a trailing window of jitter samples.
-    let jitter_samples = session.jitter_ring.as_slice();
-    let window = recent_jitter_window(&jitter_samples, LIVE_CADENCE_WINDOW_NS);
-    let cadence_metrics = if window.len() >= 10 {
-        Some(crate::forensics::analyze_cadence(window))
-    } else {
-        None
-    };
-    let cadence_score = finite_or(
-        cadence_metrics.as_ref()
-            .map(crate::forensics::compute_cadence_score)
-            .unwrap_or(0.0),
-        0.0,
-    );
-
-    // Blend multiple cached signals into a composite cognitive score.
-    // The cadence score alone is a single IKI-based signal; adding the
-    // cognitive accumulator's real-time analysis (sentence initiation,
-    // spoofing indicator, editing patterns) and composition mode produces
-    // a more accurate and responsive score.
-    let cognitive_layer = session.cognitive.analyze();
-    let editing_ratio = session.semantic_counts.editing_ratio();
-
-    let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
-    let pastes: Vec<_> = session.paste_context.iter().cloned().collect();
-    let comp_mode = crate::forensics::composition_mode::analyze_composition_mode(
-        &switches,
-        &pastes,
-        keystroke_count as usize,
-    );
-    let composition_score = comp_mode.as_ref().map(|c| c.composite_score).unwrap_or(1.0);
-
-    // Evidence maturity factor: sessions start with high assumed quality
-    // (benefit of the doubt) and quality gates tighten as data accumulates.
-    // At 20 keystrokes, maturity is ~0.04; at 200, ~0.4; at 500+, ~1.0.
-    let maturity = (keystroke_count as f64 / 500.0).min(1.0);
-
-    let (writing_mode, cognitive_score) = if keystroke_count < 20 {
-        ("insufficient".to_string(), 0.8)
-    } else {
-        // Composite: 45% cadence, 25% cognitive layer, 15% composition, 15% editing
-        let cognitive_prob = cognitive_layer
-            .as_ref()
-            .map(|cl| {
-                // Weighted blend of cognitive signals. Spoofing indicator
-                // acts as a penalty (high disagreement between signals).
-                let raw = (cl.sentence_initiation_ratio.clamp(0.0, 1.0) * 0.4
-                    + cl.iki_modality_score.clamp(0.0, 1.0) * 0.3
-                    + cl.non_append_ratio.clamp(0.0, 0.5) * 0.3 * 2.0)
-                    .clamp(0.0, 1.0);
-                let spoof_penalty = cl.spoofing_indicator.clamp(0.0, 0.3);
-                (raw - spoof_penalty).max(0.0)
-            })
-            .unwrap_or(cadence_score);
-
-        let editing_signal = if editing_ratio > 0.15 {
-            1.0 // Substantial editing = cognitive authoring
-        } else if editing_ratio > 0.05 {
-            0.6
-        } else {
-            0.2 // Append-only = likely transcriptive
+        log::debug!("ffi_get_live_scores: path={}", path);
+        let sentinel = match super::sentinel::get_sentinel() {
+            Some(s) => s,
+            None => return live_scores_err("Sentinel not running"),
         };
 
-        let measured = cadence_score * 0.45
-            + cognitive_prob * 0.25
-            + composition_score * 0.15
-            + editing_signal * 0.15;
+        let session = match sentinel.session(&path) {
+            Ok(s) => s,
+            Err(_) => return live_scores_err("No active session for this path"),
+        };
 
-        // Blend measured score with a generous prior (0.8) based on data maturity.
-        // Early session: mostly prior (benefit of the doubt).
-        // Mature session: mostly measured (evidence-driven).
-        let mut composite = measured * maturity + 0.8 * (1.0 - maturity);
+        let keystroke_count = usize_u32(session.cognitive.keystroke_count());
+        let duration = finite_or(
+            session
+                .start_time
+                .elapsed()
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0),
+            0.0,
+        );
 
-        // Cross-window transcription: apply penalty only for RECENT matches (last 60s).
-        // Older matches decay so original writing after a transcription phase recovers.
-        let now = chrono::Utc::now();
-        let recent_max_sim = session.transcription_detector.matches().iter()
-            .filter(|m| (now - m.detected_at).num_seconds() < 60)
-            .map(|m| m.similarity_score)
-            .fold(0.0f64, f64::max);
-        if recent_max_sim > 0.0 {
-            // Strong penalty: 0.75 similarity → -0.35, 1.0 → -0.50.
-            // This alone should shift the verdict from "cognitive" to "transcriptive".
-            let penalty = ((recent_max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.50;
-            composite -= penalty * maturity;
-        }
+        // Cadence score from a trailing window of jitter samples.
+        let jitter_samples = session.jitter_ring.as_slice();
+        let window = recent_jitter_window(&jitter_samples, LIVE_CADENCE_WINDOW_NS);
+        let cadence_metrics = if window.len() >= 10 {
+            Some(crate::forensics::analyze_cadence(window))
+        } else {
+            None
+        };
+        let cadence_score = finite_or(
+            cadence_metrics
+                .as_ref()
+                .map(crate::forensics::compute_cadence_score)
+                .unwrap_or(0.0),
+            0.0,
+        );
 
-        // Behavioral transcription signals from cadence analysis.
-        // These detect transcription from non-digital sources (books, phones, dictation)
-        // where cross-window comparison can't help.
-        if let Some(ref cm) = cadence_metrics {
-            // IKI autocorrelation > 0.10 = rhythmic metronomic typing (transcriptive).
-            if cm.iki_autocorrelation > 0.10 {
-                let penalty = ((cm.iki_autocorrelation - 0.10) / 0.20).clamp(0.0, 1.0) * 0.15;
+        // Blend multiple cached signals into a composite cognitive score.
+        // The cadence score alone is a single IKI-based signal; adding the
+        // cognitive accumulator's real-time analysis (sentence initiation,
+        // spoofing indicator, editing patterns) and composition mode produces
+        // a more accurate and responsive score.
+        let cognitive_layer = session.cognitive.analyze();
+        let editing_ratio = session.semantic_counts.editing_ratio();
+
+        let switches: Vec<_> = session.focus_switches.iter().cloned().collect();
+        let pastes: Vec<_> = session.paste_context.to_vec();
+        let comp_mode = crate::forensics::composition_mode::analyze_composition_mode(
+            &switches,
+            &pastes,
+            keystroke_count as usize,
+        );
+        let composition_score = comp_mode.as_ref().map(|c| c.composite_score).unwrap_or(1.0);
+
+        // Evidence maturity factor: sessions start with high assumed quality
+        // (benefit of the doubt) and quality gates tighten as data accumulates.
+        // At 20 keystrokes, maturity is ~0.04; at 200, ~0.4; at 500+, ~1.0.
+        let maturity = (keystroke_count as f64 / 500.0).min(1.0);
+
+        let (writing_mode, cognitive_score) = if keystroke_count < 20 {
+            ("insufficient".to_string(), 0.8)
+        } else {
+            // Composite: 45% cadence, 25% cognitive layer, 15% composition, 15% editing
+            let cognitive_prob = cognitive_layer
+                .as_ref()
+                .map(|cl| {
+                    // Weighted blend of cognitive signals. Spoofing indicator
+                    // acts as a penalty (high disagreement between signals).
+                    let raw = (cl.sentence_initiation_ratio.clamp(0.0, 1.0) * 0.4
+                        + cl.iki_modality_score.clamp(0.0, 1.0) * 0.3
+                        + cl.non_append_ratio.clamp(0.0, 0.5) * 0.3 * 2.0)
+                        .clamp(0.0, 1.0);
+                    let spoof_penalty = cl.spoofing_indicator.clamp(0.0, 0.3);
+                    (raw - spoof_penalty).max(0.0)
+                })
+                .unwrap_or(cadence_score);
+
+            let editing_signal = if editing_ratio > 0.15 {
+                1.0 // Substantial editing = cognitive authoring
+            } else if editing_ratio > 0.05 {
+                0.6
+            } else {
+                0.2 // Append-only = likely transcriptive
+            };
+
+            let measured = cadence_score * 0.45
+                + cognitive_prob * 0.25
+                + composition_score * 0.15
+                + editing_signal * 0.15;
+
+            // Blend measured score with a generous prior (0.8) based on data maturity.
+            // Early session: mostly prior (benefit of the doubt).
+            // Mature session: mostly measured (evidence-driven).
+            let mut composite = measured * maturity + 0.8 * (1.0 - maturity);
+
+            // Cross-window transcription: apply penalty only for RECENT matches (last 60s).
+            // Older matches decay so original writing after a transcription phase recovers.
+            let now = chrono::Utc::now();
+            let recent_max_sim = session
+                .transcription_detector
+                .matches()
+                .iter()
+                .filter(|m| (now - m.detected_at).num_seconds() < 60)
+                .map(|m| m.similarity_score)
+                .fold(0.0f64, f64::max);
+            if recent_max_sim > 0.0 {
+                // Strong penalty: 0.75 similarity → -0.35, 1.0 → -0.50.
+                // This alone should shift the verdict from "cognitive" to "transcriptive".
+                let penalty = ((recent_max_sim - 0.70) / 0.30).clamp(0.0, 1.0) * 0.50;
                 composite -= penalty * maturity;
             }
-            // Correction ratio < 0.03 with substantial typing = no edits (transcriptive).
-            if cm.correction_ratio < 0.03 && keystroke_count > 100 {
+
+            // Behavioral transcription signals from cadence analysis.
+            // These detect transcription from non-digital sources (books, phones, dictation)
+            // where cross-window comparison can't help.
+            if let Some(ref cm) = cadence_metrics {
+                // IKI autocorrelation > 0.10 = rhythmic metronomic typing (transcriptive).
+                if cm.iki_autocorrelation > 0.10 {
+                    let penalty = ((cm.iki_autocorrelation - 0.10) / 0.20).clamp(0.0, 1.0) * 0.15;
+                    composite -= penalty * maturity;
+                }
+                // Correction ratio < 0.03 with substantial typing = no edits (transcriptive).
+                if cm.correction_ratio < 0.03 && keystroke_count > 100 {
+                    composite -= 0.10 * maturity;
+                }
+                // Burst speed CV < 0.12 = constant speed within bursts (transcriptive).
+                if cm.burst_speed_cv > 0.0 && cm.burst_speed_cv < 0.12 && cm.burst_count >= 3 {
+                    composite -= 0.08 * maturity;
+                }
+            }
+
+            if session.transcription_suspicion.is_suspicious {
+                composite -= 0.20 * maturity;
+            }
+            if !session.ai_tools_detected.is_empty() {
                 composite -= 0.10 * maturity;
             }
-            // Burst speed CV < 0.12 = constant speed within bursts (transcriptive).
-            if cm.burst_speed_cv > 0.0 && cm.burst_speed_cv < 0.12 && cm.burst_count >= 3 {
-                composite -= 0.08 * maturity;
-            }
-        }
+            let composite = composite.clamp(0.0, 1.0);
 
-        if session.transcription_suspicion.is_suspicious {
-            composite -= 0.20 * maturity;
-        }
-        if !session.ai_tools_detected.is_empty() {
-            composite -= 0.10 * maturity;
-        }
-        let composite = composite.clamp(0.0, 1.0);
-
-        // Hysteresis: use the previous mode to bias thresholds so the label
-        // doesn't flicker. Entering "transcriptive" requires a lower score
-        // than leaving it requires a higher one.
-        // Hysteresis: biased thresholds based on previous mode.
-        // Entering a state requires crossing a higher bar than staying in it.
-        let prev_mode = session.last_writing_mode.as_deref().unwrap_or("insufficient");
-        let mode = match prev_mode {
-            "transcriptive" => {
-                if composite >= 0.55 { "cognitive" } else if composite >= 0.45 { "mixed" } else { "transcriptive" }
-            }
-            "cognitive" => {
-                if composite >= 0.45 { "cognitive" } else if composite >= 0.25 { "mixed" } else { "transcriptive" }
-            }
-            _ => {
-                if composite >= 0.55 { "cognitive" } else if composite < 0.35 { "transcriptive" } else { "mixed" }
-            }
+            // Hysteresis: use the previous mode to bias thresholds so the label
+            // doesn't flicker. Entering "transcriptive" requires a lower score
+            // than leaving it requires a higher one.
+            // Hysteresis: biased thresholds based on previous mode.
+            // Entering a state requires crossing a higher bar than staying in it.
+            let prev_mode = session
+                .last_writing_mode
+                .as_deref()
+                .unwrap_or("insufficient");
+            let mode = match prev_mode {
+                "transcriptive" => {
+                    if composite >= 0.55 {
+                        "cognitive"
+                    } else if composite >= 0.45 {
+                        "mixed"
+                    } else {
+                        "transcriptive"
+                    }
+                }
+                "cognitive" => {
+                    if composite >= 0.45 {
+                        "cognitive"
+                    } else if composite >= 0.25 {
+                        "mixed"
+                    } else {
+                        "transcriptive"
+                    }
+                }
+                _ => {
+                    if composite >= 0.55 {
+                        "cognitive"
+                    } else if composite < 0.35 {
+                        "transcriptive"
+                    } else {
+                        "mixed"
+                    }
+                }
+            };
+            (mode.to_string(), composite)
         };
-        (mode.to_string(), composite)
-    };
 
-    // Persist writing mode for hysteresis on next poll.
-    {
-        use crate::RwLockRecover as _;
-        let mut sessions = sentinel.sessions.write_recover();
-        if let Some(s) = sessions.get_mut(path.as_str()) {
-            s.last_writing_mode = Some(writing_mode.clone());
+        // Persist writing mode for hysteresis on next poll.
+        {
+            use crate::RwLockRecover as _;
+            let mut sessions = sentinel.sessions.write_recover();
+            if let Some(s) = sessions.get_mut(path.as_str()) {
+                s.last_writing_mode = Some(writing_mode.clone());
+            }
         }
-    }
 
-    let risk_level = if cognitive_score >= 0.7 {
-        "low"
-    } else if cognitive_score >= 0.4 {
-        "medium"
-    } else if keystroke_count < 10 {
-        "insufficient data"
-    } else {
-        "high"
-    };
+        let risk_level = if cognitive_score >= 0.7 {
+            "low"
+        } else if cognitive_score >= 0.4 {
+            "medium"
+        } else if keystroke_count < 10 {
+            "insufficient data"
+        } else {
+            "high"
+        };
 
-    let focused_secs = session.total_focus_ms as f64 / 1000.0;
-    let evidence_maturity = finite_or(
-        crate::forensics::scoring::evidence_maturity(keystroke_count as u64, focused_secs),
-        0.0,
-    );
+        let focused_secs = session.total_focus_ms as f64 / 1000.0;
+        let evidence_maturity = finite_or(
+            crate::forensics::scoring::evidence_maturity(keystroke_count as u64, focused_secs),
+            0.0,
+        );
 
-    FfiLiveScores {
-        success: true,
-        writing_mode,
-        cognitive_score,
-        assessment_score: cadence_score,
-        risk_level: risk_level.to_string(),
-        keystroke_count,
-        session_duration_sec: duration,
-        cadence_score,
-        composition_mode: comp_mode
-            .and_then(|c| c.dominant_mode)
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "unknown".to_string()),
-        evidence_maturity,
-        words_per_minute: finite_or(session.recent_wpm(), 0.0),
-        ai_tools_active_count: usize_u32(session.ai_tools_detected.len()),
-        capture_gaps: session.capture_gaps,
-        evidence_confidence: session.evidence_confidence.to_string(),
-        confidence_reason: session.confidence_reason.clone(),
-        transcription_suspicious: session.transcription_suspicion.is_suspicious || {
-            let now_ts = chrono::Utc::now();
-            session.transcription_detector.matches().iter()
-                .any(|m| (now_ts - m.detected_at).num_seconds() < 60)
-        },
-        iki_sparkline: downsample_iki_sparkline(&jitter_samples, 60, 10),
-        error_message: None,
-    }
+        FfiLiveScores {
+            success: true,
+            writing_mode,
+            cognitive_score,
+            assessment_score: cadence_score,
+            risk_level: risk_level.to_string(),
+            keystroke_count,
+            session_duration_sec: duration,
+            cadence_score,
+            composition_mode: comp_mode
+                .and_then(|c| c.dominant_mode)
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+            evidence_maturity,
+            words_per_minute: finite_or(session.recent_wpm(), 0.0),
+            ai_tools_active_count: usize_u32(session.ai_tools_detected.len()),
+            capture_gaps: session.capture_gaps,
+            evidence_confidence: session.evidence_confidence.to_string(),
+            confidence_reason: session.confidence_reason.clone(),
+            transcription_suspicious: session.transcription_suspicion.is_suspicious || {
+                let now_ts = chrono::Utc::now();
+                session
+                    .transcription_detector
+                    .matches()
+                    .iter()
+                    .any(|m| (now_ts - m.detected_at).num_seconds() < 60)
+            },
+            iki_sparkline: downsample_iki_sparkline(&jitter_samples, 60, 10),
+            error_message: None,
+        }
     })
 }
 

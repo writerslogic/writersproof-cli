@@ -290,10 +290,11 @@ pub(super) fn validate_tsa_url(url: &str) -> Result<(), AnchorError> {
             }
         }
         // Check IPv4-mapped IPv6 (::ffff:127.x.x.x loopback and private ranges)
-        if let Some(ipv4_part) = lower
-            .strip_prefix("::ffff:")
-            .or_else(|| lower.strip_prefix("[::ffff:").and_then(|s| s.strip_suffix(']')))
-        {
+        if let Some(ipv4_part) = lower.strip_prefix("::ffff:").or_else(|| {
+            lower
+                .strip_prefix("[::ffff:")
+                .and_then(|s| s.strip_suffix(']'))
+        }) {
             if ipv4_part.starts_with("127.")
                 || ipv4_part.starts_with("10.")
                 || ipv4_part.starts_with("192.168.")
@@ -431,9 +432,9 @@ fn extract_tst_info(data: &[u8]) -> Result<Vec<u8>, AnchorError> {
         let status_kids = children_of(data, status_seq);
         if !status_kids.is_empty() && status_kids[0].tag == 0x02 {
             let status_bytes = status_kids[0].content(data);
-            let status_val = status_bytes
-                .iter()
-                .fold(0u32, |acc, &b| acc.saturating_mul(256).saturating_add(b as u32));
+            let status_val = status_bytes.iter().fold(0u32, |acc, &b| {
+                acc.saturating_mul(256).saturating_add(b as u32)
+            });
             // RFC 3161 s2.4.2: 0 = granted, 1 = grantedWithMods, 2-5 = failure
             if status_val >= 2 {
                 return Err(AnchorError::InvalidFormat(format!(
@@ -513,9 +514,7 @@ fn parse_generalized_time(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
             let frac_digits: String = frac.chars().take(9).collect();
             let padded = format!("{:0<9}", frac_digits);
             let nanos: u32 = padded.parse().unwrap_or(0);
-            return Some(
-                dt + chrono::Duration::nanoseconds(i64::from(nanos)),
-            );
+            return Some(dt + chrono::Duration::nanoseconds(i64::from(nanos)));
         }
     }
 
@@ -634,8 +633,16 @@ fn extract_message_imprint_hash(tst_info: &[u8]) -> Option<[u8; 32]> {
 /// directoryName (tag 0xA4) or dNSName/rfc822Name (tag 0x82/0x81) inside it.
 fn extract_tsa_name(tst_info: &[u8]) -> Option<String> {
     let outer = read_tlv(tst_info, 0)?;
-    let inner_start = if outer.tag == 0x30 { outer.content_start } else { 0 };
-    let inner_end = if outer.tag == 0x30 { outer.content_end } else { tst_info.len() };
+    let inner_start = if outer.tag == 0x30 {
+        outer.content_start
+    } else {
+        0
+    };
+    let inner_end = if outer.tag == 0x30 {
+        outer.content_end
+    } else {
+        tst_info.len()
+    };
 
     for child in children(tst_info, inner_start, inner_end) {
         if child.tag == 0xA1 {
@@ -812,10 +819,11 @@ fn verify_rsa_pkcs1v15_sha256(
     message: &[u8],
     sig_bytes: &[u8],
 ) -> Result<bool, AnchorError> {
-    use rsa::{pkcs1v15::VerifyingKey, pkcs8::DecodePublicKey, signature::Verifier, traits::PublicKeyParts};
-    let pub_key = rsa::RsaPublicKey::from_public_key_der(spki_der).map_err(|e| {
-        AnchorError::Verification(format!("Invalid RSA public key DER: {e}"))
-    })?;
+    use rsa::{
+        pkcs1v15::VerifyingKey, pkcs8::DecodePublicKey, signature::Verifier, traits::PublicKeyParts,
+    };
+    let pub_key = rsa::RsaPublicKey::from_public_key_der(spki_der)
+        .map_err(|e| AnchorError::Verification(format!("Invalid RSA public key DER: {e}")))?;
     if pub_key.size() < 256 {
         return Err(AnchorError::Verification(format!(
             "RSA key too small: {} bits (minimum 2048)",
@@ -823,9 +831,8 @@ fn verify_rsa_pkcs1v15_sha256(
         )));
     }
     let verifying_key: VerifyingKey<sha2::Sha256> = VerifyingKey::new(pub_key);
-    let sig = rsa::pkcs1v15::Signature::try_from(sig_bytes).map_err(|e| {
-        AnchorError::Verification(format!("Invalid RSA signature encoding: {e}"))
-    })?;
+    let sig = rsa::pkcs1v15::Signature::try_from(sig_bytes)
+        .map_err(|e| AnchorError::Verification(format!("Invalid RSA signature encoding: {e}")))?;
     Ok(verifying_key.verify(message, &sig).is_ok())
 }
 
@@ -898,9 +905,7 @@ fn check_cert_ext_key_usage(data: &[u8], cert: &Tlv) -> Result<(), AnchorError> 
     let ext_wrapper = match find_child_by_tag(data, &tbs, 0xA3) {
         Some(w) => w,
         None => {
-            log::warn!(
-                "TSA certificate has no extensions; cannot verify extKeyUsage"
-            );
+            log::warn!("TSA certificate has no extensions; cannot verify extKeyUsage");
             return Ok(());
         }
     };
@@ -934,9 +939,7 @@ fn check_cert_ext_key_usage(data: &[u8], cert: &Tlv) -> Result<(), AnchorError> 
                 // Inner is a SEQUENCE of OIDs
                 if let Some(seq) = read_tlv(inner, 0) {
                     for oid_tlv in children_of(inner, &seq) {
-                        if oid_tlv.tag == 0x06
-                            && oid_tlv.content(inner) == OID_KP_TIMESTAMPING
-                        {
+                        if oid_tlv.tag == 0x06 && oid_tlv.content(inner) == OID_KP_TIMESTAMPING {
                             return Ok(());
                         }
                     }
@@ -1045,11 +1048,7 @@ fn verify_cms_signature(token: &[u8], tst_info: &[u8]) -> Result<bool, AnchorErr
 
         for cert in &certs {
             if let Some(spki) = extract_spki(token, cert) {
-                match verify_rsa_pkcs1v15_sha256(
-                    spki.as_bytes(token),
-                    message,
-                    &fields.signature,
-                ) {
+                match verify_rsa_pkcs1v15_sha256(spki.as_bytes(token), message, &fields.signature) {
                     Ok(true) => {
                         // Signature matches this cert — validate cert properties
                         check_cert_validity(token, cert)?;
@@ -1072,9 +1071,8 @@ fn verify_cms_signature(token: &[u8], tst_info: &[u8]) -> Result<bool, AnchorErr
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        AnchorError::InvalidFormat("No parseable SignerInfo found".into())
-    }))
+    Err(last_error
+        .unwrap_or_else(|| AnchorError::InvalidFormat("No parseable SignerInfo found".into())))
 }
 
 struct TimestampInfo {

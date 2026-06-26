@@ -42,8 +42,7 @@ pub struct TrustIndicator {
 static CPOE_PROFILE: OnceLock<JpegTrustProfile> = OnceLock::new();
 
 pub fn cpoe_trust_profile() -> &'static JpegTrustProfile {
-    CPOE_PROFILE.get_or_init(|| {
-    JpegTrustProfile {
+    CPOE_PROFILE.get_or_init(|| JpegTrustProfile {
         profile_id: "cpoe-attestation-v1".into(),
         profile_name: "CPoE Proof-of-Process Attestation".into(),
         trust_indicators: vec![
@@ -72,7 +71,6 @@ pub fn cpoe_trust_profile() -> &'static JpegTrustProfile {
                     .into(),
             },
         ],
-    }
     })
 }
 

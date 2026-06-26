@@ -391,9 +391,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "notion.id",
         display_name: "Notion",
         storage: StoragePattern::ContainerBased,
-        container_paths: &[
-            "Library/Application Support/Notion",
-        ],
+        container_paths: &["Library/Application Support/Notion"],
         needs_title_inference: true,
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -522,9 +520,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.lukilabs.lukiapp",
         display_name: "Craft",
         storage: StoragePattern::ContainerBased,
-        container_paths: &[
-            "Library/Group Containers/group.com.lukilabs.lukiapp",
-        ],
+        container_paths: &["Library/Group Containers/group.com.lukilabs.lukiapp"],
         needs_title_inference: true,
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -533,9 +529,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.bloombuilt.dayone-mac",
         display_name: "Day One",
         storage: StoragePattern::DatabaseBacked,
-        container_paths: &[
-            "Library/Group Containers/5U8NS4GX82.com.bloombuilt.dayone",
-        ],
+        container_paths: &["Library/Group Containers/5U8NS4GX82.com.bloombuilt.dayone"],
         needs_title_inference: true,
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -544,9 +538,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.goodnotesapp.x",
         display_name: "GoodNotes",
         storage: StoragePattern::CloudLibrary,
-        container_paths: &[
-            "Library/Mobile Documents/iCloud~com~goodnotesapp~x/Documents",
-        ],
+        container_paths: &["Library/Mobile Documents/iCloud~com~goodnotesapp~x/Documents"],
         needs_title_inference: true,
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -637,9 +629,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.devon-technologies.think3",
         display_name: "DEVONthink 3",
         storage: StoragePattern::DatabaseBacked,
-        container_paths: &[
-            "Library/Application Support/DEVONthink 3",
-        ],
+        container_paths: &["Library/Application Support/DEVONthink 3"],
         needs_title_inference: true,
         witnessing_mode: WitnessingMode::ContentLevel,
     },
@@ -688,9 +678,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.goodnotesapp.GoodNotes5",
         display_name: "GoodNotes 5",
         storage: StoragePattern::CloudLibrary,
-        container_paths: &[
-            "Library/Group Containers/group.com.goodnotesapp.x",
-        ],
+        container_paths: &["Library/Group Containers/group.com.goodnotesapp.x"],
         needs_title_inference: true,
         witnessing_mode: WitnessingMode::ContentLevel,
     },
@@ -778,9 +766,7 @@ pub static KNOWN_WRITING_APPS: &[WritingApp] = &[
         bundle_id: "com.iawriter.mac",
         display_name: "iA Writer",
         storage: StoragePattern::CloudLibrary,
-        container_paths: &[
-            "Library/Mobile Documents/27N4MQEA55~pro~writer/Documents",
-        ],
+        container_paths: &["Library/Mobile Documents/27N4MQEA55~pro~writer/Documents"],
         needs_title_inference: false,
         witnessing_mode: WitnessingMode::Auto,
     },
@@ -900,7 +886,10 @@ pub fn probe_and_cache(bundle_id: &str, app_name: &str) {
     if auto_discovered().contains_key(&key) || is_builtin_or_user(&key) {
         return;
     }
-    if NON_WRITING_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(&key)) {
+    if NON_WRITING_BUNDLES
+        .iter()
+        .any(|b| b.eq_ignore_ascii_case(&key))
+    {
         return;
     }
     if PROBE_COUNT.load(std::sync::atomic::Ordering::Relaxed) >= MAX_PROBES_PER_CHECKPOINT {
@@ -915,23 +904,29 @@ pub fn probe_and_cache(bundle_id: &str, app_name: &str) {
     let probe = super::app_discovery::probe_app(bundle_id);
     log::info!(
         "Probed unknown app: {} ({}) storage={:?} title_infer={} confidence={:?}",
-        probe.display_name, bundle_id, probe.storage,
-        probe.needs_title_inference, probe.confidence,
+        probe.display_name,
+        bundle_id,
+        probe.storage,
+        probe.needs_title_inference,
+        probe.confidence,
     );
     if probe.confidence == ProbeConfidence::Low {
         probe_cooldowns().insert(key.clone(), std::time::Instant::now());
     }
-    auto_discovered().insert(key, AutoDiscoveredApp {
-        display_name: if probe.display_name == bundle_id {
-            app_name.to_string()
-        } else {
-            probe.display_name
+    auto_discovered().insert(
+        key,
+        AutoDiscoveredApp {
+            display_name: if probe.display_name == bundle_id {
+                app_name.to_string()
+            } else {
+                probe.display_name
+            },
+            storage: probe.storage,
+            needs_title_inference: probe.needs_title_inference,
+            probe_confidence: probe.confidence,
+            witnessing_mode: WitnessingMode::Auto,
         },
-        storage: probe.storage,
-        needs_title_inference: probe.needs_title_inference,
-        probe_confidence: probe.confidence,
-        witnessing_mode: WitnessingMode::Auto,
-    });
+    );
 }
 
 /// Enrich an auto-discovered app with witnessing mode inferred from its
@@ -945,7 +940,9 @@ pub fn enrich_discovered_app(bundle_id: &str, doc_path: &str) {
                 entry.witnessing_mode = inferred;
                 log::debug!(
                     "Enriched discovered app {} witnessing_mode={:?} from path {}",
-                    bundle_id, inferred, doc_path,
+                    bundle_id,
+                    inferred,
+                    doc_path,
                 );
             }
         }
@@ -980,7 +977,9 @@ pub fn auto_discovered_needs_title_inference(bundle_id: &str) -> bool {
 /// Flush auto-discovered apps into the persistent user app registry.
 /// Call on sentinel shutdown to persist discoveries across sessions.
 pub fn flush_discovered_apps() {
-    let Some(reg) = GLOBAL_REGISTRY.get() else { return };
+    let Some(reg) = GLOBAL_REGISTRY.get() else {
+        return;
+    };
     let discovered = auto_discovered();
     if discovered.is_empty() {
         return;
@@ -1125,7 +1124,11 @@ mod option_system_time_serde {
 
     pub fn serialize<S: Serializer>(time: &Option<SystemTime>, s: S) -> Result<S::Ok, S::Error> {
         match time {
-            Some(t) => t.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs().serialize(s),
+            Some(t) => t
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .serialize(s),
             None => s.serialize_none(),
         }
     }
@@ -1212,7 +1215,11 @@ impl AppRegistry {
                     .map(|d| d.as_secs() / day_secs)
                     .unwrap_or(0);
                 if stale_days > 180 && app.probe_confidence == ProbeConfidence::Low {
-                    log::info!("Pruning stale user app: {} (unseen {} days)", app.bundle_id, stale_days);
+                    log::info!(
+                        "Pruning stale user app: {} (unseen {} days)",
+                        app.bundle_id,
+                        stale_days
+                    );
                     return None;
                 }
                 if stale_days > 90 {
@@ -1223,7 +1230,12 @@ impl AppRegistry {
                         ProbeConfidence::Low => ProbeConfidence::Low,
                     };
                     if app.probe_confidence != old {
-                        log::info!("Demoted stale user app: {} {:?} -> {:?}", app.bundle_id, old, app.probe_confidence);
+                        log::info!(
+                            "Demoted stale user app: {} {:?} -> {:?}",
+                            app.bundle_id,
+                            old,
+                            app.probe_confidence
+                        );
                     }
                 }
                 Some(app)
@@ -1579,15 +1591,16 @@ pub fn adapter_for_bundle(bundle_id: &str) -> Option<Box<dyn AppAdapter>> {
         {
             Some(Box::new(VellumAdapter))
         }
-        id if id.to_ascii_lowercase().starts_with("com.eastgate.tinderbox") => {
+        id if id
+            .to_ascii_lowercase()
+            .starts_with("com.eastgate.tinderbox") =>
+        {
             Some(Box::new(TinderboxAdapter))
         }
         id if id.eq_ignore_ascii_case("com.quoteunquoteapps.highland2") => {
             Some(Box::new(Highland2Adapter))
         }
-        id if id.eq_ignore_ascii_case("com.apple.iWork.Pages") => {
-            Some(Box::new(PagesAdapter))
-        }
+        id if id.eq_ignore_ascii_case("com.apple.iWork.Pages") => Some(Box::new(PagesAdapter)),
         id if id.eq_ignore_ascii_case("md.obsidian") => Some(Box::new(ObsidianAdapter)),
         id if id.eq_ignore_ascii_case("net.shinyfrog.bear") => Some(Box::new(BearAdapter)),
         id if id.eq_ignore_ascii_case("com.devon-technologies.think3") => {

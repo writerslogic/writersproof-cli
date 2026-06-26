@@ -69,8 +69,11 @@ fn cmd_forensics_breakdown(path: &Path, out: &OutputMode) -> Result<()> {
     println!("Verdict:          {}", result.protocol_verdict);
     println!("Risk Level:       {}", result.risk_level);
     println!("Assessment Score: {:.2}", result.assessment_score);
-    println!("Writing Mode:     {} ({:.0}% confidence)",
-        result.writing_mode, result.writing_mode_confidence * 100.0);
+    println!(
+        "Writing Mode:     {} ({:.0}% confidence)",
+        result.writing_mode,
+        result.writing_mode_confidence * 100.0
+    );
     println!();
     println!("--- Timing ---");
     println!("Mean IKI:         {:.1} ms", result.mean_iki_ms);
@@ -105,7 +108,10 @@ fn cmd_forensics_breakdown(path: &Path, out: &OutputMode) -> Result<()> {
         println!();
         println!("--- Anomalies ---");
         for anomaly in &result.anomalies {
-            println!("  [{}] {}: {}", anomaly.severity, anomaly.anomaly_type, anomaly.description);
+            println!(
+                "  [{}] {}: {}",
+                anomaly.severity, anomaly.anomaly_type, anomaly.description
+            );
         }
     }
 
@@ -210,10 +216,7 @@ fn cmd_forensics_provenance(path: &Path, out: &OutputMode) -> Result<()> {
         result.sourced_unknown_pct * 100.0
     );
     println!("Chain Depth:          {}", result.chain_depth);
-    println!(
-        "Source Trust:         {:.2}",
-        result.source_trustworthiness
-    );
+    println!("Source Trust:         {:.2}", result.source_trustworthiness);
     println!("Authenticity Score:   {:.2}", result.authenticity_score);
 
     if !result.source_sessions.is_empty() {

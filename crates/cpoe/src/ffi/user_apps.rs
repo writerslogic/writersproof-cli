@@ -48,27 +48,30 @@ pub struct FfiUserAppListResult {
 /// Does not persist anything.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_probe_app(bundle_id: String) -> FfiProbeResult {
-    catch_ffi_panic!(FfiProbeResult {
-        success: false,
-        display_name: String::new(),
-        storage: String::new(),
-        container_paths: Vec::new(),
-        needs_title_inference: false,
-        confidence: String::new(),
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    log::debug!("ffi_probe_app: bundle_id={}", bundle_id);
-    let result = crate::sentinel::app_discovery::probe_app(&bundle_id);
-    FfiProbeResult {
-        success: true,
-        display_name: result.display_name,
-        storage: storage_to_str(result.storage),
-        container_paths: result.container_paths,
-        needs_title_inference: result.needs_title_inference,
-        confidence: confidence_to_str(result.confidence),
-        error_message: None,
-    }
-    })
+    catch_ffi_panic!(
+        FfiProbeResult {
+            success: false,
+            display_name: String::new(),
+            storage: String::new(),
+            container_paths: Vec::new(),
+            needs_title_inference: false,
+            confidence: String::new(),
+            error_message: Some("engine internal error".to_string()),
+        },
+        {
+            log::debug!("ffi_probe_app: bundle_id={}", bundle_id);
+            let result = crate::sentinel::app_discovery::probe_app(&bundle_id);
+            FfiProbeResult {
+                success: true,
+                display_name: result.display_name,
+                storage: storage_to_str(result.storage),
+                container_paths: result.container_paths,
+                needs_title_inference: result.needs_title_inference,
+                confidence: confidence_to_str(result.confidence),
+                error_message: None,
+            }
+        }
+    )
 }
 
 /// Add a user app to the registry. Persists immediately.
@@ -132,41 +135,44 @@ pub fn ffi_remove_user_writing_app(bundle_id: String) -> FfiResult {
 /// List all user-added apps (does not include built-in).
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
-    catch_ffi_panic!(FfiUserAppListResult {
-        success: false,
-        apps: Vec::new(),
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    log::debug!("ffi_list_user_writing_apps");
-    let data_dir = match get_data_dir() {
-        Some(d) => d,
-        None => {
-            return FfiUserAppListResult {
-                success: false,
-                apps: Vec::new(),
-                error_message: Some("Cannot determine data directory".to_string()),
+    catch_ffi_panic!(
+        FfiUserAppListResult {
+            success: false,
+            apps: Vec::new(),
+            error_message: Some("engine internal error".to_string()),
+        },
+        {
+            log::debug!("ffi_list_user_writing_apps");
+            let data_dir = match get_data_dir() {
+                Some(d) => d,
+                None => {
+                    return FfiUserAppListResult {
+                        success: false,
+                        apps: Vec::new(),
+                        error_message: Some("Cannot determine data directory".to_string()),
+                    }
+                }
+            };
+            let registry = crate::sentinel::app_registry::AppRegistry::load(&data_dir);
+            let apps = registry
+                .user_apps()
+                .iter()
+                .map(|a| FfiUserApp {
+                    bundle_id: a.bundle_id.clone(),
+                    display_name: a.display_name.clone(),
+                    storage: storage_to_str(a.storage),
+                    container_paths: a.container_paths.clone(),
+                    needs_title_inference: a.needs_title_inference,
+                    confidence: confidence_to_str(a.probe_confidence),
+                })
+                .collect();
+            FfiUserAppListResult {
+                success: true,
+                apps,
+                error_message: None,
             }
         }
-    };
-    let registry = crate::sentinel::app_registry::AppRegistry::load(&data_dir);
-    let apps = registry
-        .user_apps()
-        .iter()
-        .map(|a| FfiUserApp {
-            bundle_id: a.bundle_id.clone(),
-            display_name: a.display_name.clone(),
-            storage: storage_to_str(a.storage),
-            container_paths: a.container_paths.clone(),
-            needs_title_inference: a.needs_title_inference,
-            confidence: confidence_to_str(a.probe_confidence),
-        })
-        .collect();
-    FfiUserAppListResult {
-        success: true,
-        apps,
-        error_message: None,
-    }
-    })
+    )
 }
 
 /// Discover recently modified documents in ~/Documents, ~/Desktop, ~/Downloads.
@@ -177,30 +183,33 @@ pub fn ffi_list_user_writing_apps() -> FfiUserAppListResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_discover_recent_documents(max_age_hours: u64) -> Vec<String> {
     catch_ffi_panic!(Vec::new(), {
-    log::debug!("ffi_discover_recent_documents: max_age_hours={}", max_age_hours);
-    let home = match dirs::home_dir() {
-        Some(h) => h,
-        None => return Vec::new(),
-    };
+        log::debug!(
+            "ffi_discover_recent_documents: max_age_hours={}",
+            max_age_hours
+        );
+        let home = match dirs::home_dir() {
+            Some(h) => h,
+            None => return Vec::new(),
+        };
 
-    let scan_dirs = [
-        home.join("Documents"),
-        home.join("Desktop"),
-        home.join("Downloads"),
-    ];
-    let dir_refs: Vec<&std::path::Path> = scan_dirs.iter().map(|d| d.as_path()).collect();
+        let scan_dirs = [
+            home.join("Documents"),
+            home.join("Desktop"),
+            home.join("Downloads"),
+        ];
+        let dir_refs: Vec<&std::path::Path> = scan_dirs.iter().map(|d| d.as_path()).collect();
 
-    let config = crate::config::SentinelConfig::default();
-    let results = crate::sentinel::app_discovery::discover_recent_documents(
-        &dir_refs,
-        max_age_hours,
-        &config.allowed_extensions,
-    );
+        let config = crate::config::SentinelConfig::default();
+        let results = crate::sentinel::app_discovery::discover_recent_documents(
+            &dir_refs,
+            max_age_hours,
+            &config.allowed_extensions,
+        );
 
-    results
-        .into_iter()
-        .filter_map(|p| p.to_str().map(String::from))
-        .collect()
+        results
+            .into_iter()
+            .filter_map(|p| p.to_str().map(String::from))
+            .collect()
     })
 }
 

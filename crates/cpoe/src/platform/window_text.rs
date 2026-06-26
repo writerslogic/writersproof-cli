@@ -218,7 +218,11 @@ unsafe fn capture_visible_windows_macos(
         // Try to read text content via AX, targeting the specific window by title.
         let text_content = read_window_text_via_ax(
             pid,
-            if window_title.is_empty() { None } else { Some(window_title.as_str()) },
+            if window_title.is_empty() {
+                None
+            } else {
+                Some(window_title.as_str())
+            },
             AXUIElementCreateApplication,
             AXUIElementCopyAttributeValue,
         );
@@ -303,7 +307,9 @@ unsafe fn read_window_text_via_ax(
                         if win_title.to_string() == title {
                             // Read text now while the window ref is still valid.
                             result = try_ax_string(win as *mut _, copy_attr, "AXValue")
-                                .or_else(|| try_ax_string(win as *mut _, copy_attr, "AXSelectedText"))
+                                .or_else(|| {
+                                    try_ax_string(win as *mut _, copy_attr, "AXSelectedText")
+                                })
                                 .or_else(|| find_text_in_children(win as *mut _, copy_attr));
                             break;
                         }
@@ -398,7 +404,11 @@ unsafe fn find_text_in_children(
 
             let attr_children = CFString::new("AXChildren");
             let mut children_value: *const std::ffi::c_void = std::ptr::null();
-            let err = copy_attr(element, attr_children.as_concrete_TypeRef(), &mut children_value);
+            let err = copy_attr(
+                element,
+                attr_children.as_concrete_TypeRef(),
+                &mut children_value,
+            );
             if err != K_AX_ERROR_SUCCESS || children_value.is_null() {
                 return None;
             }
@@ -499,7 +509,11 @@ fn running_pid_for_bundle_id(bundle_id: &str) -> Option<u32> {
         let app: *mut Object = msg_send![running, firstObject];
         let pid: i32 = msg_send![app, processIdentifier];
         let _: () = msg_send![pool, drain];
-        if pid > 0 { Some(pid as u32) } else { None }
+        if pid > 0 {
+            Some(pid as u32)
+        } else {
+            None
+        }
     }
 }
 
@@ -540,7 +554,10 @@ impl WindowTextCapture {
         None
     }
 
-    pub fn capture_visible_windows(exclude_pid: Option<u32>, _exclude_window_id: Option<u32>) -> Vec<WindowText> {
+    pub fn capture_visible_windows(
+        exclude_pid: Option<u32>,
+        _exclude_window_id: Option<u32>,
+    ) -> Vec<WindowText> {
         use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
         use windows::Win32::UI::WindowsAndMessaging::{
             EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
@@ -589,10 +606,7 @@ impl WindowTextCapture {
             exclude_pid: exclude_pid,
         };
         unsafe {
-            let _ = EnumWindows(
-                Some(callback),
-                LPARAM(&mut ctx as *mut Context as isize),
-            );
+            let _ = EnumWindows(Some(callback), LPARAM(&mut ctx as *mut Context as isize));
         }
         ctx.results
     }
@@ -644,7 +658,10 @@ impl WindowTextCapture {
         None
     }
 
-    pub fn capture_visible_windows(_exclude_pid: Option<u32>, _exclude_window_id: Option<u32>) -> Vec<WindowText> {
+    pub fn capture_visible_windows(
+        _exclude_pid: Option<u32>,
+        _exclude_window_id: Option<u32>,
+    ) -> Vec<WindowText> {
         Vec::new()
     }
 }

@@ -186,7 +186,10 @@ impl SentinelIpcHandler {
         if message.len() > 4096 {
             return Err("Checkpoint message too long (max 4096 bytes)".to_string());
         }
-        if message.bytes().any(|b| b < 0x20 && b != b'\n' && b != b'\t') {
+        if message
+            .bytes()
+            .any(|b| b < 0x20 && b != b'\n' && b != b'\t')
+        {
             return Err("Checkpoint message contains invalid control characters".to_string());
         }
         let path = super::helpers::validate_path(&path)?;

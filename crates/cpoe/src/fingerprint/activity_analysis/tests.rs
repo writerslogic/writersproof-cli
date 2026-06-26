@@ -55,7 +55,11 @@ fn test_dwell_similarity_self() {
     let samples = make_samples_with_dwell(50);
     let dist = DwellDistribution::from_samples(&samples);
     let sim = WeightedDistribution::similarity(&dist, &dist);
-    assert!(sim > 0.95, "self-similarity should be near 1.0, got {}", sim);
+    assert!(
+        sim > 0.95,
+        "self-similarity should be near 1.0, got {}",
+        sim
+    );
 }
 
 #[test]
@@ -86,7 +90,11 @@ fn test_flight_similarity_self() {
     let samples = make_samples_with_dwell(50);
     let dist = FlightTimeDistribution::from_samples(&samples);
     let sim = WeightedDistribution::similarity(&dist, &dist);
-    assert!(sim > 0.95, "self-similarity should be near 1.0, got {}", sim);
+    assert!(
+        sim > 0.95,
+        "self-similarity should be near 1.0, got {}",
+        sim
+    );
 }
 
 #[test]
@@ -123,7 +131,11 @@ fn test_digraph_similarity_self() {
     let samples = make_samples_with_dwell(100);
     let profile = DigraphProfile::from_samples(&samples);
     let sim = WeightedDistribution::similarity(&profile, &profile);
-    assert!(sim > 0.95, "self-similarity should be near 1.0, got {}", sim);
+    assert!(
+        sim > 0.95,
+        "self-similarity should be near 1.0, got {}",
+        sim
+    );
 }
 
 #[test]
@@ -211,7 +223,11 @@ fn test_iki_autocorrelation_in_similarity() {
     let dist_a = IkiDistribution::from_intervals(&intervals_a);
     let dist_b = IkiDistribution::from_intervals(&intervals_b);
     let sim = WeightedDistribution::similarity(&dist_a, &dist_b);
-    assert!(sim > 0.95, "identical series should have high similarity, got {}", sim);
+    assert!(
+        sim > 0.95,
+        "identical series should have high similarity, got {}",
+        sim
+    );
 }
 
 #[test]
@@ -275,9 +291,9 @@ fn test_pause_histogram_in_similarity() {
 fn test_session_burst_metrics() {
     // Mix of bursts and pauses
     let intervals = vec![
-        100.0, 80.0, 120.0, 90.0, // burst of 4
+        100.0, 80.0, 120.0, 90.0,  // burst of 4
         600.0, // pause
-        110.0, 95.0, // burst of 2
+        110.0, 95.0,  // burst of 2
         800.0, // pause
         150.0, // burst of 1
     ];
@@ -309,7 +325,14 @@ fn test_dimension_confidence_circadian_downweight() {
     // Verify circadian gets 0.05 weight (half of others)
     let weights = [0.25, 0.15, 0.10, 0.10, 0.10, 0.15, 0.05, 0.05];
     let values = [
-        dc.iki, dc.zone, dc.pause, dc.dwell, dc.flight, dc.digraph, dc.hurst, dc.circadian,
+        dc.iki,
+        dc.zone,
+        dc.pause,
+        dc.dwell,
+        dc.flight,
+        dc.digraph,
+        dc.hurst,
+        dc.circadian,
     ];
     let expected: f64 = values
         .iter()

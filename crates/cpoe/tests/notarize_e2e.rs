@@ -15,8 +15,7 @@ use std::time::Duration;
 use tempfile::TempDir;
 
 use authorproof_protocol::crypto::{
-    sign_evidence_cose, strip_countersignature,
-    verify_countersigned_packet, verify_evidence_cose,
+    sign_evidence_cose, strip_countersignature, verify_countersigned_packet, verify_evidence_cose,
 };
 use cpoe_engine::checkpoint;
 use cpoe_engine::evidence::wire_conversion::chain_to_wire;
@@ -33,9 +32,7 @@ fn test_api_key() -> String {
             .trim()
             .to_string();
     }
-    panic!(
-        "No API key found. Set WP_TEST_API_KEY env var or write to /tmp/wp_test_api_key.txt"
-    );
+    panic!("No API key found. Set WP_TEST_API_KEY env var or write to /tmp/wp_test_api_key.txt");
 }
 
 fn test_signing_key() -> ed25519_dalek::SigningKey {
@@ -43,9 +40,7 @@ fn test_signing_key() -> ed25519_dalek::SigningKey {
 }
 
 /// Build a real evidence packet with checkpoints from a tracked file.
-fn build_test_evidence(
-    signing_key: &ed25519_dalek::SigningKey,
-) -> (Vec<u8>, TempDir) {
+fn build_test_evidence(signing_key: &ed25519_dalek::SigningKey) -> (Vec<u8>, TempDir) {
     let dir = TempDir::new().expect("create temp dir");
     let path = dir.path().join("test_notarize_doc.txt");
     fs::write(
@@ -55,8 +50,7 @@ fn build_test_evidence(
     )
     .expect("write test doc");
 
-    let mut chain =
-        checkpoint::Chain::new(&path, vdf::default_parameters()).expect("create chain");
+    let mut chain = checkpoint::Chain::new(&path, vdf::default_parameters()).expect("create chain");
     chain
         .commit_with_vdf_duration(None, Duration::from_millis(10))
         .expect("commit 1");
@@ -87,8 +81,9 @@ fn build_test_evidence(
 
     // Convert checkpoint chain to wire format (same pipeline as FFI export).
     let mut wire = chain_to_wire(&chain).expect("chain_to_wire");
-    wire.signing_public_key =
-        Some(serde_bytes::ByteBuf::from(signing_key.verifying_key().to_bytes().to_vec()));
+    wire.signing_public_key = Some(serde_bytes::ByteBuf::from(
+        signing_key.verifying_key().to_bytes().to_vec(),
+    ));
 
     let cbor = wire.encode_cbor().expect("encode wire CBOR");
     let signed = sign_evidence_cose(&cbor, signing_key).expect("COSE sign");
@@ -146,17 +141,12 @@ fn notarize_full_round_trip() {
         .expect("download_url in response");
     println!(
         "Notarized: id={} url={} size={}",
-        notarization_id,
-        download_url,
-        resp["countersigned_size"],
+        notarization_id, download_url, resp["countersigned_size"],
     );
 
     // --- Step 2: Download countersigned packet ---
     let download_resp = client
-        .get(format!(
-            "https://api.writersproof.com{}",
-            download_url
-        ))
+        .get(format!("https://api.writersproof.com{}", download_url))
         .header("X-API-Key", &api_key)
         .timeout(Duration::from_secs(30))
         .send()
@@ -168,7 +158,10 @@ fn notarize_full_round_trip() {
         download_resp.status(),
     );
     let countersigned = download_resp.bytes().expect("read countersigned bytes");
-    println!("Downloaded countersigned packet: {} bytes", countersigned.len());
+    println!(
+        "Downloaded countersigned packet: {} bytes",
+        countersigned.len()
+    );
     assert!(countersigned.len() > cpoe_bytes.len());
 
     // --- Step 3: Resolve CA public key from DID document ---
@@ -187,14 +180,19 @@ fn notarize_full_round_trip() {
         vm["id"].as_str().unwrap(),
         "did:web:api.writersproof.com#notarize-ca-1",
     );
-    let multibase = vm["publicKeyMultibase"].as_str().expect("publicKeyMultibase");
+    let multibase = vm["publicKeyMultibase"]
+        .as_str()
+        .expect("publicKeyMultibase");
     let ca_pubkey_bytes = decode_multibase_ed25519(multibase);
-    assert_eq!(ca_pubkey_bytes.len(), 32, "Ed25519 public key must be 32 bytes");
+    assert_eq!(
+        ca_pubkey_bytes.len(),
+        32,
+        "Ed25519 public key must be 32 bytes"
+    );
 
-    let ca_verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-        ca_pubkey_bytes.as_slice().try_into().unwrap(),
-    )
-    .expect("parse CA verifying key");
+    let ca_verifying_key =
+        ed25519_dalek::VerifyingKey::from_bytes(ca_pubkey_bytes.as_slice().try_into().unwrap())
+            .expect("parse CA verifying key");
 
     println!(
         "Resolved CA key from DID: {}",
@@ -204,12 +202,9 @@ fn notarize_full_round_trip() {
     // --- Step 4: Verify both signatures ---
     let author_verifying_key = signing_key.verifying_key();
 
-    let evidence_payload = verify_countersigned_packet(
-        &countersigned,
-        &ca_verifying_key,
-        &author_verifying_key,
-    )
-    .expect("verify both signatures");
+    let evidence_payload =
+        verify_countersigned_packet(&countersigned, &ca_verifying_key, &author_verifying_key)
+            .expect("verify both signatures");
 
     println!(
         "Both signatures verified. Evidence payload: {} bytes",
@@ -217,8 +212,8 @@ fn notarize_full_round_trip() {
     );
 
     // --- Step 5: Strip countersig, confirm byte-identical ---
-    let recovered_cpoe = strip_countersignature(&countersigned, &ca_verifying_key)
-        .expect("strip countersignature");
+    let recovered_cpoe =
+        strip_countersignature(&countersigned, &ca_verifying_key).expect("strip countersignature");
 
     assert_eq!(
         recovered_cpoe, cpoe_bytes,
@@ -227,9 +222,8 @@ fn notarize_full_round_trip() {
     println!("Inner payload byte-identical to original: OK");
 
     // Verify the recovered .cpoe still works standalone.
-    let standalone_payload =
-        verify_evidence_cose(&recovered_cpoe, &author_verifying_key)
-            .expect("verify recovered .cpoe standalone");
+    let standalone_payload = verify_evidence_cose(&recovered_cpoe, &author_verifying_key)
+        .expect("verify recovered .cpoe standalone");
     assert_eq!(standalone_payload, evidence_payload);
     println!("Standalone verification of recovered .cpoe: OK");
 

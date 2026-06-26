@@ -2,10 +2,7 @@
 
 use super::*;
 
-pub(in crate::report::html) fn write_methodology(
-    html: &mut String,
-    r: &WarReport,
-) -> fmt::Result {
+pub(in crate::report::html) fn write_methodology(html: &mut String, r: &WarReport) -> fmt::Result {
     section_heading(html, 2, SEC_METHODOLOGY)?;
     html.push_str(TMPL_METHODOLOGY);
 
@@ -67,7 +64,11 @@ pub(in crate::report::html) fn write_chain_of_custody(
         r.evidence_bundle_version,
         r.session_count,
         if r.session_count == 1 { "" } else { "s" },
-        if r.total_duration_min.is_finite() { r.total_duration_min } else { 0.0 },
+        if r.total_duration_min.is_finite() {
+            r.total_duration_min
+        } else {
+            0.0
+        },
         format_number(r.revision_events),
     );
     row(html, "Evidence Bundle", &bundle)?;
@@ -178,8 +179,8 @@ pub(in crate::report::html) fn write_category_scores(
     write_category_composite_note(html, r)?;
     write!(html, "</div>")?;
 
-    let has_meaningful_flow = r.writing_flow.len() >= 5
-        && r.writing_flow.iter().any(|p| p.intensity > 0.0);
+    let has_meaningful_flow =
+        r.writing_flow.len() >= 5 && r.writing_flow.iter().any(|p| p.intensity > 0.0);
     if has_meaningful_flow {
         write_writing_flow(html, r)?;
     }
@@ -213,11 +214,21 @@ fn write_writing_flow(html: &mut String, r: &WarReport) -> fmt::Result {
     let max_intensity = r
         .writing_flow
         .iter()
-        .map(|p| if p.intensity.is_finite() { p.intensity } else { 0.0 })
+        .map(|p| {
+            if p.intensity.is_finite() {
+                p.intensity
+            } else {
+                0.0
+            }
+        })
         .fold(0.0_f64, f64::max)
         .max(0.01);
     for point in &r.writing_flow {
-        let intensity = if point.intensity.is_finite() { point.intensity } else { 0.0 };
+        let intensity = if point.intensity.is_finite() {
+            point.intensity
+        } else {
+            0.0
+        };
         let pct = (intensity / max_intensity * 100.0).min(100.0);
         let color = match point.phase.as_str() {
             "drafting" => "#3d7a4a",
@@ -233,8 +244,16 @@ fn write_writing_flow(html: &mut String, r: &WarReport) -> fmt::Result {
     }
     write!(html, "</div>")?;
     if let (Some(first), Some(last)) = (r.writing_flow.first(), r.writing_flow.last()) {
-        let first_min = if first.offset_min.is_finite() { first.offset_min } else { 0.0 };
-        let last_min = if last.offset_min.is_finite() { last.offset_min } else { 0.0 };
+        let first_min = if first.offset_min.is_finite() {
+            first.offset_min
+        } else {
+            0.0
+        };
+        let last_min = if last.offset_min.is_finite() {
+            last.offset_min
+        } else {
+            0.0
+        };
         write!(
             html,
             r#"<div class="flow-labels"><span>{:.0}:00</span><span style="color:#3d7a4a">Drafting</span><span style="color:#d8d8d5">Pause</span><span style="color:#2c5282">Revising</span><span style="color:#5b3c8b">Polish</span><span>{:.0}:{:02.0}</span></div>"#,
@@ -349,12 +368,20 @@ fn write_evidence_paste_ratio(html: &mut String, p: &ProcessEvidence) -> fmt::Re
         r#"<div class="evidence-card"><h4><span class="exhibit-badge">C</span> Paste Analysis</h4>"#
     )?;
     if let Some(pr) = p.paste_ratio_pct.filter(|v| v.is_finite()) {
-        let paste_color = if pr < 20.0 { "var(--accent)" } else if pr < 50.0 { "var(--caution)" } else { "var(--alert)" };
+        let paste_color = if pr < 20.0 {
+            "var(--accent)"
+        } else if pr < 50.0 {
+            "var(--caution)"
+        } else {
+            "var(--alert)"
+        };
         write!(html, r#"<div class="metric">{:.1}% of total text"#, pr)?;
         if let Some(ops) = p.paste_operations {
             write!(html, " ({} operations)", ops)?;
         }
-        write!(html, r#"</div>
+        write!(
+            html,
+            r#"</div>
 <div class="forgery-bar"><div class="forgery-fill" style="width:{pct:.0}%;background:{color}"></div></div>"#,
             pct = pr.min(100.0),
             color = paste_color,
@@ -393,14 +420,23 @@ fn write_evidence_keystroke_dynamics(html: &mut String, p: &ProcessEvidence) -> 
         r#"<div class="evidence-card"><h4><span class="exhibit-badge">D</span> Keystroke Dynamics</h4>"#
     )?;
     if let Some(cv) = p.iki_cv.filter(|v| v.is_finite()) {
-        let cv_color = if cv > 0.3 { "var(--accent)" } else if cv > 0.15 { "var(--caution)" } else { "var(--alert)" };
+        let cv_color = if cv > 0.3 {
+            "var(--accent)"
+        } else if cv > 0.15 {
+            "var(--caution)"
+        } else {
+            "var(--alert)"
+        };
         let cv_pct = (cv * 100.0).min(100.0);
         write!(html, r#"<div class="metric">IKI CV: {:.2}"#, cv)?;
         if let Some(bg) = p.bigram_consistency.filter(|v| v.is_finite()) {
             write!(html, " | Bigram consistency: {:.2}", bg)?;
         }
-        write!(html, r#"</div>
-<div class="forgery-bar"><div class="forgery-fill" style="width:{cv_pct:.0}%;background:{cv_color}"></div></div>"#)?;
+        write!(
+            html,
+            r#"</div>
+<div class="forgery-bar"><div class="forgery-fill" style="width:{cv_pct:.0}%;background:{cv_color}"></div></div>"#
+        )?;
         let note = if cv > 0.4 {
             "High inter-keystroke interval variability indicates natural, human-like typing \
              rhythm with variable cognitive load throughout the session."

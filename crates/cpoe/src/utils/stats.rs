@@ -317,6 +317,9 @@ mod tests {
         // TTS produces near-identical confidence scores; stddev should be near zero.
         let values = [0.98f32, 0.98, 0.98, 0.99, 0.98];
         let (_, sd) = mean_and_std_dev_f32(&values);
-        assert!(sd < 0.01, "stddev {sd} should be near zero for TTS-like input");
+        assert!(
+            sd < 0.01,
+            "stddev {sd} should be near zero for TTS-like input"
+        );
     }
 }

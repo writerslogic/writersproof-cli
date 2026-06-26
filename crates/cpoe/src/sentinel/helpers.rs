@@ -81,11 +81,10 @@ pub fn handle_focus_event_sync(
         let path_to_unfocus = {
             let focused_path = current_focus.read_recover().clone();
             if let Some(ref path) = focused_path {
-                let belongs_to_blocked = sessions.read_recover()
+                let belongs_to_blocked = sessions
+                    .read_recover()
                     .get(path.as_str())
-                    .map(|s| {
-                        s.app_bundle_id == event.app_bundle_id
-                    })
+                    .map(|s| s.app_bundle_id == event.app_bundle_id)
                     .unwrap_or(false);
                 if belongs_to_blocked {
                     Some(path.clone())
@@ -120,7 +119,9 @@ pub fn handle_focus_event_sync(
         if excluded || ext_blocked {
             log::debug!(
                 "[FOCUS] FILTERED path={:?} excluded={} ext_blocked={}",
-                event.path, excluded, ext_blocked
+                event.path,
+                excluded,
+                ext_blocked
             );
             // Unfocus the previous session so keystrokes aren't attributed
             // to the old document while the user is in a filtered app/path.
@@ -188,7 +189,8 @@ pub fn handle_focus_event_sync(
                         if let Some(mut session) = sessions_map.remove(&old_key) {
                             log::debug!(
                                 "[FOCUS] re-keying title session: {:?} -> {:?}",
-                                old_key, doc_path
+                                old_key,
+                                doc_path
                             );
                             session.path = doc_path.clone();
                             session.window_title = event.window_title.clone();
@@ -207,10 +209,12 @@ pub fn handle_focus_event_sync(
                 let mut sessions_map = sessions.write_recover();
                 if !sessions_map.contains_key(&doc_path) {
                     // Try window_id match first, then fall back to app bundle match.
-                    let old_key = event.window_id
+                    let old_key = event
+                        .window_id
                         .map(|wid| format!("#w{}", wid))
                         .and_then(|wid_suffix| {
-                            sessions_map.keys()
+                            sessions_map
+                                .keys()
                                 .find(|k| k.starts_with("title://") && k.ends_with(&wid_suffix))
                                 .cloned()
                         })
@@ -218,8 +222,7 @@ pub fn handle_focus_event_sync(
                             // Fallback: if there's exactly one title:// session for this
                             // app, upgrade it (covers apps that report window_id=None).
                             let app_prefix = format!("title://{}/", event.app_bundle_id);
-                            let mut it = sessions_map.keys()
-                                .filter(|k| k.starts_with(&app_prefix));
+                            let mut it = sessions_map.keys().filter(|k| k.starts_with(&app_prefix));
                             match (it.next(), it.next()) {
                                 (Some(only), None) => Some(only.clone()),
                                 _ => None,
@@ -229,12 +232,12 @@ pub fn handle_focus_event_sync(
                         if let Some(mut session) = sessions_map.remove(&old_key) {
                             log::info!(
                                 "[FOCUS] upgrading title session to real path: {:?} -> {:?}",
-                                old_key, doc_path
+                                old_key,
+                                doc_path
                             );
                             session.origin_temp_path = Some(old_key);
                             session.path = doc_path.clone();
-                            session.evidence_confidence =
-                                super::types::EvidenceConfidence::Full;
+                            session.evidence_confidence = super::types::EvidenceConfidence::Full;
                             session.confidence_reason = None;
                             sessions_map.insert(doc_path.clone(), session);
                         }
@@ -330,7 +333,8 @@ pub fn handle_focus_event_sync(
                 // Generic app-level FocusLost — only clear if the currently
                 // focused session belongs to the same app that lost focus.
                 if let Some(ref current) = prev_path {
-                    sessions.read_recover()
+                    sessions
+                        .read_recover()
                         .get(current.as_str())
                         .map(|s| s.app_bundle_id == event.app_bundle_id)
                         .unwrap_or(true)
@@ -344,7 +348,9 @@ pub fn handle_focus_event_sync(
             };
             log::debug!(
                 "[FOCUS] FocusLost: event_path={:?} current={:?} should_clear={}",
-                event.path, prev_path, should_clear
+                event.path,
+                prev_path,
+                should_clear
             );
             if should_clear {
                 if let Some(path) = prev_path {
@@ -386,12 +392,12 @@ pub fn focus_document_sync(
     // macOS packages (.scriv, .pages, .rtfd, etc.) are directories that
     // act as single-file documents — allow them through.
     const PACKAGE_EXTENSIONS: &[&str] = &[
-        "scriv", "scrivx", "pages", "key", "numbers", "rtfd",
-        "band", "graffle", "mindnode", "oo3",
+        "scriv", "scrivx", "pages", "key", "numbers", "rtfd", "band", "graffle", "mindnode", "oo3",
     ];
     if !path.starts_with("shadow://") {
         let p = std::path::Path::new(path);
-        let is_package = p.extension()
+        let is_package = p
+            .extension()
             .and_then(|e| e.to_str())
             .map(|e| PACKAGE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
             .unwrap_or(false);
@@ -478,8 +484,7 @@ pub fn focus_document_sync(
 
             if path.starts_with("title://") {
                 session.evidence_confidence = super::types::EvidenceConfidence::Partial;
-                session.confidence_reason =
-                    Some("document path inferred from window title".into());
+                session.confidence_reason = Some("document path inferred from window title".into());
             } else if path.starts_with("shadow://") {
                 session.evidence_confidence = super::types::EvidenceConfidence::Partial;
                 session.confidence_reason =
@@ -514,14 +519,8 @@ pub fn focus_document_sync(
         if was_new {
             log::debug!("focus_document_sync: new session created for {}", path);
             if !super::app_registry::is_known(&event.app_bundle_id) {
-                super::app_registry::probe_and_cache(
-                    &event.app_bundle_id,
-                    &event.app_name,
-                );
-                super::app_registry::enrich_discovered_app(
-                    &event.app_bundle_id,
-                    path,
-                );
+                super::app_registry::probe_and_cache(&event.app_bundle_id, &event.app_name);
+                super::app_registry::enrich_discovered_app(&event.app_bundle_id, path);
             }
             Some((
                 session.session_id.clone(),
@@ -773,10 +772,7 @@ pub fn handle_change_event_sync(
             ChangeEventType::Saved => {
                 session.save_count += 1;
 
-                let current_hash = event
-                    .hash
-                    .clone()
-                    .or(precomputed_hash.clone());
+                let current_hash = event.hash.clone().or(precomputed_hash.clone());
                 session.current_hash = current_hash.clone();
 
                 if let Some(hash) = current_hash {
@@ -806,13 +802,13 @@ pub fn handle_change_event_sync(
                     // Paste boundary detection: compare previous and current
                     // content hashes plus timing to classify large changes.
                     let prev_hash = {
-                        use sha2::{Sha256, Digest};
+                        use sha2::{Digest, Sha256};
                         let prev = session.current_hash.as_deref().unwrap_or("");
                         let result: [u8; 32] = Sha256::digest(prev.as_bytes()).into();
                         result
                     };
                     let new_hash = {
-                        use sha2::{Sha256, Digest};
+                        use sha2::{Digest, Sha256};
                         let result: [u8; 32] = Sha256::digest(hash.as_bytes()).into();
                         result
                     };
@@ -1139,18 +1135,12 @@ fn extract_bundle_package_root(path: &str) -> Option<String> {
 }
 
 pub fn is_icloud_placeholder(path: &Path) -> bool {
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     name.starts_with('.') && name.ends_with(".icloud")
 }
 
 pub fn is_icloud_conflict_copy(path: &Path) -> bool {
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     if let Some(paren_start) = stem.rfind(" (") {
         let inside = &stem[paren_start + 2..];
         if let Some(close) = inside.rfind(')') {
@@ -1701,9 +1691,7 @@ fn find_git_root(file_path: &Path) -> Option<PathBuf> {
 ///
 /// Returns `None` if git is not installed, the file is not in a repo,
 /// or any git command fails or times out.
-pub(super) fn capture_git_context(
-    file_path: &Path,
-) -> Option<super::types::GitContext> {
+pub(super) fn capture_git_context(file_path: &Path) -> Option<super::types::GitContext> {
     let git_root = find_git_root(file_path)?;
 
     let file_path_owned = file_path.to_path_buf();
@@ -1714,9 +1702,7 @@ pub(super) fn capture_git_context(
     let handle = std::thread::Builder::new()
         .name("cpoe-git-ctx".into())
         .stack_size(2 * 1024 * 1024)
-        .spawn(move || {
-            capture_git_context_inner(&file_path_owned, &git_root_owned)
-        });
+        .spawn(move || capture_git_context_inner(&file_path_owned, &git_root_owned));
 
     let handle = match handle {
         Ok(h) => h,
@@ -1755,10 +1741,7 @@ fn capture_git_context_inner(
 ) -> Option<super::types::GitContext> {
     let start = std::time::Instant::now();
 
-    let branch = run_git_command(
-        &["rev-parse", "--abbrev-ref", "HEAD"],
-        git_root,
-    )?;
+    let branch = run_git_command(&["rev-parse", "--abbrev-ref", "HEAD"], git_root)?;
     if start.elapsed() > GIT_COMMAND_TIMEOUT {
         log::warn!("Git context capture timed out after branch query");
         return None;
@@ -1774,11 +1757,8 @@ fn capture_git_context_inner(
         return None;
     }
 
-    let diff_stat = run_git_command(
-        &["diff", "--numstat", "--", file_path.to_str()?],
-        git_root,
-    )
-    .unwrap_or_default();
+    let diff_stat = run_git_command(&["diff", "--numstat", "--", file_path.to_str()?], git_root)
+        .unwrap_or_default();
     if start.elapsed() > GIT_COMMAND_TIMEOUT {
         log::warn!("Git context capture timed out after diff query");
         return None;
@@ -1915,7 +1895,9 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     let content_hash = if let Some(h) = content_hash_override {
         h
     } else {
-        match crate::crypto::hash_file_handle(file.as_ref().expect("file must be Some when no override")) {
+        match crate::crypto::hash_file_handle(
+            file.as_ref().expect("file must be Some when no override"),
+        ) {
             Ok((h, _)) => h,
             Err(e) => {
                 log::debug!("Auto-checkpoint hash failed for {path}: {e}");
@@ -1942,12 +1924,10 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     let context_note = if !path.starts_with("shadow://") && !path.starts_with("title://") {
         let git_ctx = capture_git_context(Path::new(path));
         match git_ctx {
-            Some(ref ctx) => {
-                match serde_json::to_string(ctx) {
-                    Ok(json) => Some(format!("{reason}|git:{json}")),
-                    Err(_) => Some(reason.to_string()),
-                }
-            }
+            Some(ref ctx) => match serde_json::to_string(ctx) {
+                Ok(json) => Some(format!("{reason}|git:{json}")),
+                Err(_) => Some(reason.to_string()),
+            },
             None => Some(reason.to_string()),
         }
     } else {
@@ -1982,12 +1962,8 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
     };
 
     let (dev_id, mach_id) = crate::ffi::helpers::device_identity();
-    let mut event = crate::store::SecureEvent::new(
-        path.to_string(),
-        content_hash,
-        file_size,
-        context_note,
-    );
+    let mut event =
+        crate::store::SecureEvent::new(path.to_string(), content_hash, file_size, context_note);
     event.device_id = dev_id;
     event.machine_id = mach_id;
     event.challenge_nonce = challenge_nonce.clone();
@@ -2013,11 +1989,8 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
                 let hash = event.event_hash;
                 let wp_dir = writersproof_dir.to_path_buf();
                 drop(tokio::task::spawn(async move {
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(10),
-                        am.anchor(&hash),
-                    )
-                    .await
+                    match tokio::time::timeout(std::time::Duration::from_secs(10), am.anchor(&hash))
+                        .await
                     {
                         Ok(Ok(anchor)) => {
                             log::info!(
@@ -2027,8 +2000,7 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
                             );
                             let anchor_dir = wp_dir.join("anchors");
                             let _ = std::fs::create_dir_all(&anchor_dir);
-                            let file_path =
-                                anchor_dir.join(format!("{}.json", hex::encode(hash)));
+                            let file_path = anchor_dir.join(format!("{}.json", hex::encode(hash)));
                             if let Ok(json) = serde_json::to_vec_pretty(&anchor) {
                                 let _ = std::fs::write(&file_path, json);
                             }
@@ -2037,16 +2009,10 @@ pub(super) fn commit_checkpoint_for_path_with_semantics(
                             submit_to_writersproof_anchor(&wp_dir, &hash, anchor_sk.as_ref()).await;
                         }
                         Ok(Err(e)) => {
-                            log::warn!(
-                                "Anchoring failed for {}: {e}",
-                                hex::encode(&hash[..8])
-                            );
+                            log::warn!("Anchoring failed for {}: {e}", hex::encode(&hash[..8]));
                         }
                         Err(_) => {
-                            log::warn!(
-                                "Anchoring timed out for {}",
-                                hex::encode(&hash[..8])
-                            );
+                            log::warn!("Anchoring timed out for {}", hex::encode(&hash[..8]));
                         }
                     }
                 }));
@@ -2268,10 +2234,7 @@ pub fn detect_file_encoding(path: &Path) -> super::types::FileEncoding {
 ///
 /// Updates `session.file_encoding` with the new encoding. Returns `true` if
 /// a transition was detected (previous encoding was set and differs from current).
-pub fn check_encoding_transition(
-    session: &mut DocumentSession,
-    path: &Path,
-) -> bool {
+pub fn check_encoding_transition(session: &mut DocumentSession, path: &Path) -> bool {
     let new_encoding = detect_file_encoding(path);
     let changed = match session.file_encoding {
         Some(prev) if prev != new_encoding => {
@@ -2465,9 +2428,19 @@ fn strip_rtf(rtf: &str) -> String {
                             chars.next();
                         }
                         const SKIP_GROUPS: &[&str] = &[
-                            "fonttbl", "colortbl", "stylesheet", "info", "header",
-                            "footer", "headerl", "headerr", "footerl", "footerr",
-                            "pict", "object", "fldinst",
+                            "fonttbl",
+                            "colortbl",
+                            "stylesheet",
+                            "info",
+                            "header",
+                            "footer",
+                            "headerl",
+                            "headerr",
+                            "footerl",
+                            "footerr",
+                            "pict",
+                            "object",
+                            "fldinst",
                         ];
                         if SKIP_GROUPS.contains(&word.as_str()) {
                             skip_depth = Some(brace_depth);
@@ -2634,10 +2607,9 @@ fn extract_word_count_tex(path: &Path) -> Option<u64> {
                     if matches!(
                         cmd.as_str(),
                         "textbf" | "textit" | "emph" | "underline" | "text"
-                    ) {
-                        if chars.peek() == Some(&'{') {
-                            chars.next();
-                        }
+                    ) && chars.peek() == Some(&'{')
+                    {
+                        chars.next();
                     }
                 }
                 '{' | '}' if !in_math => {}
@@ -2682,7 +2654,9 @@ fn extract_word_count_org(path: &Path) -> Option<u64> {
     let mut in_drawer = false;
     for line in contents.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("#+") || trimmed.starts_with('#') && trimmed.len() > 1 && trimmed.as_bytes()[1] == b'+' {
+        if trimmed.starts_with("#+")
+            || trimmed.starts_with('#') && trimmed.len() > 1 && trimmed.as_bytes()[1] == b'+'
+        {
             continue;
         }
         if trimmed == ":PROPERTIES:" {
@@ -2832,9 +2806,7 @@ pub fn has_track_changes(path: &Path) -> bool {
         },
         "fdx" => has_fdx_revisions(path),
         "odt" => match read_zip_entry_as_str(path, "content.xml") {
-            Some(xml) => {
-                xml.contains("<text:tracked-changes") || xml.contains("<text:change")
-            }
+            Some(xml) => xml.contains("<text:tracked-changes") || xml.contains("<text:change"),
             None => false,
         },
         "fountain" => {
@@ -2883,8 +2855,7 @@ const EXPORT_TIER1: &[&str] = &["docx", "epub", "mobi", "odt", "pages", "rtf"];
 /// Formats commonly created by many processes.
 /// Guard: 30s window + keystrokes > 0 + signing_id must match session app.
 const EXPORT_TIER2: &[&str] = &[
-    "doc", "dvi", "fdx", "fountain", "html", "md", "mmd", "opml", "pdf", "ps",
-    "tex", "txt",
+    "doc", "dvi", "fdx", "fountain", "html", "md", "mmd", "opml", "pdf", "ps", "tex", "txt",
 ];
 
 /// Image formats — only attested when the writing app itself wrote the file.
@@ -2920,7 +2891,9 @@ pub fn parse_scrivener_project_map(scriv_root: &Path) -> Option<ScrivenerProject
         // Extract the ID attribute from the tag.
         let id = ['\"', '\''].iter().find_map(|q| {
             let needle = format!("ID={q}");
-            let after = tag.find(needle.as_str()).map(|p| &tag[p + needle.len()..])?;
+            let after = tag
+                .find(needle.as_str())
+                .map(|p| &tag[p + needle.len()..])?;
             after.find(*q).map(|end| after[..end].to_string())
         });
 
@@ -2985,12 +2958,16 @@ pub fn parse_scrivener_binder_snapshot(
                 .find("Type=\"")
                 .and_then(|p| {
                     let start = p + "Type=\"".len();
-                    tag[start..].find('"').map(|end| tag[start..start + end].to_string())
+                    tag[start..]
+                        .find('"')
+                        .map(|end| tag[start..start + end].to_string())
                 })
                 .unwrap_or_default();
             let uuid = ['\"', '\''].iter().find_map(|q| {
                 let needle = format!("ID={q}");
-                let after = tag.find(needle.as_str()).map(|p| &tag[p + needle.len()..])?;
+                let after = tag
+                    .find(needle.as_str())
+                    .map(|p| &tag[p + needle.len()..])?;
                 after.find(*q).map(|end| after[..end].to_string())
             });
             let after_tag = &contents[tag_end + 1..];
@@ -3129,9 +3106,7 @@ pub fn detect_export_event(
         return None;
     }
 
-    let output_path_hash = hex::encode(
-        blake3::hash(new_file_path.as_bytes()).as_bytes(),
-    );
+    let output_path_hash = hex::encode(blake3::hash(new_file_path.as_bytes()).as_bytes());
 
     let correlation_method = if is_tier1 {
         "time_window"
@@ -3189,8 +3164,7 @@ fn read_zip_entry_bytes(path: &Path, entry_name: &str) -> Option<Vec<u8>> {
         file.read_exact(&mut header).ok()?;
 
         let compression = u16::from_le_bytes([header[4], header[5]]);
-        let compressed_size =
-            u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
+        let compressed_size = u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
         let name_len = u16::from_le_bytes([header[22], header[23]]) as usize;
         let extra_len = u16::from_le_bytes([header[24], header[25]]) as usize;
 
@@ -3264,8 +3238,7 @@ fn find_zip_entry_by_suffix(path: &Path, suffix: &str) -> Option<String> {
         }
         let mut header = [0u8; 26];
         file.read_exact(&mut header).ok()?;
-        let compressed_size =
-            u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
+        let compressed_size = u32::from_le_bytes([header[14], header[15], header[16], header[17]]);
         let name_len = u16::from_le_bytes([header[22], header[23]]) as usize;
         let extra_len = u16::from_le_bytes([header[24], header[25]]) as usize;
         let mut name_buf = vec![0u8; name_len];
@@ -3436,12 +3409,8 @@ fn structural_fingerprint(path: &Path) -> Option<(&'static str, String)> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     match ext.as_str() {
         "fdx" => parse_fdx_scene_fingerprint(path).map(|fp| ("fdx_scene_fp", fp)),
-        "fountain" => {
-            parse_fountain_scene_fingerprint(path).map(|fp| ("fountain_scene_fp", fp))
-        }
-        "opml" => {
-            parse_opml_outline_fingerprint(path).map(|fp| ("opml_outline_fp", fp))
-        }
+        "fountain" => parse_fountain_scene_fingerprint(path).map(|fp| ("fountain_scene_fp", fp)),
+        "opml" => parse_opml_outline_fingerprint(path).map(|fp| ("opml_outline_fp", fp)),
         _ => None,
     }
 }
@@ -3724,8 +3693,7 @@ mod tests {
         );
         session.current_hash = Some("abc123".to_string());
         // Set last_focus_time to 10 seconds ago (beyond the 5-second window).
-        session.last_focus_time =
-            SystemTime::now() - std::time::Duration::from_secs(10);
+        session.last_focus_time = SystemTime::now() - std::time::Duration::from_secs(10);
         sessions
             .write()
             .unwrap()
@@ -3928,7 +3896,10 @@ mod tests {
         // This test file lives inside the writerslogic git repo.
         let this_file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/sentinel/helpers.rs");
         let root = find_git_root(&this_file);
-        assert!(root.is_some(), "should find git root for a file in the repo");
+        assert!(
+            root.is_some(),
+            "should find git root for a file in the repo"
+        );
         assert!(
             root.as_ref().unwrap().join(".git").exists(),
             "git root should contain .git"
@@ -4147,7 +4118,8 @@ mod tests {
 
     #[test]
     fn test_strip_xml_tags() {
-        let xml = "<w:body><w:p><w:r><w:t>Hello</w:t></w:r> <w:r><w:t>world</w:t></w:r></w:p></w:body>";
+        let xml =
+            "<w:body><w:p><w:r><w:t>Hello</w:t></w:r> <w:r><w:t>world</w:t></w:r></w:p></w:body>";
         let text = strip_xml_tags(xml);
         let words: Vec<&str> = text.split_whitespace().collect();
         assert_eq!(words, vec!["Hello", "world"]);
@@ -4202,7 +4174,7 @@ mod tests {
         buf.extend_from_slice(&[0x00, 0x00]); // compression: STORED
         buf.extend_from_slice(&[0x00, 0x00]); // mod time
         buf.extend_from_slice(&[0x00, 0x00]); // mod date
-        // CRC-32 (compute it)
+                                              // CRC-32 (compute it)
         let crc = crc32_simple(document_xml);
         buf.extend_from_slice(&crc.to_le_bytes());
         let size = document_xml.len() as u32;

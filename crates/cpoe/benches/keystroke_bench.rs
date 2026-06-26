@@ -36,9 +36,11 @@ fn bench_channel_send(c: &mut Criterion) {
     let (tx, rx) = mpsc::sync_channel::<[u8; 32]>(512);
 
     // Drain receiver in background to prevent Full
-    let drain = std::thread::spawn(move || {
-        while rx.recv_timeout(Duration::from_secs(5)).is_ok() {}
-    });
+    let drain = std::thread::spawn(
+        move || {
+            while rx.recv_timeout(Duration::from_secs(5)).is_ok() {}
+        },
+    );
 
     c.bench_function("keystroke_channel_try_send", |b| {
         b.iter(|| {
@@ -60,9 +62,11 @@ fn bench_full_keystroke_path(c: &mut Criterion) {
     let keystroke_count = AtomicU64::new(0);
     let (tx, rx) = mpsc::sync_channel::<(i64, u16, u8)>(512);
 
-    let drain = std::thread::spawn(move || {
-        while rx.recv_timeout(Duration::from_secs(5)).is_ok() {}
-    });
+    let drain = std::thread::spawn(
+        move || {
+            while rx.recv_timeout(Duration::from_secs(5)).is_ok() {}
+        },
+    );
 
     c.bench_function("full_keystroke_callback_path", |b| {
         b.iter(|| {
@@ -71,10 +75,12 @@ fn bench_full_keystroke_path(c: &mut Criterion) {
             verified_hardware.fetch_add(1, Ordering::Relaxed);
 
             // 2. Timestamp (chrono::Utc::now() equivalent cost)
-            let now = black_box(std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos() as i64);
+            let now = black_box(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() as i64,
+            );
 
             // 3. Keycode extraction + zone lookup (simulated)
             let keycode = black_box(0x00u16); // 'a' key

@@ -6,7 +6,6 @@
 //! document metadata (PDF, EXIF, Office), QR codes, git commit messages,
 //! or protocol headers with size constraints.
 
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -318,6 +317,9 @@ mod tests {
         let mut legacy_buf = vec![0x01];
         ciborium::into_writer(&legacy_map, &mut legacy_buf).unwrap();
 
-        assert_eq!(payload, legacy_buf, "signable_payload must be byte-identical to legacy BTreeMap encoding");
+        assert_eq!(
+            payload, legacy_buf,
+            "signable_payload must be byte-identical to legacy BTreeMap encoding"
+        );
     }
 }

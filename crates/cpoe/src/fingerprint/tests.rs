@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use super::*;
-use crate::fingerprint::global::{get_global_accumulator, sentinel_is_feeding, set_sentinel_feeding};
+use crate::fingerprint::global::{
+    get_global_accumulator, sentinel_is_feeding, set_sentinel_feeding,
+};
 use crate::fingerprint::manager::FingerprintManager;
 use crate::jitter::SimpleJitterSample;
 use std::sync::Arc;
@@ -98,15 +100,24 @@ fn test_default_config() {
 fn test_global_accumulator_singleton() {
     let a = get_global_accumulator();
     let b = get_global_accumulator();
-    assert!(Arc::ptr_eq(&a, &b), "get_global_accumulator must return the same Arc");
+    assert!(
+        Arc::ptr_eq(&a, &b),
+        "get_global_accumulator must return the same Arc"
+    );
 }
 
 #[test]
 fn test_sentinel_feeding_flag() {
     set_sentinel_feeding(true);
-    assert!(sentinel_is_feeding(), "expected true after set_sentinel_feeding(true)");
+    assert!(
+        sentinel_is_feeding(),
+        "expected true after set_sentinel_feeding(true)"
+    );
     set_sentinel_feeding(false);
-    assert!(!sentinel_is_feeding(), "expected false after set_sentinel_feeding(false)");
+    assert!(
+        !sentinel_is_feeding(),
+        "expected false after set_sentinel_feeding(false)"
+    );
 }
 
 #[test]
@@ -139,7 +150,10 @@ fn test_sentinel_feeding_prevents_double_write() {
     let count_after = acc.read().unwrap().sample_count();
 
     assert_eq!(count_while_feeding, 0, "no writes when sentinel_is_feeding");
-    assert_eq!(count_after, 1, "write succeeds when not sentinel_is_feeding");
+    assert_eq!(
+        count_after, 1,
+        "write succeeds when not sentinel_is_feeding"
+    );
 
     // Restore flag.
     set_sentinel_feeding(false);
@@ -205,13 +219,14 @@ fn test_ema_alpha_decay() {
 
 #[test]
 fn test_ema_consolidation_produces_canonical() {
-    let dir = std::env::temp_dir().join(format!(
-        "cpoe_test_consolidation_{}",
-        uuid::Uuid::new_v4()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("cpoe_test_consolidation_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
 
-    let cfg = FingerprintConfig { storage_path: dir.clone(), ..FingerprintConfig::default() };
+    let cfg = FingerprintConfig {
+        storage_path: dir.clone(),
+        ..FingerprintConfig::default()
+    };
     let mut mgr = FingerprintManager::with_config(cfg).unwrap();
 
     // Feed enough samples to trigger one consolidation (interval = 200).
@@ -226,30 +241,35 @@ fn test_ema_consolidation_produces_canonical() {
         });
     }
 
-    assert!(mgr.canonical_profile.is_some(), "canonical should be set after consolidation");
+    assert!(
+        mgr.canonical_profile.is_some(),
+        "canonical should be set after consolidation"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn test_canonical_persists_across_restart() {
-    let dir = std::env::temp_dir().join(format!(
-        "cpoe_test_persist_{}",
-        uuid::Uuid::new_v4()
-    ));
+    let dir = std::env::temp_dir().join(format!("cpoe_test_persist_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
 
     // Use a default ActivityFingerprint (no DigraphProfile data) so serde_json
     // serialization succeeds — DigraphProfile uses (u8,u8) map keys which are
     // incompatible with JSON object keys.
-    let canonical =
-        AuthorFingerprint::with_id("persist-test-id".to_string(), ActivityFingerprint::default());
+    let canonical = AuthorFingerprint::with_id(
+        "persist-test-id".to_string(),
+        ActivityFingerprint::default(),
+    );
     let canonical_file = dir.join("canonical_profile.json");
     let json = serde_json::to_string_pretty(&canonical).expect("serialize canonical");
     std::fs::write(&canonical_file, json.as_bytes()).unwrap();
 
     // Simulate restart: new manager at the same path must load the canonical.
-    let cfg = FingerprintConfig { storage_path: dir.clone(), ..FingerprintConfig::default() };
+    let cfg = FingerprintConfig {
+        storage_path: dir.clone(),
+        ..FingerprintConfig::default()
+    };
     let mgr = FingerprintManager::with_config(cfg).unwrap();
     assert!(
         mgr.canonical_profile.is_some(),
@@ -266,25 +286,29 @@ fn test_canonical_persists_across_restart() {
 
 #[test]
 fn test_reset_clears_canonical() {
-    let dir = std::env::temp_dir().join(format!(
-        "cpoe_test_reset_{}",
-        uuid::Uuid::new_v4()
-    ));
+    let dir = std::env::temp_dir().join(format!("cpoe_test_reset_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
 
-    let cfg = FingerprintConfig { storage_path: dir.clone(), ..FingerprintConfig::default() };
+    let cfg = FingerprintConfig {
+        storage_path: dir.clone(),
+        ..FingerprintConfig::default()
+    };
     let mut mgr = FingerprintManager::with_config(cfg).unwrap();
 
     // Seed the canonical directly (avoids DigraphProfile serde_json key issue).
     let canonical_file = dir.join("canonical_profile.json");
-    let seed = AuthorFingerprint::with_id("reset-test-id".to_string(), ActivityFingerprint::default());
+    let seed =
+        AuthorFingerprint::with_id("reset-test-id".to_string(), ActivityFingerprint::default());
     let json = serde_json::to_string_pretty(&seed).expect("serialize");
     std::fs::write(&canonical_file, json.as_bytes()).unwrap();
     mgr.canonical_profile = Some(seed);
     assert!(canonical_file.exists(), "pre-condition: file written");
 
     mgr.reset();
-    assert!(mgr.canonical_profile.is_none(), "canonical must be None after reset()");
+    assert!(
+        mgr.canonical_profile.is_none(),
+        "canonical must be None after reset()"
+    );
     assert!(
         !canonical_file.exists(),
         "canonical_profile.json must be deleted after reset()"
@@ -295,13 +319,13 @@ fn test_reset_clears_canonical() {
 
 #[test]
 fn test_canonical_or_current_fallback() {
-    let dir = std::env::temp_dir().join(format!(
-        "cpoe_test_fallback_{}",
-        uuid::Uuid::new_v4()
-    ));
+    let dir = std::env::temp_dir().join(format!("cpoe_test_fallback_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
 
-    let cfg = FingerprintConfig { storage_path: dir.clone(), ..FingerprintConfig::default() };
+    let cfg = FingerprintConfig {
+        storage_path: dir.clone(),
+        ..FingerprintConfig::default()
+    };
     let mut mgr = FingerprintManager::with_config(cfg).unwrap();
     assert!(mgr.canonical_profile.is_none());
 

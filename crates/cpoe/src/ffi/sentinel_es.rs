@@ -21,144 +21,149 @@ use std::time::SystemTime;
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_write(path: String, pid: i32, signing_id: String) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_es_file_write: path={}, pid={}, signing_id={}", path, pid, signing_id);
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
+        log::debug!(
+            "ffi_sentinel_es_file_write: path={}, pid={}, signing_id={}",
+            path,
+            pid,
+            signing_id
+        );
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    let path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => {
-            log::warn!("ES file write path rejected: {e}");
-            return false;
-        }
-    };
+        let path = match crate::sentinel::helpers::validate_path(&path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                log::warn!("ES file write path rejected: {e}");
+                return false;
+            }
+        };
 
-    // If the file is already tracked, commit a checkpoint.
-    let tracked = sentinel.tracked_files();
-    if tracked.iter().any(|t| t == &path) {
-        log::info!(
+        // If the file is already tracked, commit a checkpoint.
+        let tracked = sentinel.tracked_files();
+        if tracked.iter().any(|t| t == &path) {
+            log::info!(
             "ES file write detected for tracked document: {path} (pid={pid}, signing_id={signing_id})"
         );
-        return sentinel.commit_checkpoint_for_path(&path);
-    }
+            return sentinel.commit_checkpoint_for_path(&path);
+        }
 
-    // Not a tracked file — check if this is a compile/export output from a
-    // bundle app (Scrivener, Vellum, Final Draft). If the signing ID matches
-    // a known app and the file has an export extension, correlate it with the
-    // active bundle session.
-    let now_ns = SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as i64;
+        // Not a tracked file — check if this is a compile/export output from a
+        // bundle app (Scrivener, Vellum, Final Draft). If the signing ID matches
+        // a known app and the file has an export extension, correlate it with the
+        // active bundle session.
+        let now_ns = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as i64;
 
-    let process_name = signing_id.split(':').next_back().unwrap_or(&signing_id);
+        let process_name = signing_id.split(':').next_back().unwrap_or(&signing_id);
 
-    // Two-tier export detection:
-    // 1. High-confidence: adapter confirms this process is a compile/export process.
-    // 2. Standard: any session focused within the correlation window.
-    let mut standard_candidates: Vec<(String, String, String)> = Vec::new();
+        // Two-tier export detection:
+        // 1. High-confidence: adapter confirms this process is a compile/export process.
+        // 2. Standard: any session focused within the correlation window.
+        let mut standard_candidates: Vec<(String, String, String)> = Vec::new();
 
-    for session in sentinel.sessions() {
-        let session_bid = session.app_bundle_id.as_str();
+        for session in sentinel.sessions() {
+            let session_bid = session.app_bundle_id.as_str();
 
-        // High-confidence path: bundle session with adapter match
-        if let Some(adapter) = crate::sentinel::app_registry::adapter_for_bundle(session_bid) {
-            if adapter.is_compile_process(process_name) {
-                let bundle_hash = session
-                    .scrivener_project_map
-                    .as_ref()
-                    .map(|m| m.scrivx_hash.clone())
-                    .or_else(|| session.current_hash.clone())
-                    .unwrap_or_default();
+            // High-confidence path: bundle session with adapter match
+            if let Some(adapter) = crate::sentinel::app_registry::adapter_for_bundle(session_bid) {
+                if adapter.is_compile_process(process_name) {
+                    let bundle_hash = session
+                        .scrivener_project_map
+                        .as_ref()
+                        .map(|m| m.scrivx_hash.clone())
+                        .or_else(|| session.current_hash.clone())
+                        .unwrap_or_default();
 
-                let file_hash = crate::sentinel::helpers::compute_file_hash(&path)
-                    .unwrap_or_default();
+                    let file_hash =
+                        crate::sentinel::helpers::compute_file_hash(&path).unwrap_or_default();
 
-                if let Some(mut attestation) = crate::sentinel::helpers::detect_export_event(
-                    &session,
-                    &path,
-                    &file_hash,
-                    &bundle_hash,
-                    now_ns,
-                    &signing_id,
-                ) {
-                    attestation.correlation_method = "high".to_string();
-                    log::info!(
-                        "Manuscript export detected (adapter match): {} -> {} (session {})",
-                        session.path,
-                        path,
-                        session.session_id
-                    );
-                    let session_path = session.path.clone();
-                    let session_id = session.session_id.clone();
-                    sentinel.record_export_attestation(&session_path, attestation);
-                    let _ = sentinel.session_events_tx().send(
-                        crate::sentinel::types::SessionEvent {
-                            event_type: crate::sentinel::types::SessionEventType::ExportDetected,
-                            session_id,
-                            document_path: session_path,
-                            timestamp: SystemTime::now(),
-                            hash: Some(file_hash),
-                        },
-                    );
-                    return true;
+                    if let Some(mut attestation) = crate::sentinel::helpers::detect_export_event(
+                        &session,
+                        &path,
+                        &file_hash,
+                        &bundle_hash,
+                        now_ns,
+                        &signing_id,
+                    ) {
+                        attestation.correlation_method = "high".to_string();
+                        log::info!(
+                            "Manuscript export detected (adapter match): {} -> {} (session {})",
+                            session.path,
+                            path,
+                            session.session_id
+                        );
+                        let session_path = session.path.clone();
+                        let session_id = session.session_id.clone();
+                        sentinel.record_export_attestation(&session_path, attestation);
+                        let _ = sentinel.session_events_tx().send(
+                            crate::sentinel::types::SessionEvent {
+                                event_type:
+                                    crate::sentinel::types::SessionEventType::ExportDetected,
+                                session_id,
+                                document_path: session_path,
+                                timestamp: SystemTime::now(),
+                                hash: Some(file_hash),
+                            },
+                        );
+                        return true;
+                    }
                 }
+            }
+
+            // Collect for standard path (all sessions regardless of adapter/bundle)
+            let bundle_hash = session
+                .scrivener_project_map
+                .as_ref()
+                .map(|m| m.scrivx_hash.clone())
+                .or_else(|| session.current_hash.clone())
+                .unwrap_or_default();
+            standard_candidates.push((
+                session.path.clone(),
+                session.session_id.clone(),
+                bundle_hash,
+            ));
+        }
+
+        // Standard path: try all sessions without requiring an adapter
+        let file_hash = crate::sentinel::helpers::compute_file_hash(&path).unwrap_or_default();
+        for (session_path, session_id, bundle_hash) in standard_candidates {
+            let session = match sentinel.session(&session_path) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if let Some(attestation) = crate::sentinel::helpers::detect_export_event(
+                &session,
+                &path,
+                &file_hash,
+                &bundle_hash,
+                now_ns,
+                &signing_id,
+            ) {
+                log::info!(
+                    "Manuscript export detected: {} -> {} (session {})",
+                    session_path,
+                    path,
+                    session_id
+                );
+                sentinel.record_export_attestation(&session_path, attestation);
+                let _ = sentinel
+                    .session_events_tx()
+                    .send(crate::sentinel::types::SessionEvent {
+                        event_type: crate::sentinel::types::SessionEventType::ExportDetected,
+                        session_id,
+                        document_path: session_path,
+                        timestamp: SystemTime::now(),
+                        hash: Some(file_hash),
+                    });
+                return true;
             }
         }
 
-        // Collect for standard path (all sessions regardless of adapter/bundle)
-        let bundle_hash = session
-            .scrivener_project_map
-            .as_ref()
-            .map(|m| m.scrivx_hash.clone())
-            .or_else(|| session.current_hash.clone())
-            .unwrap_or_default();
-        standard_candidates.push((
-            session.path.clone(),
-            session.session_id.clone(),
-            bundle_hash,
-        ));
-    }
-
-    // Standard path: try all sessions without requiring an adapter
-    let file_hash = crate::sentinel::helpers::compute_file_hash(&path)
-        .unwrap_or_default();
-    for (session_path, session_id, bundle_hash) in standard_candidates {
-        let session = match sentinel.session(&session_path) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        if let Some(attestation) = crate::sentinel::helpers::detect_export_event(
-            &session,
-            &path,
-            &file_hash,
-            &bundle_hash,
-            now_ns,
-            &signing_id,
-        ) {
-            log::info!(
-                "Manuscript export detected: {} -> {} (session {})",
-                session_path,
-                path,
-                session_id
-            );
-            sentinel.record_export_attestation(&session_path, attestation);
-            let _ = sentinel.session_events_tx().send(
-                crate::sentinel::types::SessionEvent {
-                    event_type: crate::sentinel::types::SessionEventType::ExportDetected,
-                    session_id,
-                    document_path: session_path,
-                    timestamp: SystemTime::now(),
-                    hash: Some(file_hash),
-                },
-            );
-            return true;
-        }
-    }
-
-    false
+        false
     })
 }
 
@@ -178,73 +183,83 @@ pub fn ffi_sentinel_es_ai_tool_detected(
     exec_path: String,
 ) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_es_ai_tool_detected: signing_id={}, pid={}, ppid={}, exec_path={}", signing_id, pid, ppid, exec_path);
-    // signing_id is a macOS Team ID + bundle ID (max ~512 bytes);
-    // exec_path is an absolute filesystem path (max 4096 bytes per POSIX PATH_MAX).
-    // Combined max = 4608 bytes. Reject before touching sentinel state.
-    if signing_id.len() > 512 || exec_path.len() > 4096 {
-        log::warn!("ES AI tool params too long: signing_id={}, exec_path={}", signing_id.len(), exec_path.len());
-        return false;
-    }
-
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
-
-    let (category, basis) = match AiToolCategory::from_signing_id(&signing_id) {
-        Some(cb) => cb,
-        None => {
-            log::debug!("Unrecognized AI tool signing ID: {signing_id}");
+        log::debug!(
+            "ffi_sentinel_es_ai_tool_detected: signing_id={}, pid={}, ppid={}, exec_path={}",
+            signing_id,
+            pid,
+            ppid,
+            exec_path
+        );
+        // signing_id is a macOS Team ID + bundle ID (max ~512 bytes);
+        // exec_path is an absolute filesystem path (max 4096 bytes per POSIX PATH_MAX).
+        // Combined max = 4608 bytes. Reject before touching sentinel state.
+        if signing_id.len() > 512 || exec_path.len() > 4096 {
+            log::warn!(
+                "ES AI tool params too long: signing_id={}, exec_path={}",
+                signing_id.len(),
+                exec_path.len()
+            );
             return false;
         }
-    };
 
-    log::info!(
-        "AI tool detected via ES: signing_id={signing_id}, pid={pid}, \
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
+
+        let (category, basis) = match AiToolCategory::from_signing_id(&signing_id) {
+            Some(cb) => cb,
+            None => {
+                log::debug!("Unrecognized AI tool signing ID: {signing_id}");
+                return false;
+            }
+        };
+
+        log::info!(
+            "AI tool detected via ES: signing_id={signing_id}, pid={pid}, \
          ppid={ppid}, category={category}, basis={basis}"
-    );
+        );
 
-    let tool = DetectedAiTool {
-        signing_id: signing_id.clone(),
-        pid,
-        ppid,
-        exec_path,
-        category,
-        basis,
-        detected_at: SystemTime::now(),
-    };
+        let tool = DetectedAiTool {
+            signing_id: signing_id.clone(),
+            pid,
+            ppid,
+            exec_path,
+            category,
+            basis,
+            detected_at: SystemTime::now(),
+        };
 
-    // Persist into all active sessions, deduplicated on (signing_id, pid).
-    const MAX_AI_TOOLS_PER_SESSION: usize = 256;
-    let mut sessions = sentinel.sessions.write_recover();
-    let mut updated = 0u32;
-    for session in sessions.values_mut() {
-        if session.ai_tools_detected.len() >= MAX_AI_TOOLS_PER_SESSION {
-            log::warn!(
-                "AI tool tracking limit reached ({MAX_AI_TOOLS_PER_SESSION}); ignoring {}",
-                tool.signing_id
-            );
-            continue;
+        // Persist into all active sessions, deduplicated on (signing_id, pid).
+        const MAX_AI_TOOLS_PER_SESSION: usize = 256;
+        let mut sessions = sentinel.sessions.write_recover();
+        let mut updated = 0u32;
+        for session in sessions.values_mut() {
+            if session.ai_tools_detected.len() >= MAX_AI_TOOLS_PER_SESSION {
+                log::warn!(
+                    "AI tool tracking limit reached ({MAX_AI_TOOLS_PER_SESSION}); ignoring {}",
+                    tool.signing_id
+                );
+                continue;
+            }
+            let already = session
+                .ai_tools_detected
+                .iter()
+                .any(|t| t.signing_id == tool.signing_id && t.pid == tool.pid);
+            if !already {
+                session.ai_tools_detected.push(tool.clone());
+                updated += 1;
+            }
         }
-        let already = session
-            .ai_tools_detected
-            .iter()
-            .any(|t| t.signing_id == tool.signing_id && t.pid == tool.pid);
-        if !already {
-            session.ai_tools_detected.push(tool.clone());
-            updated += 1;
-        }
-    }
 
-    log::info!(
-        "AI tool '{}' ({}) persisted to {} active session(s)",
-        signing_id,
-        category,
-        updated
-    );
+        log::info!(
+            "AI tool '{}' ({}) persisted to {} active session(s)",
+            signing_id,
+            category,
+            updated
+        );
 
-    true
+        true
     })
 }
 
@@ -258,53 +273,57 @@ pub fn ffi_sentinel_es_ai_tool_detected(
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_es_file_rename: old_path={}, new_path={}", old_path, new_path);
-    if old_path.len() > 4096 || new_path.len() > 4096 {
-        return false;
-    }
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
-
-    let old_validated = match crate::sentinel::helpers::validate_path(&old_path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => {
-            log::debug!("Rename source path rejected: {e}");
-            old_path
-        }
-    };
-
-    let validated = match crate::sentinel::helpers::validate_path(&new_path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(e) => {
-            log::warn!("Rename target path rejected: {e}");
+        log::debug!(
+            "ffi_sentinel_es_file_rename: old_path={}, new_path={}",
+            old_path,
+            new_path
+        );
+        if old_path.len() > 4096 || new_path.len() > 4096 {
             return false;
         }
-    };
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    log::info!("ES file rename detected: {old_validated} -> {validated}");
+        let old_validated = match crate::sentinel::helpers::validate_path(&old_path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                log::debug!("Rename source path rejected: {e}");
+                old_path
+            }
+        };
 
-    let mut sessions = sentinel.sessions.write_recover();
-    if sessions.contains_key(&validated) {
-        log::warn!("Rename target already tracked, ignoring: {old_validated} -> {validated}");
-        return false;
-    }
-    let mut session = match sessions.remove(&old_validated) {
-        Some(s) => s,
-        None => return false,
-    };
-    session.path = validated.clone();
-    sessions.insert(validated.clone(), session);
-    drop(sessions);
+        let validated = match crate::sentinel::helpers::validate_path(&new_path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                log::warn!("Rename target path rejected: {e}");
+                return false;
+            }
+        };
 
-    // Update current_focus if it pointed to the old path.
-    let mut focus = sentinel.current_focus.write_recover();
-    if focus.as_deref() == Some(old_validated.as_str()) {
-        *focus = Some(validated);
-    }
+        log::info!("ES file rename detected: {old_validated} -> {validated}");
 
-    true
+        let mut sessions = sentinel.sessions.write_recover();
+        if sessions.contains_key(&validated) {
+            log::warn!("Rename target already tracked, ignoring: {old_validated} -> {validated}");
+            return false;
+        }
+        let mut session = match sessions.remove(&old_validated) {
+            Some(s) => s,
+            None => return false,
+        };
+        session.path = validated.clone();
+        sessions.insert(validated.clone(), session);
+        drop(sessions);
+
+        // Update current_focus if it pointed to the old path.
+        let mut focus = sentinel.current_focus.write_recover();
+        if focus.as_deref() == Some(old_validated.as_str()) {
+            *focus = Some(validated);
+        }
+
+        true
     })
 }
 
@@ -320,84 +339,83 @@ pub fn ffi_sentinel_es_file_rename(old_path: String, new_path: String) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_es_file_open: path={}, pid={}", path, pid);
-    if path.len() > 4096 {
-        return false;
-    }
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
-
-    let validated = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p.to_string_lossy().to_string(),
-        Err(_) => return false,
-    };
-
-    // Only upgrade if the currently focused session is a title:// virtual path.
-    let current_path = {
-        let focus = sentinel.current_focus.read_recover();
-        focus.clone()
-    };
-
-    let current = match current_path {
-        Some(ref p) if p.starts_with("title://") => p.clone(),
-        _ => return false,
-    };
-
-    // Verify the opening process's bundle ID matches the focused session's app.
-    // Resolve PID to bundle ID via NSRunningApplication (on macOS).
-    let opener_bundle = crate::sentinel::macos_focus::bundle_id_for_pid(pid);
-
-    // Check if this path has a recognized document extension.
-    let ext_ok = std::path::Path::new(&validated)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| {
-            crate::sentinel::process_files::is_document_extension(&e.to_lowercase())
-        })
-        .unwrap_or(false);
-    if !ext_ok {
-        return false;
-    }
-
-    // Single write lock for the entire bundle verification + re-key operation
-    // to prevent TOCTOU races between read and write phases.
-    let mut sessions = sentinel.sessions.write_recover();
-
-    let session_bid = sessions.get(&current).map(|s| s.app_bundle_id.clone());
-    match (opener_bundle, session_bid) {
-        (Some(opener), Some(bid)) if opener == bid => {}
-        _ => return false,
-    }
-
-    if sessions.contains_key(&validated) {
-        return false;
-    }
-
-    // Re-key the session from title:// to the real path.
-    if let Some(mut session) = sessions.remove(&current) {
-        log::info!(
-            "ES file open: upgrading session from {} to {}",
-            current, validated
-        );
-        session.origin_temp_path = Some(current.clone());
-        session.path = validated.clone();
-        session.evidence_confidence = crate::sentinel::types::EvidenceConfidence::Full;
-        session.confidence_reason = None;
-        sessions.insert(validated.clone(), session);
-        drop(sessions);
-
-        // Re-check current_focus under the write lock to prevent overwriting
-        // a concurrent focus change.
-        let mut focus = sentinel.current_focus.write_recover();
-        if focus.as_deref() == Some(current.as_str()) {
-            *focus = Some(validated);
+        log::debug!("ffi_sentinel_es_file_open: path={}, pid={}", path, pid);
+        if path.len() > 4096 {
+            return false;
         }
-        return true;
-    }
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    false
+        let validated = match crate::sentinel::helpers::validate_path(&path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => return false,
+        };
+
+        // Only upgrade if the currently focused session is a title:// virtual path.
+        let current_path = {
+            let focus = sentinel.current_focus.read_recover();
+            focus.clone()
+        };
+
+        let current = match current_path {
+            Some(ref p) if p.starts_with("title://") => p.clone(),
+            _ => return false,
+        };
+
+        // Verify the opening process's bundle ID matches the focused session's app.
+        // Resolve PID to bundle ID via NSRunningApplication (on macOS).
+        let opener_bundle = crate::sentinel::macos_focus::bundle_id_for_pid(pid);
+
+        // Check if this path has a recognized document extension.
+        let ext_ok = std::path::Path::new(&validated)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| crate::sentinel::process_files::is_document_extension(&e.to_lowercase()))
+            .unwrap_or(false);
+        if !ext_ok {
+            return false;
+        }
+
+        // Single write lock for the entire bundle verification + re-key operation
+        // to prevent TOCTOU races between read and write phases.
+        let mut sessions = sentinel.sessions.write_recover();
+
+        let session_bid = sessions.get(&current).map(|s| s.app_bundle_id.clone());
+        match (opener_bundle, session_bid) {
+            (Some(opener), Some(bid)) if opener == bid => {}
+            _ => return false,
+        }
+
+        if sessions.contains_key(&validated) {
+            return false;
+        }
+
+        // Re-key the session from title:// to the real path.
+        if let Some(mut session) = sessions.remove(&current) {
+            log::info!(
+                "ES file open: upgrading session from {} to {}",
+                current,
+                validated
+            );
+            session.origin_temp_path = Some(current.clone());
+            session.path = validated.clone();
+            session.evidence_confidence = crate::sentinel::types::EvidenceConfidence::Full;
+            session.confidence_reason = None;
+            sessions.insert(validated.clone(), session);
+            drop(sessions);
+
+            // Re-check current_focus under the write lock to prevent overwriting
+            // a concurrent focus change.
+            let mut focus = sentinel.current_focus.write_recover();
+            if focus.as_deref() == Some(current.as_str()) {
+                *focus = Some(validated);
+            }
+            return true;
+        }
+
+        false
     })
 }
 
@@ -409,20 +427,20 @@ pub fn ffi_sentinel_es_file_open(path: String, pid: i32) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_capture_gap(missed_count: u32) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_es_capture_gap: missed_count={}", missed_count);
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
+        log::debug!("ffi_sentinel_es_capture_gap: missed_count={}", missed_count);
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    log::warn!("ES capture gap: {missed_count} event(s) dropped by kernel");
+        log::warn!("ES capture gap: {missed_count} event(s) dropped by kernel");
 
-    let mut sessions = sentinel.sessions.write_recover();
-    for session in sessions.values_mut() {
-        session.capture_gaps = session.capture_gaps.saturating_add(missed_count);
-    }
+        let mut sessions = sentinel.sessions.write_recover();
+        for session in sessions.values_mut() {
+            session.capture_gaps = session.capture_gaps.saturating_add(missed_count);
+        }
 
-    true
+        true
     })
 }
 
@@ -434,23 +452,26 @@ pub fn ffi_sentinel_es_capture_gap(missed_count: u32) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_set_challenge_nonce: nonce_len={}", nonce.len());
-    if nonce.len() > 1024 {
-        log::warn!(
-            "Challenge nonce too long ({} bytes), rejecting",
+        log::debug!(
+            "ffi_sentinel_set_challenge_nonce: nonce_len={}",
             nonce.len()
         );
-        return false;
-    }
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
+        if nonce.len() > 1024 {
+            log::warn!(
+                "Challenge nonce too long ({} bytes), rejecting",
+                nonce.len()
+            );
+            return false;
+        }
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    log::info!("Challenge nonce set for next checkpoint");
-    *sentinel.pending_challenge.write_recover() = Some((nonce, None));
-    sentinel.nonce_notify.notify_one();
-    true
+        log::info!("Challenge nonce set for next checkpoint");
+        *sentinel.pending_challenge.write_recover() = Some((nonce, None));
+        sentinel.nonce_notify.notify_one();
+        true
     })
 }
 
@@ -458,37 +479,44 @@ pub fn ffi_sentinel_set_challenge_nonce(nonce: String) -> bool {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_es_ai_tools_active() -> Vec<String> {
     catch_ffi_panic!(vec![], {
-    log::debug!("ffi_sentinel_es_ai_tools_active called");
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return Vec::new(),
-    };
+        log::debug!("ffi_sentinel_es_ai_tools_active called");
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
 
-    let sessions = sentinel.sessions.read_recover();
-    let mut seen = std::collections::HashSet::new();
-    let mut tools = Vec::new();
-    for session in sessions.values() {
-        for tool in &session.ai_tools_detected {
-            if seen.insert(&tool.signing_id) {
-                tools.push(tool.signing_id.clone());
+        let sessions = sentinel.sessions.read_recover();
+        let mut seen = std::collections::HashSet::new();
+        let mut tools = Vec::new();
+        for session in sessions.values() {
+            for tool in &session.ai_tools_detected {
+                if seen.insert(&tool.signing_id) {
+                    tools.push(tool.signing_id.clone());
+                }
             }
         }
-    }
-    tools
+        tools
     })
 }
 
 /// Known terminal text editors whose exec events should create tracking sessions.
 /// Matched against the basename of the exec path.
 const TERMINAL_EDITORS: &[&str] = &[
-    "vi", "vim", "nvim", "neovim",
-    "emacs", "emacsclient",
-    "nano", "pico",
-    "hx",       // Helix
+    "vi",
+    "vim",
+    "nvim",
+    "neovim",
+    "emacs",
+    "emacsclient",
+    "nano",
+    "pico",
+    "hx", // Helix
     "micro",
-    "joe", "jed",
+    "joe",
+    "jed",
     "mcedit",
-    "kakoune", "kak",
+    "kakoune",
+    "kak",
 ];
 
 /// Called by the Swift ES client when `ES_EVENT_TYPE_NOTIFY_EXEC` fires for a
@@ -499,39 +527,43 @@ const TERMINAL_EDITORS: &[&str] = &[
 ///
 /// Returns `true` if a tracking session was successfully started for the file.
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_sentinel_es_terminal_editor_exec(
-    editor_path: String,
-    file_arg: String,
-) -> bool {
+pub fn ffi_sentinel_es_terminal_editor_exec(editor_path: String, file_arg: String) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_es_terminal_editor_exec: editor_path={}, file_arg={}", editor_path, file_arg);
-    if editor_path.len() > 4096 || file_arg.len() > 4096 {
-        log::warn!(
-            "ffi_sentinel_es_terminal_editor_exec: args too long ({}/{})",
-            editor_path.len(), file_arg.len()
+        log::debug!(
+            "ffi_sentinel_es_terminal_editor_exec: editor_path={}, file_arg={}",
+            editor_path,
+            file_arg
         );
-        return false;
-    }
-    if file_arg.is_empty() {
-        return false;
-    }
+        if editor_path.len() > 4096 || file_arg.len() > 4096 {
+            log::warn!(
+                "ffi_sentinel_es_terminal_editor_exec: args too long ({}/{})",
+                editor_path.len(),
+                file_arg.len()
+            );
+            return false;
+        }
+        if file_arg.is_empty() {
+            return false;
+        }
 
-    let editor_name = std::path::Path::new(&editor_path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown");
+        let editor_name = std::path::Path::new(&editor_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
 
-    if !TERMINAL_EDITORS.contains(&editor_name) {
-        log::debug!("ffi_sentinel_es_terminal_editor_exec: unrecognised editor {editor_name:?}");
-        return false;
-    }
+        if !TERMINAL_EDITORS.contains(&editor_name) {
+            log::debug!(
+                "ffi_sentinel_es_terminal_editor_exec: unrecognised editor {editor_name:?}"
+            );
+            return false;
+        }
 
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    sentinel.inject_terminal_editor_session(&file_arg, editor_name)
+        sentinel.inject_terminal_editor_session(&file_arg, editor_name)
     })
 }
 
@@ -553,26 +585,32 @@ pub fn ffi_sentinel_dictation_begin(
     ambient_noise_db: f32,
 ) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_dictation_begin: doc_path={}, es_speech_pid={}, audio_transport_type={}, ambient_noise_db={}", doc_path, es_speech_pid, audio_transport_type, ambient_noise_db);
-    if doc_path.len() > 4096 || device_uid_hash_hex.len() > 16 {
-        log::warn!("ffi_sentinel_dictation_begin: params too long");
-        return false;
-    }
-
-    let device_uid_hash = match crate::utils::hex_decode_8(&device_uid_hash_hex) {
-        Ok(h) => h,
-        Err(e) => {
-            log::warn!("ffi_sentinel_dictation_begin: invalid device_uid_hash_hex: {e}");
+        log::debug!("ffi_sentinel_dictation_begin: doc_path={}, es_speech_pid={}, audio_transport_type={}, ambient_noise_db={}", doc_path, es_speech_pid, audio_transport_type, ambient_noise_db);
+        if doc_path.len() > 4096 || device_uid_hash_hex.len() > 16 {
+            log::warn!("ffi_sentinel_dictation_begin: params too long");
             return false;
         }
-    };
 
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
+        let device_uid_hash = match crate::utils::hex_decode_8(&device_uid_hash_hex) {
+            Ok(h) => h,
+            Err(e) => {
+                log::warn!("ffi_sentinel_dictation_begin: invalid device_uid_hash_hex: {e}");
+                return false;
+            }
+        };
 
-    sentinel.begin_dictation(&doc_path, es_speech_pid, audio_transport_type, device_uid_hash, ambient_noise_db)
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
+
+        sentinel.begin_dictation(
+            &doc_path,
+            es_speech_pid,
+            audio_transport_type,
+            device_uid_hash,
+            ambient_noise_db,
+        )
     })
 }
 
@@ -593,33 +631,33 @@ pub fn ffi_sentinel_dictation_fragment(
     speaker_output_active: bool,
 ) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_dictation_fragment: doc_path={}, word_count={}, confidence={}, correction_count={}, transcript_len={}, speaker_output_active={}", doc_path, word_count, confidence, correction_count, transcript_text.len(), speaker_output_active);
-    if doc_path.len() > 4096 || transcript_text.len() > 65536 {
-        log::warn!("ffi_sentinel_dictation_fragment: params too long");
-        return false;
-    }
-    // confidence=0.0 is valid: it means "low confidence but recorded" (e.g. background noise).
-    // Only NaN, infinity, and out-of-range values are rejected.
-    if !confidence.is_finite() || !(0.0..=1.0).contains(&confidence) {
-        log::warn!("ffi_sentinel_dictation_fragment: invalid confidence {confidence}");
-        return false;
-    }
+        log::debug!("ffi_sentinel_dictation_fragment: doc_path={}, word_count={}, confidence={}, correction_count={}, transcript_len={}, speaker_output_active={}", doc_path, word_count, confidence, correction_count, transcript_text.len(), speaker_output_active);
+        if doc_path.len() > 4096 || transcript_text.len() > 65536 {
+            log::warn!("ffi_sentinel_dictation_fragment: params too long");
+            return false;
+        }
+        // confidence=0.0 is valid: it means "low confidence but recorded" (e.g. background noise).
+        // Only NaN, infinity, and out-of-range values are rejected.
+        if !confidence.is_finite() || !(0.0..=1.0).contains(&confidence) {
+            log::warn!("ffi_sentinel_dictation_fragment: invalid confidence {confidence}");
+            return false;
+        }
 
-    let text_hash = crate::utils::blake3_hash_bytes(transcript_text.as_bytes());
+        let text_hash = crate::utils::blake3_hash_bytes(transcript_text.as_bytes());
 
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    sentinel.record_dictation_fragment(
-        &doc_path,
-        word_count,
-        confidence,
-        correction_count,
-        text_hash,
-        speaker_output_active,
-    )
+        sentinel.record_dictation_fragment(
+            &doc_path,
+            word_count,
+            confidence,
+            correction_count,
+            text_hash,
+            speaker_output_active,
+        )
     })
 }
 
@@ -638,23 +676,28 @@ pub fn ffi_sentinel_dictation_end(
     cross_window_similarity: f32,
 ) -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_dictation_end: doc_path={}, speaker_output_active={}, keystrokes_during={}, cross_window_similarity={}", doc_path, speaker_output_active, keystrokes_during, cross_window_similarity);
-    if doc_path.len() > 4096 {
-        log::warn!("ffi_sentinel_dictation_end: doc_path too long");
-        return false;
-    }
-    if !cross_window_similarity.is_finite() {
-        log::warn!("ffi_sentinel_dictation_end: invalid cross_window_similarity {cross_window_similarity}");
-        return false;
-    }
-    let cross_window_similarity = cross_window_similarity.clamp(0.0, 1.0);
+        log::debug!("ffi_sentinel_dictation_end: doc_path={}, speaker_output_active={}, keystrokes_during={}, cross_window_similarity={}", doc_path, speaker_output_active, keystrokes_during, cross_window_similarity);
+        if doc_path.len() > 4096 {
+            log::warn!("ffi_sentinel_dictation_end: doc_path too long");
+            return false;
+        }
+        if !cross_window_similarity.is_finite() {
+            log::warn!("ffi_sentinel_dictation_end: invalid cross_window_similarity {cross_window_similarity}");
+            return false;
+        }
+        let cross_window_similarity = cross_window_similarity.clamp(0.0, 1.0);
 
-    let sentinel = match get_running_sentinel() {
-        Some(s) => s,
-        None => return false,
-    };
+        let sentinel = match get_running_sentinel() {
+            Some(s) => s,
+            None => return false,
+        };
 
-    sentinel.end_dictation(&doc_path, speaker_output_active, keystrokes_during, cross_window_similarity)
+        sentinel.end_dictation(
+            &doc_path,
+            speaker_output_active,
+            keystrokes_during,
+            cross_window_similarity,
+        )
     })
 }
 

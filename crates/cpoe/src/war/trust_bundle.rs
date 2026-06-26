@@ -186,8 +186,7 @@ pub fn pinned_bundle() -> Vec<CaBundleEntry> {
     // the rotation runbook (docs/ca_rotation.md) documents the update procedure.
     vec![CaBundleEntry {
         kid: "a77d85cc10cc677d".to_string(),
-        pubkey_hex: "c7ff2220542bd8c130355580c14666e786111b97beae142003ceeb4a51084575"
-            .to_string(),
+        pubkey_hex: "c7ff2220542bd8c130355580c14666e786111b97beae142003ceeb4a51084575".to_string(),
         not_before: "2026-06-18T00:00:00Z".to_string(),
         not_after: "2036-06-17T23:59:59Z".to_string(),
     }]
@@ -204,7 +203,10 @@ pub fn load_bundle(config: &TrustBundleConfig) -> Vec<CaBundleEntry> {
     // 1. Fresh cache hit.
     if cache_is_fresh(&config.local_cache_path, config.max_cache_age_secs) {
         if let Some(entries) = load_from_cache(&config.local_cache_path) {
-            log::debug!("trust_bundle: loaded {} keys from fresh cache", entries.len());
+            log::debug!(
+                "trust_bundle: loaded {} keys from fresh cache",
+                entries.len()
+            );
             return entries;
         }
     }
@@ -368,6 +370,9 @@ mod tests {
 
     #[test]
     fn test_cache_freshness_missing_file() {
-        assert!(!cache_is_fresh(Path::new("/nonexistent/path/bundle.json"), 3600));
+        assert!(!cache_is_fresh(
+            Path::new("/nonexistent/path/bundle.json"),
+            3600
+        ));
     }
 }

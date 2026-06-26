@@ -108,7 +108,11 @@ pub fn ffi_list_archives() -> FfiArchiveListResult {
 /// Query events for a file path across both active and archive databases.
 /// Returns events within the given nanosecond timestamp range.
 #[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_query_events_spanning(path: String, start_ns: i64, end_ns: i64) -> FfiSpanningQueryResult {
+pub fn ffi_query_events_spanning(
+    path: String,
+    start_ns: i64,
+    end_ns: i64,
+) -> FfiSpanningQueryResult {
     catch_ffi_panic!(@err FfiSpanningQueryResult, {
     log::debug!("ffi_query_events_spanning: path={}, start_ns={}, end_ns={}", path, start_ns, end_ns);
     let db_path = try_ffi!(

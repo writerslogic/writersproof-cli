@@ -114,8 +114,7 @@ impl ZoneProfile {
 
         for i in 0..8 {
             if zone_dwell_counts[i] > 0 {
-                profile.zone_dwell_means[i] =
-                    zone_dwell_sums[i] / zone_dwell_counts[i] as f64;
+                profile.zone_dwell_means[i] = zone_dwell_sums[i] / zone_dwell_counts[i] as f64;
             }
         }
 
@@ -185,16 +184,18 @@ impl WeightedDistribution for ZoneProfile {
             let denom = mag_a.sqrt() * mag_b.sqrt();
             if denom > 0.0 {
                 let cos = dot / denom;
-                if cos.is_finite() { cos.clamp(0.0, 1.0) } else { 0.5 }
+                if cos.is_finite() {
+                    cos.clamp(0.0, 1.0)
+                } else {
+                    0.5
+                }
             } else {
                 0.5
             }
         };
 
-        crate::utils::Probability::clamp(
-            freq_sim * 0.30 + trans_sim * 0.40 + dwell_sim * 0.30,
-        )
-        .get()
+        crate::utils::Probability::clamp(freq_sim * 0.30 + trans_sim * 0.40 + dwell_sim * 0.30)
+            .get()
     }
 
     fn weighted_merge(&mut self, other: &Self, self_weight: f64, other_weight: f64) {

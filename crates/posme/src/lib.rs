@@ -22,9 +22,9 @@ pub mod seed;
 #[cfg(feature = "prover")]
 pub mod init;
 #[cfg(feature = "prover")]
-pub mod step;
-#[cfg(feature = "prover")]
 pub mod prover;
+#[cfg(feature = "prover")]
+pub mod step;
 
 pub mod verifier;
 

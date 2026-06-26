@@ -122,7 +122,12 @@ impl EvidenceSigner for P256SigningKey {
 }
 
 pub fn sign_evidence_cose(payload: &[u8], signer: &dyn EvidenceSigner) -> Result<Vec<u8>> {
-    cose_sign1(payload, signer, coset::Header::default(), coset::Header::default())
+    cose_sign1(
+        payload,
+        signer,
+        coset::Header::default(),
+        coset::Header::default(),
+    )
 }
 
 /// C2PA 2.4 COSE_Sign1: x5chain in protected header, detached payload (§13.2).
@@ -357,9 +362,9 @@ pub fn verify_countersigned_packet(
     // Verify outer (CA) signature and extract inner .cpoe bytes.
     let outer = parse_cose_sign1(countersigned_bytes)?;
     verify_cose_sign1_ed25519(&outer, ca_verifying_key)?;
-    let inner_bytes = outer
-        .payload
-        .ok_or_else(|| Error::Crypto("Missing inner payload in countersigned packet".to_string()))?;
+    let inner_bytes = outer.payload.ok_or_else(|| {
+        Error::Crypto("Missing inner payload in countersigned packet".to_string())
+    })?;
 
     // Verify inner (author) signature and extract evidence payload.
     verify_evidence_cose(&inner_bytes, author_verifying_key)
@@ -426,15 +431,15 @@ mod tests {
         let countersigned = countersign_packet(&cpoe, &ca_key).expect("countersign");
 
         // Strip the CA signature
-        let recovered = strip_countersignature(&countersigned, &ca_key.verifying_key())
-            .expect("strip");
+        let recovered =
+            strip_countersignature(&countersigned, &ca_key.verifying_key()).expect("strip");
 
         // Recovered bytes must be identical to original .cpoe
         assert_eq!(recovered, cpoe);
 
         // Original still verifies independently
-        let payload = verify_evidence_cose(&recovered, &author_key.verifying_key())
-            .expect("verify original");
+        let payload =
+            verify_evidence_cose(&recovered, &author_key.verifying_key()).expect("verify original");
         assert_eq!(payload, b"fake-evidence-cbor-payload-for-testing");
     }
 

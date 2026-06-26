@@ -50,12 +50,15 @@ fn entropy_trigger_lock_contention_bench() {
             h.finalize().into()
         };
         let mut map = sessions.write().unwrap();
-        map.insert(path.clone(), SessionState {
-            jitter_hash_state,
-            last_checkpoint_ns: 0,
-            keystroke_count: 0,
-            last_checkpoint_keystrokes: 0,
-        });
+        map.insert(
+            path.clone(),
+            SessionState {
+                jitter_hash_state,
+                last_checkpoint_ns: 0,
+                keystroke_count: 0,
+                last_checkpoint_keystrokes: 0,
+            },
+        );
     }
 
     // Background thread: simulates checkpoint contention.
@@ -129,9 +132,7 @@ fn entropy_trigger_lock_contention_bench() {
         // Entropy trigger check (mirrors sentinel/event_handlers.rs:318-332).
         let elapsed_since_cp = timestamp_ns.saturating_sub(session.last_checkpoint_ns);
         if elapsed_since_cp >= ENTROPY_CHECKPOINT_MIN_NS {
-            let trigger = u32::from_be_bytes(
-                session.jitter_hash_state[..4].try_into().unwrap(),
-            );
+            let trigger = u32::from_be_bytes(session.jitter_hash_state[..4].try_into().unwrap());
             if trigger < ENTROPY_TRIGGER_THRESHOLD {
                 trigger_count += 1;
                 trigger_timestamps.push(timestamp_ns);
@@ -164,18 +165,16 @@ fn entropy_trigger_lock_contention_bench() {
         let idx = (p as f64 / 100.0 * (sorted.len() - 1) as f64).round() as usize;
         sorted[idx.min(sorted.len() - 1)]
     };
-    let mean = |vals: &[f64]| -> f64 {
-        vals.iter().sum::<f64>() / vals.len().max(1) as f64
-    };
-    let max_val = |vals: &[f64]| -> f64 {
-        vals.iter().cloned().fold(0.0f64, f64::max)
-    };
+    let mean = |vals: &[f64]| -> f64 { vals.iter().sum::<f64>() / vals.len().max(1) as f64 };
+    let max_val = |vals: &[f64]| -> f64 { vals.iter().cloned().fold(0.0f64, f64::max) };
 
     let sim_duration_s = BURST_KEYSTROKES as f64 * INTERVAL_MS as f64 / 1000.0;
 
     println!("\n=== Entropy Checkpoint Lock Contention Benchmark ===");
-    println!("Burst: {} keystrokes at {}ms intervals ({:.0} WPM)",
-        BURST_KEYSTROKES, INTERVAL_MS,
+    println!(
+        "Burst: {} keystrokes at {}ms intervals ({:.0} WPM)",
+        BURST_KEYSTROKES,
+        INTERVAL_MS,
         60_000.0 / INTERVAL_MS as f64 / 5.0,
     );
     println!("Simulated duration: {:.1}s", sim_duration_s);
@@ -205,21 +204,27 @@ fn entropy_trigger_lock_contention_bench() {
     println!("  triggers fired:     {}", trigger_count);
     println!("  simulated time:     {:.1}s", sim_duration_s);
     if trigger_count > 0 {
-        println!("  effective rate:     1 per {:.1}s",
-            sim_duration_s / trigger_count as f64);
-        let intervals: Vec<f64> = trigger_timestamps.windows(2)
+        println!(
+            "  effective rate:     1 per {:.1}s",
+            sim_duration_s / trigger_count as f64
+        );
+        let intervals: Vec<f64> = trigger_timestamps
+            .windows(2)
             .map(|w| (w[1] - w[0]) as f64 / 1_000_000_000.0)
             .collect();
         if !intervals.is_empty() {
             println!("  mean interval:      {:.1}s", mean(&intervals));
-            println!("  min interval:       {:.1}s",
-                intervals.iter().cloned().fold(f64::MAX, f64::min));
+            println!(
+                "  min interval:       {:.1}s",
+                intervals.iter().cloned().fold(f64::MAX, f64::min)
+            );
             println!("  max interval:       {:.1}s", max_val(&intervals));
         }
     }
 
     println!("\n--- Background Checkpoint Contention ---");
-    let cp_us: Vec<f64> = checkpoint_durations.iter()
+    let cp_us: Vec<f64> = checkpoint_durations
+        .iter()
         .map(|d| d.as_micros() as f64)
         .collect();
     if !cp_us.is_empty() {
@@ -258,7 +263,8 @@ fn entropy_trigger_lock_contention_bench() {
         assert!(
             gap_ns >= ENTROPY_CHECKPOINT_MIN_NS,
             "Trigger gap {}ns violates MIN_NS {}",
-            gap_ns, ENTROPY_CHECKPOINT_MIN_NS,
+            gap_ns,
+            ENTROPY_CHECKPOINT_MIN_NS,
         );
     }
 }

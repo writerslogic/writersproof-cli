@@ -195,9 +195,8 @@ fn compute_dwell_metrics(thirds_ns: &[u64; 3]) -> ([f64; 3], f64) {
     // Gini coefficient for 3 values: G = (sum of |xi - xj|) / (2 * n * mean)
     let n = 3.0;
     let mean = 1.0 / n;
-    let abs_diff_sum = (dist[0] - dist[1]).abs()
-        + (dist[0] - dist[2]).abs()
-        + (dist[1] - dist[2]).abs();
+    let abs_diff_sum =
+        (dist[0] - dist[1]).abs() + (dist[0] - dist[2]).abs() + (dist[1] - dist[2]).abs();
     let gini = if mean > 0.0 {
         (abs_diff_sum / (2.0 * n * mean)).min(1.0)
     } else {
@@ -288,7 +287,11 @@ mod tests {
             acc.record_scroll_magnitude(m);
         }
         let m = analyze(&acc).unwrap();
-        assert!(m.scroll_velocity_cv > 0.3, "human-like CV={}", m.scroll_velocity_cv);
+        assert!(
+            m.scroll_velocity_cv > 0.3,
+            "human-like CV={}",
+            m.scroll_velocity_cv
+        );
     }
 
     #[test]
@@ -299,7 +302,11 @@ mod tests {
             acc.record_scroll_magnitude(3.0);
         }
         let m = analyze(&acc).unwrap();
-        assert!(m.scroll_velocity_cv < 0.05, "uniform CV={}", m.scroll_velocity_cv);
+        assert!(
+            m.scroll_velocity_cv < 0.05,
+            "uniform CV={}",
+            m.scroll_velocity_cv
+        );
     }
 
     #[test]
@@ -309,7 +316,11 @@ mod tests {
         let ys: Vec<f64> = (0..100).map(|i| i as f64 * 10.0).collect();
         add_position_samples(&mut acc, &ys);
         let m = analyze(&acc).unwrap();
-        assert!(m.position_entropy > 2.0, "dispersed entropy={}", m.position_entropy);
+        assert!(
+            m.position_entropy > 2.0,
+            "dispersed entropy={}",
+            m.position_entropy
+        );
     }
 
     #[test]
@@ -320,7 +331,11 @@ mod tests {
         let ys: Vec<f64> = (0..20).map(|_| 500.0).collect();
         add_position_samples(&mut acc, &ys);
         let m = analyze(&acc).unwrap();
-        assert!(m.position_entropy < 0.01, "clustered entropy={}", m.position_entropy);
+        assert!(
+            m.position_entropy < 0.01,
+            "clustered entropy={}",
+            m.position_entropy
+        );
     }
 
     #[test]
@@ -328,13 +343,15 @@ mod tests {
         let mut acc = make_acc();
         add_scrolls(&mut acc, 10, 5, 0);
         let ys = vec![
-            100.0, 200.0, 300.0, 400.0, 500.0,
-            400.0, 300.0, 200.0,
-            300.0, 400.0, 500.0, 600.0,
+            100.0, 200.0, 300.0, 400.0, 500.0, 400.0, 300.0, 200.0, 300.0, 400.0, 500.0, 600.0,
         ];
         add_position_samples(&mut acc, &ys);
         let m = analyze(&acc).unwrap();
-        assert!(m.read_back_frequency > 0.2, "read_back={}", m.read_back_frequency);
+        assert!(
+            m.read_back_frequency > 0.2,
+            "read_back={}",
+            m.read_back_frequency
+        );
     }
 
     #[test]
@@ -342,7 +359,10 @@ mod tests {
         let mut acc = make_acc();
         add_scrolls(&mut acc, 5, 5, 0);
         acc.dwell_thirds_ns = [1000, 1000, 1000];
-        add_position_samples(&mut acc, &(0..20).map(|i| i as f64 * 50.0).collect::<Vec<_>>());
+        add_position_samples(
+            &mut acc,
+            &(0..20).map(|i| i as f64 * 50.0).collect::<Vec<_>>(),
+        );
         let m = analyze(&acc).unwrap();
         assert!(m.dwell_gini < 0.05, "uniform gini={}", m.dwell_gini);
         for &d in &m.dwell_distribution {
@@ -355,7 +375,10 @@ mod tests {
         let mut acc = make_acc();
         add_scrolls(&mut acc, 5, 5, 0);
         acc.dwell_thirds_ns = [0, 0, 3000];
-        add_position_samples(&mut acc, &(0..20).map(|i| i as f64 * 50.0).collect::<Vec<_>>());
+        add_position_samples(
+            &mut acc,
+            &(0..20).map(|i| i as f64 * 50.0).collect::<Vec<_>>(),
+        );
         let m = analyze(&acc).unwrap();
         assert!(m.dwell_gini > 0.5, "concentrated gini={}", m.dwell_gini);
     }
@@ -366,16 +389,21 @@ mod tests {
         add_scrolls(&mut acc, 15, 12, 20);
         acc.direction_reversals = 10;
         acc.scroll_before_edit_count = 15;
-        for &m in &[1.0, 5.0, 2.0, 8.0, 3.0, 7.0, 1.0, 6.0, 4.0, 9.0,
-                    2.0, 6.0, 3.0, 7.0, 4.0, 5.0, 1.0, 8.0, 3.0, 6.0,
-                    2.0, 7.0, 4.0, 5.0, 3.0, 8.0, 1.0] {
+        for &m in &[
+            1.0, 5.0, 2.0, 8.0, 3.0, 7.0, 1.0, 6.0, 4.0, 9.0, 2.0, 6.0, 3.0, 7.0, 4.0, 5.0, 1.0,
+            8.0, 3.0, 6.0, 2.0, 7.0, 4.0, 5.0, 3.0, 8.0, 1.0,
+        ] {
             acc.record_scroll_magnitude(m);
         }
         let ys: Vec<f64> = (0..100).map(|i| i as f64 * 10.0).collect();
         add_position_samples(&mut acc, &ys);
         acc.dwell_thirds_ns = [800, 1200, 1000];
         let m = analyze(&acc).unwrap();
-        assert!(m.composite_score > 0.5, "cognitive composite={}", m.composite_score);
+        assert!(
+            m.composite_score > 0.5,
+            "cognitive composite={}",
+            m.composite_score
+        );
     }
 
     #[test]
@@ -392,7 +420,11 @@ mod tests {
         add_position_samples(&mut acc, &ys);
         acc.dwell_thirds_ns = [0, 0, 3000];
         let m = analyze(&acc).unwrap();
-        assert!(m.composite_score < 0.20, "transcriptive composite={}", m.composite_score);
+        assert!(
+            m.composite_score < 0.20,
+            "transcriptive composite={}",
+            m.composite_score
+        );
     }
 
     #[test]
@@ -400,7 +432,12 @@ mod tests {
         let bins = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
         let e = compute_bin_entropy(&bins);
         let max = 10.0_f64.log2();
-        assert!((e - max).abs() < 0.01, "uniform entropy={} expected={}", e, max);
+        assert!(
+            (e - max).abs() < 0.01,
+            "uniform entropy={} expected={}",
+            e,
+            max
+        );
     }
 
     #[test]

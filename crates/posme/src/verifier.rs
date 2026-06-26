@@ -35,7 +35,10 @@ fn validate_jitter_entropy(entanglement_points: &[(u32, [u8; 32])]) -> Result<()
     let mean = sum / total_bytes as f64;
     let variance = (sum_sq / total_bytes as f64) - (mean * mean);
     if variance < MIN_JITTER_BYTE_VARIANCE {
-        return Err(PosmeError::jitter_entropy(variance, MIN_JITTER_BYTE_VARIANCE));
+        return Err(PosmeError::jitter_entropy(
+            variance,
+            MIN_JITTER_BYTE_VARIANCE,
+        ));
     }
     Ok(())
 }
@@ -134,7 +137,9 @@ pub fn verify(seed: &[u8], proof: &PosmeProof) -> Result<()> {
         };
         let expected_causal = posme_hash(&[DST_CAUSAL, seed, &i2osp(w.index)]);
         if w.index == 0 && bool::from(w.block.data.ct_ne(&expected_data)) {
-            return Err(PosmeError::verification_failed("init block 0 data mismatch"));
+            return Err(PosmeError::verification_failed(
+                "init block 0 data mismatch",
+            ));
         }
         if bool::from(w.block.causal.ct_ne(&expected_causal)) {
             return Err(PosmeError::verification_failed(format!(
@@ -195,9 +200,11 @@ pub fn verify(seed: &[u8], proof: &PosmeProof) -> Result<()> {
             .challenged_steps
             .iter()
             .find(|s| s.step_id == step_b_id)
-            .ok_or_else(|| PosmeError::verification_failed(format!(
-                "challenged step {step_b_id} missing from proof"
-            )))?
+            .ok_or_else(|| {
+                PosmeError::verification_failed(format!(
+                    "challenged step {step_b_id} missing from proof"
+                ))
+            })?
             .cursor_in;
         if let Some(jh) = entangle_map.get(&step_a) {
             transcript_a = posme_hash(&[b"PoSME-entangle-v1", &transcript_a, jh]);
@@ -566,11 +573,10 @@ mod tests {
     fn recursive_provenance_tampered_writer_fails() {
         let seed = b"tamper-writer";
         let mut proof = prover::execute(seed, &test_params_depth2()).unwrap();
-        let tampered = proof.challenged_steps.iter_mut().find_map(|sp| {
-            sp.writers
-                .iter_mut()
-                .find(|w| w.step_witness.is_some())
-        });
+        let tampered = proof
+            .challenged_steps
+            .iter_mut()
+            .find_map(|sp| sp.writers.iter_mut().find(|w| w.step_witness.is_some()));
         if let Some(w) = tampered {
             w.step_witness.as_mut().unwrap().write.new_block.data[0] ^= 0xff;
         }
@@ -581,11 +587,10 @@ mod tests {
     fn recursive_provenance_wrong_writer_step_id_fails() {
         let seed = b"wrong-writer-id";
         let mut proof = prover::execute(seed, &test_params_depth2()).unwrap();
-        let tampered = proof.challenged_steps.iter_mut().find_map(|sp| {
-            sp.writers
-                .iter_mut()
-                .find(|w| w.step_witness.is_some())
-        });
+        let tampered = proof
+            .challenged_steps
+            .iter_mut()
+            .find_map(|sp| sp.writers.iter_mut().find(|w| w.step_witness.is_some()));
         if let Some(w) = tampered {
             w.writer_step_id = w.writer_step_id.wrapping_add(1);
         }

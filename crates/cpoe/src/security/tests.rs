@@ -49,8 +49,8 @@ mod integration_tests {
         // Constant intervals would trigger the monotonic-timing detector
         // (CV < 0.10), so we add realistic human jitter.
         let intervals: [i64; 20] = [
-            130, 145, 120, 155, 110, 140, 160, 125, 135, 150,
-            115, 145, 130, 165, 120, 140, 155, 125, 135, 130,
+            130, 145, 120, 155, 110, 140, 160, 125, 135, 150, 115, 145, 130, 165, 120, 140, 155,
+            125, 135, 130,
         ];
         let mut ts = now_ms - 5000;
         for interval in &intervals {

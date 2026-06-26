@@ -238,17 +238,28 @@ pub fn analyze_error_fingerprint(corrections: &[CorrectionEvent]) -> Option<Erro
     }
 
     let total = corrections.len() as f64;
-    let semantic_count = corrections.iter().filter(|c| matches!(
-        c.correction_type,
-        CorrectionType::SemanticRevision | CorrectionType::WordDeletion
-    )).count() as f64;
-    let visual_count = corrections.iter().filter(|c| matches!(
-        c.correction_type,
-        CorrectionType::VisualConfusion | CorrectionType::BackfillInsertion
-    )).count() as f64;
-    let typo_count = corrections.iter().filter(|c|
-        c.correction_type == CorrectionType::SingleCharTypo
-    ).count() as f64;
+    let semantic_count = corrections
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.correction_type,
+                CorrectionType::SemanticRevision | CorrectionType::WordDeletion
+            )
+        })
+        .count() as f64;
+    let visual_count = corrections
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.correction_type,
+                CorrectionType::VisualConfusion | CorrectionType::BackfillInsertion
+            )
+        })
+        .count() as f64;
+    let typo_count = corrections
+        .iter()
+        .filter(|c| c.correction_type == CorrectionType::SingleCharTypo)
+        .count() as f64;
 
     let semantic_ratio = semantic_count / total;
     let visual_error_ratio = visual_count / total;
@@ -311,7 +322,8 @@ pub fn compute_baseline_deviation(
         // How many standard deviations away from personal baseline?
         if baseline.std_sid_ratio > 0.1 {
             let z_sid = ((t.sentence_initiation_ratio - baseline.mean_sid_ratio)
-                / baseline.std_sid_ratio).abs();
+                / baseline.std_sid_ratio)
+                .abs();
             deviations.push(z_sid);
         }
         let z_bigram = (t.bigram_fluency_ratio - baseline.mean_bigram_fluency).abs();
@@ -421,8 +433,8 @@ pub fn classify_writing_mode(
     // If signals strongly disagree (one says cognitive, another says transcriptive),
     // that's harder to produce naturally than through selective faking.
     let spoofing_penalty = compute_spoofing_penalty(temporal, content, transcription);
-    let confidence = ((total_weight / 1.0).min(1.0) * (layers.len() as f64 / 3.0))
-        * (1.0 - spoofing_penalty);
+    let confidence =
+        ((total_weight / 1.0).min(1.0) * (layers.len() as f64 / 3.0)) * (1.0 - spoofing_penalty);
 
     let mode = if spoofing_penalty > 0.5 {
         // Strong disagreement between signals: likely spoofing attempt.
@@ -503,10 +515,10 @@ mod tests {
             .map(|i| {
                 let tier = (i % 4) as u8 + 1;
                 let pause = match tier {
-                    1 => 150,  // Common: short pause
-                    2 => 250,  // Medium: moderate
-                    3 => 400,  // Uncommon: longer
-                    _ => 700,  // Rare: long retrieval delay
+                    1 => 150, // Common: short pause
+                    2 => 250, // Medium: moderate
+                    3 => 400, // Uncommon: longer
+                    _ => 700, // Rare: long retrieval delay
                 };
                 WordBoundaryEvent {
                     pre_word_pause_ms: pause,
@@ -516,7 +528,10 @@ mod tests {
             .collect();
 
         let r = compute_lrd_correlation(&events).unwrap();
-        assert!(r > 0.8, "Expected high correlation for cognitive pattern, got {r}");
+        assert!(
+            r > 0.8,
+            "Expected high correlation for cognitive pattern, got {r}"
+        );
     }
 
     #[test]
@@ -530,21 +545,38 @@ mod tests {
             .collect();
 
         let r = compute_lrd_correlation(&events).unwrap();
-        assert!(r.abs() < 0.2, "Expected low correlation for transcription, got {r}");
+        assert!(
+            r.abs() < 0.2,
+            "Expected low correlation for transcription, got {r}"
+        );
     }
 
     #[test]
     fn test_non_append_cognitive() {
         // Cognitive: lots of inserts, deletes, jumps.
         let ops = vec![
-            EditOp::Append, EditOp::Append, EditOp::Append,
-            EditOp::Delete, EditOp::Delete, EditOp::Delete, EditOp::Delete, // 4-char deletion
-            EditOp::Insert, EditOp::Insert,
-            EditOp::Append, EditOp::Append,
+            EditOp::Append,
+            EditOp::Append,
+            EditOp::Append,
+            EditOp::Delete,
+            EditOp::Delete,
+            EditOp::Delete,
+            EditOp::Delete, // 4-char deletion
+            EditOp::Insert,
+            EditOp::Insert,
+            EditOp::Append,
+            EditOp::Append,
             EditOp::CursorJump,
-            EditOp::Insert, EditOp::Insert, EditOp::Insert,
-            EditOp::Append, EditOp::Append, EditOp::Append, EditOp::Append,
-            EditOp::Delete, EditOp::Delete, EditOp::Delete, // 3-char deletion
+            EditOp::Insert,
+            EditOp::Insert,
+            EditOp::Insert,
+            EditOp::Append,
+            EditOp::Append,
+            EditOp::Append,
+            EditOp::Append,
+            EditOp::Delete,
+            EditOp::Delete,
+            EditOp::Delete, // 3-char deletion
         ];
         let (ratio, mean_del) = compute_edit_topology(&ops);
         assert!(ratio > 0.4, "ratio={ratio}");
@@ -588,8 +620,12 @@ mod tests {
         // Add cognitive edits: insertions and multi-char deletions.
         for i in (10..50).step_by(5) {
             edit_ops[i] = EditOp::Delete;
-            if i + 1 < 50 { edit_ops[i + 1] = EditOp::Delete; }
-            if i + 2 < 50 { edit_ops[i + 2] = EditOp::Delete; }
+            if i + 1 < 50 {
+                edit_ops[i + 1] = EditOp::Delete;
+            }
+            if i + 2 < 50 {
+                edit_ops[i + 2] = EditOp::Delete;
+            }
         }
         edit_ops.push(EditOp::Insert);
         edit_ops.push(EditOp::Insert);
@@ -598,7 +634,8 @@ mod tests {
         let metrics = analyze_cognitive_content(&word_events, &edit_ops);
         assert!(
             metrics.cognitive_probability > 0.6,
-            "prob={}", metrics.cognitive_probability
+            "prob={}",
+            metrics.cognitive_probability
         );
     }
 
@@ -616,7 +653,8 @@ mod tests {
         let metrics = analyze_cognitive_content(&word_events, &edit_ops);
         assert!(
             metrics.cognitive_probability < 0.4,
-            "prob={}", metrics.cognitive_probability
+            "prob={}",
+            metrics.cognitive_probability
         );
     }
 
@@ -644,14 +682,18 @@ mod tests {
 
         let verdict = classify_writing_mode(Some(&temporal), Some(&content), None);
         assert_eq!(verdict.mode, WritingMode::Cognitive);
-        assert!(verdict.cognitive_score > 0.7, "score={}", verdict.cognitive_score);
+        assert!(
+            verdict.cognitive_score > 0.7,
+            "score={}",
+            verdict.cognitive_score
+        );
         assert_eq!(verdict.layers_used.len(), 2);
     }
 
     #[test]
     fn test_unified_transcriptive_verdict() {
-        use cpoe_jitter::cognitive::CognitiveTemporalMetrics;
         use super::super::transcription::TranscriptionAnalysis;
+        use cpoe_jitter::cognitive::CognitiveTemporalMetrics;
 
         let temporal = CognitiveTemporalMetrics {
             sentence_initiation_ratio: 2.5,
@@ -673,7 +715,11 @@ mod tests {
 
         let verdict = classify_writing_mode(Some(&temporal), None, Some(&transcription));
         assert_eq!(verdict.mode, WritingMode::Transcriptive);
-        assert!(verdict.cognitive_score < 0.3, "score={}", verdict.cognitive_score);
+        assert!(
+            verdict.cognitive_score < 0.3,
+            "score={}",
+            verdict.cognitive_score
+        );
     }
 
     #[test]
@@ -685,8 +731,8 @@ mod tests {
 
     #[test]
     fn test_spoofing_detected() {
-        use cpoe_jitter::cognitive::CognitiveTemporalMetrics;
         use super::super::transcription::TranscriptionAnalysis;
+        use cpoe_jitter::cognitive::CognitiveTemporalMetrics;
 
         // Temporal says cognitive (faked pauses) but structural says transcriptive.
         let temporal = CognitiveTemporalMetrics {
@@ -709,41 +755,103 @@ mod tests {
 
         let verdict = classify_writing_mode(Some(&temporal), None, Some(&transcription));
         // Should detect disagreement (temporal=0.85, structural=0.1).
-        assert!(verdict.spoofing_indicator > 0.3,
-            "spoofing={}", verdict.spoofing_indicator);
+        assert!(
+            verdict.spoofing_indicator > 0.3,
+            "spoofing={}",
+            verdict.spoofing_indicator
+        );
     }
 
     #[test]
     fn test_error_fingerprint_cognitive() {
         let corrections = vec![
-            CorrectionEvent { correction_type: CorrectionType::WordDeletion, char_count: 7 },
-            CorrectionEvent { correction_type: CorrectionType::SemanticRevision, char_count: 12 },
-            CorrectionEvent { correction_type: CorrectionType::SingleCharTypo, char_count: 1 },
-            CorrectionEvent { correction_type: CorrectionType::SemanticRevision, char_count: 8 },
-            CorrectionEvent { correction_type: CorrectionType::WordDeletion, char_count: 5 },
-            CorrectionEvent { correction_type: CorrectionType::SingleCharTypo, char_count: 1 },
-            CorrectionEvent { correction_type: CorrectionType::SemanticRevision, char_count: 15 },
+            CorrectionEvent {
+                correction_type: CorrectionType::WordDeletion,
+                char_count: 7,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SemanticRevision,
+                char_count: 12,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SingleCharTypo,
+                char_count: 1,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SemanticRevision,
+                char_count: 8,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::WordDeletion,
+                char_count: 5,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SingleCharTypo,
+                char_count: 1,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SemanticRevision,
+                char_count: 15,
+            },
         ];
         let fp = analyze_error_fingerprint(&corrections).unwrap();
         assert!(fp.semantic_ratio > 0.5, "semantic={}", fp.semantic_ratio);
-        assert!(fp.mean_correction_size > 4.0, "size={}", fp.mean_correction_size);
-        assert!(fp.cognitive_probability > 0.6, "prob={}", fp.cognitive_probability);
+        assert!(
+            fp.mean_correction_size > 4.0,
+            "size={}",
+            fp.mean_correction_size
+        );
+        assert!(
+            fp.cognitive_probability > 0.6,
+            "prob={}",
+            fp.cognitive_probability
+        );
     }
 
     #[test]
     fn test_error_fingerprint_transcriptive() {
         let corrections = vec![
-            CorrectionEvent { correction_type: CorrectionType::SingleCharTypo, char_count: 1 },
-            CorrectionEvent { correction_type: CorrectionType::SingleCharTypo, char_count: 1 },
-            CorrectionEvent { correction_type: CorrectionType::VisualConfusion, char_count: 2 },
-            CorrectionEvent { correction_type: CorrectionType::SingleCharTypo, char_count: 1 },
-            CorrectionEvent { correction_type: CorrectionType::BackfillInsertion, char_count: 3 },
-            CorrectionEvent { correction_type: CorrectionType::SingleCharTypo, char_count: 1 },
+            CorrectionEvent {
+                correction_type: CorrectionType::SingleCharTypo,
+                char_count: 1,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SingleCharTypo,
+                char_count: 1,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::VisualConfusion,
+                char_count: 2,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SingleCharTypo,
+                char_count: 1,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::BackfillInsertion,
+                char_count: 3,
+            },
+            CorrectionEvent {
+                correction_type: CorrectionType::SingleCharTypo,
+                char_count: 1,
+            },
         ];
         let fp = analyze_error_fingerprint(&corrections).unwrap();
-        assert!(fp.visual_error_ratio > 0.2, "visual={}", fp.visual_error_ratio);
-        assert!(fp.mean_correction_size < 2.0, "size={}", fp.mean_correction_size);
-        assert!(fp.cognitive_probability < 0.4, "prob={}", fp.cognitive_probability);
+        assert!(
+            fp.visual_error_ratio > 0.2,
+            "visual={}",
+            fp.visual_error_ratio
+        );
+        assert!(
+            fp.mean_correction_size < 2.0,
+            "size={}",
+            fp.mean_correction_size
+        );
+        assert!(
+            fp.cognitive_probability < 0.4,
+            "prob={}",
+            fp.cognitive_probability
+        );
     }
 
     #[test]

@@ -108,7 +108,10 @@ mod tests {
     #[test]
     fn addr_varies_with_index() {
         let cursor = posme_hash(&[b"cursor"]);
-        assert_ne!(addr_from(&cursor, 0, 1 << 24), addr_from(&cursor, 1, 1 << 24));
+        assert_ne!(
+            addr_from(&cursor, 0, 1 << 24),
+            addr_from(&cursor, 1, 1 << 24)
+        );
     }
 
     #[test]
@@ -116,7 +119,10 @@ mod tests {
         let t = posme_hash(&[b"transcript"]);
         let r = posme_hash(&[b"roots"]);
         let params = PosmeParams::test();
-        assert_eq!(derive_challenges(&t, &r, &params), derive_challenges(&t, &r, &params));
+        assert_eq!(
+            derive_challenges(&t, &r, &params),
+            derive_challenges(&t, &r, &params)
+        );
     }
 
     #[test]

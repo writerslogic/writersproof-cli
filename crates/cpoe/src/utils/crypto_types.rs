@@ -158,7 +158,9 @@ impl Ed25519Pubkey {
         hex::encode(self.0)
     }
 
-    pub fn to_verifying_key(&self) -> Result<ed25519_dalek::VerifyingKey, ed25519_dalek::SignatureError> {
+    pub fn to_verifying_key(
+        &self,
+    ) -> Result<ed25519_dalek::VerifyingKey, ed25519_dalek::SignatureError> {
         ed25519_dalek::VerifyingKey::from_bytes(&self.0)
     }
 }
@@ -287,7 +289,12 @@ impl HexBytes {
 impl fmt::Debug for HexBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let preview = &self.0[..self.0.len().min(4)];
-        write!(f, "HexBytes({}… [{} bytes])", hex::encode(preview), self.0.len())
+        write!(
+            f,
+            "HexBytes({}… [{} bytes])",
+            hex::encode(preview),
+            self.0.len()
+        )
     }
 }
 

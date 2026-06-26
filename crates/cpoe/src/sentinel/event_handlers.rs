@@ -58,12 +58,19 @@ pub(super) struct EventLoopCtx {
     pub(super) keystroke_event_tx:
         Arc<Mutex<Option<mpsc::Sender<crate::platform::KeystrokeEvent>>>>,
     pub(super) platform: Arc<dyn crate::platform::PlatformProvider>,
-    pub(super) bundle_monitors:
-        Arc<Mutex<HashMap<String, super::bundle_monitor::BundleMonitor>>>,
+    pub(super) bundle_monitors: Arc<Mutex<HashMap<String, super::bundle_monitor::BundleMonitor>>>,
     pub(super) bundle_change_tx: Arc<Mutex<Option<mpsc::Sender<ChangeEvent>>>>,
-    pub(super) document_watcher: Arc<Mutex<Option<super::document_watcher::DocumentDirectoryWatcher>>>,
-    pub(super) content_fingerprints:
-        Arc<Mutex<Vec<(String, String, super::content_fingerprint::ContentFingerprint)>>>,
+    pub(super) document_watcher:
+        Arc<Mutex<Option<super::document_watcher::DocumentDirectoryWatcher>>>,
+    pub(super) content_fingerprints: Arc<
+        Mutex<
+            Vec<(
+                String,
+                String,
+                super::content_fingerprint::ContentFingerprint,
+            )>,
+        >,
+    >,
     pub(super) anchor_manager: Option<Arc<crate::anchors::AnchorManager>>,
     // Per-loop mutable timing state
     pub(super) last_keystroke_time: std::time::Instant,
@@ -97,8 +104,7 @@ impl EventLoopCtx {
     /// Swift layer which owns authentication.
     pub(super) fn handle_session_event(&self, event: SessionEvent) {
         match event.event_type {
-            SessionEventType::Started => {
-            }
+            SessionEventType::Started => {}
             SessionEventType::Ended => {
                 // Unwatch document directory and remove content fingerprint.
                 let doc_path = std::path::Path::new(&event.document_path);
@@ -110,19 +116,16 @@ impl EventLoopCtx {
                         }
                     }
                 }
-                self.content_fingerprints.lock_recover().retain(
-                    |(sid, _, _)| *sid != event.session_id,
-                );
+                self.content_fingerprints
+                    .lock_recover()
+                    .retain(|(sid, _, _)| *sid != event.session_id);
             }
             _ => {}
         }
     }
 
     /// Process a keystroke event (keyDown or keyUp).
-    pub(super) fn handle_keystroke_event(
-        &mut self,
-        event: crate::platform::KeystrokeEvent,
-    ) {
+    pub(super) fn handle_keystroke_event(&mut self, event: crate::platform::KeystrokeEvent) {
         let bridge_healthy = self.bridge_healthy_flag.load(Ordering::Acquire);
 
         // Handle keyUp: compute dwell time, backfill the matching
@@ -136,7 +139,9 @@ impl EventLoopCtx {
                     if self.bridge_healthy_flag.load(Ordering::Acquire) {
                         if let Some(session) = map.get_mut(path.as_str()) {
                             // Fast path: most keyUp events match the most recent keyDown.
-                            let matched = session.jitter_ring.last_mut()
+                            let matched = session
+                                .jitter_ring
+                                .last_mut()
                                 .filter(|s| s.timestamp_ns == down_ts);
                             if let Some(sample) = matched {
                                 sample.dwell_time_ns = Some(dwell);
@@ -160,20 +165,14 @@ impl EventLoopCtx {
 
         // Track this keyDown for dwell time (computed when keyUp arrives).
         // Evict stale entries (keys held > 10s are likely stuck).
-        self.pending_downs.retain(|_, ts| {
-            *ts > 0
-                && event.timestamp_ns.saturating_sub(*ts) < 10_000_000_000
-        });
+        self.pending_downs
+            .retain(|_, ts| *ts > 0 && event.timestamp_ns.saturating_sub(*ts) < 10_000_000_000);
         if self.pending_downs.len() < 256 {
-            self.pending_downs
-                .insert(event.keycode, event.timestamp_ns);
+            self.pending_downs.insert(event.keycode, event.timestamp_ns);
         }
 
         let duration_since_last_ns: u64 = if self.last_keydown_ts_ns > 0 {
-            crate::utils::ns_elapsed(
-                event.timestamp_ns,
-                self.last_keydown_ts_ns,
-            )
+            crate::utils::ns_elapsed(event.timestamp_ns, self.last_keydown_ts_ns)
         } else {
             0
         };
@@ -199,8 +198,7 @@ impl EventLoopCtx {
         // Feed global accumulator only for plausibly-human keystrokes.
         // Impossibly fast events (< 10ms IKI) are likely synthetic or
         // auto-repeat; skip them to avoid polluting biometric profile.
-        let plausible = duration_since_last_ns == 0
-            || duration_since_last_ns >= 10_000_000;
+        let plausible = duration_since_last_ns == 0 || duration_since_last_ns >= 10_000_000;
         if plausible {
             self.activity_accumulator
                 .write_recover()
@@ -220,9 +218,7 @@ impl EventLoopCtx {
                     .add_entropy(&entropy_hash[..8]);
             }
 
-            if let Some(ref mut collector) =
-                *self.style_collector.write_recover()
-            {
+            if let Some(ref mut collector) = *self.style_collector.write_recover() {
                 collector.record_keystroke(event.keycode, event.char_value);
             }
         }
@@ -232,11 +228,7 @@ impl EventLoopCtx {
             return;
         }
 
-        self.record_keystroke_to_session(
-            &event,
-            &sample,
-            duration_since_last_ns,
-        );
+        self.record_keystroke_to_session(&event, &sample, duration_since_last_ns);
         self.last_keystroke_time = std::time::Instant::now();
     }
 
@@ -291,10 +283,7 @@ impl EventLoopCtx {
             if was_buffered {
                 session.jitter_ring.undo_last();
             }
-            super::trace!(
-                "[KEYSTROKE] REJECTED conf={:.2}",
-                validation.confidence
-            );
+            super::trace!("[KEYSTROKE] REJECTED conf={:.2}", validation.confidence);
             return;
         }
 
@@ -340,11 +329,12 @@ impl EventLoopCtx {
         // the trigger threshold. Only fires if MIN_NS has elapsed since
         // the last checkpoint to protect the write lock budget.
         {
-            let elapsed_ns = sample.timestamp_ns.saturating_sub(session.last_checkpoint_ns);
+            let elapsed_ns = sample
+                .timestamp_ns
+                .saturating_sub(session.last_checkpoint_ns);
             if elapsed_ns >= super::types::ENTROPY_CHECKPOINT_MIN_NS {
-                let trigger = u32::from_be_bytes(
-                    session.jitter_hash_state[..4].try_into().unwrap(),
-                );
+                let trigger =
+                    u32::from_be_bytes(session.jitter_hash_state[..4].try_into().unwrap());
                 if trigger < super::types::ENTROPY_TRIGGER_THRESHOLD {
                     log::debug!(
                         "Entropy trigger fired: trigger={trigger} threshold={} elapsed={}ms",
@@ -367,10 +357,10 @@ impl EventLoopCtx {
         // because the FFI path increments keystroke_count asynchronously, causing
         // the modulo check to miss multiples of 100 from this code path.
         self.xwin_keystroke_counter += 1;
-        let should_cross_check = self.xwin_keystroke_counter % 50 == 0
-            && session.jitter_ring.len() >= 20;
-        let cross_check_ready = should_cross_check
-            && session.transcription_detector.buffer_len() >= 100;
+        let should_cross_check =
+            self.xwin_keystroke_counter % 50 == 0 && session.jitter_ring.len() >= 20;
+        let cross_check_ready =
+            should_cross_check && session.transcription_detector.buffer_len() >= 100;
         let (exclude_pid, exclude_window_id) = if cross_check_ready && event.target_pid > 0 {
             (Some(event.target_pid as u32), session.window_id)
         } else {
@@ -468,10 +458,7 @@ impl EventLoopCtx {
     }
 
     /// Process a mouse movement event.
-    pub(super) fn handle_mouse_event(
-        &mut self,
-        event: crate::platform::MouseEvent,
-    ) {
+    pub(super) fn handle_mouse_event(&mut self, event: crate::platform::MouseEvent) {
         let mouse_duration_ns: u64 = if self.last_mouse_ts_ns > 0 {
             crate::utils::ns_elapsed(event.timestamp_ns, self.last_mouse_ts_ns)
         } else {
@@ -479,8 +466,8 @@ impl EventLoopCtx {
         };
         self.last_mouse_ts_ns = event.timestamp_ns;
 
-        let is_during_typing = self.last_keystroke_time.elapsed()
-            < Duration::from_secs(TYPING_PROXIMITY_SECS);
+        let is_during_typing =
+            self.last_keystroke_time.elapsed() < Duration::from_secs(TYPING_PROXIMITY_SECS);
         if is_during_typing && event.is_micro_movement() {
             self.mouse_idle_stats.write_recover().record(&event);
         }
@@ -532,9 +519,8 @@ impl EventLoopCtx {
                         // Dwell in screen thirds
                         let y_range = sa.position_y_max - sa.position_y_min;
                         if sa.last_sample_ts_ns > 0 && y_range > 1.0 {
-                            let elapsed_ns = crate::utils::ns_elapsed(
-                                event.timestamp_ns, sa.last_sample_ts_ns,
-                            );
+                            let elapsed_ns =
+                                crate::utils::ns_elapsed(event.timestamp_ns, sa.last_sample_ts_ns);
                             let frac = ((sa.last_sample_y - sa.position_y_min) / y_range)
                                 .clamp(0.0, 0.999);
                             let third = (frac * 3.0) as usize;
@@ -556,14 +542,17 @@ impl EventLoopCtx {
 
     /// Handle a focus event and optionally start a bundle monitor.
     pub(super) fn handle_focus_branch(&mut self, event: FocusEvent) {
-        log::debug!("handle_focus_branch: type={:?} app={}", event.event_type, event.app_bundle_id);
+        log::debug!(
+            "handle_focus_branch: type={:?} app={}",
+            event.event_type,
+            event.app_bundle_id
+        );
 
         // ValueChanged events from kAXValueChangedNotification: correlate with
         // recent keystrokes to detect non-keyboard text input.
         if event.event_type == FocusEventType::ValueChanged {
             let recent_keystroke = self.last_keydown_ts_ns > 0
-                && self.last_keystroke_time.elapsed()
-                    < std::time::Duration::from_millis(500);
+                && self.last_keystroke_time.elapsed() < std::time::Duration::from_millis(500);
             if !recent_keystroke {
                 if let Some(ref path) = self.cached_focus {
                     let mut map = self.sessions.write_recover();
@@ -600,17 +589,10 @@ impl EventLoopCtx {
             if super::bundle_monitor::is_bundle_document(bundle_path) {
                 let mut monitors = self.bundle_monitors.lock_recover();
                 if !monitors.contains_key(path) {
-                    if let Some(ref tx) =
-                        *self.bundle_change_tx.lock_recover()
-                    {
-                        match super::bundle_monitor::start_bundle_monitor(
-                            bundle_path,
-                            tx.clone(),
-                        ) {
+                    if let Some(ref tx) = *self.bundle_change_tx.lock_recover() {
+                        match super::bundle_monitor::start_bundle_monitor(bundle_path, tx.clone()) {
                             Ok(monitor) => {
-                                self.restore_scrivener_state(
-                                    bundle_path, path,
-                                );
+                                self.restore_scrivener_state(bundle_path, path);
                                 monitors.insert(path.clone(), monitor);
                             }
                             Err(e) => {
@@ -628,7 +610,10 @@ impl EventLoopCtx {
         // Register the focused document's directory for file-save correlation.
         if let Some(ref path) = focus_path {
             let doc_path = std::path::Path::new(path.as_str());
-            if doc_path.is_absolute() && !path.starts_with("title://") && !path.starts_with("shadow://") {
+            if doc_path.is_absolute()
+                && !path.starts_with("title://")
+                && !path.starts_with("shadow://")
+            {
                 {
                     let mut guard = self.document_watcher.lock_recover();
                     if let Some(ref mut dw) = *guard {
@@ -639,69 +624,76 @@ impl EventLoopCtx {
                 }
 
                 // Debounce: skip fingerprint if same path was computed < 30s ago.
-                let should_fingerprint = self.last_fingerprint_time
+                let should_fingerprint = self
+                    .last_fingerprint_time
                     .get(path.as_str())
                     .map_or(true, |t| t.elapsed() >= Duration::from_secs(30));
 
                 if should_fingerprint {
-                self.last_fingerprint_time.insert(path.clone(), std::time::Instant::now());
+                    self.last_fingerprint_time
+                        .insert(path.clone(), std::time::Instant::now());
 
-                // Compute content fingerprint for cross-app session linking.
-                // File I/O runs on the blocking pool to avoid stalling the event loop.
-                let fp_doc = match crate::utils::fs::open_validated(doc_path) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        log::debug!("content_fingerprint: open_validated failed for {path:?}: {e}");
-                        // Don't return — cached_focus update below must still run.
-                        self.cached_focus = self.current_focus.read_recover().clone();
-                        return;
-                    }
-                };
-                let fp_sessions = Arc::clone(&self.sessions);
-                let fp_store = Arc::clone(&self.content_fingerprints);
-                let fp_path = path.clone();
-                tokio::task::spawn_blocking(move || {
-                    let (_canonical, file) = fp_doc;
-                    // Reject files >10 MB to avoid memory exhaustion.
-                    match file.metadata() {
-                        Ok(m) if m.len() > 10 * 1024 * 1024 => return,
+                    // Compute content fingerprint for cross-app session linking.
+                    // File I/O runs on the blocking pool to avoid stalling the event loop.
+                    let fp_doc = match crate::utils::fs::open_validated(doc_path) {
+                        Ok(v) => v,
                         Err(e) => {
-                            log::debug!("content_fingerprint: metadata failed: {e}");
+                            log::debug!(
+                                "content_fingerprint: open_validated failed for {path:?}: {e}"
+                            );
+                            // Don't return — cached_focus update below must still run.
+                            self.cached_focus = self.current_focus.read_recover().clone();
                             return;
                         }
-                        _ => {}
-                    }
-                    use std::io::Read;
-                    let mut content = String::new();
-                    if let Err(e) = std::io::BufReader::new(file).read_to_string(&mut content) {
-                        log::debug!("content_fingerprint: read failed: {e}");
-                        return;
-                    }
-                    let fp = super::content_fingerprint::ContentFingerprint::from_text(&content);
-                    let sessions_guard = fp_sessions.read_recover();
-                    if let Some(session) = sessions_guard.get(fp_path.as_str()) {
-                        let sid = session.session_id.clone();
-                        let app = session.app_bundle_id.clone();
-                        drop(sessions_guard);
+                    };
+                    let fp_sessions = Arc::clone(&self.sessions);
+                    let fp_store = Arc::clone(&self.content_fingerprints);
+                    let fp_path = path.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let (_canonical, file) = fp_doc;
+                        // Reject files >10 MB to avoid memory exhaustion.
+                        match file.metadata() {
+                            Ok(m) if m.len() > 10 * 1024 * 1024 => return,
+                            Err(e) => {
+                                log::debug!("content_fingerprint: metadata failed: {e}");
+                                return;
+                            }
+                            _ => {}
+                        }
+                        use std::io::Read;
+                        let mut content = String::new();
+                        if let Err(e) = std::io::BufReader::new(file).read_to_string(&mut content) {
+                            log::debug!("content_fingerprint: read failed: {e}");
+                            return;
+                        }
+                        let fp =
+                            super::content_fingerprint::ContentFingerprint::from_text(&content);
+                        let sessions_guard = fp_sessions.read_recover();
+                        if let Some(session) = sessions_guard.get(fp_path.as_str()) {
+                            let sid = session.session_id.clone();
+                            let app = session.app_bundle_id.clone();
+                            drop(sessions_guard);
 
-                        // Single lock acquisition for read + write to avoid TOCTOU.
-                        let mut store = fp_store.lock_recover();
-                        if let Some(link) = super::content_fingerprint::find_cross_app_match(
-                            &sid, &app, &fp, &store,
-                        ) {
-                            log::info!(
-                                "cross-app link detected: {} ({}) <-> {} ({}) distance={}",
-                                link.app_a, link.session_a_id,
-                                link.app_b, link.session_b_id,
-                                link.fingerprint_distance,
-                            );
+                            // Single lock acquisition for read + write to avoid TOCTOU.
+                            let mut store = fp_store.lock_recover();
+                            if let Some(link) = super::content_fingerprint::find_cross_app_match(
+                                &sid, &app, &fp, &store,
+                            ) {
+                                log::info!(
+                                    "cross-app link detected: {} ({}) <-> {} ({}) distance={}",
+                                    link.app_a,
+                                    link.session_a_id,
+                                    link.app_b,
+                                    link.session_b_id,
+                                    link.fingerprint_distance,
+                                );
+                            }
+                            if store.len() >= 1000 {
+                                store.drain(..100);
+                            }
+                            store.push((sid, app, fp));
                         }
-                        if store.len() >= 1000 {
-                            store.drain(..100);
-                        }
-                        store.push((sid, app, fp));
-                    }
-                });
+                    });
                 } // should_fingerprint
             }
         }
@@ -709,36 +701,20 @@ impl EventLoopCtx {
     }
 
     /// Parse Scrivener project map and restore segment counts from shadow.
-    fn restore_scrivener_state(
-        &self,
-        bundle_path: &std::path::Path,
-        path: &str,
-    ) {
-        if let Some(map) =
-            super::helpers::parse_scrivener_project_map(bundle_path)
-        {
-            let project_uuid =
-                map.uuid_to_title.keys().next().cloned();
+    fn restore_scrivener_state(&self, bundle_path: &std::path::Path, path: &str) {
+        if let Some(map) = super::helpers::parse_scrivener_project_map(bundle_path) {
+            let project_uuid = map.uuid_to_title.keys().next().cloned();
             // AUD-041: sessions(2) before cached_store(3).
             let mut sessions_map = self.sessions.write_recover();
             if let Some(session) = sessions_map.get_mut(path) {
                 if session.segment_counts.is_empty() {
                     if let Some(ref proj_uuid) = project_uuid {
                         let app_bid = session.app_bundle_id.clone();
-                        if let Some(ref store) =
-                            *self.cached_store.lock_recover()
-                        {
-                            if let Ok(Some(shadow)) =
-                                store.load_shadow_session(
-                                    &app_bid, proj_uuid,
-                                )
+                        if let Some(ref store) = *self.cached_store.lock_recover() {
+                            if let Ok(Some(shadow)) = store.load_shadow_session(&app_bid, proj_uuid)
                             {
-                                if let Some(ref json) =
-                                    shadow.segment_counts_json
-                                {
-                                    if let Ok(counts) =
-                                        serde_json::from_str(json)
-                                    {
+                                if let Some(ref json) = shadow.segment_counts_json {
+                                    if let Ok(counts) = serde_json::from_str(json) {
                                         session.segment_counts = counts;
                                     }
                                 }
@@ -783,11 +759,7 @@ impl EventLoopCtx {
         for path in &idle_paths {
             self.checkpoint_idle_session(path).await;
             self.persist_idle_session_stats(path);
-            end_session_sync(
-                path,
-                &self.sessions,
-                &self.session_events_tx,
-            );
+            end_session_sync(path, &self.sessions, &self.session_events_tx);
             self.bundle_monitors.lock_recover().remove(path);
             self.last_fingerprint_time.remove(path.as_str());
         }
@@ -797,10 +769,7 @@ impl EventLoopCtx {
             map.retain(|_, s| {
                 s.is_focused()
                     || s.keystroke_count > 0
-                    || s.start_time
-                        .elapsed()
-                        .unwrap_or_default()
-                        < Duration::from_secs(3600)
+                    || s.start_time.elapsed().unwrap_or_default() < Duration::from_secs(3600)
             });
         }
 
@@ -830,8 +799,7 @@ impl EventLoopCtx {
         let needs_checkpoint = {
             let map = self.sessions.read_recover();
             map.get(path).is_some_and(|s| {
-                s.keystroke_count > s.last_checkpoint_keystrokes
-                    && !path.starts_with("shadow://")
+                s.keystroke_count > s.last_checkpoint_keystrokes && !path.starts_with("shadow://")
             })
         };
         if !needs_checkpoint {
@@ -871,8 +839,7 @@ impl EventLoopCtx {
             .unwrap_or(0);
         let stats = crate::store::DocumentStats {
             file_path: path.to_string(),
-            total_keystrokes: i64::try_from(session.total_keystrokes())
-                .unwrap_or(i64::MAX),
+            total_keystrokes: i64::try_from(session.total_keystrokes()).unwrap_or(i64::MAX),
             total_focus_ms: session.total_focus_ms_cumulative(),
             session_count: i64::from(session.session_number + 1),
             total_duration_secs: session
@@ -908,9 +875,7 @@ impl EventLoopCtx {
                 guard.as_ref().is_some_and(|cap| !cap.is_tap_alive())
             };
             if tap_dead && self.tap_check_active.load(Ordering::SeqCst) {
-                log::error!(
-                    "CGEventTap died; attempting automatic recovery"
-                );
+                log::error!("CGEventTap died; attempting automatic recovery");
                 self.tap_check_active.store(false, Ordering::SeqCst);
                 needs_restart = true;
             }
@@ -921,17 +886,16 @@ impl EventLoopCtx {
             threads.retain(|t| !t.is_finished());
             let dead_count = had - threads.len();
             if dead_count > 0 {
-                log::error!(
-                    "{dead_count} bridge thread(s) died; attempting automatic recovery"
-                );
-                self.bridge_healthy_flag
-                    .store(false, Ordering::SeqCst);
+                log::error!("{dead_count} bridge thread(s) died; attempting automatic recovery");
+                self.bridge_healthy_flag.store(false, Ordering::SeqCst);
                 needs_restart = true;
             }
         }
         if let Some(ref h) = self.xwin_check_handle {
             if h.is_finished() {
-                log::warn!("cpoe-xwin-check worker thread exited; will respawn on next focus event");
+                log::warn!(
+                    "cpoe-xwin-check worker thread exited; will respawn on next focus event"
+                );
                 self.xwin_check_tx = None;
                 self.xwin_check_handle = None;
             }
@@ -939,7 +903,8 @@ impl EventLoopCtx {
         if needs_restart {
             // Cooldown: skip if last restart was < 30s ago.
             let now = std::time::Instant::now();
-            let cooldown_ok = self.last_capture_restart
+            let cooldown_ok = self
+                .last_capture_restart
                 .map_or(true, |t| now.duration_since(t) >= Duration::from_secs(30));
             if cooldown_ok {
                 self.last_capture_restart = Some(now);
@@ -970,8 +935,7 @@ impl EventLoopCtx {
     ///
     /// Falls back to the configured fixed interval when no nonce is available.
     pub(super) fn compute_next_checkpoint_interval(&self, base_secs: u64) -> Duration {
-        static ENTROPY_COUNTER: std::sync::atomic::AtomicU64 =
-            std::sync::atomic::AtomicU64::new(0);
+        static ENTROPY_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let counter = ENTROPY_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let nonce_bytes = {
@@ -1010,7 +974,10 @@ impl EventLoopCtx {
 
         log::debug!(
             "Entropy checkpoint interval: {}ms (base={}s, range=[{}ms,{}ms))",
-            interval_ms, base_secs, min_ms, min_ms + window_ms
+            interval_ms,
+            base_secs,
+            min_ms,
+            min_ms + window_ms
         );
         Duration::from_millis(interval_ms)
     }
@@ -1024,8 +991,7 @@ impl EventLoopCtx {
             let map = self.sessions.read_recover();
             map.iter()
                 .filter(|(p, s)| {
-                    s.keystroke_count > s.last_checkpoint_keystrokes
-                        && !p.starts_with("shadow://")
+                    s.keystroke_count > s.last_checkpoint_keystrokes && !p.starts_with("shadow://")
                 })
                 .map(|(p, _)| p.clone())
                 .collect()
@@ -1047,19 +1013,13 @@ impl EventLoopCtx {
             super::app_registry::probe_and_cache(bundle_id, app_name);
         }
 
-        let pending_taken =
-            self.pending_challenge.write_recover().take();
-        let challenge_nonce =
-            pending_taken.as_ref().map(|(n, _)| n.clone());
+        let pending_taken = self.pending_challenge.write_recover().take();
+        let challenge_nonce = pending_taken.as_ref().map(|(n, _)| n.clone());
         let nonce_id = pending_taken.and_then(|(_, id)| id);
 
         for path in &candidates {
             let skip_rest = self
-                .checkpoint_one_session(
-                    path,
-                    &challenge_nonce,
-                    &nonce_id,
-                )
+                .checkpoint_one_session(path, &challenge_nonce, &nonce_id)
                 .await;
             if skip_rest {
                 break;
@@ -1089,9 +1049,8 @@ impl EventLoopCtx {
         let captured_text = if path.starts_with("title://") {
             let session_info = {
                 let map = self.sessions.read_recover();
-                map.get(path).map(|s| {
-                    (s.app_bundle_id.clone(), s.window_title.reveal().to_string())
-                })
+                map.get(path)
+                    .map(|s| (s.app_bundle_id.clone(), s.window_title.reveal().to_string()))
             };
             session_info.and_then(|(bid, title)| {
                 let text = crate::platform::window_text::WindowTextCapture::capture_text_for_bundle_id_and_title(
@@ -1110,9 +1069,9 @@ impl EventLoopCtx {
 
         let (semantic_json, checkpoint_reason) = {
             let map = self.sessions.read_recover();
-            let sem = map.get(path).and_then(|s| {
-                serde_json::to_string(&s.semantic_counts).ok()
-            });
+            let sem = map
+                .get(path)
+                .and_then(|s| serde_json::to_string(&s.semantic_counts).ok());
             // Build checkpoint reason with forensic context from session state.
             let reason = if let Some(s) = map.get(path) {
                 let mut parts = vec!["Auto-checkpoint".to_string()];
@@ -1132,9 +1091,7 @@ impl EventLoopCtx {
                         1.0
                     };
                     if (multiplier - 1.0).abs() > f64::EPSILON {
-                        parts.push(format!(
-                            "[interval-multiplier: {multiplier:.1}x]"
-                        ));
+                        parts.push(format!("[interval-multiplier: {multiplier:.1}x]"));
                     }
                 }
                 parts.join(" ")
@@ -1168,15 +1125,10 @@ impl EventLoopCtx {
         });
 
         if let Some(event_hash) = committed {
-            self.confirm_nonce_for_checkpoint(
-                path, &event_hash, nonce_id,
-            );
+            self.confirm_nonce_for_checkpoint(path, &event_hash, nonce_id);
         }
         if committed.is_some() {
-            return self.post_checkpoint_work(
-                path,
-                challenge_nonce,
-            );
+            return self.post_checkpoint_work(path, challenge_nonce);
         }
         false
     }
@@ -1194,11 +1146,7 @@ impl EventLoopCtx {
     /// Persist stats, create text fragment, save snapshot, and HW co-sign
     /// after a successful checkpoint. Returns `true` to signal breaking out
     /// of the candidates loop (HW co-sign file-read failure).
-    fn post_checkpoint_work(
-        &self,
-        path: &str,
-        challenge_nonce: &Option<String>,
-    ) -> bool {
+    fn post_checkpoint_work(&self, path: &str, challenge_nonce: &Option<String>) -> bool {
         // AUD-041: signing_key must be acquired before sessions.
         let sk_opt = {
             let guard = self.signing_key_for_cp.read_recover();
@@ -1207,21 +1155,20 @@ impl EventLoopCtx {
         let session_snapshot = {
             let mut map = self.sessions.write_recover();
             map.get_mut(path).map(|session| {
-                session.last_checkpoint_keystrokes =
-                    session.keystroke_count;
+                session.last_checkpoint_keystrokes = session.keystroke_count;
                 session.checkpoint_count += 1;
                 (
                     session.total_keystrokes(),
                     session.total_focus_ms_cumulative(),
                     session.session_number,
-                    session.start_time
+                    session
+                        .start_time
                         .elapsed()
                         .map(|d| d.as_secs() as i64)
                         .unwrap_or(0),
-                    session.first_tracked_at
-                        .and_then(|t| {
-                            t.duration_since(std::time::UNIX_EPOCH).ok()
-                        })
+                    session
+                        .first_tracked_at
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                         .map(|d| d.as_secs() as i64)
                         .unwrap_or(0),
                     session.last_checkpoint_keystrokes,
@@ -1272,8 +1219,7 @@ impl EventLoopCtx {
         if let Some(ref mut store) = *self.cached_store.lock_recover() {
             let stats = crate::store::DocumentStats {
                 file_path: path.to_string(),
-                total_keystrokes: i64::try_from(total_ks)
-                    .unwrap_or(i64::MAX),
+                total_keystrokes: i64::try_from(total_ks).unwrap_or(i64::MAX),
                 total_focus_ms: focus_ms,
                 session_count: i64::from(session_num + 1),
                 total_duration_secs: duration_secs,
@@ -1285,9 +1231,7 @@ impl EventLoopCtx {
                 total_checkpoints: i64::try_from(checkpoint_count).unwrap_or(i64::MAX),
             };
             if let Err(e) = store.save_document_stats(&stats) {
-                log::warn!(
-                    "Failed to save document stats for {path}: {e}"
-                );
+                log::warn!("Failed to save document stats for {path}: {e}");
             }
 
             if let Some(frag_hash) = content_hash_opt {
@@ -1305,21 +1249,15 @@ impl EventLoopCtx {
             }
         }
 
-        if self.snapshots_flag.load(Ordering::SeqCst)
-            && !path.starts_with("shadow://")
-        {
+        if self.snapshots_flag.load(Ordering::SeqCst) && !path.starts_with("shadow://") {
             if let Some(ref sk) = sk_opt {
-                let snap_db =
-                    self.writersproof_dir.join("snapshots.db");
-                match crate::snapshot::SnapshotStore::open(&snap_db, sk)
-                {
+                let snap_db = self.writersproof_dir.join("snapshots.db");
+                match crate::snapshot::SnapshotStore::open(&snap_db, sk) {
                     Ok(mut snap_store) => {
                         let src = std::path::Path::new(path);
                         match std::fs::read_to_string(src) {
                             Ok(content) => {
-                                if let Err(e) =
-                                    snap_store.save(path, &content, false)
-                                {
+                                if let Err(e) = snap_store.save(path, &content, false) {
                                     log::debug!(
                                         "Snapshot save failed for \
                                          {path}: {e}"
@@ -1327,16 +1265,12 @@ impl EventLoopCtx {
                                 }
                             }
                             Err(e) => {
-                                log::debug!(
-                                    "Snapshot read failed for {path}: {e}"
-                                );
+                                log::debug!("Snapshot read failed for {path}: {e}");
                             }
                         }
                     }
                     Err(e) => {
-                        log::warn!(
-                            "Failed to open snapshot store: {e}"
-                        );
+                        log::warn!("Failed to open snapshot store: {e}");
                     }
                 }
             }
@@ -1345,15 +1279,13 @@ impl EventLoopCtx {
         if has_hw_sched {
             if let Some(ref tpm) = self.tpm_provider {
                 let Some(content_hash) = content_hash_opt else {
-                    log::warn!(
-                        "Skipping HW co-sign: content hash unavailable for {}",
-                        path
-                    );
+                    log::warn!("Skipping HW co-sign: content hash unavailable for {}", path);
                     return true;
                 };
                 let nonce_bytes_opt =
-                    challenge_nonce.as_ref().and_then(|nonce_hex| {
-                        match hex::decode(nonce_hex) {
+                    challenge_nonce
+                        .as_ref()
+                        .and_then(|nonce_hex| match hex::decode(nonce_hex) {
                             Ok(bytes) if bytes.len() == 32 => {
                                 let mut arr = [0u8; 32];
                                 arr.copy_from_slice(&bytes);
@@ -1366,8 +1298,7 @@ impl EventLoopCtx {
                                 );
                                 None
                             }
-                        }
-                    });
+                        });
 
                 // AUD-041: sessions(2) before cached_store(3).
                 let mut map = self.sessions.write_recover();
@@ -1378,9 +1309,7 @@ impl EventLoopCtx {
                         tpm.as_ref(),
                         &content_hash,
                         nonce_bytes_opt.as_ref(),
-                        store_guard
-                            .as_ref()
-                            .map(|s| (s, path)),
+                        store_guard.as_ref().map(|s| (s, path)),
                     );
                 }
             }
@@ -1402,10 +1331,8 @@ impl EventLoopCtx {
         frag_hash: [u8; 32],
         ecology_score: f64,
     ) {
-        let ts =
-            crate::store::text_fragments::current_timestamp_ms();
-        let nonce =
-            crate::store::text_fragments::generate_nonce();
+        let ts = crate::store::text_fragments::current_timestamp_ms();
+        let nonce = crate::store::text_fragments::generate_nonce();
         let ctx = if has_paste_ctx {
             crate::store::text_fragments::KeystrokeContext::PastedContent
         } else {
@@ -1414,21 +1341,14 @@ impl EventLoopCtx {
         let Some(sk) = sk else {
             return;
         };
-        let sig = crate::store::text_fragments::sign_fragment(
-            sk,
-            session_id,
-            &frag_hash,
-            ts,
-            &nonce,
-        );
+        let sig =
+            crate::store::text_fragments::sign_fragment(sk, session_id, &frag_hash, ts, &nonce);
         let fragment = crate::store::text_fragments::TextFragment {
             id: None,
             fragment_hash: frag_hash.to_vec(),
             session_id: session_id.to_string(),
-            source_app_bundle_id: Some(app_bundle_id.to_string())
-                .filter(|s| !s.is_empty()),
-            source_window_title: Some(window_title.to_string())
-                .filter(|s| !s.is_empty()),
+            source_app_bundle_id: Some(app_bundle_id.to_string()).filter(|s| !s.is_empty()),
+            source_window_title: Some(window_title.to_string()).filter(|s| !s.is_empty()),
             source_signature: sig.to_vec(),
             nonce: nonce.to_vec(),
             timestamp: ts,
@@ -1450,16 +1370,13 @@ impl EventLoopCtx {
             sync_state: None,
         };
         if let Err(e) = store.insert_text_fragment(&fragment) {
-            log::warn!(
-                "Failed to insert text fragment for {path}: {e}"
-            );
+            log::warn!("Failed to insert text fragment for {path}: {e}");
         }
     }
 
     /// React to permission state changes (revoked / restored).
     pub(super) fn handle_permission_check(&self) {
-        let current =
-            super::permission_monitor::PermissionState::current();
+        let current = super::permission_monitor::PermissionState::current();
         let mut guard = self.permission_state.lock_recover();
         let prev = *guard;
         if current == prev {
@@ -1467,9 +1384,7 @@ impl EventLoopCtx {
         }
         *guard = current;
         drop(guard);
-        if !current.keystroke_capture_allowed()
-            && prev.keystroke_capture_allowed()
-        {
+        if !current.keystroke_capture_allowed() && prev.keystroke_capture_allowed() {
             log::warn!(
                 "Permission revoked ({} → {}); stopping keystroke capture",
                 prev.as_str(),
@@ -1477,9 +1392,7 @@ impl EventLoopCtx {
             );
             *self.tap_check_capture.lock_recover() = None;
             self.tap_check_active.store(false, Ordering::SeqCst);
-        } else if current.keystroke_capture_allowed()
-            && !prev.keystroke_capture_allowed()
-        {
+        } else if current.keystroke_capture_allowed() && !prev.keystroke_capture_allowed() {
             log::info!(
                 "Permission restored ({} → {}); restarting keystroke capture",
                 prev.as_str(),
@@ -1503,47 +1416,31 @@ impl EventLoopCtx {
                     let h = std::thread::Builder::new()
                         .name("cpoe-keystroke-resume".into())
                         .spawn(move || {
-                            while r.load(Ordering::SeqCst)
-                                && a.load(Ordering::SeqCst)
-                            {
-                                match sync_rx.recv_timeout(
-                                    std::time::Duration::from_millis(100),
-                                ) {
+                            while r.load(Ordering::SeqCst) && a.load(Ordering::SeqCst) {
+                                match sync_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                                     Ok(ev) => {
                                         if tx.try_send(ev).is_err() {
                                             break;
                                         }
                                     }
-                                    Err(
-                                        std::sync::mpsc::RecvTimeoutError::Timeout,
-                                    ) => continue,
-                                    Err(
-                                        std::sync::mpsc::RecvTimeoutError::Disconnected,
-                                    ) => break,
+                                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                                 }
                             }
                         });
                     match h {
                         Ok(handle) => {
-                            let mut ts =
-                                self.bridge_health_threads.lock_recover();
+                            let mut ts = self.bridge_health_threads.lock_recover();
                             ts.retain(|t| !t.is_finished());
                             ts.push(handle);
-                            self.bridge_healthy_flag
-                                .store(true, Ordering::SeqCst);
+                            self.bridge_healthy_flag.store(true, Ordering::SeqCst);
                         }
-                        Err(e) => log::error!(
-                            "Failed to spawn keystroke-resume bridge: {e}"
-                        ),
+                        Err(e) => log::error!("Failed to spawn keystroke-resume bridge: {e}"),
                     }
                 }
-                Err(e) => log::warn!(
-                    "Keystroke restart failed after permission grant: {e}"
-                ),
+                Err(e) => log::warn!("Keystroke restart failed after permission grant: {e}"),
             },
-            Err(e) => log::warn!(
-                "Keystroke unavailable after permission grant: {e}"
-            ),
+            Err(e) => log::warn!("Keystroke unavailable after permission grant: {e}"),
         }
     }
 }

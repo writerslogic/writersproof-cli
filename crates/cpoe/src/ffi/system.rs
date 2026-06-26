@@ -146,58 +146,94 @@ pub fn ffi_init() -> FfiResult {
 /// Return the current engine status including tracked file count and SWF calibration.
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_status() -> FfiStatus {
-    catch_ffi_panic!(FfiStatus {
-        initialized: false,
-        data_dir: String::new(),
-        tracked_file_count: 0,
-        total_checkpoints: 0,
-        swf_iterations_per_second: 0,
-        error_message: Some("engine internal error".to_string()),
-    }, {
-        log::debug!("ffi_get_status called");
-        // SWF calibration is independent of engine init — always report it.
-        // Report 0 if not yet calibrated so the UI shows "Not calibrated".
-        let swf_iters = crate::ffi::forensics::calibrated_params()
-            .map(|p| p.iterations_per_second)
-            .unwrap_or(0);
+    catch_ffi_panic!(
+        FfiStatus {
+            initialized: false,
+            data_dir: String::new(),
+            tracked_file_count: 0,
+            total_checkpoints: 0,
+            swf_iterations_per_second: 0,
+            error_message: Some("engine internal error".to_string()),
+        },
+        {
+            log::debug!("ffi_get_status called");
+            // SWF calibration is independent of engine init — always report it.
+            // Report 0 if not yet calibrated so the UI shows "Not calibrated".
+            let swf_iters = crate::ffi::forensics::calibrated_params()
+                .map(|p| p.iterations_per_second)
+                .unwrap_or(0);
 
-        let data_dir = match get_data_dir() {
-            Some(d) => d,
-            None => {
+            let data_dir = match get_data_dir() {
+                Some(d) => d,
+                None => {
+                    return FfiStatus {
+                        initialized: false,
+                        data_dir: String::new(),
+                        tracked_file_count: 0,
+                        total_checkpoints: 0,
+                        swf_iterations_per_second: swf_iters,
+                        error_message: Some("Data directory not found".to_string()),
+                    };
+                }
+            };
+
+            let initialized = data_dir.exists() && data_dir.join("events.db").exists();
+            if !initialized {
                 return FfiStatus {
                     initialized: false,
-                    data_dir: String::new(),
-                    tracked_file_count: 0,
-                    total_checkpoints: 0,
-                    swf_iterations_per_second: swf_iters,
-                    error_message: Some("Data directory not found".to_string()),
-                };
-            }
-        };
-
-        let initialized = data_dir.exists() && data_dir.join("events.db").exists();
-        if !initialized {
-            return FfiStatus {
-                initialized: false,
-                data_dir: data_dir.display().to_string(),
-                tracked_file_count: 0,
-                total_checkpoints: 0,
-                swf_iterations_per_second: swf_iters,
-                error_message: None,
-            };
-        }
-
-        let store = match open_store() {
-            Ok(s) => s,
-            Err(e) => {
-                return FfiStatus {
-                    initialized: true,
                     data_dir: data_dir.display().to_string(),
                     tracked_file_count: 0,
                     total_checkpoints: 0,
                     swf_iterations_per_second: swf_iters,
-                    error_message: Some(e),
+                    error_message: None,
                 };
+            }
+
+            let store = match open_store() {
+                Ok(s) => s,
+                Err(e) => {
+                    return FfiStatus {
+                        initialized: true,
+                        data_dir: data_dir.display().to_string(),
+                        tracked_file_count: 0,
+                        total_checkpoints: 0,
+                        swf_iterations_per_second: swf_iters,
+                        error_message: Some(e),
+                    };
+                }
+            };
+
+            let files = store.list_files().unwrap_or_else(|e| {
+                log::warn!("store list_files failed: {e}");
+                Default::default()
+            });
+            let total_checkpoints: u64 = files
+                .iter()
+                .map(|(_, _, count)| u64::try_from(*count).unwrap_or(0))
+                .sum();
+
+            FfiStatus {
+                initialized: true,
+                data_dir: data_dir.display().to_string(),
+                tracked_file_count: u32::try_from(files.len()).unwrap_or(u32::MAX),
+                total_checkpoints,
+                swf_iterations_per_second: swf_iters,
+                error_message: None,
+            }
+        }
+    )
+}
+
+/// List all tracked files with their checkpoint counts and forensic scores.
+#[cfg_attr(feature = "ffi", uniffi::export)]
+pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
+    catch_ffi_panic!(vec![], {
+        log::debug!("ffi_list_tracked_files called");
+        let store = match open_store() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("ffi_list_tracked_files: failed to open store: {e}");
+                return vec![];
             }
         };
 
@@ -205,187 +241,156 @@ pub fn ffi_get_status() -> FfiStatus {
             log::warn!("store list_files failed: {e}");
             Default::default()
         });
-        let total_checkpoints: u64 = files
-            .iter()
-            .map(|(_, _, count)| u64::try_from(*count).unwrap_or(0))
-            .sum();
+        let mut seen_paths = std::collections::HashSet::new();
+        let mut result = Vec::with_capacity(files.len());
 
-        FfiStatus {
-            initialized: true,
-            data_dir: data_dir.display().to_string(),
-            tracked_file_count: u32::try_from(files.len()).unwrap_or(u32::MAX),
-            total_checkpoints,
-            swf_iterations_per_second: swf_iters,
-            error_message: None,
-        }
-    })
-}
+        // Get sentinel sessions for keystroke count enrichment
+        let sentinel_opt = crate::ffi::sentinel::get_sentinel();
+        let sentinel_sessions: Vec<_> = sentinel_opt
+            .as_ref()
+            .map(|s| s.sessions())
+            .unwrap_or_default();
 
-/// List all tracked files with their checkpoint counts and forensic scores.
-#[cfg_attr(feature = "ffi", uniffi::export)]
-pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
-    catch_ffi_panic!(vec![], {
-    log::debug!("ffi_list_tracked_files called");
-    let store = match open_store() {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("ffi_list_tracked_files: failed to open store: {e}");
-            return vec![];
-        }
-    };
+        // Batch-fetch all events in one query to avoid O(n) DB round-trips per file.
+        let mut all_events = store.get_all_events_grouped().unwrap_or_else(|e| {
+            log::error!("store get_all_events_grouped failed: {e}");
+            Default::default()
+        });
 
-    let files = store.list_files().unwrap_or_else(|e| {
-        log::warn!("store list_files failed: {e}");
-        Default::default()
-    });
-    let mut seen_paths = std::collections::HashSet::new();
-    let mut result = Vec::with_capacity(files.len());
+        // Batch-fetch all document stats in one query to avoid O(n) DB round-trips.
+        let all_doc_stats = store.load_all_document_stats().unwrap_or_else(|e| {
+            log::warn!("store load_all_document_stats failed: {e}");
+            Default::default()
+        });
 
-    // Get sentinel sessions for keystroke count enrichment
-    let sentinel_opt = crate::ffi::sentinel::get_sentinel();
-    let sentinel_sessions: Vec<_> = sentinel_opt
-        .as_ref()
-        .map(|s| s.sessions())
-        .unwrap_or_default();
+        for (path, last_ts, count) in files {
+            seen_paths.insert(path.clone());
+            let events = all_events.remove(&path).unwrap_or_default();
 
-    // Batch-fetch all events in one query to avoid O(n) DB round-trips per file.
-    let mut all_events = store.get_all_events_grouped().unwrap_or_else(|e| {
-        log::error!("store get_all_events_grouped failed: {e}");
-        Default::default()
-    });
+            let event_data = crate::ffi::helpers::events_to_forensic_data(&events);
+            let regions = std::collections::HashMap::new();
+            let metrics =
+                crate::forensics::analyze_forensics(&event_data, &regions, None, None, None);
 
-    // Batch-fetch all document stats in one query to avoid O(n) DB round-trips.
-    let all_doc_stats = store.load_all_document_stats().unwrap_or_else(|e| {
-        log::warn!("store load_all_document_stats failed: {e}");
-        Default::default()
-    });
+            // Enrich with keystroke count: prefer live session total, fall back
+            // to persisted cumulative stats from the batch-loaded map.
+            let session_keystrokes = sentinel_sessions
+                .iter()
+                .find(|s| s.path == path)
+                .map(|s| s.total_keystrokes())
+                .unwrap_or_else(|| {
+                    all_doc_stats
+                        .get(&path)
+                        .map(|stats| u64::try_from(stats.total_keystrokes).unwrap_or(0))
+                        .unwrap_or(0)
+                });
 
-    for (path, last_ts, count) in files {
-        seen_paths.insert(path.clone());
-        let events = all_events.remove(&path).unwrap_or_default();
-
-        let event_data = crate::ffi::helpers::events_to_forensic_data(&events);
-        let regions = std::collections::HashMap::new();
-        let metrics = crate::forensics::analyze_forensics(&event_data, &regions, None, None, None);
-
-        // Enrich with keystroke count: prefer live session total, fall back
-        // to persisted cumulative stats from the batch-loaded map.
-        let session_keystrokes = sentinel_sessions
-            .iter()
-            .find(|s| s.path == path)
-            .map(|s| s.total_keystrokes())
-            .unwrap_or_else(|| {
-                all_doc_stats
-                    .get(&path)
-                    .map(|stats| u64::try_from(stats.total_keystrokes).unwrap_or(0))
-                    .unwrap_or(0)
+            // Apply keystroke-to-content penalty: if the document grew significantly
+            // but has very few keystrokes, the content was likely injected/pasted.
+            let total_content_added: i64 = events.iter().fold(0i64, |acc, e| {
+                acc.saturating_add(e.size_delta.max(0) as i64)
             });
-
-        // Apply keystroke-to-content penalty: if the document grew significantly
-        // but has very few keystrokes, the content was likely injected/pasted.
-        let total_content_added: i64 = events.iter().fold(0i64, |acc, e| acc.saturating_add(e.size_delta.max(0) as i64));
-        let keystroke_ratio_penalty = if total_content_added > 50 && session_keystrokes < 10 {
-            // Content was added but barely any keystrokes recorded
-            let ratio = session_keystrokes as f64 / total_content_added as f64;
-            // A human types ~1 byte per keystroke; ratio < 0.1 is suspicious
-            if ratio < 0.1 {
-                0.8 // Severe penalty
-            } else if ratio < 0.3 {
-                0.4
+            let keystroke_ratio_penalty = if total_content_added > 50 && session_keystrokes < 10 {
+                // Content was added but barely any keystrokes recorded
+                let ratio = session_keystrokes as f64 / total_content_added as f64;
+                // A human types ~1 byte per keystroke; ratio < 0.1 is suspicious
+                if ratio < 0.1 {
+                    0.8 // Severe penalty
+                } else if ratio < 0.3 {
+                    0.4
+                } else {
+                    0.0
+                }
             } else {
                 0.0
-            }
-        } else {
-            0.0
-        };
+            };
 
-        let adjusted_score = crate::utils::Probability::clamp(
-            metrics.assessment_score.get() - keystroke_ratio_penalty,
-        )
-        .get();
-        let adjusted_risk = if keystroke_ratio_penalty >= 0.4 {
-            "HIGH".to_string()
-        } else {
-            metrics.risk_level.to_string()
-        };
+            let adjusted_score = crate::utils::Probability::clamp(
+                metrics.assessment_score.get() - keystroke_ratio_penalty,
+            )
+            .get();
+            let adjusted_risk = if keystroke_ratio_penalty >= 0.4 {
+                "HIGH".to_string()
+            } else {
+                metrics.risk_level.to_string()
+            };
 
-        let meets_threshold =
-            count > 0 && adjusted_score >= 0.6 && adjusted_risk == "LOW";
-
-        result.push(FfiTrackedFile {
-            path,
-            last_checkpoint_ns: last_ts,
-            checkpoint_count: count,
-            forensic_score: adjusted_score,
-            risk_level: adjusted_risk,
-            keystroke_count: session_keystrokes as u64,
-            meets_threshold,
-            is_active: false,
-        });
-    }
-
-    // Include sentinel auto-detected sessions that don't yet have checkpoints
-    if let Some(sentinel) = sentinel_opt.as_ref() {
-        let all_sessions = sentinel.sessions();
-        log::debug!(
-            "ffi_list_sessions: sentinel={} store={}",
-            all_sessions.len(),
-            result.len()
-        );
-        for s in &all_sessions {
-            log::debug!(
-                "  sentinel session: path={} keystrokes={} seen={}",
-                s.path,
-                s.keystroke_count,
-                seen_paths.contains(&s.path)
-            );
-        }
-        for session in all_sessions {
-            if session.path.starts_with("shadow://") {
-                continue; // Skip browser shadow sessions
-            }
-            // Canonicalize sentinel paths before comparing with store paths
-            // to avoid duplicates when the sentinel stores non-canonical paths.
-            let canonical_path = std::fs::canonicalize(&session.path)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| session.path.clone());
-            if seen_paths.contains(&canonical_path) {
-                continue; // Already in the store results
-            }
-            let elapsed_ns = session
-                .last_focus_time
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
-                .unwrap_or(0);
-            // Compute forensic score from per-document jitter + focus data.
-            let doc_samples = sentinel.document_jitter_samples(&session.path);
-            let forensic_score = crate::forensics::session_forensic_score(
-                &doc_samples,
-                &Vec::from(session.focus_switches.clone()),
-                session.total_focus_ms,
-            );
+            let meets_threshold = count > 0 && adjusted_score >= 0.6 && adjusted_risk == "LOW";
 
             result.push(FfiTrackedFile {
-                path: session.path.clone(),
-                last_checkpoint_ns: elapsed_ns,
-                checkpoint_count: 0,
-                forensic_score,
-                risk_level: "pending".to_string(),
-                keystroke_count: session.total_keystrokes(),
-                meets_threshold: false,
-                is_active: session.has_focus,
+                path,
+                last_checkpoint_ns: last_ts,
+                checkpoint_count: count,
+                forensic_score: adjusted_score,
+                risk_level: adjusted_risk,
+                keystroke_count: session_keystrokes as u64,
+                meets_threshold,
+                is_active: false,
             });
         }
-    }
 
-    if result.len() > FFI_MAX_TRACKED_FILES {
-        log::warn!(
-            "ffi_list_tracked_files: capping result at {FFI_MAX_TRACKED_FILES} (got {})",
-            result.len()
-        );
-        result.truncate(FFI_MAX_TRACKED_FILES);
-    }
-    result
+        // Include sentinel auto-detected sessions that don't yet have checkpoints
+        if let Some(sentinel) = sentinel_opt.as_ref() {
+            let all_sessions = sentinel.sessions();
+            log::debug!(
+                "ffi_list_sessions: sentinel={} store={}",
+                all_sessions.len(),
+                result.len()
+            );
+            for s in &all_sessions {
+                log::debug!(
+                    "  sentinel session: path={} keystrokes={} seen={}",
+                    s.path,
+                    s.keystroke_count,
+                    seen_paths.contains(&s.path)
+                );
+            }
+            for session in all_sessions {
+                if session.path.starts_with("shadow://") {
+                    continue; // Skip browser shadow sessions
+                }
+                // Canonicalize sentinel paths before comparing with store paths
+                // to avoid duplicates when the sentinel stores non-canonical paths.
+                let canonical_path = std::fs::canonicalize(&session.path)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|_| session.path.clone());
+                if seen_paths.contains(&canonical_path) {
+                    continue; // Already in the store results
+                }
+                let elapsed_ns = session
+                    .last_focus_time
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
+                    .unwrap_or(0);
+                // Compute forensic score from per-document jitter + focus data.
+                let doc_samples = sentinel.document_jitter_samples(&session.path);
+                let forensic_score = crate::forensics::session_forensic_score(
+                    &doc_samples,
+                    &Vec::from(session.focus_switches.clone()),
+                    session.total_focus_ms,
+                );
+
+                result.push(FfiTrackedFile {
+                    path: session.path.clone(),
+                    last_checkpoint_ns: elapsed_ns,
+                    checkpoint_count: 0,
+                    forensic_score,
+                    risk_level: "pending".to_string(),
+                    keystroke_count: session.total_keystrokes(),
+                    meets_threshold: false,
+                    is_active: session.has_focus,
+                });
+            }
+        }
+
+        if result.len() > FFI_MAX_TRACKED_FILES {
+            log::warn!(
+                "ffi_list_tracked_files: capping result at {FFI_MAX_TRACKED_FILES} (got {})",
+                result.len()
+            );
+            result.truncate(FFI_MAX_TRACKED_FILES);
+        }
+        result
     })
 }
 
@@ -612,7 +617,12 @@ pub fn ffi_engine_version() -> FfiEngineVersion {
                 engine_version: env!("CARGO_PKG_VERSION").to_string(),
                 contract_version: 1,
                 features,
-                build_profile: if cfg!(debug_assertions) { "debug" } else { "release" }.to_string(),
+                build_profile: if cfg!(debug_assertions) {
+                    "debug"
+                } else {
+                    "release"
+                }
+                .to_string(),
             }
         }
     )
@@ -623,7 +633,11 @@ pub fn ffi_engine_version() -> FfiEngineVersion {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_get_snapshot_path(file_path: String, checkpoint_ordinal: u64) -> String {
     catch_ffi_panic!(String::new(), {
-        log::debug!("ffi_get_snapshot_path: file_path={}, checkpoint_ordinal={}", file_path, checkpoint_ordinal);
+        log::debug!(
+            "ffi_get_snapshot_path: file_path={}, checkpoint_ordinal={}",
+            file_path,
+            checkpoint_ordinal
+        );
         if crate::sentinel::helpers::validate_path(&file_path).is_err() {
             return String::new();
         }
@@ -667,7 +681,10 @@ pub fn ffi_hash_file(path: String) -> String {
         match crate::crypto::hash_file(&file_path) {
             Ok(hash) => hex::encode(hash),
             Err(e) => {
-                log::warn!("ffi_hash_file: hash failed for {}: {e}", file_path.display());
+                log::warn!(
+                    "ffi_hash_file: hash failed for {}: {e}",
+                    file_path.display()
+                );
                 String::new()
             }
         }

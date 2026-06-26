@@ -56,10 +56,7 @@ pub fn embed_in_pdf(document_bytes: &[u8], jumbf: &[u8]) -> Result<Vec<u8>> {
     let stream_footer = b"\nendstream\nendobj\n";
 
     // Build the cross-reference table for the new object.
-    let xref_offset = update_offset
-        + stream_header.len()
-        + jumbf.len()
-        + stream_footer.len();
+    let xref_offset = update_offset + stream_header.len() + jumbf.len() + stream_footer.len();
 
     // Minimal xref section for the single new object.
     let xref = format!(
@@ -256,9 +253,7 @@ pub fn hash_with_exclusions(data: &[u8], exclusions: &[HashExclusion]) -> [u8; 3
 fn find_last_startxref(data: &[u8]) -> Option<usize> {
     // Search backwards from the end for "startxref"
     let needle = b"startxref";
-    let pos = data
-        .windows(needle.len())
-        .rposition(|w| w == needle)?;
+    let pos = data.windows(needle.len()).rposition(|w| w == needle)?;
 
     // Parse the number after "startxref\n"
     let after = &data[pos + needle.len()..];
@@ -323,7 +318,10 @@ mod tests {
             .windows(jumbf.len())
             .position(|w| w == jumbf)
             .expect("JUMBF data must be in embedded PDF");
-        assert!(jumbf_pos > pdf.len(), "JUMBF must be in the appended update");
+        assert!(
+            jumbf_pos > pdf.len(),
+            "JUMBF must be in the appended update"
+        );
 
         // %%EOF at the end
         assert!(

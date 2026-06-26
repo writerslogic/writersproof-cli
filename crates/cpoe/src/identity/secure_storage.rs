@@ -240,10 +240,7 @@ impl SecureStorage {
     /// Store the identity seed in the platform keychain.
     pub fn save_seed(seed: &[u8]) -> Result<()> {
         if seed.len() != 32 {
-            bail!(
-                "seed must be exactly 32 bytes, got {}",
-                seed.len()
-            );
+            bail!("seed must be exactly 32 bytes, got {}", seed.len());
         }
         Self::save(SEED_ACCOUNT, seed)?;
         *SEED_CACHE.lock_recover() = Some(ProtectedBuf::new(seed.to_vec()));
@@ -283,10 +280,7 @@ impl SecureStorage {
     /// Store the HMAC key in the platform keychain and update the cache.
     pub fn save_hmac_key(key: &[u8]) -> Result<()> {
         if key.len() != 32 {
-            bail!(
-                "HMAC key must be exactly 32 bytes, got {}",
-                key.len()
-            );
+            bail!("HMAC key must be exactly 32 bytes, got {}", key.len());
         }
         Self::save(HMAC_ACCOUNT, key)?;
         *HMAC_CACHE.lock_recover() = Some(ProtectedBuf::new(key.to_vec()));
@@ -316,10 +310,7 @@ impl SecureStorage {
     /// Store the Ed25519 signing key seed (32 bytes) in the platform keychain.
     pub fn save_signing_key(seed: &[u8]) -> Result<()> {
         if seed.len() != 32 {
-            bail!(
-                "signing key must be exactly 32 bytes, got {}",
-                seed.len()
-            );
+            bail!("signing key must be exactly 32 bytes, got {}", seed.len());
         }
         Self::save(SIGNING_KEY_ACCOUNT, seed)
     }
@@ -758,13 +749,12 @@ fn migrate_macos_keychain() {
             let acct = account.to_string();
             let (tx, rx) = std::sync::mpsc::channel();
             let _ = std::thread::spawn(move || {
-                let result = keyring::Entry::new(&svc, &acct)
-                    .and_then(|e| e.get_password());
+                let result = keyring::Entry::new(&svc, &acct).and_then(|e| e.get_password());
                 let _ = tx.send(result);
             });
             let password = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
                 Ok(Ok(pw)) => Some(pw),
-                Ok(Err(_)) => None,   // No entry or access denied
+                Ok(Err(_)) => None, // No entry or access denied
                 Err(_) => {
                     log::warn!(
                         "Keychain migration timed out for {account} (authorization dialog blocked?)"
@@ -796,9 +786,7 @@ fn migrate_macos_keychain() {
                     }
                     Err(e) => {
                         encoded.zeroize();
-                        log::warn!(
-                            "Keychain migration: base64 decode failed for {account}: {e}"
-                        );
+                        log::warn!("Keychain migration: base64 decode failed for {account}: {e}");
                         any_failed = true;
                     }
                 }

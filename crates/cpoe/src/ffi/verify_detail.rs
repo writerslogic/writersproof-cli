@@ -43,160 +43,166 @@ pub struct FfiVerifyDetail {
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_verify_evidence_detailed(path: String) -> FfiVerifyDetail {
-    catch_ffi_panic!(FfiVerifyDetail {
-        success: false,
-        overall_valid: false,
-        signature_valid: false,
-        chain_integrity: false,
-        checkpoint_count: 0,
-        swf_iterations_per_second: 0,
-        attestation_tier: 0,
-        attestation_tier_label: String::new(),
-        unsigned_checkpoints: vec![],
-        ordinal_gaps: vec![],
-        warnings: vec![],
-        checkpoint_flags: vec![],
-        error_message: Some("engine internal error".to_string()),
-    }, {
-    log::debug!("ffi_verify_evidence_detailed: path={}", path);
-    let (_, tier_num, tier_label) = detect_attestation_tier_info();
-
-    let err = |msg: String| FfiVerifyDetail {
-        success: false,
-        overall_valid: false,
-        signature_valid: false,
-        chain_integrity: false,
-        checkpoint_count: 0,
-        swf_iterations_per_second: 0,
-        attestation_tier: tier_num,
-        attestation_tier_label: tier_label.clone(),
-        unsigned_checkpoints: vec![],
-        ordinal_gaps: vec![],
-        warnings: vec![],
-        checkpoint_flags: vec![],
-        error_message: Some(msg),
-    };
-
-    let path = match crate::sentinel::helpers::validate_path(&path) {
-        Ok(p) => p,
-        Err(e) => return err(e),
-    };
-
-    let data = match std::fs::read(&path) {
-        Ok(d) => d,
-        Err(e) => return err(format!("Failed to read file: {e}")),
-    };
-
-    // Evidence files may be wrapped in a COSE_Sign1 envelope (signed exports)
-    // or raw CBOR (legacy/unsigned). Try to unwrap COSE first, then decode.
-    let cbor_payload = unwrap_cose_or_raw(&data);
-
-    // Try wire format (EvidencePacketWire) first since ffi_export_evidence produces it,
-    // then fall back to the legacy engine Packet format.
-    let packet = match EvidencePacketWire::decode_cbor(&cbor_payload) {
-        Ok(wire) => wire_to_packet(&wire),
-        Err(_) => match Packet::decode(&cbor_payload) {
-            Ok(p) => p,
-            Err(e) => return err(format!("Failed to decode evidence: {e}")),
+    catch_ffi_panic!(
+        FfiVerifyDetail {
+            success: false,
+            overall_valid: false,
+            signature_valid: false,
+            chain_integrity: false,
+            checkpoint_count: 0,
+            swf_iterations_per_second: 0,
+            attestation_tier: 0,
+            attestation_tier_label: String::new(),
+            unsigned_checkpoints: vec![],
+            ordinal_gaps: vec![],
+            warnings: vec![],
+            checkpoint_flags: vec![],
+            error_message: Some("engine internal error".to_string()),
         },
-    };
+        {
+            log::debug!("ffi_verify_evidence_detailed: path={}", path);
+            let (_, tier_num, tier_label) = detect_attestation_tier_info();
 
-    let checkpoint_count = packet.checkpoints.len() as u32;
-    let swf_ips = packet.vdf_params.iterations_per_second;
+            let err = |msg: String| FfiVerifyDetail {
+                success: false,
+                overall_valid: false,
+                signature_valid: false,
+                chain_integrity: false,
+                checkpoint_count: 0,
+                swf_iterations_per_second: 0,
+                attestation_tier: tier_num,
+                attestation_tier_label: tier_label.clone(),
+                unsigned_checkpoints: vec![],
+                ordinal_gaps: vec![],
+                warnings: vec![],
+                checkpoint_flags: vec![],
+                error_message: Some(msg),
+            };
 
-    let opts = VerifyOptions {
-        vdf_params: packet.vdf_params,
-        expected_nonce: None,
-        run_forensics: true,
-        trusted_public_key: None,
-        verify_anchors: true,
-    };
+            let path = match crate::sentinel::helpers::validate_path(&path) {
+                Ok(p) => p,
+                Err(e) => return err(e),
+            };
 
-    let result = full_verify(&packet, &opts);
+            let data = match std::fs::read(&path) {
+                Ok(d) => d,
+                Err(e) => return err(format!("Failed to read file: {e}")),
+            };
 
-    let signature_valid = result.signature.unwrap_or(false);
-    let chain_integrity = result.structural;
-    let overall_valid = chain_integrity
-        && signature_valid
-        && result.duration.plausible
-        && result.key_provenance.signing_key_consistent;
+            // Evidence files may be wrapped in a COSE_Sign1 envelope (signed exports)
+            // or raw CBOR (legacy/unsigned). Try to unwrap COSE first, then decode.
+            let cbor_payload = unwrap_cose_or_raw(&data);
 
-    let unsigned_checkpoints: Vec<u64> = if packet.key_hierarchy.is_none() {
-        (0..checkpoint_count as u64).collect()
-    } else {
-        let signed_ordinals: std::collections::HashSet<u64> = packet
-            .key_hierarchy
-            .as_ref()
-            .map(|kh| kh.checkpoint_signatures.iter().map(|s| s.ordinal).collect())
-            .unwrap_or_default();
-        (0..checkpoint_count as u64)
-            .filter(|o| !signed_ordinals.contains(o))
-            .collect()
-    };
+            // Try wire format (EvidencePacketWire) first since ffi_export_evidence produces it,
+            // then fall back to the legacy engine Packet format.
+            let packet = match EvidencePacketWire::decode_cbor(&cbor_payload) {
+                Ok(wire) => wire_to_packet(&wire),
+                Err(_) => match Packet::decode(&cbor_payload) {
+                    Ok(p) => p,
+                    Err(e) => return err(format!("Failed to decode evidence: {e}")),
+                },
+            };
 
-    let mut ordinal_gaps = Vec::new();
-    for (i, cp) in packet.checkpoints.iter().enumerate() {
-        let expected = i as u64;
-        if cp.ordinal != expected {
-            ordinal_gaps.push(FfiOrdinalGap {
-                expected,
-                actual: cp.ordinal,
-            });
-        }
-    }
+            let checkpoint_count = packet.checkpoints.len() as u32;
+            let swf_ips = packet.vdf_params.iterations_per_second;
 
-    let checkpoint_flags: Vec<FfiCheckpointFlag> = result
-        .per_checkpoint
-        .as_ref()
-        .map(|pcp| {
-            pcp.checkpoint_flags
-                .iter()
-                .map(|cf| {
-                    let reason = if cf.flagged {
-                        let mut reasons = Vec::new();
-                        if cf.timing_cv > 1.5 {
-                            reasons.push(format!("high timing CV ({:.2})", cf.timing_cv));
-                        }
-                        if cf.max_velocity_bps > 50.0 {
-                            reasons.push(format!("high velocity ({:.0} B/s)", cf.max_velocity_bps));
-                        }
-                        if cf.all_append {
-                            reasons.push("all-append pattern".to_string());
-                        }
-                        if reasons.is_empty() {
-                            Some("flagged".to_string())
-                        } else {
-                            Some(reasons.join("; "))
-                        }
-                    } else {
-                        None
-                    };
-                    FfiCheckpointFlag {
-                        ordinal: cf.ordinal,
-                        flagged: cf.flagged,
-                        flag_reason: reason,
-                    }
+            let opts = VerifyOptions {
+                vdf_params: packet.vdf_params,
+                expected_nonce: None,
+                run_forensics: true,
+                trusted_public_key: None,
+                verify_anchors: true,
+            };
+
+            let result = full_verify(&packet, &opts);
+
+            let signature_valid = result.signature.unwrap_or(false);
+            let chain_integrity = result.structural;
+            let overall_valid = chain_integrity
+                && signature_valid
+                && result.duration.plausible
+                && result.key_provenance.signing_key_consistent;
+
+            let unsigned_checkpoints: Vec<u64> = if packet.key_hierarchy.is_none() {
+                (0..checkpoint_count as u64).collect()
+            } else {
+                let signed_ordinals: std::collections::HashSet<u64> = packet
+                    .key_hierarchy
+                    .as_ref()
+                    .map(|kh| kh.checkpoint_signatures.iter().map(|s| s.ordinal).collect())
+                    .unwrap_or_default();
+                (0..checkpoint_count as u64)
+                    .filter(|o| !signed_ordinals.contains(o))
+                    .collect()
+            };
+
+            let mut ordinal_gaps = Vec::new();
+            for (i, cp) in packet.checkpoints.iter().enumerate() {
+                let expected = i as u64;
+                if cp.ordinal != expected {
+                    ordinal_gaps.push(FfiOrdinalGap {
+                        expected,
+                        actual: cp.ordinal,
+                    });
+                }
+            }
+
+            let checkpoint_flags: Vec<FfiCheckpointFlag> = result
+                .per_checkpoint
+                .as_ref()
+                .map(|pcp| {
+                    pcp.checkpoint_flags
+                        .iter()
+                        .map(|cf| {
+                            let reason = if cf.flagged {
+                                let mut reasons = Vec::new();
+                                if cf.timing_cv > 1.5 {
+                                    reasons.push(format!("high timing CV ({:.2})", cf.timing_cv));
+                                }
+                                if cf.max_velocity_bps > 50.0 {
+                                    reasons.push(format!(
+                                        "high velocity ({:.0} B/s)",
+                                        cf.max_velocity_bps
+                                    ));
+                                }
+                                if cf.all_append {
+                                    reasons.push("all-append pattern".to_string());
+                                }
+                                if reasons.is_empty() {
+                                    Some("flagged".to_string())
+                                } else {
+                                    Some(reasons.join("; "))
+                                }
+                            } else {
+                                None
+                            };
+                            FfiCheckpointFlag {
+                                ordinal: cf.ordinal,
+                                flagged: cf.flagged,
+                                flag_reason: reason,
+                            }
+                        })
+                        .collect()
                 })
-                .collect()
-        })
-        .unwrap_or_default();
+                .unwrap_or_default();
 
-    FfiVerifyDetail {
-        success: true,
-        overall_valid,
-        signature_valid,
-        chain_integrity,
-        checkpoint_count,
-        swf_iterations_per_second: swf_ips,
-        attestation_tier: tier_num,
-        attestation_tier_label: tier_label,
-        unsigned_checkpoints,
-        ordinal_gaps,
-        warnings: result.warnings,
-        checkpoint_flags,
-        error_message: None,
-    }
-    })
+            FfiVerifyDetail {
+                success: true,
+                overall_valid,
+                signature_valid,
+                chain_integrity,
+                checkpoint_count,
+                swf_iterations_per_second: swf_ips,
+                attestation_tier: tier_num,
+                attestation_tier_label: tier_label,
+                unsigned_checkpoints,
+                ordinal_gaps,
+                warnings: result.warnings,
+                checkpoint_flags,
+                error_message: None,
+            }
+        }
+    )
 }
 
 /// Convert an RFC wire-format `EvidencePacketWire` into the engine's internal `Packet`

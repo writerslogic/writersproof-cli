@@ -35,11 +35,7 @@ impl std::fmt::Debug for ContentMmr {
 
 impl ContentMmr {
     /// Open or create a file-backed content MMR for a session.
-    pub fn open(
-        mmr_dir: &Path,
-        session_id: &str,
-        granularity: ContentGranularity,
-    ) -> Result<Self> {
+    pub fn open(mmr_dir: &Path, session_id: &str, granularity: ContentGranularity) -> Result<Self> {
         if session_id.is_empty()
             || session_id.contains('/')
             || session_id.contains('\\')
@@ -95,11 +91,7 @@ impl ContentMmr {
     ///
     /// Uses a sidecar file to track a SHA-256 hash of the most recently
     /// witnessed text. Returns the count of new segments appended.
-    pub fn witness_text_if_changed(
-        &self,
-        text: &str,
-        mmr_dir: &Path,
-    ) -> Result<usize> {
+    pub fn witness_text_if_changed(&self, text: &str, mmr_dir: &Path) -> Result<usize> {
         // Fast path: full text unchanged since last witness.
         let text_hash: [u8; 32] = {
             use sha2::{Digest, Sha256};
@@ -126,7 +118,10 @@ impl ContentMmr {
         }
 
         if let Err(e) = std::fs::write(&sidecar_path, text_hash) {
-            log::warn!("Content MMR sidecar write failed for {}: {e}", self.session_id);
+            log::warn!(
+                "Content MMR sidecar write failed for {}: {e}",
+                self.session_id
+            );
         }
         Ok(added)
     }
@@ -146,10 +141,7 @@ impl ContentMmr {
 
     /// Generate a derivation proof: given the text of a derived document,
     /// segment it and find which segments exist in this MMR.
-    pub fn generate_derivation_proof(
-        &self,
-        derived_text: &str,
-    ) -> Result<DerivationProof> {
+    pub fn generate_derivation_proof(&self, derived_text: &str) -> Result<DerivationProof> {
         let derived_segments = segment_and_hash(derived_text, self.granularity);
         let derived_total = derived_segments.len();
 
@@ -161,10 +153,7 @@ impl ContentMmr {
 
         for d_seg in &derived_segments {
             for leaf_ord in 0..leaf_count {
-                let leaf_index = self
-                    .mmr
-                    .get_leaf_index(leaf_ord)
-                    .map_err(Error::from)?;
+                let leaf_index = self.mmr.get_leaf_index(leaf_ord).map_err(Error::from)?;
                 let expected_hash = hash_leaf(leaf_index, &d_seg.hash);
                 let node = self.mmr.get(leaf_index).map_err(Error::from)?;
                 if node.hash == expected_hash {
@@ -211,8 +200,8 @@ impl ContentMmr {
     }
 
     pub fn default_mmr_dir() -> Result<PathBuf> {
-        let home = dirs::home_dir()
-            .ok_or_else(|| Error::config("could not determine home directory"))?;
+        let home =
+            dirs::home_dir().ok_or_else(|| Error::config("could not determine home directory"))?;
         Ok(home.join(".writersproof").join("content-mmr"))
     }
 }
@@ -245,9 +234,7 @@ pub struct DerivationProof {
 
 impl DerivationProof {
     pub fn verify(&self) -> bool {
-        self.matches
-            .iter()
-            .all(|m| m.proof.verify(&m.hash).is_ok())
+        self.matches.iter().all(|m| m.proof.verify(&m.hash).is_ok())
     }
 }
 
@@ -340,17 +327,15 @@ mod tests {
         let mmr_dir = dir.path().join("content-mmr");
 
         {
-            let mmr =
-                ContentMmr::open(&mmr_dir, "persist-test", ContentGranularity::Paragraph)
-                    .expect("create");
+            let mmr = ContentMmr::open(&mmr_dir, "persist-test", ContentGranularity::Paragraph)
+                .expect("create");
             mmr.witness_text("Persistent content.").expect("witness");
             assert_eq!(mmr.leaf_count(), 1);
         }
 
         {
-            let mmr =
-                ContentMmr::open(&mmr_dir, "persist-test", ContentGranularity::Paragraph)
-                    .expect("reopen");
+            let mmr = ContentMmr::open(&mmr_dir, "persist-test", ContentGranularity::Paragraph)
+                .expect("reopen");
             assert_eq!(mmr.leaf_count(), 1);
         }
     }

@@ -312,17 +312,20 @@ impl ClipboardMonitor {
 
         if self
             .last_change_count
-            .compare_exchange(prev_count, current_count, Ordering::AcqRel, Ordering::Acquire)
+            .compare_exchange(
+                prev_count,
+                current_count,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
             .is_err()
         {
             return Ok(None);
         }
         self.last_copy_time.store(now, Ordering::Release);
 
-        let content_kind = super::content_classifier::classify_paste_content_kind(
-            &text,
-            &pasteboard_types,
-        );
+        let content_kind =
+            super::content_classifier::classify_paste_content_kind(&text, &pasteboard_types);
         let text_hash = crypto_helpers::compute_content_hash(text.as_bytes());
 
         Ok(Some(CopyEvent {
@@ -359,7 +362,9 @@ impl ClipboardMonitor {
             let matches = {
                 let guard = cached_store.lock_recover();
                 match guard.as_ref() {
-                    Some(store) => self.fragment_matches_hash(store, session_id, &copy_event.text_hash)?,
+                    Some(store) => {
+                        self.fragment_matches_hash(store, session_id, &copy_event.text_hash)?
+                    }
                     None => false,
                 }
             };

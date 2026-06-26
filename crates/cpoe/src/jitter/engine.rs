@@ -9,8 +9,8 @@ use zeroize::Zeroize;
 
 use super::content::compute_jitter_sample_hash;
 use super::profile::interval_to_bucket;
-use super::zones::keycode_to_zone;
 use super::zones::encode_zone_transition;
+use super::zones::keycode_to_zone;
 
 /// Zone-committed jitter sample captured during real-time keystroke monitoring.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,8 +67,7 @@ impl TypingProfile {
             self.alternating_count = self.alternating_count.saturating_add(1);
         }
         self.total_transitions = self.total_transitions.saturating_add(1);
-        self.hand_alternation =
-            self.alternating_count as f32 / self.total_transitions as f32;
+        self.hand_alternation = self.alternating_count as f32 / self.total_transitions as f32;
     }
 }
 

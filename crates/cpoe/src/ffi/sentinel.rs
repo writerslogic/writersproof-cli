@@ -252,8 +252,8 @@ pub fn ffi_sentinel_stop() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_is_running() -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_is_running called");
-    get_sentinel().is_some_and(|s| s.is_running())
+        log::debug!("ffi_sentinel_is_running called");
+        get_sentinel().is_some_and(|s| s.is_running())
     })
 }
 

@@ -290,10 +290,8 @@ impl RoughtimeClient {
             }
         }
         // find_quorum requires &str names; build a parallel vec of tuples.
-        let mut ref_results: Vec<(u64, &str)> = results
-            .iter()
-            .map(|(t, n)| (*t, n.as_str()))
-            .collect();
+        let mut ref_results: Vec<(u64, &str)> =
+            results.iter().map(|(t, n)| (*t, n.as_str())).collect();
         Self::find_quorum(&mut ref_results)
     }
 

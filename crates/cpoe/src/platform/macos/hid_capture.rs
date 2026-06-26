@@ -234,25 +234,23 @@ unsafe fn run_hid_loop(
     ))?;
 
     // Build matching dictionary for keyboard devices (usage page 0x01, usage 0x06).
-    let matching = CfGuard::new(
-        CFDictionaryCreateMutable(
-            kCFAllocatorDefault,
-            2,
-            &core_foundation_sys::dictionary::kCFTypeDictionaryKeyCallBacks,
-            &core_foundation_sys::dictionary::kCFTypeDictionaryValueCallBacks,
-        ) as *mut _,
-    )?;
+    let matching = CfGuard::new(CFDictionaryCreateMutable(
+        kCFAllocatorDefault,
+        2,
+        &core_foundation_sys::dictionary::kCFTypeDictionaryKeyCallBacks,
+        &core_foundation_sys::dictionary::kCFTypeDictionaryValueCallBacks,
+    ) as *mut _)?;
 
     let page_key = CfGuard::new(cfstr(K_IO_HID_DEVICE_USAGE_PAGE_KEY));
     let usage_key = CfGuard::new(cfstr(K_IO_HID_DEVICE_USAGE_KEY));
     let page_val = CfGuard::new(cfnum(K_HID_PAGE_GENERIC_DESKTOP));
     let usage_val = CfGuard::new(cfnum(K_HID_USAGE_GD_KEYBOARD));
 
-    let (page_key, usage_key, page_val, usage_val) = match (page_key, usage_key, page_val, usage_val)
-    {
-        (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
-        _ => return None,
-    };
+    let (page_key, usage_key, page_val, usage_val) =
+        match (page_key, usage_key, page_val, usage_val) {
+            (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
+            _ => return None,
+        };
 
     core_foundation_sys::dictionary::CFDictionarySetValue(
         matching.as_ptr() as *mut _,

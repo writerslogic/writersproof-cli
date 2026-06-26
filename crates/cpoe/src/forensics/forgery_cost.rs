@@ -154,8 +154,7 @@ pub fn estimate_forgery_cost(input: &ForgeryCostInput) -> ForgeryCostEstimate {
         compute_entanglement_cost(input),
     ];
 
-    let (overall_difficulty, weakest_link, estimated_forge_time_sec) =
-        aggregate_costs(&components);
+    let (overall_difficulty, weakest_link, estimated_forge_time_sec) = aggregate_costs(&components);
 
     let tier = classify_tier(overall_difficulty, input.has_hardware_attestation);
 
@@ -244,8 +243,7 @@ fn compute_hardware_attestation_cost(input: &ForgeryCostInput) -> ComponentCost 
             name: "hardware_attestation".into(),
             cost_cpu_sec: INFEASIBLE_COST,
             present: true,
-            explanation: "Hardware-bound key; forgery requires physical device access"
-                .into(),
+            explanation: "Hardware-bound key; forgery requires physical device access".into(),
         }
     } else {
         ComponentCost {
@@ -264,8 +262,7 @@ fn compute_behavioral_cost(input: &ForgeryCostInput) -> ComponentCost {
             name: "behavioral_fingerprint".into(),
             cost_cpu_sec: BEHAVIORAL_FORGE_COST_SEC,
             present: true,
-            explanation: "Must replicate typing dynamics (Hurst, 1/f, cadence)"
-                .into(),
+            explanation: "Must replicate typing dynamics (Hurst, 1/f, cadence)".into(),
         }
     } else {
         ComponentCost {
@@ -294,9 +291,7 @@ fn compute_cross_modal_cost(input: &ForgeryCostInput) -> ComponentCost {
             present: true,
             explanation: format!(
                 "{}/{} checks passed; {} pairwise constraints",
-                passed,
-                input.cross_modal_total,
-                constraint_factor as u64
+                passed, input.cross_modal_total, constraint_factor as u64
             ),
         }
     } else {
@@ -316,8 +311,7 @@ fn compute_temporal_cost(input: &ForgeryCostInput) -> ComponentCost {
             name: "external_time_anchor".into(),
             cost_cpu_sec: INFEASIBLE_COST,
             present: true,
-            explanation: "RFC3161/Roughtime timestamp; adversary cannot backdate"
-                .into(),
+            explanation: "RFC3161/Roughtime timestamp; adversary cannot backdate".into(),
         }
     } else {
         ComponentCost {
@@ -332,8 +326,7 @@ fn compute_temporal_cost(input: &ForgeryCostInput) -> ComponentCost {
 /// Content-key entanglement: modifying content requires full recomputation.
 fn compute_entanglement_cost(input: &ForgeryCostInput) -> ComponentCost {
     if input.has_content_key_entanglement && input.chain_duration_sec > 0 {
-        let cost =
-            input.chain_duration_sec as f64 * ENTANGLEMENT_DURATION_MULTIPLIER;
+        let cost = input.chain_duration_sec as f64 * ENTANGLEMENT_DURATION_MULTIPLIER;
         ComponentCost {
             name: "content_key_entanglement".into(),
             cost_cpu_sec: cost,
@@ -353,9 +346,7 @@ fn compute_entanglement_cost(input: &ForgeryCostInput) -> ComponentCost {
 }
 
 /// Combine per-component costs into overall difficulty, weakest link, and forge time.
-fn aggregate_costs(
-    components: &[ComponentCost],
-) -> (f64, Option<String>, f64) {
+fn aggregate_costs(components: &[ComponentCost]) -> (f64, Option<String>, f64) {
     let finite_costs: Vec<f64> = components
         .iter()
         .filter(|c| c.present && c.cost_cpu_sec > 0.0 && c.cost_cpu_sec < INFEASIBLE_THRESHOLD)
@@ -385,9 +376,7 @@ fn aggregate_costs(
         let geo_mean = if raw.is_finite() {
             raw
         } else {
-            log::warn!(
-                "forgery_cost: geometric mean is non-finite ({raw}), clamping to f64::MAX"
-            );
+            log::warn!("forgery_cost: geometric mean is non-finite ({raw}), clamping to f64::MAX");
             f64::MAX
         };
         if has_infeasible {

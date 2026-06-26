@@ -299,7 +299,11 @@ impl WebVHIdentity {
         new_keys: Vec<Multibase>,
         master_key: &SigningKey,
     ) -> Result<(), Error> {
-        log::debug!("WebVHIdentity::rotate_keys: did={}, new_keys_count={}", self.did, new_keys.len());
+        log::debug!(
+            "WebVHIdentity::rotate_keys: did={}, new_keys_count={}",
+            self.did,
+            new_keys.len()
+        );
         let webvh_key = derive_webvh_signing_key(master_key, &self.address)?;
         let signer = CpoeSigner::from_key(webvh_key);
         self.state
@@ -324,7 +328,8 @@ impl WebVHIdentity {
     /// Save the did:webvh state to disk.
     pub fn save(&self) -> Result<(), Error> {
         log::debug!("WebVHIdentity::save: did={}", self.did);
-        let data_dir = crate::utils::get_data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
+        let data_dir = crate::utils::get_data_dir()
+            .ok_or_else(|| Error::identity("data directory not available"))?;
         std::fs::create_dir_all(&data_dir)
             .map_err(|e| Error::identity(format!("create data directory: {e}")))?;
         let dir_meta = std::fs::symlink_metadata(&data_dir)
@@ -381,7 +386,8 @@ impl WebVHIdentity {
     /// Load a previously saved did:webvh identity from disk.
     pub fn load() -> Result<Self, Error> {
         log::debug!("WebVHIdentity::load");
-        let data_dir = crate::utils::get_data_dir().ok_or_else(|| Error::identity("data directory not available"))?;
+        let data_dir = crate::utils::get_data_dir()
+            .ok_or_else(|| Error::identity("data directory not available"))?;
 
         let meta_path = data_dir.join("did_webvh_meta.json");
         let (_canonical, meta_file) = crate::utils::fs::open_validated(&meta_path)
@@ -389,7 +395,8 @@ impl WebVHIdentity {
         let meta_json = {
             use std::io::Read;
             let mut s = String::new();
-            std::io::BufReader::new(meta_file).read_to_string(&mut s)
+            std::io::BufReader::new(meta_file)
+                .read_to_string(&mut s)
                 .map_err(|e| Error::identity(format!("read webvh metadata: {e}")))?;
             s
         };
@@ -409,13 +416,17 @@ impl WebVHIdentity {
 
         let state_path = data_dir.join("did_webvh_state.json");
         if !state_path.exists() {
-            return Err(Error::not_found("did:webvh state file not found; identity may not have been saved"));
+            return Err(Error::not_found(
+                "did:webvh state file not found; identity may not have been saved",
+            ));
         }
         let path_str = state_path
             .to_str()
             .ok_or_else(|| Error::identity("non-UTF-8 data directory path"))?;
         let state = DIDWebVHState::load_state(path_str).map_err(|e| {
-            Error::identity(format!("corrupted did:webvh state (delete and re-create identity to recover): {e}"))
+            Error::identity(format!(
+                "corrupted did:webvh state (delete and re-create identity to recover): {e}"
+            ))
         })?;
 
         Ok(Self {
@@ -487,7 +498,11 @@ fn validate_did_host(did: &str) -> Result<(), Error> {
         // IPv6 literal: [::1] or [::1]:8080 -- strip brackets (will be rejected below)
         let bracket_end = decoded.find(']').unwrap_or(decoded.len());
         &decoded[1..bracket_end]
-    } else if decoded.bytes().next().map_or(true, |b| b.is_ascii_alphabetic()) {
+    } else if decoded
+        .bytes()
+        .next()
+        .map_or(true, |b| b.is_ascii_alphabetic())
+    {
         // Hostname: only strip port if first char is a letter (safe for DNS names)
         match decoded.rsplit_once(':') {
             Some((h, port)) if port.chars().all(|c| c.is_ascii_digit()) => h,
@@ -604,7 +619,11 @@ pub async fn verify_packet_author_did(
     signing_public_key: &[u8; 32],
     packet_created_ms: u64,
 ) -> Result<bool, Error> {
-    log::debug!("verify_packet_author_did: author_did={}, packet_created_ms={}", author_did, packet_created_ms);
+    log::debug!(
+        "verify_packet_author_did: author_did={}, packet_created_ms={}",
+        author_did,
+        packet_created_ms
+    );
     const MAX_REASONABLE_MS: u64 = 32503680000000; // year 3000
     if packet_created_ms > MAX_REASONABLE_MS {
         return Err(Error::identity(format!(
