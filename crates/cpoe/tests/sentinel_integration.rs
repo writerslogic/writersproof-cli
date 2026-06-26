@@ -544,6 +544,7 @@ async fn test_focus_polling_detects_app_change() {
         is_document: true,
         is_unsaved: false,
         project_root: None,
+        window_number: None,
     };
 
     let vscode_info = WindowInfo {
@@ -555,6 +556,7 @@ async fn test_focus_polling_detects_app_change() {
         is_document: true,
         is_unsaved: false,
         project_root: None,
+        window_number: None,
     };
 
     let mut responses = VecDeque::new();
