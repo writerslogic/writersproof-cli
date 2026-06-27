@@ -1,3 +1,3 @@
-# Files to install for cpoe package
-bin/cpoe usr/bin
-bin/witnessctl usr/bin
+# Files to install for the cpoe package
+bin/writersproof-cli usr/bin
+bin/writerslogic-native-messaging-host usr/bin

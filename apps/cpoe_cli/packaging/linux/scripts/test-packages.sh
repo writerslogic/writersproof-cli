@@ -45,8 +45,8 @@ test_deb() {
         writerslogic version || writerslogic --version || writerslogic -v || echo 'Version check done'
         writerslogic --help || echo 'Help check done'
 
-        echo '=== Testing witnessctl ==='
-        witnessctl --help || witnessctl -help || echo 'Help check done'
+        echo '=== Testing writersproof-cli ==='
+        writersproof-cli --help || writersproof-cli -help || echo 'Help check done'
 
         echo '=== Checking systemd files ==='
         ls -la /lib/systemd/system/writerslogic* || echo 'System service files present'
@@ -77,8 +77,8 @@ test_rpm() {
         writerslogic version || writerslogic --version || writerslogic -v || echo 'Version check done'
         writerslogic --help || echo 'Help check done'
 
-        echo '=== Testing witnessctl ==='
-        witnessctl --help || witnessctl -help || echo 'Help check done'
+        echo '=== Testing writersproof-cli ==='
+        writersproof-cli --help || writersproof-cli -help || echo 'Help check done'
 
         echo '=== Checking systemd files ==='
         ls -la /usr/lib/systemd/system/writerslogic* || echo 'System service files present'
@@ -140,7 +140,7 @@ test_appimage() {
         echo '=== Testing extracted binaries ==='
         ./squashfs-root/usr/bin/writerslogic version || ./squashfs-root/usr/bin/writerslogic --version || echo 'Version check done'
         ./squashfs-root/usr/bin/writerslogic --help || echo 'Help check done'
-        ./squashfs-root/usr/bin/witnessctl --help || echo 'Witnessctl help check done'
+        ./squashfs-root/usr/bin/writersproof-cli --help || echo 'Witnessctl help check done'
 
         echo '=== AppImage test PASSED ==='
     "
@@ -163,7 +163,7 @@ test_arch() {
 
         echo '=== Testing binaries ==='
         ./bin/writerslogic version || ./bin/writerslogic --version || echo 'Version check done'
-        ./bin/witnessctl --help || echo 'Help check done'
+        ./bin/writersproof-cli --help || echo 'Help check done'
 
         echo '=== Arch Linux build test PASSED ==='
     "

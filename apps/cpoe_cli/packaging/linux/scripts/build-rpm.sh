@@ -38,16 +38,16 @@ tar czf "SOURCES/writerslogic-${VERSION}.tar.gz" "writerslogic-${VERSION}"
 rm -rf "${SOURCE_DIR}"
 
 # Copy spec file
-cp "${PACKAGING_DIR}/rpm/writerslogic.spec" "${BUILD_DIR}/SPECS/"
+cp "${PACKAGING_DIR}/rpm/cpoe.spec" "${BUILD_DIR}/SPECS/"
 
 # Update version in spec file
-sed -i "s/^Version:.*/Version:        ${VERSION}/" "${BUILD_DIR}/SPECS/writerslogic.spec"
+sed -i "s/^Version:.*/Version:        ${VERSION}/" "${BUILD_DIR}/SPECS/cpoe.spec"
 
 # Build the RPM
 echo "Building RPM..."
 rpmbuild --define "_topdir ${BUILD_DIR}" \
     --define "_version ${VERSION}" \
-    -ba "${BUILD_DIR}/SPECS/writerslogic.spec"
+    -ba "${BUILD_DIR}/SPECS/cpoe.spec"
 
 # Move artifacts
 echo "Moving artifacts..."

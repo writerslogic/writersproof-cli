@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.writerslogic.witnessd</id>
+  <id>com.writerslogic.writersproof-cli</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
-  <name>CPoE</name>
+  <name>WritersProof CLI</name>
   <summary>Cryptographic authorship witnessing daemon</summary>
 
   <description>
     <p>
-      CPoE provides cryptographic authorship witnessing through kinetic
+      WritersProof provides cryptographic authorship witnessing through kinetic
       proof of provenance. It captures keystroke dynamics and timing patterns
       to create unforgeable evidence of human authorship.
     </p>
@@ -22,17 +22,16 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">cpoe.desktop</launchable>
+  <launchable type="desktop-id">writersproof-cli.desktop</launchable>
 
-  <url type="homepage">https://github.com/writerslogic/writerslogic</url>
-  <url type="bugtracker">https://github.com/writerslogic/writerslogic/issues</url>
-  <url type="help">https://github.com/writerslogic/writerslogic#readme</url>
+  <url type="homepage">https://github.com/writerslogic/writersproof-cli</url>
+  <url type="bugtracker">https://github.com/writerslogic/writersproof-cli/issues</url>
+  <url type="help">https://github.com/writerslogic/writersproof-cli#readme</url>
 
   <developer_name>David Condrey</developer_name>
 
   <provides>
-    <binary>cpoe</binary>
-    <binary>writerslogic</binary>
+    <binary>writersproof-cli</binary>
     <binary>writerslogic-native-messaging-host</binary>
   </provides>
 

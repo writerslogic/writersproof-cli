@@ -2,7 +2,7 @@ Source: cpoe
 Section: utils
 Priority: optional
 Maintainer: David Condrey <david@condrey.dev>
-Build-Depends: debhelper-compat (= 13), golang-go (>= 1.21), git
+Build-Depends: debhelper-compat (= 13), cargo, rustc (>= 1.75), git
 Standards-Version: 4.6.2
 Homepage: https://github.com/writerslogic/writersproof-cli
 Vcs-Browser: https://github.com/writerslogic/writersproof-cli
@@ -12,8 +12,6 @@ Rules-Requires-Root: no
 Package: cpoe
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Recommends: ibus (>= 1.5)
-Suggests: cpoe-ibus
 Description: Cryptographic authorship witnessing daemon
  CPOE provides cryptographic authorship witnessing through kinetic
  proof of provenance. It captures keystroke dynamics and timing patterns
@@ -26,12 +24,3 @@ Description: Cryptographic authorship witnessing daemon
   - Multi-anchor timestamping (blockchain, Keybase, etc.)
   - Forensic analysis toolkit
 
-Package: cpoe-ibus
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, cpoe (= ${binary:Version}), ibus (>= 1.5)
-Description: IBus integration for cpoe
- IBus input method engine for cpoe that captures keystroke dynamics
- through the Linux input method framework.
- .
- This package provides system-wide keystroke witnessing through IBus
- without requiring elevated privileges.

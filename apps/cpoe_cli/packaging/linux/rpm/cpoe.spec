@@ -32,18 +32,6 @@ Features:
 - Multi-anchor timestamping (blockchain, Keybase, etc.)
 - Forensic analysis toolkit
 
-%package -n cpoe-ibus
-Summary:        IBus integration for cpoe
-Requires:       %{name} = %{version}-%{release}
-Requires:       ibus >= 1.5
-
-%description -n cpoe-ibus
-IBus input method engine for cpoe that captures keystroke dynamics
-through the Linux input method framework.
-
-This package provides system-wide keystroke witnessing through IBus
-without requiring elevated privileges.
-
 %prep
 %autosetup
 
@@ -60,20 +48,18 @@ install -d %{buildroot}%{_mandir}/man1
 install -d %{buildroot}%{_sharedstatedir}/cpoe
 install -d %{buildroot}%{_localstatedir}/log/cpoe
 install -d %{buildroot}%{_datadir}/doc/%{name}
-install -d %{buildroot}%{_datadir}/ibus/component
 
 # Install binaries
-install -p -m 755 target/release/cpoe %{buildroot}%{_bindir}/cpoe
-install -p -m 755 target/release/cpoe-native-messaging-host %{buildroot}%{_bindir}/cpoe-native-messaging-host
+install -p -m 755 target/release/writersproof-cli %{buildroot}%{_bindir}/writersproof-cli
+install -p -m 755 target/release/writerslogic-native-messaging-host %{buildroot}%{_bindir}/writerslogic-native-messaging-host
 
 # Install man pages
-install -p -m 644 docs/man/cpoe.1 %{buildroot}%{_mandir}/man1/cpoe.1
+install -p -m 644 docs/man/cpoe.1 %{buildroot}%{_mandir}/man1/writersproof-cli.1
 
 # Install systemd units
 install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe.service %{buildroot}%{_unitdir}/cpoe.service
 install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe.socket %{buildroot}%{_unitdir}/cpoe.socket
 install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe-user.service %{buildroot}%{_userunitdir}/cpoe.service
-install -p -m 644 apps/cpoe_cli/packaging/linux/systemd/cpoe-ibus.service %{buildroot}%{_userunitdir}/cpoe-ibus.service
 
 # Install config
 install -p -m 640 configs/config.example.toml %{buildroot}%{_sysconfdir}/cpoe/config.toml.default
@@ -89,12 +75,6 @@ EOF
 # Install documentation
 install -p -m 644 LICENSE %{buildroot}%{_datadir}/doc/%{name}/LICENSE
 install -p -m 644 README.md %{buildroot}%{_datadir}/doc/%{name}/README.md
-
-# Install IBus component (if available)
-if [ -f apps/cpoe_cli/packaging/linux/systemd/cpoe-ibus.xml ]; then
-    sed 's|/usr/local/bin|/usr/bin|g' apps/cpoe_cli/packaging/linux/systemd/cpoe-ibus.xml > %{buildroot}%{_datadir}/ibus/component/cpoe.xml
-    chmod 644 %{buildroot}%{_datadir}/ibus/component/cpoe.xml
-fi
 
 %pre
 # Create cpoe user and group
@@ -124,24 +104,12 @@ chown -R cpoe:cpoe %{_localstatedir}/log/cpoe
 %postun
 %systemd_postun_with_restart cpoe.service cpoe.socket
 
-%post -n cpoe-ibus
-# Restart IBus to pick up the new component
-if command -v ibus >/dev/null 2>&1; then
-    ibus restart 2>/dev/null || true
-fi
-
-%postun -n cpoe-ibus
-# Restart IBus after removal
-if command -v ibus >/dev/null 2>&1; then
-    ibus restart 2>/dev/null || true
-fi
-
 %files
 %license LICENSE
 %doc README.md
-%{_bindir}/cpoe
-%{_bindir}/cpoe-native-messaging-host
-%{_mandir}/man1/cpoe.1*
+%{_bindir}/writersproof-cli
+%{_bindir}/writerslogic-native-messaging-host
+%{_mandir}/man1/writersproof-cli.1*
 %{_unitdir}/cpoe.service
 %{_unitdir}/cpoe.socket
 %{_userunitdir}/cpoe.service
@@ -151,11 +119,6 @@ fi
 %dir %attr(750,cpoe,cpoe) %{_sharedstatedir}/cpoe
 %dir %attr(750,cpoe,cpoe) %{_localstatedir}/log/cpoe
 %{_datadir}/doc/%{name}/
-
-%files -n cpoe-ibus
-%{_bindir}/cpoe-ibus
-%{_userunitdir}/cpoe-ibus.service
-%{_datadir}/ibus/component/cpoe.xml
 
 %changelog
 * Mon Jan 27 2025 David Condrey <david@condrey.dev> - 1.0.0-1

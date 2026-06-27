@@ -1,21 +1,17 @@
 [Desktop Entry]
 Type=Application
-Name=CPOE
+Name=WritersProof CLI
 GenericName=Authorship Witnessing
 Comment=Cryptographic authorship witnessing daemon - Kinetic Proof of Provenance
-Exec=writerslogic %U
-Icon=writerslogic
+Exec=writersproof-cli %U
+Icon=writersproof-cli
 Terminal=false
 Categories=Utility;Security;
 Keywords=witness;authorship;cryptography;keystroke;biometrics;
 StartupNotify=false
-StartupWMClass=writerslogic
-Actions=Status;Verify;
+StartupWMClass=writersproof-cli
+Actions=Status;
 
 [Desktop Action Status]
 Name=Show Status
-Exec=writerslogic --status
-
-[Desktop Action Verify]
-Name=Verify Document
-Exec=witnessctl verify %U
+Exec=writersproof-cli --status

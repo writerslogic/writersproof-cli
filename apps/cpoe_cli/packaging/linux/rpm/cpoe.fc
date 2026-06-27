@@ -4,9 +4,7 @@
 # Install with: semanage fcontext -i cpoe.fc && restorecon -R /
 
 # Executables
-/usr/bin/cpoe             -- gen_context(system_u:object_r:cpoe_exec_t,s0)
-/usr/bin/witnessctl           -- gen_context(system_u:object_r:cpoe_exec_t,s0)
-/usr/bin/cpoe-ibus        -- gen_context(system_u:object_r:cpoe_exec_t,s0)
+/usr/bin/writersproof-cli             -- gen_context(system_u:object_r:cpoe_exec_t,s0)
 
 # Configuration
 /etc/cpoe(/.*)?           gen_context(system_u:object_r:cpoe_etc_t,s0)

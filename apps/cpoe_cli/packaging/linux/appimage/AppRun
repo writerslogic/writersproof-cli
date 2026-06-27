@@ -1,6 +1,6 @@
 #!/bin/bash
-# AppRun script for cpoe AppImage
-# This script is executed when the AppImage is run
+# AppRun script for the writersproof-cli AppImage.
+# Executed when the AppImage is run.
 
 SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
@@ -10,17 +10,14 @@ export PATH="${HERE}/usr/bin:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
 export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
-# Determine which command to run
-ARGV0=$(basename "$ARGV0")
+# The native messaging host is invoked by browsers via argv[0]; everything
+# else runs the CLI/daemon.
+ARGV0=$(basename "${ARGV0:-$0}")
 case "$ARGV0" in
-    witnessctl|witnessctl.AppImage)
-        exec "${HERE}/usr/bin/witnessctl" "$@"
-        ;;
-    cpoe-ibus|cpoe-ibus.AppImage)
-        exec "${HERE}/usr/bin/cpoe-ibus" "$@"
+    writerslogic-native-messaging-host|writerslogic-native-messaging-host.AppImage)
+        exec "${HERE}/usr/bin/writerslogic-native-messaging-host" "$@"
         ;;
     *)
-        # Default to cpoe daemon
-        exec "${HERE}/usr/bin/cpoe" "$@"
+        exec "${HERE}/usr/bin/writersproof-cli" "$@"
         ;;
 esac

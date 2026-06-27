@@ -1,12 +1,12 @@
 [Unit]
 Description=CPOE User Authorship Witnessing Service
-Documentation=man:writerslogic(1)
+Documentation=man:writersproof-cli(1)
 Documentation=https://github.com/writerslogic/writerslogic
 After=graphical-session.target
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/writerslogic --user
+ExecStart=/usr/bin/writersproof-cli --user
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5

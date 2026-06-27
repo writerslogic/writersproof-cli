@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
 use super::*;
+use crate::platform::MouseCapture;
 use keystroke::{keycode_to_char, linux_keycode_to_zone};
 use mouse::LinuxMouseCapture;
 

@@ -1,6 +1,6 @@
 [Unit]
 Description=CPOE Cryptographic Authorship Witnessing Daemon
-Documentation=man:writerslogic(1)
+Documentation=man:writersproof-cli(1)
 Documentation=https://github.com/writerslogic/writerslogic
 After=network.target local-fs.target
 Wants=writerslogic.socket
@@ -12,7 +12,7 @@ Group=writerslogic
 
 # Configuration
 EnvironmentFile=-/etc/writerslogic/environment
-ExecStart=/usr/bin/writerslogic --config /etc/writerslogic/config.toml
+ExecStart=/usr/bin/writersproof-cli --config /etc/writerslogic/config.toml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5

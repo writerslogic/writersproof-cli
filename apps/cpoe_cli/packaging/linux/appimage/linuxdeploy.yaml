@@ -1,26 +1,24 @@
-# linuxdeploy configuration for CPoE AppImage
+# linuxdeploy configuration for the writersproof-cli AppImage
 # https://github.com/linuxdeploy/linuxdeploy
 
 appimage:
-  name: writerslogic
+  name: writersproof-cli
   version: "1.0.0"
   arch: x86_64
-  update-information: gh-releases-zsync|writerslogic|writerslogic|latest|writerslogic-*x86_64.AppImage.zsync
+  update-information: gh-releases-zsync|writerslogic|writersproof-cli|latest|writersproof-cli-*x86_64.AppImage.zsync
 
 # Files to include
 files:
-  - source: usr/bin/cpoe
-    destination: usr/bin/cpoe
-  - source: usr/bin/witnessctl
-    destination: usr/bin/witnessctl
-  - source: usr/bin/cpoe-ibus
-    destination: usr/bin/cpoe-ibus
-  - source: usr/share/applications/cpoe.desktop
-    destination: usr/share/applications/cpoe.desktop
-  - source: usr/share/icons/hicolor/256x256/apps/cpoe.png
-    destination: usr/share/icons/hicolor/256x256/apps/cpoe.png
-  - source: usr/share/metainfo/cpoe.appdata.xml
-    destination: usr/share/metainfo/cpoe.appdata.xml
+  - source: usr/bin/writersproof-cli
+    destination: usr/bin/writersproof-cli
+  - source: usr/bin/writerslogic-native-messaging-host
+    destination: usr/bin/writerslogic-native-messaging-host
+  - source: usr/share/applications/writersproof-cli.desktop
+    destination: usr/share/applications/writersproof-cli.desktop
+  - source: usr/share/icons/hicolor/256x256/apps/writersproof-cli.png
+    destination: usr/share/icons/hicolor/256x256/apps/writersproof-cli.png
+  - source: usr/share/metainfo/writersproof-cli.appdata.xml
+    destination: usr/share/metainfo/writersproof-cli.appdata.xml
 
 # Runtime configuration
 runtime:

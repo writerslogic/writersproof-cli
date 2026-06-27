@@ -65,33 +65,33 @@ esac
 cargo build --release --package cpoe_cli --target "${RUST_TARGET}"
 
 # Install binaries into AppDir
-cp "${PROJECT_ROOT}/target/${RUST_TARGET}/release/writerslogic" "${APPDIR}/usr/bin/writerslogic"
+cp "${PROJECT_ROOT}/target/${RUST_TARGET}/release/writersproof-cli" "${APPDIR}/usr/bin/writersproof-cli"
 cp "${PROJECT_ROOT}/target/${RUST_TARGET}/release/writerslogic-native-messaging-host" "${APPDIR}/usr/bin/writerslogic-native-messaging-host"
 
 # Copy resources
 echo "Copying resources..."
 
 # Desktop file
-cp "${PACKAGING_DIR}/appimage/writerslogic.desktop" "${APPDIR}/usr/share/applications/"
-cp "${PACKAGING_DIR}/appimage/writerslogic.desktop" "${APPDIR}/"
+cp "${PACKAGING_DIR}/appimage/writersproof-cli.desktop" "${APPDIR}/usr/share/applications/"
+cp "${PACKAGING_DIR}/appimage/writersproof-cli.desktop" "${APPDIR}/"
 
 # AppData/MetaInfo
-cp "${PACKAGING_DIR}/appimage/writerslogic.appdata.xml" "${APPDIR}/usr/share/metainfo/"
+cp "${PACKAGING_DIR}/appimage/writersproof-cli.appdata.xml" "${APPDIR}/usr/share/metainfo/"
 
 # Icons
-cp "${PACKAGING_DIR}/appimage/icons/writerslogic.svg" "${APPDIR}/usr/share/icons/hicolor/scalable/apps/"
+cp "${PACKAGING_DIR}/appimage/icons/writersproof-cli.svg" "${APPDIR}/usr/share/icons/hicolor/scalable/apps/"
 
 # Convert SVG to PNG for icon (if ImageMagick is available)
 if command -v convert &>/dev/null; then
     convert -background none -resize 256x256 \
-        "${PACKAGING_DIR}/appimage/icons/writerslogic.svg" \
-        "${APPDIR}/usr/share/icons/hicolor/256x256/apps/writerslogic.png"
+        "${PACKAGING_DIR}/appimage/icons/writersproof-cli.svg" \
+        "${APPDIR}/usr/share/icons/hicolor/256x256/apps/writersproof-cli.png"
 else
     echo "Warning: ImageMagick not found, skipping PNG icon generation"
 fi
 
 # Copy main icon for AppImage
-cp "${PACKAGING_DIR}/appimage/icons/writerslogic.svg" "${APPDIR}/writerslogic.svg"
+cp "${PACKAGING_DIR}/appimage/icons/writersproof-cli.svg" "${APPDIR}/writersproof-cli.svg"
 
 # Man pages
 if [[ -d "${PROJECT_ROOT}/docs/man" ]]; then
@@ -110,7 +110,7 @@ chmod +x "${APPDIR}/AppRun"
 echo "Creating AppImage..."
 cd "${BUILD_DIR}"
 
-export OUTPUT="writerslogic-${VERSION}-${ARCH}.AppImage"
+export OUTPUT="writersproof-cli-${VERSION}-${ARCH}.AppImage"
 export VERSION="${VERSION}"
 
 "${LINUXDEPLOY}" --appdir "${APPDIR}" --output appimage
@@ -120,7 +120,7 @@ mkdir -p "${PROJECT_ROOT}/build"
 mv "${OUTPUT}" "${PROJECT_ROOT}/build/"
 
 # Create update information file (for AppImageUpdate)
-echo "gh-releases-zsync|writerslogic|writerslogic|latest|writerslogic-*${ARCH}.AppImage.zsync" \
+echo "gh-releases-zsync|writerslogic|writersproof-cli|latest|writersproof-cli-*${ARCH}.AppImage.zsync" \
     > "${PROJECT_ROOT}/build/${OUTPUT%.AppImage}.zsync"
 
 echo ""

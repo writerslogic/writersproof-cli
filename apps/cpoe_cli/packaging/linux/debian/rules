@@ -22,18 +22,18 @@ override_dh_auto_build:
 	# Build CLI binary
 	cargo build --release --package cpoe_cli
 	mkdir -p bin/
-	cp target/release/cpoe bin/cpoe
-	cp target/release/cpoe-native-messaging-host bin/ || true
+	cp target/release/writersproof-cli bin/writersproof-cli
+	cp target/release/writerslogic-native-messaging-host bin/ || true
 
 override_dh_auto_test:
 	cargo test --package cpoe_cli
 
 override_dh_auto_install:
 	# Install binaries
-	install -D -m 755 bin/cpoe debian/cpoe/usr/bin/cpoe
+	install -D -m 755 bin/writersproof-cli debian/cpoe/usr/bin/writersproof-cli
 
 	# Install man pages
-	install -D -m 644 ../../docs/man/cpoe.1 debian/cpoe/usr/share/man/man1/cpoe.1
+	install -D -m 644 docs/man/cpoe.1 debian/cpoe/usr/share/man/man1/writersproof-cli.1
 
 	# Install systemd units (if present)
 	if [ -d packaging/linux/systemd ]; then \
@@ -42,7 +42,7 @@ override_dh_auto_install:
 	fi
 
 	# Install documentation
-	install -D -m 644 ../../LICENSE debian/cpoe/usr/share/doc/cpoe/LICENSE
+	install -D -m 644 LICENSE debian/cpoe/usr/share/doc/cpoe/LICENSE
 	install -D -m 644 README.md debian/cpoe/usr/share/doc/cpoe/README.md
 
 override_dh_installsystemd:
