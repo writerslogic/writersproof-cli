@@ -200,6 +200,7 @@ pub fn ffi_get_device_public_key() -> FfiDeviceKey {
 /// process lifetime. Safe to call from FFI init paths; the spawned thread
 /// prevents the shell command from blocking the calling thread beyond the
 /// timeout.
+#[allow(dead_code)]
 fn run_command_with_timeout(cmd: &'static str, args: &'static [&'static str]) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel();
     if let Err(e) = std::thread::Builder::new()

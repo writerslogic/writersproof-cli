@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 ///
 /// Without X11/Wayland, precise window tracking is unavailable. Falls back to
 /// terminal/session heuristics via env vars and `/proc`.
+#[allow(missing_debug_implementations)]
 pub struct StubSentinelFocusTracker {
     _config: Arc<SentinelConfig>,
     focus_rx: Arc<Mutex<Option<mpsc::Receiver<FocusEvent>>>>,

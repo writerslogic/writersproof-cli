@@ -38,6 +38,7 @@ fn is_virtual_mouse(name: &str, phys: Option<&str>, vendor_id: u16, product_id: 
 }
 
 /// Linux mouse capture via evdev device readers with idle jitter support.
+#[allow(missing_debug_implementations)]
 pub struct LinuxMouseCapture {
     running: Arc<AtomicBool>,
     sender: Option<mpsc::Sender<MouseEvent>>,

@@ -105,6 +105,7 @@ impl KeychainBackend for InMemoryBackend {
 /// Non-macOS backend using the `keyring` crate (delegates to libsecret/
 /// credential-manager/etc. via the platform keyring API).
 #[cfg(not(target_os = "macos"))]
+#[derive(Debug)]
 pub struct KeyringBackend;
 
 #[cfg(not(target_os = "macos"))]

@@ -87,7 +87,7 @@ pub fn analyze_cadence(samples: &[SimpleJitterSample]) -> CadenceMetrics {
         // select_nth_unstable operates on the remaining unsorted tail.
         let mut result = [0.0f64; 5];
         let mut sorted_indices: Vec<(usize, usize)> = indices.iter().copied().enumerate().collect();
-        sorted_indices.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted_indices.sort_by_key(|x| std::cmp::Reverse(x.1));
         for (orig_pos, idx) in sorted_indices {
             buf.select_nth_unstable_by(idx, cmp);
             result[orig_pos] = buf[idx];

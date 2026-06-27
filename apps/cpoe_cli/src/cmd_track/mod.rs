@@ -706,7 +706,7 @@ pub(crate) async fn cmd_track_smart(
                     println!("Total checkpoints: {}", total);
                 }
                 if file_counts.len() > 1 {
-                    file_counts.sort_by(|a, b| b.1.cmp(&a.1));
+                    file_counts.sort_by_key(|f| std::cmp::Reverse(f.1));
                     for (name, count) in file_counts.iter().take(10) {
                         println!("  {}: {}", name, count);
                     }

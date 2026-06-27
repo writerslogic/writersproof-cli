@@ -168,7 +168,7 @@ pub fn detect_co_edited_files(
         })
         .collect();
 
-    results.sort_by(|a, b| b.switch_count.cmp(&a.switch_count));
+    results.sort_by_key(|r| std::cmp::Reverse(r.switch_count));
     results
 }
 

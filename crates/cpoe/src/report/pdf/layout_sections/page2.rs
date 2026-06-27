@@ -341,7 +341,7 @@ pub fn draw_page2(layer: &PdfLayerReference, r: &WarReport, fonts: &PdfFonts, fo
         // Component rows (present first, then absent)
         let comp_w = CONTENT_WIDTH / 2.0 - 1.0;
         let mut sorted_comps: Vec<_> = r.forgery.components.iter().collect();
-        sorted_comps.sort_by(|a, b| b.present.cmp(&a.present));
+        sorted_comps.sort_by_key(|c| std::cmp::Reverse(c.present));
         for (i, comp) in sorted_comps.iter().enumerate() {
             if y < 20.0 {
                 break;

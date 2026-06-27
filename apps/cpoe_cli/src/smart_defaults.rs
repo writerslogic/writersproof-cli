@@ -69,7 +69,7 @@ pub fn get_recently_modified_files(dir: &Path, max_count: usize) -> Vec<PathBuf>
         }
     }
 
-    files.sort_by(|a, b| b.1.cmp(&a.1));
+    files.sort_by_key(|f| std::cmp::Reverse(f.1));
     files
         .into_iter()
         .take(max_count)
@@ -179,7 +179,7 @@ pub fn show_quick_status(
         println!("Tracked documents: {}", tracked_files.len());
 
         let mut recent: Vec<_> = tracked_files.iter().collect();
-        recent.sort_by(|a, b| b.1.cmp(&a.1));
+        recent.sort_by_key(|r| std::cmp::Reverse(r.1));
 
         for (path, ts, count) in recent.iter().take(5) {
             let name = Path::new(path)

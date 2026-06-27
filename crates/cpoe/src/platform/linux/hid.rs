@@ -7,7 +7,7 @@ use crate::platform::{HidDeviceInfo, HidEnumerator};
 use anyhow::Result;
 
 /// HID keyboard enumerator for Linux evdev devices.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct LinuxHidEnumerator;
 
 impl LinuxHidEnumerator {

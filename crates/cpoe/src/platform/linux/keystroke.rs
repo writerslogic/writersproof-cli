@@ -101,6 +101,7 @@ pub fn keycode_to_char(keycode: u16) -> Option<char> {
 }
 
 /// Linux keystroke capture via evdev device readers.
+#[allow(missing_debug_implementations)]
 pub struct LinuxKeystrokeCapture {
     running: Arc<AtomicBool>,
     sender: Option<mpsc::Sender<KeystrokeEvent>>,

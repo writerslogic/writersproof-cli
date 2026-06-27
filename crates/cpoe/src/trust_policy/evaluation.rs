@@ -120,18 +120,17 @@ impl AppraisalPolicy {
         }
         for t in &self.thresholds {
             match t.threshold_type {
-                ThresholdType::MinimumFactor | ThresholdType::RequiredFactor => {
+                ThresholdType::MinimumFactor | ThresholdType::RequiredFactor
                     if !self
                         .factors
                         .iter()
                         .any(|f| f.factor_name == t.threshold_name)
-                    {
+                    => {
                         return Err(Error::validation(format!(
                             "threshold '{}' references unknown factor name",
                             t.threshold_name
                         )));
                     }
-                }
                 _ => {}
             }
         }

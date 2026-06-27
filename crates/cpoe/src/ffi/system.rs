@@ -318,7 +318,7 @@ pub fn ffi_list_tracked_files() -> Vec<FfiTrackedFile> {
             checkpoint_count: count,
             forensic_score: adjusted_score,
             risk_level: adjusted_risk,
-            keystroke_count: session_keystrokes as u64,
+            keystroke_count: session_keystrokes,
             meets_threshold,
             is_active: false,
         });

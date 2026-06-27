@@ -228,7 +228,7 @@ pub(crate) fn build_wire_packet_with_ai(
                     input: vdf_input_bytes,
                     merkle_root,
                     sampled_proofs: vec![],
-                    claimed_duration: ev.vdf_iterations.saturating_mul(1000) / ips as u64,
+                    claimed_duration: ev.vdf_iterations.saturating_mul(1000) / ips,
                 },
                 jitter_binding: None,
                 physical_state: None,

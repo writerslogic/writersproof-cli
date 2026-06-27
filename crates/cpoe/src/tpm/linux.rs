@@ -148,20 +148,20 @@ impl Provider for LinuxTpmProvider {
             .quote(
                 ak_handle,
                 Data::try_from(qualifying)
-                    .map_err(|e| TpmError::Quote(format!("bad nonce: {e}").into()))?,
+                    .map_err(|e| TpmError::Quote(format!("bad nonce: {e}")))?,
                 SignatureScheme::RsaSsa {
                     hash_scheme: HashScheme::new(HashingAlgorithm::Sha256),
                 },
                 selection,
             )
-            .map_err(|e| TpmError::Quote(format!("quote failed: {e}").into()))?;
+            .map_err(|e| TpmError::Quote(format!("quote failed: {e}")))?;
 
         let attest_data = attest
             .marshall()
-            .map_err(|e| TpmError::Quote(format!("attest marshal: {e}").into()))?;
+            .map_err(|e| TpmError::Quote(format!("attest marshal: {e}")))?;
         let sig_data = signature
             .marshall()
-            .map_err(|e| TpmError::Quote(format!("sig marshal: {e}").into()))?;
+            .map_err(|e| TpmError::Quote(format!("sig marshal: {e}")))?;
 
         let device_id = format_device_id(&mut state);
 
@@ -194,15 +194,15 @@ impl Provider for LinuxTpmProvider {
             .sign(
                 ak_handle,
                 TssDigest::try_from(digest.as_slice())
-                    .map_err(|e| TpmError::Signing(format!("digest: {e}").into()))?,
+                    .map_err(|e| TpmError::Signing(format!("digest: {e}")))?,
                 SignatureScheme::RsaSsa {
                     hash_scheme: HashScheme::new(HashingAlgorithm::Sha256),
                 },
                 null_hashcheck_ticket()?,
             )
-            .map_err(|e| TpmError::Signing(format!("sign failed: {e}").into()))?
+            .map_err(|e| TpmError::Signing(format!("sign failed: {e}")))?
             .marshall()
-            .map_err(|e| TpmError::Signing(format!("sig marshal: {e}").into()))?;
+            .map_err(|e| TpmError::Signing(format!("sig marshal: {e}")))?;
 
         let counter = match increment_counter(&mut state) {
             Ok(val) => Some(val),
@@ -244,15 +244,15 @@ impl Provider for LinuxTpmProvider {
             .sign(
                 ak_handle,
                 TssDigest::try_from(data_hash.as_slice())
-                    .map_err(|e| TpmError::Signing(format!("digest: {e}").into()))?,
+                    .map_err(|e| TpmError::Signing(format!("digest: {e}")))?,
                 SignatureScheme::RsaSsa {
                     hash_scheme: HashScheme::new(HashingAlgorithm::Sha256),
                 },
                 null_hashcheck_ticket()?,
             )
-            .map_err(|e| TpmError::Signing(format!("sign failed: {e}").into()))?
+            .map_err(|e| TpmError::Signing(format!("sign failed: {e}")))?
             .marshall()
-            .map_err(|e| TpmError::Signing(format!("sig marshal failed: {e}").into()))?;
+            .map_err(|e| TpmError::Signing(format!("sig marshal failed: {e}")))?;
 
         Ok(signature)
     }
@@ -410,7 +410,7 @@ fn null_hashcheck_ticket() -> Result<HashcheckTicket, TpmError> {
             buffer: [0; 64],
         },
     })
-    .map_err(|e| TpmError::Signing(format!("null hashcheck ticket: {e}").into()))
+    .map_err(|e| TpmError::Signing(format!("null hashcheck ticket: {e}")))
 }
 
 fn create_ak(state: &mut LinuxState) -> Result<(KeyHandle, Vec<u8>), TpmError> {

@@ -624,10 +624,198 @@ fn windows_process_name(pid: u32) -> Option<String> {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+// ---------------------------------------------------------------------------
+// Linux X11 implementation
+// ---------------------------------------------------------------------------
+//
+// X11 exposes window *titles* (via `_NET_WM_NAME` / `WM_NAME`) and the owning
+// PID (via `_NET_WM_PID`), but -- unlike the macOS Accessibility API -- it
+// offers no way to read the text *content* of another application's windows.
+// So the text-content readers below return `None`, and `capture_visible_windows`
+// enumerates managed top-level windows (`_NET_CLIENT_LIST`) with their titles,
+// app names, and PIDs, leaving `text_content` empty. The active-window title
+// path used for focus tracking (`_NET_ACTIVE_WINDOW` -> `_NET_WM_NAME`) lives in
+// `sentinel/linux_focus.rs`; this type covers the cross-window enumeration API.
+#[cfg(all(target_os = "linux", feature = "x11"))]
+#[derive(Debug)]
 pub struct WindowTextCapture;
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(all(target_os = "linux", feature = "x11"))]
+impl WindowTextCapture {
+    /// X11 has no API to read another window's text content.
+    pub fn capture_text_for_pid(_pid: u32) -> Option<String> {
+        None
+    }
+
+    /// X11 has no API to read another window's text content.
+    pub fn capture_text_for_bundle_id(_bundle_id: &str) -> Option<String> {
+        None
+    }
+
+    /// X11 has no API to read another window's text content.
+    pub fn capture_text_for_bundle_id_and_title(
+        _bundle_id: &str,
+        _title: Option<&str>,
+    ) -> Option<String> {
+        None
+    }
+
+    /// Enumerate managed top-level windows (`_NET_CLIENT_LIST`) and read each
+    /// window's title (`_NET_WM_NAME`, falling back to `WM_NAME`) and owning
+    /// process name. `text_content` is always empty on X11.
+    ///
+    /// `exclude_pid` drops windows owned by that PID, unless `exclude_window_id`
+    /// is provided, in which case only that specific window is dropped (matching
+    /// the macOS contract).
+    pub fn capture_visible_windows(
+        exclude_pid: Option<u32>,
+        exclude_window_id: Option<u32>,
+    ) -> Vec<WindowText> {
+        linux_x11::capture_visible_windows(exclude_pid, exclude_window_id).unwrap_or_default()
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "x11"))]
+mod linux_x11 {
+    use super::WindowText;
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt, Window};
+    use x11rb::rust_connection::RustConnection;
+
+    /// Cap on the number of windows read from `_NET_CLIENT_LIST` (in 32-bit
+    /// units passed to `GetProperty`); far above any real desktop's window count.
+    const MAX_WINDOWS: u32 = 1024;
+
+    struct X11Ctx {
+        conn: RustConnection,
+        root: Window,
+        net_client_list: Atom,
+        net_wm_name: Atom,
+        net_wm_pid: Atom,
+        wm_name: Atom,
+    }
+
+    impl X11Ctx {
+        fn connect() -> Option<Self> {
+            let (conn, screen_num) = RustConnection::connect(None).ok()?;
+            let root = conn.setup().roots.get(screen_num)?.root;
+            Some(Self {
+                net_client_list: intern(&conn, b"_NET_CLIENT_LIST")?,
+                net_wm_name: intern(&conn, b"_NET_WM_NAME")?,
+                net_wm_pid: intern(&conn, b"_NET_WM_PID")?,
+                wm_name: intern(&conn, b"WM_NAME")?,
+                conn,
+                root,
+            })
+        }
+
+        fn client_list(&self) -> Vec<Window> {
+            self.conn
+                .get_property(false, self.root, self.net_client_list, AtomEnum::ANY, 0, MAX_WINDOWS)
+                .ok()
+                .and_then(|c| c.reply().ok())
+                .and_then(|r| r.value32().map(|it| it.collect()))
+                .unwrap_or_default()
+        }
+
+        /// Read the window title, preferring UTF-8 `_NET_WM_NAME` over `WM_NAME`.
+        fn window_title(&self, window: Window) -> Option<String> {
+            if let Some(title) = self.text_property(window, self.net_wm_name) {
+                if !title.is_empty() {
+                    return Some(title);
+                }
+            }
+            self.text_property(window, self.wm_name)
+                .filter(|t| !t.is_empty())
+        }
+
+        fn text_property(&self, window: Window, property: Atom) -> Option<String> {
+            let reply = self
+                .conn
+                .get_property(false, window, property, AtomEnum::ANY, 0, 1024)
+                .ok()?
+                .reply()
+                .ok()?;
+            if reply.value_len == 0 {
+                return None;
+            }
+            Some(String::from_utf8_lossy(&reply.value).into_owned())
+        }
+
+        fn window_pid(&self, window: Window) -> Option<u32> {
+            self.conn
+                .get_property(false, window, self.net_wm_pid, AtomEnum::ANY, 0, 1)
+                .ok()?
+                .reply()
+                .ok()?
+                .value32()?
+                .next()
+        }
+    }
+
+    fn intern(conn: &RustConnection, name: &[u8]) -> Option<Atom> {
+        conn.intern_atom(false, name)
+            .ok()?
+            .reply()
+            .ok()
+            .map(|r| r.atom)
+    }
+
+    fn process_name(pid: u32) -> Option<String> {
+        std::fs::read_to_string(format!("/proc/{pid}/comm"))
+            .ok()
+            .map(|s| s.trim().to_string())
+    }
+
+    pub(super) fn capture_visible_windows(
+        exclude_pid: Option<u32>,
+        exclude_window_id: Option<u32>,
+    ) -> Option<Vec<WindowText>> {
+        let ctx = X11Ctx::connect()?;
+        let mut out = Vec::new();
+        for window in ctx.client_list() {
+            let pid = ctx.window_pid(window);
+            // Skip the monitored app's own windows. When a specific window id is
+            // named, only that window is skipped (so sibling windows of the same
+            // app are still read); otherwise every window of the PID is skipped.
+            if let Some(excl_pid) = exclude_pid {
+                let skip = match exclude_window_id {
+                    Some(excl_win) => window == excl_win,
+                    None => pid == Some(excl_pid),
+                };
+                if skip {
+                    continue;
+                }
+            }
+            let Some(title) = ctx.window_title(window) else {
+                continue;
+            };
+            out.push(WindowText {
+                app_name: pid.and_then(process_name).unwrap_or_default(),
+                window_title: title,
+                // X11 cannot read window text content; transcription detection
+                // (which requires content) is a no-op on this platform.
+                text_content: String::new(),
+                pid: pid.unwrap_or(0),
+            });
+        }
+        Some(out)
+    }
+}
+
+// Fallback stub: Linux without the `x11` feature, plus any other non-macOS,
+// non-Windows unix. Cross-window text/title capture is unavailable.
+#[cfg(all(
+    not(any(target_os = "macos", target_os = "windows")),
+    not(all(target_os = "linux", feature = "x11"))
+))]
+#[derive(Debug)]
+pub struct WindowTextCapture;
+
+#[cfg(all(
+    not(any(target_os = "macos", target_os = "windows")),
+    not(all(target_os = "linux", feature = "x11"))
+))]
 impl WindowTextCapture {
     pub fn capture_text_for_pid(_pid: u32) -> Option<String> {
         None
@@ -644,7 +832,10 @@ impl WindowTextCapture {
         None
     }
 
-    pub fn capture_visible_windows(_exclude_pid: Option<u32>, _exclude_window_id: Option<u32>) -> Vec<WindowText> {
+    pub fn capture_visible_windows(
+        _exclude_pid: Option<u32>,
+        _exclude_window_id: Option<u32>,
+    ) -> Vec<WindowText> {
         Vec::new()
     }
 }

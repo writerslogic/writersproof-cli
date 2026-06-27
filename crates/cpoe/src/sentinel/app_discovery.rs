@@ -333,6 +333,7 @@ fn read_app_group_ids(bundle_path: &Path) -> Vec<String> {
 }
 
 /// Check if any container directory contains SQLite database files.
+#[allow(dead_code)]
 fn has_sqlite_files(home: &Path, container_paths: &[String]) -> bool {
     for rel in container_paths {
         let abs = home.join(rel);
@@ -350,12 +351,14 @@ fn has_sqlite_files(home: &Path, container_paths: &[String]) -> bool {
 }
 
 /// Walk a directory up to `max_depth` levels, yielding file paths.
+#[allow(dead_code)]
 fn walk_dir_shallow(dir: &Path, max_depth: usize) -> std::io::Result<Vec<PathBuf>> {
     let mut results = Vec::new();
     walk_dir_inner(dir, max_depth, &mut results)?;
     Ok(results)
 }
 
+#[allow(dead_code)]
 fn walk_dir_inner(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     if depth == 0 {
         return Ok(());
@@ -925,7 +928,7 @@ pub fn discover_recent_documents(
     }
 
     // Sort most recent first.
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
     candidates.truncate(max_results);
     candidates.into_iter().map(|(_, p)| p).collect()
 }

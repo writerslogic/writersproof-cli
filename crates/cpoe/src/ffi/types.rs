@@ -96,6 +96,7 @@ pub(crate) use catch_ffi_panic;
 /// Heavy FFI paths (forensic analysis, WAR reports, evidence export)
 /// can overflow that limit due to deep call chains through SQLite,
 /// Ed25519 signing, SHA-256 hashing, and 10+ forensic analyzers.
+#[allow(dead_code)]
 const HEAVY_FFI_STACK_SIZE: usize = 4 * 1024 * 1024;
 
 /// Run a closure on a thread with guaranteed stack space.
@@ -126,7 +127,7 @@ where
     #[cfg(not(target_os = "macos"))]
     {
         // On non-macOS, threads typically have 8 MB stacks; run inline.
-        return f();
+        f()
     }
 
     #[cfg(target_os = "macos")]

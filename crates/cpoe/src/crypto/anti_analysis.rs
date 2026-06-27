@@ -6,7 +6,6 @@ static HARDENED: AtomicBool = AtomicBool::new(false);
 
 pub fn harden_process() {
     if HARDENED.swap(true, Ordering::SeqCst) {
-        return;
     }
     #[cfg(target_os = "macos")]
     // SAFETY: ptrace(PT_DENY_ATTACH=31) is a well-defined macOS syscall that

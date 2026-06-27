@@ -7,7 +7,7 @@
 //! attachment, and injected library presence. On other platforms the check is
 //! a no-op (returns `Ok(())`).
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 /// Verify the runtime integrity of the signing process before any signing operation.
 ///

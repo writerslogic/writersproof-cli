@@ -34,7 +34,6 @@ mod x11_provider {
         net_active_window: Atom,
         net_wm_name: Atom,
         net_wm_pid: Atom,
-        utf8_string: Atom,
         wm_name: Atom,
     }
 
@@ -72,13 +71,11 @@ mod x11_provider {
             let net_active_window = Self::intern(conn, b"_NET_ACTIVE_WINDOW")?;
             let net_wm_name = Self::intern(conn, b"_NET_WM_NAME")?;
             let net_wm_pid = Self::intern(conn, b"_NET_WM_PID")?;
-            let utf8_string = Self::intern(conn, b"UTF8_STRING")?;
             let wm_name = Self::intern(conn, b"WM_NAME")?;
             Some(X11Atoms {
                 net_active_window,
                 net_wm_name,
                 net_wm_pid,
-                utf8_string,
                 wm_name,
             })
         }
@@ -237,7 +234,7 @@ mod wayland_provider {
 
     impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
         fn event(
-            state: &mut Self,
+            _state: &mut Self,
             registry: &wl_registry::WlRegistry,
             event: wl_registry::Event,
             _data: &(),
@@ -589,6 +586,7 @@ mod dbus_provider {
 /// 2. X11 (if `x11` feature enabled and `DISPLAY` set)
 /// 3. DBus (if `dbus` feature enabled and GNOME/KDE detected)
 /// 4. Stub fallback (terminal/process heuristics)
+#[derive(Debug)]
 pub struct LinuxFocusMonitor;
 
 impl LinuxFocusMonitor {
