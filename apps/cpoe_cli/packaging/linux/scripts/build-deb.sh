@@ -13,7 +13,7 @@ VERSION="${1:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || ech
 echo "=== Building Debian package for writerslogic v${VERSION} ==="
 
 # Check dependencies
-for cmd in dpkg-buildpackage debhelper cargo git; do
+for cmd in dpkg-buildpackage dh cargo git; do
     if ! command -v "${cmd%% *}" &>/dev/null; then
         echo "Error: ${cmd} is required but not installed."
         exit 1
