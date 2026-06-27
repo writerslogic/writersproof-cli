@@ -10,8 +10,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 
 ### Documentation
 - Update changelog [skip ci]
+- Update changelog [skip ci]
 
 ### Fixed
+- Check for `dh` not `debhelper` in build-deb.sh dep check
 - Normalize CLI packaging to writersproof-cli; fix test trait import
 ## [1.5.1] - 2026-06-26
 
