@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Added
+- Ship real focus tracking in CLI + X11 window-text capture
+
+### Documentation
+- Update changelog [skip ci]
+
+### Fixed
+- Normalize CLI packaging to writersproof-cli; fix test trait import
+## [1.5.1] - 2026-06-26
+
+### Added
 - Human-authorship C2PA manifest embedded in plain text (#36)
 - Wasm bindings for validate + payload; seed features from payload
 - Coin-seal redesign + Crockford-32 9-char short-id with check
