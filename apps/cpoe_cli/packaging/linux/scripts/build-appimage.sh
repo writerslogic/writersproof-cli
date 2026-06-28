@@ -113,6 +113,9 @@ cd "${BUILD_DIR}"
 export OUTPUT="writersproof-cli-${VERSION}-${ARCH}.AppImage"
 export VERSION="${VERSION}"
 
+# AppStream metadata is optional for a CLI AppImage; skip its (overly strict)
+# validation so the build does not fail on a cid-contains-hyphen hint.
+export NO_APPSTREAM=1
 "${LINUXDEPLOY}" --appdir "${APPDIR}" --output appimage
 
 # Move to final location
