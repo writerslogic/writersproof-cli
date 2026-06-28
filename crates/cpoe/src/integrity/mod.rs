@@ -8,6 +8,10 @@
 //! a no-op (returns `Ok(())`).
 
 use crate::error::Result;
+// `Error` is only used by the macOS/Windows integrity checks; the non-macOS,
+// non-Windows path is a no-op, so gate the import to avoid an unused-import warning.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use crate::error::Error;
 
 /// Verify the runtime integrity of the signing process before any signing operation.
 ///

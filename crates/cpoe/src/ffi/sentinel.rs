@@ -96,12 +96,16 @@ pub fn ffi_sentinel_start() -> FfiResult {
         );
     }
 
+    // Input Monitoring is OPTIONAL. Keystroke timing is captured by the host app
+    // via NSEvent (which needs only Accessibility) and injected over FFI. When IM
+    // is also granted, the engine additionally runs the CGEventTap/HID dual-layer
+    // anti-injection check; without it the sentinel starts in degraded
+    // (timing-only) mode rather than refusing to start.
     #[cfg(target_os = "macos")]
     if !input_monitoring_granted {
-        return FfiResult::err_with_code(
-            "Input Monitoring permission required — grant access in System \
-                 Settings > Privacy & Security > Input Monitoring",
-            crate::ffi::types::error_codes::INPUT_MONITORING_PERMISSION,
+        log::info!(
+            "Input Monitoring not granted; starting sentinel in Accessibility-only mode \
+             (host NSEvent capture; HID dual-layer anti-injection disabled)"
         );
     }
 
@@ -252,8 +256,8 @@ pub fn ffi_sentinel_stop() -> FfiResult {
 #[cfg_attr(feature = "ffi", uniffi::export)]
 pub fn ffi_sentinel_is_running() -> bool {
     catch_ffi_panic!(false, {
-    log::debug!("ffi_sentinel_is_running called");
-    get_sentinel().is_some_and(|s| s.is_running())
+        log::debug!("ffi_sentinel_is_running called");
+        get_sentinel().is_some_and(|s| s.is_running())
     })
 }
 
