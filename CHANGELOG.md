@@ -6,10 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ## [Unreleased]
 
 ### Added
+- Live daemon status over IPC bridge (P2.2)
 - Scaffold writersproof GTK4/libadwaita desktop app (P2.1)
 - Ship real focus tracking in CLI + X11 window-text capture
 
 ### Documentation
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
