@@ -18,3 +18,13 @@ path = "src/main.rs"
 # libadwaita 1.1 (Ubuntu 22.04). Newer crate releases require libadwaita >= 1.4.
 gtk4 = "0.5"
 libadwaita = { version = "0.2", features = ["v1_1"] }
+
+# The engine crate, used only for the IPC client + message types (the GUI is a
+# thin client over the daemon socket). Default features: the engine references
+# crate::ffi unconditionally, so ffi can't currently be disabled. The GUI does
+# NOT enable the focus features (x11/wayland/dbus) -- those run in the daemon.
+# TODO: extract cpoe::ipc into a standalone crate so the GUI needn't link the
+# whole engine.
+cpoe = { path = "../../crates/cpoe", package = "cpoe" }
+tokio = { version = "1", features = ["rt", "net", "time", "io-util"] }
+dirs = "5"
