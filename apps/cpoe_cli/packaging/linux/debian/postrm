@@ -1,44 +1,5 @@
 #!/bin/bash
-# postrm script for cpoe
-
+# postrm for writersproof-cli
 set -e
-
-case "$1" in
-    purge)
-        # Remove data directories on purge
-        rm -rf /var/lib/cpoe
-        rm -rf /var/log/cpoe
-        rm -rf /etc/cpoe
-
-        # Remove cpoe user
-        if getent passwd cpoe >/dev/null 2>&1; then
-            deluser --quiet --system cpoe || true
-        fi
-
-        # Remove cpoe group
-        if getent group cpoe >/dev/null 2>&1; then
-            delgroup --quiet --system cpoe || true
-        fi
-
-        # Reload systemd daemon
-        if [ -d /run/systemd/system ]; then
-            systemctl daemon-reload >/dev/null 2>&1 || true
-        fi
-        ;;
-
-    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
-        # Reload systemd daemon
-        if [ -d /run/systemd/system ]; then
-            systemctl daemon-reload >/dev/null 2>&1 || true
-        fi
-        ;;
-
-    *)
-        echo "postrm called with unknown argument \`$1'" >&2
-        exit 1
-        ;;
-esac
-
 #DEBHELPER#
-
 exit 0

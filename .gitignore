@@ -96,3 +96,6 @@ conductor/
 
 # Cloudflare Workers (deployed separately)
 apps/updates-worker/
+
+# Local package build artifacts (deb/rpm/appimage)
+build/

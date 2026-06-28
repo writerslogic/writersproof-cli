@@ -1,5 +1,5 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: cpoe
+Upstream-Name: writersproof-cli
 Upstream-Contact: David Condrey <david@condrey.dev>
 Source: https://github.com/writerslogic/writersproof-cli
 
@@ -9,4 +9,4 @@ License: SEE LICENSE IN LICENSE
  This software is provided under a custom license.
  See the LICENSE file in the source distribution for full terms.
  .
- For the complete license text, see /usr/share/doc/cpoe/LICENSE
+ For the complete license text, see /usr/share/doc/writersproof-cli/LICENSE

@@ -1,29 +1,24 @@
 [Unit]
-Description=CPOE User Authorship Witnessing Service
+Description=WritersProof authorship witnessing daemon (user session)
 Documentation=man:writersproof-cli(1)
-Documentation=https://github.com/writerslogic/writerslogic
+Documentation=https://github.com/writerslogic/writersproof-cli
 After=graphical-session.target
 
 [Service]
-Type=notify
-ExecStart=/usr/bin/writersproof-cli --user
-ExecReload=/bin/kill -HUP $MAINPID
+# Runs as the logged-in user inside the graphical session. This is the only
+# model that works for focus tracking: it has DISPLAY/WAYLAND_DISPLAY, and it
+# can read /dev/input when the user is in the `input` group. A *system* service
+# cannot do either (PrivateDevices blocks /dev/input; a system user has no
+# display), which is why no system unit is shipped.
+Type=simple
+ExecStart=/usr/bin/writersproof-cli start --foreground
+ExecStop=/usr/bin/writersproof-cli stop
 Restart=on-failure
 RestartSec=5
-TimeoutStartSec=30
-TimeoutStopSec=30
 
-# Environment
-Environment=CPOE_USER_MODE=1
-
-# Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=writerslogic-user
-
-# Security (user service, less restrictive)
-NoNewPrivileges=yes
-PrivateTmp=yes
+SyslogIdentifier=writersproof-cli
 
 [Install]
 WantedBy=default.target

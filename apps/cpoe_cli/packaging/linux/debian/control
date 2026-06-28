@@ -1,4 +1,4 @@
-Source: cpoe
+Source: writersproof-cli
 Section: utils
 Priority: optional
 Maintainer: David Condrey <david@condrey.dev>
@@ -9,7 +9,7 @@ Vcs-Browser: https://github.com/writerslogic/writersproof-cli
 Vcs-Git: https://github.com/writerslogic/writersproof-cli.git
 Rules-Requires-Root: no
 
-Package: cpoe
+Package: writersproof-cli
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Cryptographic authorship witnessing daemon

@@ -1,58 +1,5 @@
 #!/bin/bash
-# postinst script for cpoe
-
+# postinst for writersproof-cli
 set -e
-
-case "$1" in
-    configure)
-        # Create cpoe system user if it doesn't exist
-        if ! getent passwd cpoe >/dev/null 2>&1; then
-            adduser --system --group --home /var/lib/cpoe \
-                --no-create-home --shell /usr/sbin/nologin \
-                --gecos "CPOE Daemon" cpoe
-        fi
-
-        # Create required directories
-        install -d -m 750 -o cpoe -g cpoe /var/lib/cpoe
-        install -d -m 750 -o cpoe -g cpoe /var/log/cpoe
-        install -d -m 755 /etc/cpoe
-
-        # Create default config if it doesn't exist
-        if [ ! -f /etc/cpoe/config.toml ]; then
-            if [ -f /etc/cpoe/config.toml.default ]; then
-                cp /etc/cpoe/config.toml.default /etc/cpoe/config.toml
-                chmod 640 /etc/cpoe/config.toml
-                chown root:cpoe /etc/cpoe/config.toml
-            fi
-        fi
-
-        # Create environment file if it doesn't exist
-        if [ ! -f /etc/cpoe/environment ]; then
-            cat > /etc/cpoe/environment << 'EOF'
-# Environment variables for cpoe
-# CPOE_LOG_LEVEL=info
-# CPOE_DATA_DIR=/var/lib/cpoe
-# CPOE_CONFIG=/etc/cpoe/config.toml
-EOF
-            chmod 640 /etc/cpoe/environment
-            chown root:cpoe /etc/cpoe/environment
-        fi
-
-        # Reload systemd daemon
-        if [ -d /run/systemd/system ]; then
-            systemctl daemon-reload >/dev/null 2>&1 || true
-        fi
-        ;;
-
-    abort-upgrade|abort-remove|abort-deconfigure)
-        ;;
-
-    *)
-        echo "postinst called with unknown argument \`$1'" >&2
-        exit 1
-        ;;
-esac
-
 #DEBHELPER#
-
 exit 0

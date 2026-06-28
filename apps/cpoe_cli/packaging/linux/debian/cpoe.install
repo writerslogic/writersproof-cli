@@ -1,3 +1,0 @@
-# Files to install for the cpoe package
-bin/writersproof-cli usr/bin
-bin/writerslogic-native-messaging-host usr/bin
