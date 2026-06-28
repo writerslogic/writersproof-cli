@@ -1,0 +1,20 @@
+[package]
+name = "writersproof_gui"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license = "AGPL-3.0-only"
+repository.workspace = true
+description = "WritersProof desktop GUI (Linux) — a thin GTK4/libadwaita client over the witnessing daemon"
+publish = false
+rust-version = "1.75.0"
+
+[[bin]]
+name = "writersproof"
+path = "src/main.rs"
+
+[dependencies]
+# Pinned to the gtk4-rs / libadwaita-rs generation that targets GTK 4.6 +
+# libadwaita 1.1 (Ubuntu 22.04). Newer crate releases require libadwaita >= 1.4.
+gtk4 = "0.5"
+libadwaita = { version = "0.2", features = ["v1_1"] }
