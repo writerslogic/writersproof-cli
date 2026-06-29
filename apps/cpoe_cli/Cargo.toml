@@ -29,16 +29,6 @@ cpoe_jitter = ["cpoe/cpoe_jitter"]
 
 [dependencies]
 cpoe = { path = "../../crates/cpoe", features = ["ffi"], package = "cpoe" }
-
-# Linux focus tracking: enable the real X11/Wayland/DBus active-window providers
-# (see crates/cpoe/src/sentinel/linux_focus.rs). Declared in a target-specific
-# table so these features are unioned with the base ["ffi"] on Linux only and
-# never requested on macOS/Windows. This makes every Linux build of the CLI --
-# including the deb/AppImage/rpm packaging builds, which just run
-# `cargo build --release --package cpoe_cli` -- ship real focus tracking by
-# default instead of falling through to the degraded stub monitor.
-[target.'cfg(target_os = "linux")'.dependencies]
-cpoe = { path = "../../crates/cpoe", features = ["x11", "wayland", "dbus"], package = "cpoe" }
 clap = { version = "4.4", features = ["derive"] }
 clap_complete = "4.4"
 anyhow = "1.0"
@@ -69,3 +59,13 @@ shell-words = "1.1"
 p256 = { version = "0.13", features = ["ecdh"] }
 base64 = "0.22"
 crc32fast = "1.4"
+
+# Linux focus tracking: enable the real X11/Wayland/DBus active-window providers
+# (see crates/cpoe/src/sentinel/linux_focus.rs). Declared in a target-specific
+# table so these features are unioned with the base ["ffi"] on Linux only and
+# never requested on macOS/Windows. This makes every Linux build of the CLI --
+# including the deb/AppImage/rpm packaging builds, which just run
+# `cargo build --release --package cpoe_cli` -- ship real focus tracking by
+# default instead of falling through to the degraded stub monitor.
+[target.'cfg(target_os = "linux")'.dependencies]
+cpoe = { path = "../../crates/cpoe", features = ["x11", "wayland", "dbus"], package = "cpoe" }
