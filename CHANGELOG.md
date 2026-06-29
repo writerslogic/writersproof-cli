@@ -21,8 +21,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
+- Update changelog [skip ci]
 
 ### Fixed
+- Restore non-Linux deps broken by misplaced target table
 - Unblock macOS build + make Input Monitoring optional
 - Build a working AppImage (skip strict AppStream validation)
 - Build a working writersproof-cli .deb; rename package + fix latent bugs
