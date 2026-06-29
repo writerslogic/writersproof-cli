@@ -1310,10 +1310,17 @@ pub fn create_document_hash_payload(hash: &str, size: i64) -> Result<Vec<u8>, St
 pub fn validate_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
     let path = path.as_ref();
 
-    // Virtual paths (title://, shadow://) are sentinel-internal and not
-    // filesystem paths — return as-is without canonicalization.
+    // Virtual paths (title://, shadow://, ephemeral://) are sentinel-internal
+    // identifiers, not filesystem paths — return as-is without canonicalization.
+    // Path normalization upstream can collapse the scheme to a slash-mangled form
+    // (e.g. "title://…" -> "/title:/…"), so match the scheme tolerant of a leading
+    // slash and collapsed separators to avoid canonicalizing a non-existent dir.
     let path_str = path.to_string_lossy();
-    if path_str.starts_with("title://") || path_str.starts_with("shadow://") {
+    let scheme = path_str.trim_start_matches('/');
+    if scheme.starts_with("title:/")
+        || scheme.starts_with("shadow:/")
+        || scheme.starts_with("ephemeral:/")
+    {
         return Ok(path.to_path_buf());
     }
 
