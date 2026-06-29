@@ -94,7 +94,11 @@ pub(crate) fn build_wire_packet_with_ai(
     end_ns: Option<i64>,
     ai_declaration: Option<String>,
 ) -> Result<(EvidencePacketWire, Vec<u8>, bool), String> {
-    let file_path = crate::utils::fs::canonicalize_validated(std::path::Path::new(&path))
+    // validate_path canonicalizes real files but returns virtual document
+    // identifiers (title://, shadow://, ephemeral://) unchanged, so exporting an
+    // unsaved document succeeds: the store lookup matches the key the events were
+    // recorded under and the later fs::read degrades gracefully (no backing file).
+    let file_path = crate::sentinel::helpers::validate_path(&path)
         .map_err(|e| format!("Invalid source path: {e}"))?;
 
     let store = open_store()?;

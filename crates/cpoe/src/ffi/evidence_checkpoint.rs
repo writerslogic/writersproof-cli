@@ -21,10 +21,21 @@ pub fn ffi_create_checkpoint(path: String, message: String) -> FfiResult {
         FfiResult
     );
     let mut store = try_ffi!(open_store(), FfiResult);
-    let content_hash = try_ffi!(
-        crate::crypto::hash_file(&file_path).map_err(|e| format!("Failed to hash file: {e}")),
-        FfiResult
-    );
+    // Unsaved/virtual documents (title://, shadow://, ephemeral://) have no file on
+    // disk to hash; bind the checkpoint to the document identifier instead so that
+    // pasting/checkpointing into an unsaved doc still records the event (file_size
+    // already degrades to 0 below for the same reason).
+    let content_hash = if file_path.exists() {
+        try_ffi!(
+            crate::crypto::hash_file(&file_path).map_err(|e| format!("Failed to hash file: {e}")),
+            FfiResult
+        )
+    } else {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(file_path.to_string_lossy().as_bytes());
+        hasher.finalize().into()
+    };
 
     let file_size = std::fs::metadata(&file_path)
         .map(|m| m.len() as i64)

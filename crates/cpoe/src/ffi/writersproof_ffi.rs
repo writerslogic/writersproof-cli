@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: SSPL-1.0 OR LicenseRef-Commercial
 
-use crate::ffi::helpers::{load_api_key, load_did, load_events_for_path, load_signing_key, open_store};
+use crate::ffi::helpers::{
+    load_api_key, load_did, load_events_for_path, load_signing_key, open_store,
+};
 use crate::ffi::types::{catch_ffi_panic, try_ffi, FfiResult};
 
 /// Domain separation tag for anchor signatures.
@@ -145,15 +147,13 @@ pub fn ffi_publish_evidence(
     if document_path.len() > 4096 {
         return FfiPublishResult::ffi_err("Document path too long");
     }
+    // validate_path already canonicalizes real files and returns virtual document
+    // identifiers (title://, shadow://, ephemeral://) unchanged. The extra
+    // canonicalize() here was redundant for real files and broke publishing of
+    // unsaved documents (canonicalize errors on a non-existent virtual path).
     let doc_path = try_ffi!(
         crate::sentinel::helpers::validate_path(&document_path)
             .map_err(|e| format!("Invalid document path: {e}")),
-        FfiPublishResult
-    );
-    let doc_path = try_ffi!(
-        doc_path
-            .canonicalize()
-            .map_err(|e| format!("Cannot resolve document path: {e}")),
         FfiPublishResult
     );
     let doc_path_str = doc_path.to_string_lossy().into_owned();
