@@ -5,6 +5,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Conventional Commits](https://www.conventionalcommits.org/).
 ## [Unreleased]
 
+### Documentation
+- Update changelog [skip ci]
+## [1.5.2] - 2026-06-29
+
 ### Added
 - Live daemon status over IPC bridge (P2.2)
 - Scaffold writersproof GTK4/libadwaita desktop app (P2.1)
