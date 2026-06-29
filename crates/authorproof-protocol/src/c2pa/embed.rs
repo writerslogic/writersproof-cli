@@ -37,66 +37,175 @@ pub fn embed_in_pdf(document_bytes: &[u8], jumbf: &[u8]) -> Result<Vec<u8>> {
         ));
     }
 
-    // Find the byte offset where the incremental update begins (end of original).
-    let update_offset = document_bytes.len();
+    // Parse the original document so the incremental update PRESERVES the page
+    // tree: locate the existing catalog (/Root) and ADD a /C2PA entry to it,
+    // rather than replacing /Root (which orphans /Pages and corrupts the PDF).
+    let (root_num, root_gen) = find_root_ref(document_bytes).ok_or_else(|| {
+        Error::Protocol("embed_in_pdf: could not find /Root reference in trailer".to_string())
+    })?;
+    let size = find_trailer_size(document_bytes).ok_or_else(|| {
+        Error::Protocol("embed_in_pdf: could not find /Size in trailer".to_string())
+    })?;
+    let catalog_obj = find_object_bytes(document_bytes, root_num, root_gen).ok_or_else(|| {
+        Error::Protocol("embed_in_pdf: could not locate catalog object".to_string())
+    })?;
+    let prev_startxref = find_last_startxref(document_bytes).unwrap_or(0);
 
-    // Object number for the C2PA stream. Use a high number to avoid collisions
-    // with existing objects. In a production implementation you'd parse the xref
-    // to find the next free object number; for now we use a deterministic high value.
-    let obj_num = 999_999;
-    let gen_num = 0;
+    // The C2PA stream takes the next free object number; the catalog keeps its
+    // own number (re-emitted at a new offset by the incremental update).
+    let c2pa_num = size;
+    let c2pa_gen: u32 = 0;
 
-    // Build the stream object containing the JUMBF manifest data.
+    // 1) C2PA stream object, appended directly after the original bytes.
+    let c2pa_offset = document_bytes.len();
     let stream_header = format!(
-        "{obj_num} {gen_num} obj\n\
+        "{c2pa_num} {c2pa_gen} obj\n\
          << /Type /Metadata /Subtype /C2PA /Length {} >>\n\
          stream\n",
         jumbf.len()
     );
     let stream_footer = b"\nendstream\nendobj\n";
 
-    // Build the cross-reference table for the new object.
-    let xref_offset = update_offset
-        + stream_header.len()
-        + jumbf.len()
-        + stream_footer.len();
+    // 2) Rewritten catalog object: original catalog + "/C2PA c2pa_num 0 R"
+    //    inserted before its closing ">>".
+    let new_catalog = insert_c2pa_ref(catalog_obj, c2pa_num, c2pa_gen).ok_or_else(|| {
+        Error::Protocol("embed_in_pdf: could not edit catalog dictionary".to_string())
+    })?;
+    let catalog_offset = c2pa_offset + stream_header.len() + jumbf.len() + stream_footer.len();
 
-    // Minimal xref section for the single new object.
-    let xref = format!(
-        "xref\n\
-         {obj_num} 1\n\
-         {update_offset:010} 00000 n \n"
-    );
+    // 3) Incremental xref for the two updated objects, in increasing object order.
+    let xref_offset = catalog_offset + new_catalog.len();
+    let mut xref = String::from("xref\n");
+    let (lo_num, lo_off, hi_num, hi_off) = if root_num <= c2pa_num {
+        (root_num, catalog_offset, c2pa_num, c2pa_offset)
+    } else {
+        (c2pa_num, c2pa_offset, root_num, catalog_offset)
+    };
+    if hi_num == lo_num + 1 {
+        xref.push_str(&format!(
+            "{lo_num} 2\n{lo_off:010} 00000 n \n{hi_off:010} 00000 n \n"
+        ));
+    } else {
+        xref.push_str(&format!(
+            "{lo_num} 1\n{lo_off:010} 00000 n \n{hi_num} 1\n{hi_off:010} 00000 n \n"
+        ));
+    }
 
-    // Trailer with /C2PA reference and pointer to previous xref.
-    // Find the previous startxref value from the original PDF.
-    let prev_startxref = find_last_startxref(document_bytes).unwrap_or(0);
+    // 4) Trailer keeps the ORIGINAL /Root reference and chains to the prior xref.
     let trailer = format!(
         "trailer\n\
-         << /Size {next_obj} /Prev {prev_startxref} \
-         /Root << /C2PA {obj_num} {gen_num} R >> >>\n\
+         << /Size {} /Prev {prev_startxref} /Root {root_num} {root_gen} R >>\n\
          startxref\n\
          {xref_offset}\n\
          %%EOF\n",
-        next_obj = obj_num + 1,
+        c2pa_num + 1,
     );
 
-    // Assemble: original PDF + stream object + xref + trailer
-    let total = document_bytes.len()
-        + stream_header.len()
-        + jumbf.len()
-        + stream_footer.len()
-        + xref.len()
-        + trailer.len();
-    let mut output = Vec::with_capacity(total);
+    let mut output = Vec::with_capacity(
+        document_bytes.len()
+            + stream_header.len()
+            + jumbf.len()
+            + stream_footer.len()
+            + new_catalog.len()
+            + xref.len()
+            + trailer.len(),
+    );
     output.extend_from_slice(document_bytes);
     output.extend_from_slice(stream_header.as_bytes());
     output.extend_from_slice(jumbf);
     output.extend_from_slice(stream_footer);
+    output.extend_from_slice(&new_catalog);
     output.extend_from_slice(xref.as_bytes());
     output.extend_from_slice(trailer.as_bytes());
 
     Ok(output)
+}
+
+/// Read a run of ASCII digits at `*i`, advancing `*i`. Returns None if no digit.
+fn read_u32(data: &[u8], i: &mut usize) -> Option<u32> {
+    let start = *i;
+    while *i < data.len() && data[*i].is_ascii_digit() {
+        *i += 1;
+    }
+    if *i == start {
+        return None;
+    }
+    core::str::from_utf8(&data[start..*i]).ok()?.parse().ok()
+}
+
+/// Parse `<ws>* <num> <ws>+ <gen> <ws>+ R` from the front of `data`.
+fn parse_obj_ref(data: &[u8]) -> Option<(u32, u32)> {
+    let mut i = 0;
+    while i < data.len() && data[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let num = read_u32(data, &mut i)?;
+    while i < data.len() && data[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let gen = read_u32(data, &mut i)?;
+    while i < data.len() && data[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i < data.len() && data[i] == b'R' {
+        Some((num, gen))
+    } else {
+        None
+    }
+}
+
+/// Find the `/Root <num> <gen> R` reference from the last trailer.
+fn find_root_ref(data: &[u8]) -> Option<(u32, u32)> {
+    let needle = b"/Root";
+    let pos = data.windows(needle.len()).rposition(|w| w == needle)?;
+    parse_obj_ref(&data[pos + needle.len()..])
+}
+
+/// Find the `/Size <num>` value from the last trailer.
+fn find_trailer_size(data: &[u8]) -> Option<u32> {
+    let needle = b"/Size";
+    let pos = data.windows(needle.len()).rposition(|w| w == needle)?;
+    let after = &data[pos + needle.len()..];
+    let mut i = 0;
+    while i < after.len() && after[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    read_u32(after, &mut i)
+}
+
+/// Return the bytes of object `num gen obj ... endobj` (the definition, not a
+/// reference), preceded by whitespace/start-of-file to avoid partial matches.
+fn find_object_bytes(data: &[u8], num: u32, gen: u32) -> Option<&[u8]> {
+    let marker = format!("{num} {gen} obj");
+    let mb = marker.as_bytes();
+    let mut from = 0;
+    loop {
+        let rel = data[from..].windows(mb.len()).position(|w| w == mb)?;
+        let start = from + rel;
+        let ok_prefix = start == 0 || data[start - 1].is_ascii_whitespace();
+        let after = start + mb.len();
+        let ok_suffix =
+            after >= data.len() || data[after].is_ascii_whitespace() || data[after] == b'<';
+        if ok_prefix && ok_suffix {
+            let end_needle = b"endobj";
+            let erel = data[start..]
+                .windows(end_needle.len())
+                .position(|w| w == end_needle)?;
+            return Some(&data[start..start + erel + end_needle.len()]);
+        }
+        from = start + mb.len();
+    }
+}
+
+/// Insert `/C2PA <num> <gen> R` before the catalog object's closing `>>`.
+fn insert_c2pa_ref(catalog_obj: &[u8], c2pa_num: u32, c2pa_gen: u32) -> Option<Vec<u8>> {
+    let pos = catalog_obj.windows(2).rposition(|w| w == b">>")?;
+    let insertion = format!(" /C2PA {c2pa_num} {c2pa_gen} R ");
+    let mut out = Vec::with_capacity(catalog_obj.len() + insertion.len());
+    out.extend_from_slice(&catalog_obj[..pos]);
+    out.extend_from_slice(insertion.as_bytes());
+    out.extend_from_slice(&catalog_obj[pos..]);
+    Some(out)
 }
 
 /// Build a C2PA manifest embedded in a PDF document with correct hash binding.
@@ -256,9 +365,7 @@ pub fn hash_with_exclusions(data: &[u8], exclusions: &[HashExclusion]) -> [u8; 3
 fn find_last_startxref(data: &[u8]) -> Option<usize> {
     // Search backwards from the end for "startxref"
     let needle = b"startxref";
-    let pos = data
-        .windows(needle.len())
-        .rposition(|w| w == needle)?;
+    let pos = data.windows(needle.len()).rposition(|w| w == needle)?;
 
     // Parse the number after "startxref\n"
     let after = &data[pos + needle.len()..];
@@ -323,13 +430,50 @@ mod tests {
             .windows(jumbf.len())
             .position(|w| w == jumbf)
             .expect("JUMBF data must be in embedded PDF");
-        assert!(jumbf_pos > pdf.len(), "JUMBF must be in the appended update");
+        assert!(
+            jumbf_pos > pdf.len(),
+            "JUMBF must be in the appended update"
+        );
 
         // %%EOF at the end
         assert!(
             embedded_str.ends_with("%%EOF\n"),
             "Embedded PDF must end with %%EOF"
         );
+    }
+
+    #[test]
+    fn test_pdf_embed_preserves_catalog() {
+        // Regression: the embed must ADD /C2PA to the existing catalog, never
+        // replace /Root with an inline dict (which orphaned /Pages and made the
+        // PDF unopenable in Preview/PDFKit).
+        let pdf = minimal_pdf();
+        let embedded = embed_in_pdf(&pdf, b"jumbf-bytes").expect("embed should succeed");
+        let s = String::from_utf8_lossy(&embedded);
+
+        assert!(
+            s.contains("/Root 1 0 R"),
+            "must preserve the original /Root 1 0 R reference"
+        );
+        assert!(
+            !s.contains("/Root <<"),
+            "/Root must not be replaced by an inline dict"
+        );
+        assert!(
+            !s.contains("999999"),
+            "must not use the 999999 placeholder object number"
+        );
+        // Catalog re-emitted with /Pages intact and /C2PA added as an indirect ref.
+        assert!(
+            s.contains("/Pages 2 0 R"),
+            "catalog must still reference /Pages"
+        );
+        assert!(
+            s.contains("/C2PA 3 0 R"),
+            "catalog must reference the C2PA object (obj 3)"
+        );
+        assert!(s.contains("3 0 obj"), "C2PA object 3 must be defined");
+        assert!(s.ends_with("%%EOF\n"));
     }
 
     #[test]
