@@ -13,6 +13,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
+- Update changelog [skip ci]
 
 ### Fixed
 - Prevent labyrinth analysis SIGABRT on degenerate embedding
