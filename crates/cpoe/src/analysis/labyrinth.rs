@@ -250,7 +250,7 @@ fn compute_rqa(embed: &FlatEmbedding, threshold: f64, min_line: usize) -> RqaRes
                         break;
                     }
                 }
-                if line_len >= min_line - 1 {
+                if line_len + 1 >= min_line {
                     diag_pts += 1;
                     hist[line_len.min(49)] += 1;
                 }
@@ -292,8 +292,7 @@ fn estimate_lyapunov(embed: &FlatEmbedding, delay: usize) -> f64 {
         return 0.0;
     }
 
-    let tree =
-        crate::analysis::spatial::KdTree::build(&embed.data, embed.count, embed.dim);
+    let tree = crate::analysis::spatial::KdTree::build(&embed.data, embed.count, embed.dim);
     let min_sep = delay * 2;
 
     let mut divergence = 0.0;
@@ -345,7 +344,7 @@ fn estimate_correlation_dimension(embed: &FlatEmbedding) -> f64 {
                 }
             }
         }
-        let c_r = (2.0 * count as f64) / (n * (n - 1)).max(1) as f64;
+        let c_r = (2.0 * count as f64) / (n * n.saturating_sub(1)).max(1) as f64;
         if c_r > 0.0 {
             log_c.push(c_r.ln());
             log_r.push(r.ln());
@@ -510,5 +509,20 @@ mod tests {
         let params = LabyrinthParams::default();
         let result = analyze_labyrinth(&data, &[], &params).unwrap();
         assert!(result.betti_numbers[0] >= 1, "beta_0 should be at least 1");
+    }
+
+    #[test]
+    fn no_panic_on_zero_count_embedding() {
+        // 50..=179 deltas with default params (dim 10, delay 20 => (dim-1)*delay = 180)
+        // make embed.count = len.saturating_sub(180) == 0. With overflow-checks=true
+        // the correlation-dimension/RQA subtractions previously aborted; must not panic.
+        for len in [50usize, 60, 120, 179] {
+            let data = make_sine_data(len);
+            let params = LabyrinthParams::default();
+            assert!(
+                analyze_labyrinth(&data, &[], &params).is_ok(),
+                "degenerate embedding (len={len}) must not panic"
+            );
+        }
     }
 }
