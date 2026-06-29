@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 ### Documentation
 - Update changelog [skip ci]
 - Update changelog [skip ci]
+- Update changelog [skip ci]
 ## [1.5.2] - 2026-06-29
 
 ### Added
