@@ -16,8 +16,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
+- Update changelog [skip ci]
 
 ### Fixed
+- Handle unsaved (title://) documents in checkpoint/export/publish
 - Validate_path skips slash-mangled virtual paths
 - Prevent labyrinth analysis SIGABRT on degenerate embedding
 ## [1.5.2] - 2026-06-29
