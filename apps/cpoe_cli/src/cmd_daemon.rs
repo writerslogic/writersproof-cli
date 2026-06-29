@@ -7,36 +7,20 @@ use std::time::Duration;
 
 use crate::util::ensure_dirs;
 
-/// Grace period to detect immediate daemon startup failures.
-const DAEMON_STARTUP_GRACE_MS: u64 = 500;
+/// How long to wait for a backgrounded daemon to report ready before failing.
+const DAEMON_START_TIMEOUT_MS: u64 = 4000;
+/// Poll interval while waiting for the daemon to come up.
+const DAEMON_POLL_MS: u64 = 100;
 
-fn acquire_or_report(daemon_manager: &DaemonManager) -> Result<bool> {
-    let acquired = daemon_manager
-        .acquire_pid_file(std::process::id())
-        .map_err(|e| anyhow!("PID file: {}", e))?;
-    if !acquired {
-        // Double-check: verify the PID from the file is actually a running process.
-        // The engine's acquire_pid_file checks this, but a race could leave a stale
-        // PID file if the process died between the engine check and here.
-        let status = daemon_manager.status();
-        if !status.running {
-            // Process is gone — clean up stale PID file and retry acquisition.
-            eprintln!("Stale PID file detected (process not running). Cleaning up...");
-            daemon_manager.cleanup();
-            let retry = daemon_manager
-                .acquire_pid_file(std::process::id())
-                .map_err(|e| anyhow!("PID file (retry): {}", e))?;
-            return Ok(!retry);
-        }
-        if let Some(pid) = status.pid {
-            println!("Daemon is already running (PID: {}).", pid);
-        } else {
-            println!("Daemon is already running.");
-        }
-        println!();
-        println!("Use 'cpoe status' for details or 'cpoe stop' to stop.");
+fn report_already_running(daemon_manager: &DaemonManager) {
+    let status = daemon_manager.status();
+    if let Some(pid) = status.pid {
+        println!("Daemon is already running (PID: {}).", pid);
+    } else {
+        println!("Daemon is already running.");
     }
-    Ok(!acquired)
+    println!();
+    println!("Use 'cpoe status' for details or 'cpoe stop' to stop.");
 }
 
 pub(crate) async fn cmd_start(foreground: bool) -> Result<()> {
@@ -44,9 +28,18 @@ pub(crate) async fn cmd_start(foreground: bool) -> Result<()> {
 
     let daemon_manager = DaemonManager::new(&config.data_dir);
 
-    if acquire_or_report(&daemon_manager)? {
+    // The daemon *process* (setup_daemon) is the sole owner of the PID-file
+    // flock. The CLI must NOT acquire that lock here: in foreground mode the
+    // daemon runs in this same process, so a second acquisition deadlocks on
+    // the flock and falsely reports "already running" against our own PID; in
+    // background mode it would race the child. So we only do a liveness check
+    // for reporting, and let the daemon acquire the lock itself.
+    if daemon_manager.is_running() {
+        report_already_running(&daemon_manager);
         return Ok(());
     }
+    // Clear any stale PID/state left by a crashed daemon so the lock is free.
+    daemon_manager.cleanup();
 
     if foreground {
         eprintln!("Starting CPoE daemon in foreground...");
@@ -59,105 +52,86 @@ pub(crate) async fn cmd_start(foreground: bool) -> Result<()> {
         if result.is_err() {
             daemon_manager.cleanup();
         }
-        result
-    } else {
-        eprintln!("Starting CPoE daemon...");
+        return result;
+    }
 
-        let exe = std::env::current_exe().context("cannot resolve executable path")?;
+    // Background: spawn a detached `start --foreground`. The child acquires the
+    // PID-file lock and writes its own PID via setup_daemon; we just wait for it
+    // to come up (or fail fast).
+    eprintln!("Starting CPoE daemon...");
 
-        let log_dir = config.data_dir.join("logs");
-        fs::create_dir_all(&log_dir)?;
-        if let Err(e) = cpoe::restrict_permissions(&log_dir, 0o700) {
-            eprintln!("Warning: failed to set log directory permissions: {e}");
-        }
-        let log_path = log_dir.join("daemon.log");
-        let log_file = fs::File::create(&log_path).context("cannot create daemon log")?;
-        if let Err(e) = cpoe::restrict_permissions(&log_path, 0o600) {
-            eprintln!("Warning: failed to set log file permissions: {e}");
-        }
-        let stderr_file = log_file.try_clone().context("log file clone")?;
+    let exe = std::env::current_exe().context("cannot resolve executable path")?;
 
-        let mut cmd = std::process::Command::new(&exe);
-        cmd.arg("start")
-            .arg("--foreground")
-            .stdout(log_file)
-            .stderr(stderr_file)
-            .stdin(std::process::Stdio::null());
+    let log_dir = config.data_dir.join("logs");
+    fs::create_dir_all(&log_dir)?;
+    if let Err(e) = cpoe::restrict_permissions(&log_dir, 0o700) {
+        eprintln!("Warning: failed to set log directory permissions: {e}");
+    }
+    let log_path = log_dir.join("daemon.log");
+    let log_file = fs::File::create(&log_path).context("cannot create daemon log")?;
+    if let Err(e) = cpoe::restrict_permissions(&log_path, 0o600) {
+        eprintln!("Warning: failed to set log file permissions: {e}");
+    }
+    let stderr_file = log_file.try_clone().context("log file clone")?;
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            cmd.process_group(0);
-        }
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.arg("start")
+        .arg("--foreground")
+        .stdout(log_file)
+        .stderr(stderr_file)
+        .stdin(std::process::Stdio::null());
 
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-            const DETACHED_PROCESS: u32 = 0x00000008;
-            cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
-        }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
 
-        let mut child = match cmd.spawn() {
-            Ok(c) => c,
-            Err(e) => {
-                daemon_manager.cleanup();
-                return Err(anyhow::anyhow!("spawn daemon: {}", e));
-            }
-        };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
+    }
 
-        let pid = child.id();
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("spawn daemon: {}", e))?;
+    let pid = child.id();
 
-        // Brief wait to detect immediate startup failures.
-        tokio::time::sleep(Duration::from_millis(DAEMON_STARTUP_GRACE_MS)).await;
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                daemon_manager.cleanup();
-                let log_hint = format!("Check log file: {}", log_path.display());
-                if status.success() {
-                    return Err(anyhow::anyhow!(
-                        "Daemon exited immediately (exit code 0). {log_hint}"
-                    ));
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Daemon failed to start (exit code {:?}). {log_hint}",
-                        status.code()
-                    ));
-                }
-            }
-            Ok(None) => {
-                // Still running — write PID file only after confirming alive.
-                if let Err(e) = daemon_manager.write_pid_value(pid) {
-                    eprintln!("Warning: failed to update PID file with child PID: {e}");
-                }
-            }
-            Err(e) => {
-                // Can't confirm status — write PID file anyway for manual cleanup.
-                if let Err(e2) = daemon_manager.write_pid_value(pid) {
-                    eprintln!("Warning: failed to update PID file with child PID: {e2}");
-                }
-                eprintln!("Warning: could not check daemon status: {e}");
-            }
-        }
-
-        // Post-spawn verification: re-check the child is still alive.
-        // This closes the TOCTOU window between PID file lock and spawn.
-        if !daemon_manager.is_running() {
-            daemon_manager.cleanup();
+    // Poll until the daemon reports ready (it writes its PID file early in
+    // setup_daemon), bailing out immediately if the child exits first.
+    let mut ready = false;
+    for _ in 0..(DAEMON_START_TIMEOUT_MS / DAEMON_POLL_MS) {
+        tokio::time::sleep(Duration::from_millis(DAEMON_POLL_MS)).await;
+        if let Ok(Some(status)) = child.try_wait() {
+            let log_hint = format!("Check log file: {}", log_path.display());
             return Err(anyhow::anyhow!(
-                "Daemon process {} exited before verification. Check log: {}",
-                pid,
-                log_path.display()
+                "Daemon failed to start (exit code {:?}). {log_hint}",
+                status.code()
             ));
         }
-
-        eprintln!("Daemon started (PID: {})", pid);
-        eprintln!("Log file: {}", log_path.display());
-        eprintln!();
-        eprintln!("Use 'cpoe status' for details or 'cpoe stop' to stop.");
-
-        Ok(())
+        if daemon_manager.is_running() {
+            ready = true;
+            break;
+        }
     }
+    if !ready {
+        return Err(anyhow::anyhow!(
+            "Daemon {} did not report ready in {}ms. Check log: {}",
+            pid,
+            DAEMON_START_TIMEOUT_MS,
+            log_path.display()
+        ));
+    }
+
+    eprintln!("Daemon started (PID: {})", pid);
+    eprintln!("Log file: {}", log_path.display());
+    eprintln!();
+    eprintln!("Use 'cpoe status' for details or 'cpoe stop' to stop.");
+
+    Ok(())
 }
 
 pub(crate) fn cmd_stop() -> Result<()> {

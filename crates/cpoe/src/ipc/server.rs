@@ -28,10 +28,14 @@ pub(super) fn len_to_u32(len: usize) -> Result<[u8; 4]> {
 /// Executables allowed to connect over the IPC socket.
 #[cfg(unix)]
 const ALLOWED_PEER_EXECUTABLES: &[&str] = &[
-    "cpoe",              // CLI binary
-    "cpoe_cli",          // CLI binary (alt name)
-    "WritersLogic",      // macOS GUI app
-    "writerslogic",      // Linux GUI
+    "writersproof-cli",                    // CLI binary
+    "writersproof",                        // Linux desktop GUI
+    "writerslogic-native-messaging-host",  // browser native-messaging host
+    "WritersLogic",                        // macOS GUI app
+    // Legacy codenames, kept for compatibility with older builds.
+    "cpoe",
+    "cpoe_cli",
+    "writerslogic",
 ];
 
 /// Platform-aware IPC server (Unix socket or Windows named pipe).
