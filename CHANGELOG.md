@@ -5,7 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Conventional Commits](https://www.conventionalcommits.org/).
 ## [Unreleased]
 
+### Added
+- Full tracking UI + fix daemon start and IPC allowlist (P2.3/P2.4)
+
 ### Documentation
+- Update changelog [skip ci]
 - Update changelog [skip ci]
 ## [1.5.2] - 2026-06-29
 
