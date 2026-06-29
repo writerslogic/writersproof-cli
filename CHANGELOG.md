@@ -18,8 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - Update changelog [skip ci]
 - Update changelog [skip ci]
 - Update changelog [skip ci]
+- Update changelog [skip ci]
 
 ### Fixed
+- Correct PDF C2PA embed so the result is a valid, openable PDF
 - Handle unsaved (title://) documents in checkpoint/export/publish
 - Validate_path skips slash-mangled virtual paths
 - Prevent labyrinth analysis SIGABRT on degenerate embedding
